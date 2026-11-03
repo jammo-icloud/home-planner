@@ -466,18 +466,22 @@ export async function start(opts: {
     },
 
     // One address book, shared by every account. Rows as the client guesses
-    // DSM spells them: tel and email as lists of { value }.
+    // DSM spells them: tel and email as lists of { value }. The two lists are
+    // wrapped under singular keys, as the real NAS answers them (2026-11-03).
     'SYNO.Contacts.Addressbook': {
-      list: () => [{ ...ADDRESSBOOK }],
+      list: () => ({ addressbook: [{ ...ADDRESSBOOK }], total: 1 }),
     },
     'SYNO.Contacts.Contact': {
       list: (p) => {
         const book = p.get('addressbook_id');
         const offset = Number(p.get('offset') ?? 0);
         const limit = Number(p.get('limit') ?? 1000);
-        return [...contacts.values()]
-          .filter((c) => book === null || c.addressbook_id === Number(book))
-          .slice(offset, offset + limit);
+        return {
+          contact: [...contacts.values()]
+            .filter((c) => book === null || c.addressbook_id === Number(book))
+            .slice(offset, offset + limit),
+          offset,
+        };
       },
       get: (p) => {
         const c = contacts.get(num(p, 'id'));

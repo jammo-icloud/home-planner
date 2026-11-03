@@ -681,9 +681,11 @@ const contactReply = (
 };
 
 export async function listAddressbooks(sid: string, f?: DsmFetch): Promise<Addressbook[]> {
-  const data = await contactsCall<Record<string, unknown>[] | { addressbooks?: Record<string, unknown>[] }>(
+  const data = await contactsCall<unknown>(
     { api: 'SYNO.Contacts.Addressbook', method: 'list', sid }, f);
-  const rows = Array.isArray(data) ? data : data?.addressbooks ?? [];
+  // The real NAS answers `{ addressbook: [...], total }` (2026-11-03); the
+  // plural and a bare array are read too.
+  const rows = listRows<Record<string, unknown>>(data, 'addressbook', 'addressbooks');
   return rows.map((r) => ({ id: Number(r['id']), name: typeof r['name'] === 'string' ? r['name'] : '' }));
 }
 
@@ -696,11 +698,11 @@ export async function listContacts(
   if (o.addressbook_id !== undefined) params['addressbook_id'] = o.addressbook_id;
   if (o.limit !== undefined) params['limit'] = o.limit;
   if (o.offset !== undefined) params['offset'] = o.offset;
-  const data = await contactsCall<Record<string, unknown>[] | { contacts?: Record<string, unknown>[] }>(
+  const data = await contactsCall<unknown>(
     { api: 'SYNO.Contacts.Contact', method: 'list', sid, params }, f);
-  // The check shows it: a bare array, or wrapped as `{ contacts }`.
-  const rows = Array.isArray(data) ? data : data?.contacts ?? [];
-  return rows.map(contact);
+  // The real NAS answers `{ contact: [...], offset }` (2026-11-03); the plural
+  // `{ contacts }` and a bare array are read too.
+  return listRows<Record<string, unknown>>(data, 'contact', 'contacts').map(contact);
 }
 
 export async function getContact(sid: string, id: number, f?: DsmFetch): Promise<Contact> {

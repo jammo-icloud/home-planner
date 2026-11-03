@@ -1827,7 +1827,7 @@ describe('due dates and blocks become events', () => {
       const c = await setup();
       const o = await researchCard(c, { full_name: 'Gate & Fence Co', plan: 'gate' });
       const before = (await c.store.since(null)).length;
-      await asNas((p) => p.get('api') === 'SYNO.Contacts.Addressbook' ? answer({ success: true, data: { addressbooks: [] } }) : null, async () => {
+      await asNas((p) => p.get('api') === 'SYNO.Contacts.Addressbook' ? answer({ success: true, data: { addressbook: [], total: 0 } }) : null, async () => {
         await assert.rejects(decide(c, o.id, 'approved'), (e: unknown) =>
           e instanceof ToolError && e.status === 502 && e.message === 'the NAS has no address book');
       });

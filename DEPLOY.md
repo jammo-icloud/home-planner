@@ -46,6 +46,7 @@ ones most likely to matter:
 | What you see | What to do |
 |---|---|
 | `Contacts` is `NOT OFFERED` | Install Synology Contacts from Package Center. The version is not a setting: the app asks the NAS which one to call. |
+| The Contacts lines show `{ addressbook: [...] }` and `{ contact: [...] }` | Nothing: those singular keys are what the real NAS answers, and the app reads them. `0 address book(s)` beside a reply that has rows means the key has changed: see the check's README. |
 | `SYNO.Cal.Cal list` is refused with **9009** ("Parameter error") | The real NAS answers 9009 to a `list` with no parameters; the guide marks `cal_type` required. The check's line says which parameters were sent, `is_evt` among them. If it still says 9009 with `cal_type=event` and `is_evt=true`, change `CALENDAR_LIST_PARAMS` in `synology.ts`. The reply should be `{ list: [...] }`. |
 | `SYNO.Cal.Event list` is refused with 114 or 120 | `cal_id_list` is the wrong parameter name: change it in `listEvents`, the one place it appears. |
 | Changing a plan's date in the app after its event was moved on a phone (the check cannot show this one) puts a card in Today, "Bob moved Fix the gate to Sun 8 Nov on their phone", with three choices | Nothing: that is the stale-etag refusal working, turned into a drift card (see [Calendar on the NAS](#calendar-on-the-nas)). |

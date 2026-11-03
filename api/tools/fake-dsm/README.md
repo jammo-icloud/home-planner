@@ -75,8 +75,8 @@ All in memory and gone when it stops, apart from the files.
 | `SYNO.Cal.Cal` | list, create, set, delete | `list` wants `cal_type` (`event`, `todo` or `all`) and `is_evt`, and refuses 9009 without them, and answers `{ list: [...] }` as the guide shows it; each account starts with "My Calendar" (its default) and a task list "My Tasks"; `list` shows your own and those shared with you; `delete` is the owner's, and takes the calendar's events with it |
 | `SYNO.Cal.Sharing` | get, set | owner only; `set` replaces the whole list, groups included (kept as sent); `get` answers `{ cal_share_setting: { DSM_USER, DSM_GROUP } }` |
 | `SYNO.Cal.Event` | create, get, list, set, delete | `list` takes `cal_id_list`, `start`, `end` (epoch seconds) and answers `{ list: [...] }` (the guide's wrapper) of the events overlapping it; every `set` gives a new `dav_etag`, and a `set` with a stale one is refused; each event says who last changed it in `last_modify_user` (the client's guess at DSM's name for it) |
-| `SYNO.Contacts.Addressbook` | list | one address book, id 1, shared by every account |
-| `SYNO.Contacts.Contact` | list, get, create, set | rows carry `tel` and `email` as lists of `{ value }` |
+| `SYNO.Contacts.Addressbook` | list | one address book, id 1, shared by every account; answers `{ addressbook: [...], total }`, the singular key as the real NAS answers it (2026-11-03) |
+| `SYNO.Contacts.Contact` | list, get, create, set | `list` answers `{ contact: [...], offset }`, the singular key as the real NAS answers it (2026-11-03); rows carry `tel` and `email` as lists of `{ value }` |
 | `SYNO.FileStation.CreateFolder` | create | |
 | `SYNO.FileStation.List` | list, list_share | `list` with `additional.size`; `list_share` names the top-level folders under the root |
 | `SYNO.FileStation.Upload` | upload | multipart; refuses an existing file unless `overwrite=true` |

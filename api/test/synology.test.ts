@@ -252,6 +252,13 @@ describe('contacts', () => {
     const d = fakeDsm({ success: true, data: [alice] });
     assert.equal((await listContacts('S', {}, d.fn))[0]!.full_name, 'Alice Anderson');
   });
+  test('list reads the singular keys the real NAS answers with', async () => {
+    const c = fakeDsm({ success: true, data: { contact: [alice, sandy], offset: 0 } });
+    assert.deepEqual((await listContacts('S', {}, c.fn)).map((x) => x.id), [1, 2]);
+    const b = fakeDsm({ success: true, data: {
+      addressbook: [{ id: 7, name: 'Household', shared_from: '', shared_with: [], type: 'personal', mode: 'rw' }], total: 1 } });
+    assert.deepEqual(await listAddressbooks('S', b.fn), [{ id: 7, name: 'Household' }]);
+  });
   test('search matches full_name case-insensitively on a list of two', async () => {
     const d = fakeDsm({ success: true, data: [alice, sandy] });
     assert.deepEqual((await searchContacts('S', 'and', d.fn)).map((c) => c.id), [1, 2]);
