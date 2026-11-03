@@ -136,7 +136,8 @@ Drive, Calendar, booking and TLS setup, and what each failure in the log means.
 
 Everything is done in DSM; no `.env` or shell is needed. Install Container
 Manager, Git Server, Synology Calendar and Synology Drive from Package Center, and make a
-folder for the project in File Station, such as `docker/home-planner`. Then
+folder for the project in File Station, such as `docker/home-planner`, with
+`api/data` inside it for the household logs. Then
 Container Manager → Project → Create on that folder, uploading
 [`docker.yml`](docker.yml) as the compose file: it builds the image from this
 repository on GitHub and runs it on the NAS's loopback at port 8090. DSM's

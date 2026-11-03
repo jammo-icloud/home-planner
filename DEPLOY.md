@@ -760,9 +760,11 @@ public, so the build needs no credentials.
    for each household's owner to choose in Settings (see Documents in Synology
    Drive).
 2. **The folder.** In File Station, create a folder for the project inside the
-   `docker` shared folder, for example `docker/home-planner`. The household
-   logs appear under it at `api/data` once the app has started; that folder is
-   what to back up.
+   `docker` shared folder, for example `docker/home-planner`. Inside it,
+   create `api`, and inside that `data`, so the project folder holds
+   `api/data`. The household logs, sessions and the Connectors file live
+   there; it is the folder to back up. The container makes it its own user's
+   when it starts, so it needs no permission changes.
 3. **The compose file.** Download `docker.yml` from the repository:
    `https://raw.githubusercontent.com/jammo-icloud/home-planner/main/docker.yml`.
    Either copy it into the folder with File Station as `docker-compose.yml`, or
