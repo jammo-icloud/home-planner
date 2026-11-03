@@ -115,7 +115,7 @@ group sees a Connectors page under the person icon. It holds what belongs to
 the whole NAS: the Claude API key, the NAS's public address for calendars on
 phones, outgoing mail, the booking page's address, who may sign in, and the
 Census and EIA keys. Each row says whether it is on, off or broken and where its
-value comes from. These are kept in `api/data/connectors.json`, never in a
+value comes from. These are kept in `connectors.json` in the data folder, never in a
 household's log, and no secret is ever sent back to the browser.
 
 Every one of those can be set, changed or reset while the app runs. A saved
@@ -137,7 +137,7 @@ Drive, Calendar, booking and TLS setup, and what each failure in the log means.
 Everything is done in DSM; no `.env` or shell is needed. Install Container
 Manager, Git Server, Synology Calendar and Synology Drive from Package Center, and make a
 folder for the project in File Station, such as `docker/home-planner`, with
-`api/data` inside it for the household logs. Then
+a `data` folder inside it for the household logs. Then
 Container Manager → Project → Create on that folder, uploading
 [`docker.yml`](docker.yml) as the compose file: it builds the image from this
 repository on GitHub and runs it on the NAS's loopback at port 8090. DSM's
@@ -197,8 +197,9 @@ it.
 ## Data is not code
 
 This repository holds no household's data. The logs, `sessions.json` and
-`connectors.json` live in `api/data`, which is gitignored along with `.env` and
-any bank exports, so a fresh clone starts empty. Back up `api/data` and the Team
+`connectors.json` live in the data folder (`data` beside the compose file on the
+NAS, `api/data` on a laptop), which is gitignored along with `.env` and
+any bank exports, so a fresh clone starts empty. Back up that folder and the Team
 Folders your households chose: the logs hold everything the households decided,
 and the Team Folders hold the documents and files the logs point to. `connectors.json`
 holds the mail password and the keys, so keep that backup as private as `.env`.

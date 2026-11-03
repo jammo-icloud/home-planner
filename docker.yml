@@ -98,9 +98,11 @@ services:
       TRUST_PROXY: "${TRUST_PROXY:-1}"
     volumes:
       # The household logs, sessions and nothing else: the only state worth
-      # backing up. Create api/data beside this file in File Station (Docker
-      # would create it on first start, but then it is root's and invisible
-      # until it exists). The container gives it to the app's own user (node)
-      # as it starts, so a folder made in File Station works as it is.
-      - ./api/data:/data
+      # backing up. Create the data folder beside this file in File Station
+      # first: Container Manager refuses a project whose bind-mount folder
+      # does not exist (plain Docker would create it). The container gives it
+      # to the app's own user (node) as it starts, so a folder made in File
+      # Station works as it is. The laptop file uses api/data instead, because
+      # that is where `npm start` in api/ writes.
+      - ./data:/data
     restart: unless-stopped

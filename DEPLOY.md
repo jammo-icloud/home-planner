@@ -284,11 +284,11 @@ deployment* (the value in `.env`, or the compose file's own default) and
 deployment's value back. Who may sign in cannot be saved off: clearing it is how
 any DSM account is let in again, when `.env` has no list of its own.
 
-**Where it is kept.** In `api/data/connectors.json` (`/data/connectors.json` in
+**Where it is kept.** In `connectors.json` in the data folder (`/data/connectors.json` in
 the container; `CONNECTORS_PATH` moves it). The file is mode `0600`, is written
 whole and renamed over, and holds the mail password and the keys, so **never
-commit it** (`api/data` is ignored) and keep any copy as private as `.env`. It
-sits on the volume beside `sessions.json`, so a copy of `api/data` takes it
+commit it** (the data folder is ignored) and keep any copy as private as `.env`. It
+sits on the volume beside `sessions.json`, so a copy of the data folder takes it
 along with the logs: back it up with them. Losing it costs re-entering what was
 saved there, and every row goes back to its `.env` value. A secret is never
 written to a household's log, and none comes back to the browser: the page and
@@ -711,15 +711,16 @@ request under `/book`.
 
 ## The volume
 
-`./api/data` holds `events.jsonl`, `households/`, `sessions.json` and
-`connectors.json`. The app runs as the image's unprivileged `node` user, and
+The data folder (`data` beside `docker.yml` on the NAS, `api/data` on a laptop,
+`/data` inside the container) holds `events.jsonl`, `households/`,
+`sessions.json` and `connectors.json`. The app runs as the image's unprivileged `node` user, and
 the container starts by giving `/data` to that user wherever it is owned by
 anyone else, so a folder made in DSM's File Station, or one Docker creates on
 first start, works without changing its owner by hand. Only files with the
 wrong owner are touched, so a large log is not rewritten on every start.
 
-Back up `api/data` and the Team Folders your households chose. `api/data` holds
-the households' logs, which are append-only, and every other piece of state —
+Back up the data folder and the Team Folders your households chose. The data
+folder holds the households' logs, which are append-only, and every other piece of state —
 balances, history, categorisations, who has access, where documents live, and
 the conversation on Today with every decision taken in it — is a pure replay of
 them; it also holds `connectors.json`, which carries the mail password and the
@@ -760,11 +761,12 @@ public, so the build needs no credentials.
    for each household's owner to choose in Settings (see Documents in Synology
    Drive).
 2. **The folder.** In File Station, create a folder for the project inside the
-   `docker` shared folder, for example `docker/home-planner`. Inside it,
-   create `api`, and inside that `data`, so the project folder holds
-   `api/data`. The household logs, sessions and the Connectors file live
-   there; it is the folder to back up. The container makes it its own user's
-   when it starts, so it needs no permission changes.
+   `docker` shared folder, for example `docker/home-planner`, and inside it a
+   folder named `data`. Container Manager checks a project's bind-mount
+   folders when the project is created and refuses if one is missing, so
+   `data` must exist first. The household logs, sessions and the Connectors
+   file live there; it is the folder to back up. The container makes it its
+   own user's when it starts, so it needs no permission changes.
 3. **The compose file.** Download `docker.yml` from the repository:
    `https://raw.githubusercontent.com/jammo-icloud/home-planner/main/docker.yml`.
    Either copy it into the folder with File Station as `docker-compose.yml`, or
@@ -804,11 +806,11 @@ public, so the build needs no credentials.
 
 Booking exposes `/book` to friends at the same address; everything else
 behind it still needs a member's session. As under *The volume*: back up
-`api/data` and the Team Folders.
+the project's `data` folder and the Team Folders.
 
 Upgrading is Container Manager → Project → Action → Build, which fetches the
 current `main` and rebuilds the image; then Start, if the project did not
-restart on its own. The log under `api/data` is the only state, so nothing is
+restart on its own. The log under `data` is the only state, so nothing is
 lost.
 
 **Confirm on first run.** One thing no documentation settles: whether Build
