@@ -1,0 +1,206 @@
+<!doctype html>
+<!-- Generated from the design canvas (Settings-desk.dc.html). Lift the markup inside .hp;
+     the classes are the ones in ../components.css, the colours all come from
+     ../../../../site/tokens.css. The switcher above the frame is not part of
+     the design. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings, on a desk</title>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap">
+<link rel="stylesheet" href="../../../../site/tokens.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+body{margin:0;background:#8a8f99;font-family:system-ui,sans-serif}
+.mock-switch{display:flex;gap:16px;align-items:center;padding:10px 16px;font:13px system-ui,sans-serif;color:#fff;background:#24272e}
+.mock-switch a{color:#9fd0ff;margin-left:auto}
+.frame{width:1280px;margin:24px auto 48px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+
+body{margin:0}
+a{color:inherit}a:hover{color:inherit}
+
+</style>
+</head>
+<body>
+
+<form class="mock-switch" aria-label="Look">
+  <label>Scheme <select data-attr="scheme"><option>quartz</option><option selected>lapis</option><option>iolite</option><option>graphite</option></select></label>
+  <label>Mode <select data-attr="mode"><option selected>light</option><option>dark</option></select></label>
+  <a href="index.html">All mockups</a>
+</form>
+<div class="frame">
+<div class="hp mock" data-scheme="lapis" data-mode="light" style="width: 1280px; height: 2300px; overflow: hidden">
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <nav class="tabs-top" aria-label="Screens" style="margin-left: 0">
+        <a href="#">Today</a>
+        <a href="#">Plan</a>
+        <a href="#">Calendar</a>
+        <a href="#">Budget</a>
+        <button type="button" aria-haspopup="menu">More<svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
+      </nav>
+      <button class="pill" type="button" aria-haspopup="menu" aria-expanded="false" style="margin-left: auto; background: var(--surface-sunken)">
+        <span style="min-width: 0; text-align: right"><span class="name">Rivera household</span><span class="sub">Settings</span></span>
+        <svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+      </button>
+      <button class="pill member" type="button" style="margin-left: 0"><span class="who mine lg">A</span><span class="name">Alice</span></button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="settings">
+      <nav class="set-index" aria-label="Settings sections">
+        <h1 style="font-size: var(--fs-headline); letter-spacing: -0.02em; padding: 0 10px 8px">Settings</h1>
+        <div class="eyebrow">Yours</div>
+        <a href="#appearance" aria-current="true">Appearance</a>
+        <a href="#conflicts">Calendars I check</a>
+        <div class="eyebrow">The household's</div>
+        <a href="#areas">Areas</a>
+        <a href="#links">Links under More</a>
+        <a href="#hcal">Household calendar</a>
+        <a href="#guests">Guests</a>
+        <a href="#attach">Attachments</a>
+      </nav>
+
+      <div style="display: grid; gap: 48px; min-width: 0">
+
+        <div class="set-group">
+          <header><div class="eyebrow">Yours</div><p class="hint">Only you see these. Bob keeps his own.</p></header>
+
+          <section class="set-sec" id="appearance" aria-labelledby="h-app">
+            <h3 id="h-app">Appearance</h3>
+            <p class="hint">Follows you to every phone and computer you sign in on, and is kept in the household's backup.</p>
+            <div class="schemes" role="radiogroup" aria-label="Scheme">
+              
+                <button class="scheme" type="button" role="radio" aria-checked="false" data-scheme="quartz" data-mode="light">
+                  <span class="pv" aria-hidden="true">
+                    <span class="bar" style="width: 70%; background: var(--ink); height: 7px"></span>
+                    <span class="bar s"></span>
+                    <span style="display: flex; gap: 5px; align-items: center; margin-top: 3px"><span class="btnpv"></span><span class="bar" style="width: 30px; height: 14px; border-radius: 4px; background: var(--surface-sunken)"></span></span>
+                  </span>
+                  <span class="nm">Quartz</span>
+                  <span class="nm" style="margin-top: -6px"><small>Cool, Ion blue. The default.</small></span>
+                </button>
+              
+                <button class="scheme" type="button" role="radio" aria-checked="true" data-scheme="lapis" data-mode="light">
+                  <span class="pv" aria-hidden="true">
+                    <span class="bar" style="width: 70%; background: var(--ink); height: 7px"></span>
+                    <span class="bar s"></span>
+                    <span style="display: flex; gap: 5px; align-items: center; margin-top: 3px"><span class="btnpv"></span><span class="bar" style="width: 30px; height: 14px; border-radius: 4px; background: var(--surface-sunken)"></span></span>
+                  </span>
+                  <span class="nm">Lapis<span class="tick"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span></span>
+                  <span class="nm" style="margin-top: -6px"><small>Limestone and ultramarine</small></span>
+                </button>
+              
+                <button class="scheme" type="button" role="radio" aria-checked="false" data-scheme="iolite" data-mode="light">
+                  <span class="pv" aria-hidden="true">
+                    <span class="bar" style="width: 70%; background: var(--ink); height: 7px"></span>
+                    <span class="bar s"></span>
+                    <span style="display: flex; gap: 5px; align-items: center; margin-top: 3px"><span class="btnpv"></span><span class="bar" style="width: 30px; height: 14px; border-radius: 4px; background: var(--surface-sunken)"></span></span>
+                  </span>
+                  <span class="nm">Iolite</span>
+                  <span class="nm" style="margin-top: -6px"><small>Lavender grey and indigo</small></span>
+                </button>
+              
+                <button class="scheme" type="button" role="radio" aria-checked="false" data-scheme="graphite" data-mode="light">
+                  <span class="pv" aria-hidden="true">
+                    <span class="bar" style="width: 70%; background: var(--ink); height: 7px"></span>
+                    <span class="bar s"></span>
+                    <span style="display: flex; gap: 5px; align-items: center; margin-top: 3px"><span class="btnpv"></span><span class="bar" style="width: 30px; height: 14px; border-radius: 4px; background: var(--surface-sunken)"></span></span>
+                  </span>
+                  <span class="nm">Graphite</span>
+                  <span class="nm" style="margin-top: -6px"><small>Greys, with ink for an accent</small></span>
+                </button>
+              
+            </div>
+            <div class="field" style="margin-top: 6px">
+              <span class="label">Light or dark</span>
+              <div><div class="seg" role="group" aria-label="Light or dark"><button type="button" aria-pressed="false">Light</button><button type="button" aria-pressed="false">Dark</button><button type="button" aria-pressed="true">Match this device</button></div></div>
+              <span class="hint">On this computer, that means light right now.</span>
+            </div>
+          </section>
+
+          <section class="set-sec" id="conflicts" aria-labelledby="h-conf">
+            <h3 id="h-conf">Calendars I check for conflicts</h3>
+            <p class="hint">When you ask to schedule something, these are the calendars read for clashes. Only calendars someone has shared with you appear. Home Planner never writes to a partner's calendar.</p>
+            <div class="rows">
+              <label class="check"><input type="checkbox" checked disabled><span>My calendar<span class="what">Always checked</span></span></label>
+              <label class="check"><input type="checkbox" checked disabled><span>Household<span class="what">Always checked</span></span></label>
+              <label class="check"><input type="checkbox" checked><span><span class="who partner" style="width: 18px; height: 18px; font-size: 10px; margin-right: 6px; vertical-align: -3px">B</span>Bob · Personal<span class="what">Shared with you by Bob, read only</span></span></label>
+              <label class="check"><input type="checkbox"><span><span class="who partner" style="width: 18px; height: 18px; font-size: 10px; margin-right: 6px; vertical-align: -3px">B</span>Bob · Work<span class="what">Shared with you by Bob, read only</span></span></label>
+            </div>
+          </section>
+        </div>
+
+        <div class="set-group">
+          <header><div class="eyebrow">The household's</div><p class="hint">You both see and change these. Every change goes in the household's history.</p></header>
+
+          <section class="set-sec" id="areas" aria-labelledby="h-areas">
+            <h3 id="h-areas">Areas</h3>
+            <p class="hint">The rows of the Plan board. An area with plans in it can't be removed until they move.</p>
+            <div class="rows">
+              <div class="rowi"><svg class="i handle" viewBox="0 0 16 16" aria-hidden="true" style="stroke-width: 2.2"><path d="M6 4h.01M10 4h.01M6 8h.01M10 8h.01M6 12h.01M10 12h.01"/></svg><span>House<span class="meta">5 plans</span></span><span class="end"><button class="btn bare small" type="button">Rename</button></span></div>
+              <div class="rowi"><svg class="i handle" viewBox="0 0 16 16" aria-hidden="true" style="stroke-width: 2.2"><path d="M6 4h.01M10 4h.01M6 8h.01M10 8h.01M6 12h.01M10 12h.01"/></svg><span>Money<span class="meta">2 plans</span></span><span class="end"><button class="btn bare small" type="button">Rename</button></span></div>
+              <div class="rowi"><svg class="i handle" viewBox="0 0 16 16" aria-hidden="true" style="stroke-width: 2.2"><path d="M6 4h.01M10 4h.01M6 8h.01M10 8h.01M6 12h.01M10 12h.01"/></svg><span>People<span class="meta">2 plans</span></span><span class="end"><button class="btn bare small" type="button">Rename</button></span></div>
+              <div class="rowi"><svg class="i handle" viewBox="0 0 16 16" aria-hidden="true" style="stroke-width: 2.2"><path d="M6 4h.01M10 4h.01M6 8h.01M10 8h.01M6 12h.01M10 12h.01"/></svg><span>Trips<span class="meta">3 plans</span></span><span class="end"><button class="btn bare small" type="button">Rename</button></span></div>
+              <div class="rowi"><svg class="i handle" viewBox="0 0 16 16" aria-hidden="true" style="stroke-width: 2.2"><path d="M6 4h.01M10 4h.01M6 8h.01M10 8h.01M6 12h.01M10 12h.01"/></svg><span>Garden<span class="meta">No plans</span></span><span class="end"><button class="btn bare small" type="button">Rename</button><button class="btn bare small danger" type="button">Remove</button></span></div>
+              <button class="add" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>Add an area</button>
+            </div>
+          </section>
+
+          <section class="set-sec" id="links" aria-labelledby="h-links">
+            <h3 id="h-links">Links under More</h3>
+            <p class="hint">The household's other apps. They open in the same tab, and need know nothing about Home Planner.</p>
+            <div class="rows">
+              <div class="rowi"><span>Recipes<span class="meta">https://nas.rivera.home/recipes</span></span><span class="end"><button class="btn bare small" type="button">Edit</button><button class="btn bare small danger" type="button">Remove</button></span></div>
+              <div class="rowi"><span>Photos<span class="meta">https://nas.rivera.home/photo</span></span><span class="end"><button class="btn bare small" type="button">Edit</button><button class="btn bare small danger" type="button">Remove</button></span></div>
+              <div class="rowi"><span>DSM<span class="meta">https://nas.rivera.home:5001</span></span><span class="end"><button class="btn bare small" type="button">Edit</button><button class="btn bare small danger" type="button">Remove</button></span></div>
+              <button class="add" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>Add a link</button>
+            </div>
+          </section>
+
+          <section class="set-sec" id="hcal" aria-labelledby="h-hcal">
+            <h3 id="h-hcal">Household calendar</h3>
+            <p class="hint">Where plans' due dates and blocks go, and the only calendar the shared briefing reads.</p>
+            <div class="rows">
+              <div class="rowi"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--src-household-line)"><path d="M2.5 7.5L8 3l5.5 4.5V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z"/><path d="M6.5 13.5v-3.5h3v3.5"/></svg><span><b style="font-weight: 600">Household</b><span class="meta">Made by Home Planner on Sat 31 Oct · shared with Alice and Bob, both can edit</span></span><span class="end"><button class="btn small" type="button">Use another calendar</button></span></div>
+            </div>
+          </section>
+
+          <section class="set-sec" id="guests" aria-labelledby="h-guests">
+            <h3 id="h-guests">Guests</h3>
+            <p class="hint">Who can ask to stay. Only these addresses are sent a link; anyone else is told the same thing and sent nothing.</p>
+            <div style="display: flex; align-items: center; gap: 10px"><span class="state-on"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Booking is on</span><span class="t-small faint">at book.rivera.home</span></div>
+            <div class="rows">
+              <div class="rowi"><span>The Nguyens<span class="meta">lan.nguyen@example.com · old friends from Lakeside</span></span><span class="end"><button class="btn bare small danger" type="button">Remove</button></span></div>
+              <div class="rowi"><span>Carmen Rivera<span class="meta">carmen@example.com · Bob's mum</span></span><span class="end"><button class="btn bare small danger" type="button">Remove</button></span></div>
+              <div style="padding: 14px 16px; display: grid; grid-template-columns: 1.3fr 1fr 1.3fr auto; gap: 10px; align-items: end">
+                <div class="field"><label for="g-email">Email</label><input class="input" id="g-email" placeholder="name@example.com"></div>
+                <div class="field"><label for="g-name">Name</label><input class="input" id="g-name" placeholder="The Parks"></div>
+                <div class="field"><label for="g-why">How you know them</label><input class="input" id="g-why" placeholder="The neighbours"></div>
+                <button class="btn primary" type="button">Add</button>
+              </div>
+            </div>
+          </section>
+
+          <section class="set-sec" id="attach" aria-labelledby="h-attach">
+            <h3 id="h-attach">Attachments</h3>
+            <div class="readonly"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="margin-top: 2px"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg><span><b>On.</b> Files are kept on the NAS in <code>/Planner/rivera</code>, up to 25 MB each. This was set when Home Planner was installed; it changes there, not here.</span></div>
+          </section>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+</div>
+<script>
+// mockup only: re-stamp the frame's root when the switcher changes
+const root = document.querySelector('.frame > [data-mode]');
+document.querySelectorAll('.mock-switch select').forEach((s) => s.addEventListener('change', () => {
+  root.setAttribute('data-' + s.dataset.attr, s.value);
+}));
+</script>
+</body>
+</html>

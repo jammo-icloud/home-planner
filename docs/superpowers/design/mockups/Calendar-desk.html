@@ -1,0 +1,144 @@
+<!doctype html>
+<!-- Generated from the design canvas (Calendar-desk.dc.html). Lift the markup inside .hp;
+     the classes are the ones in ../components.css, the colours all come from
+     ../../../../site/tokens.css. The switcher above the frame is not part of
+     the design. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendar week, on a desk</title>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap">
+<link rel="stylesheet" href="../../../../site/tokens.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+body{margin:0;background:#8a8f99;font-family:system-ui,sans-serif}
+.mock-switch{display:flex;gap:16px;align-items:center;padding:10px 16px;font:13px system-ui,sans-serif;color:#fff;background:#24272e}
+.mock-switch a{color:#9fd0ff;margin-left:auto}
+.frame{width:1280px;margin:24px auto 48px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+
+body{margin:0}
+a{color:inherit}a:hover{color:inherit}
+
+</style>
+</head>
+<body>
+
+<form class="mock-switch" aria-label="Look">
+  <label>Scheme <select data-attr="scheme"><option>quartz</option><option>lapis</option><option selected>iolite</option><option>graphite</option></select></label>
+  <label>Mode <select data-attr="mode"><option selected>light</option><option>dark</option></select></label>
+  <a href="index.html">All mockups</a>
+</form>
+<div class="frame">
+<div class="hp mock" data-scheme="iolite" data-mode="light" style="width: 1280px; height: 1080px; overflow: hidden">
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <nav class="tabs-top" aria-label="Screens" style="margin-left: 0">
+        <a href="#">Today</a>
+        <a href="#">Plan</a>
+        <a href="#" aria-current="page">Calendar</a>
+        <a href="#">Budget</a>
+        <button type="button" aria-haspopup="menu">More<svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
+      </nav>
+      <button class="pill" type="button" aria-haspopup="menu" style="margin-left: auto">
+        <span style="min-width: 0; text-align: right"><span class="name">Rivera household</span><span class="sub">Monday 2 November</span></span>
+        <svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+      </button>
+      <button class="pill member" type="button" style="margin-left: 0"><span class="who mine lg">A</span><span class="name">Alice</span></button>
+    </div>
+  </header>
+
+  <main class="wrap" style="display: grid; gap: 14px; padding-top: 20px; padding-bottom: 32px">
+    <div class="cal-bar">
+      <button class="btn small" type="button" aria-label="Previous week"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 4L6 8l4 4"/></svg></button>
+      <button class="btn small" type="button" aria-label="Next week"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg></button>
+      <button class="btn small" type="button">This week</button>
+      <span class="range" style="margin-left: 8px">2 to 8 November 2026</span>
+      <button class="btn small" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M3 8l5 5M8 3l5 5"/></svg>Block nights</button>
+      <button class="btn small primary" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>New event</button>
+    </div>
+    <div class="legend">
+      <span><i class="sw mine"></i>Mine</span>
+      <span><i class="sw partner"></i>Bob's, shared with you</span>
+      <span><i class="sw household"></i>Household</span>
+      <span><i class="sw due"></i>Due date</span>
+      <span><i class="sw proposed"></i>Proposed, not approved</span>
+      <span><i class="sw moved"></i>Moved, plan disagrees</span>
+      <span><i class="sw clash"></i>Clash</span>
+      <span><i class="sw held"></i>Nights held for guests</span>
+    </div>
+
+    <div class="week" style="--hour: 44px; --hours: 14">
+      <div class="dh" style="border-left: 0"></div>
+      <div class="dh is-today">Mon<b><span>2</span></b></div>
+      <div class="dh">Tue<b>3</b></div>
+      <div class="dh">Wed<b>4</b></div>
+      <div class="dh">Thu<b>5</b></div>
+      <div class="dh">Fri<b>6</b></div>
+      <div class="dh">Sat<b>7</b></div>
+      <div class="dh">Sun<b>8</b></div>
+
+      <div class="adlab">all day</div>
+      <div class="adrow">
+        <a class="ev due" href="#" style="grid-column: 4"><span class="t">Registration renewal</span><span class="s">due</span></a>
+        <div class="ev held" style="grid-column: 6 / span 2"><span class="t">Held</span><span class="s">no guests these nights</span></div>
+      </div>
+
+      <div class="hours">
+        <span class="hl" style="top: 0; transform: none; padding-top: 2px">7:00</span>
+        <span class="hl" style="top: 44px">8:00</span>
+        <span class="hl" style="top: 88px">9:00</span>
+        <span class="hl" style="top: 132px">10:00</span>
+        <span class="hl" style="top: 176px">11:00</span>
+        <span class="hl" style="top: 220px">12:00</span>
+        <span class="hl" style="top: 264px">13:00</span>
+        <span class="hl" style="top: 308px">14:00</span>
+        <span class="hl" style="top: 352px">15:00</span>
+        <span class="hl" style="top: 396px">16:00</span>
+        <span class="hl" style="top: 440px">17:00</span>
+        <span class="hl" style="top: 484px">18:00</span>
+        <span class="hl" style="top: 528px">19:00</span>
+        <span class="hl" style="top: 572px">20:00</span>
+      </div>
+
+      <div class="col is-today">
+        <a class="ev mine" href="#" style="top: 22px; height: 42px"><span class="t">Gym</span><span class="s">7:30</span></a>
+        <div class="now" style="top: 103px" aria-label="Now, 9:20"></div>
+      </div>
+      <div class="col">
+        <a class="ev household drift" href="#" style="top: 154px; height: 42px"><span class="t">Vet · Juniper</span><span class="s">10:30 · moved</span></a>
+        <a class="ev partner" href="#" style="top: 506px; height: 64px"><span class="t">Choir</span><span class="s">Bob · 18:30</span></a>
+      </div>
+      <div class="col">
+        <a class="ev mine" href="#" style="top: 220px; height: 42px"><span class="t">Lunch with Dana</span><span class="s">12:00</span></a>
+      </div>
+      <div class="col">
+        <a class="ev proposed" href="#" style="top: 132px; height: 42px"><span class="t">Dentist</span><span class="s">10:00 · proposed</span></a>
+        <a class="ev partner" href="#" style="top: 176px; height: 42px"><span class="t">PT</span><span class="s">Bob · 11:00</span></a>
+      </div>
+      <div class="col">
+        <a class="ev household clash" href="#" style="top: 374px; height: 86px; right: 50%; margin-right: 3px"><span class="t">Plumber</span><span class="s">15:30</span></a>
+        <a class="ev mine clash" href="#" style="top: 396px; height: 42px; left: 50%; margin-left: 3px"><span class="t">Call with Dana</span><span class="s">16:00</span></a>
+        <a class="ev household" href="#" style="top: 528px; height: 86px"><span class="t">Dinner with the Parks</span><span class="s">19:00 · at ours</span></a>
+      </div>
+      <div class="col">
+        <a class="ev household" href="#" style="top: 308px; height: 42px"><span class="t">Clear the gutters</span><span class="s">14:00 · from Plan</span></a>
+      </div>
+      <div class="col">
+        <a class="ev household" href="#" style="top: 88px; height: 64px"><span class="t">Farmers market</span><span class="s">9:00</span></a>
+      </div>
+    </div>
+    <p class="hint">Shows your calendar, Household, and the calendars you check for conflicts. Change which in Settings.</p>
+  </main>
+</div>
+</div>
+<script>
+// mockup only: re-stamp the frame's root when the switcher changes
+const root = document.querySelector('.frame > [data-mode]');
+document.querySelectorAll('.mock-switch select').forEach((s) => s.addEventListener('change', () => {
+  root.setAttribute('data-' + s.dataset.attr, s.value);
+}));
+</script>
+</body>
+</html>

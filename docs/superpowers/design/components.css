@@ -1,0 +1,695 @@
+/* ==========================================================================
+   components.css · Home Planner's component layer, for reference
+   ==========================================================================
+
+   This is NOT a second stylesheet for the app. site/index.html stays one
+   file with one <style> block; the migration pastes these rules into it,
+   section by section, as each screen is built. It lives here so the mockups
+   can load exactly what engineering will paste, and so there is one written
+   copy of each component.
+
+   Reads only tokens.css. No raw colours below this line, ever: a hex in a
+   component is a component that will not change scheme.
+
+   Layout responds to the width of the page, not the window, through a
+   container on .hp. Two widths matter:
+     under 760px    the phone: one column, tabs at the bottom
+     760px and up   the desk:  tabs in the top bar, side columns appear
+   and the board and the calendar week switch to their grids at 1040px.
+
+   Where .hp goes: on a wrapper around the top bar and <main>, NOT on <body>,
+   and with nothing position:fixed inside it. A query container applies
+   layout containment, which makes it the containing block for fixed
+   descendants: a fixed tab bar inside .hp would pin to the bottom of the
+   page instead of the screen. So the phone tab bar, the More sheet and the
+   scrim are siblings of .hp, and the tab bar hides on a media query.
+
+     <body>
+       <div class="hp"> <header class="top">…</header> <main>…</main> </div>
+       <nav class="tabbar">…</nav>
+     </body>
+   ========================================================================== */
+
+/* ── page ──────────────────────────────────────────────────────────────── */
+.hp {
+  container: page / inline-size;
+  box-sizing: border-box;
+  background: var(--surface);
+  color: var(--ink);
+  font-family: var(--font);
+  font-size: var(--fs-body);
+  line-height: var(--lh-body);
+  -webkit-font-smoothing: antialiased;
+  font-variant-numeric: tabular-nums;          /* money and times line up    */
+}
+.hp *, .hp *::before, .hp *::after { box-sizing: border-box; }
+.hp h1, .hp h2, .hp h3, .hp h4, .hp p { margin: 0; }
+.hp h1, .hp h2, .hp h3 { font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight); line-height: var(--lh-snug); }
+.hp :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+.hp [hidden] { display: none !important; }
+.hp svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6;
+  stroke-linecap: round; stroke-linejoin: round; }
+.hp svg.i.sm { width: 13px; height: 13px; stroke-width: 1.8; }
+.hp svg.i.lg { width: 20px; height: 20px; stroke-width: 1.6; }
+.visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+
+.wrap { width: 100%; max-width: var(--page); margin: 0 auto; padding-inline: var(--gutter); }
+.measure { max-width: var(--measure); }
+@container page (min-width: 760px) { .wrap { padding-inline: var(--gutter-wide); } }
+
+/* type roles, by name, so a screen never reaches for a pixel size */
+.t-headline { font-size: var(--fs-headline); font-weight: var(--fw-semibold); line-height: var(--lh-tight);
+  letter-spacing: -0.02em; text-wrap: balance; }
+.t-title { font-size: var(--fs-title); font-weight: var(--fw-semibold); line-height: var(--lh-snug); letter-spacing: var(--tracking-tight); }
+.t-body { font-size: var(--fs-body); line-height: var(--lh-body); }
+.t-ui { font-size: var(--fs-ui); }
+.t-small { font-size: var(--fs-small); }
+.t-micro { font-size: var(--fs-micro); }
+.quiet { color: var(--ink-soft); }
+.faint { color: var(--ink-faint); }
+/* an eyebrow names a group; it is the only uppercase in the app */
+.eyebrow { font-size: var(--fs-micro); font-weight: var(--fw-semibold); letter-spacing: .06em; text-transform: uppercase;
+  color: var(--ink-faint); }
+
+/* ── buttons ───────────────────────────────────────────────────────────── */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+  min-height: var(--tap); padding: 0 var(--sp-4); font: inherit; font-size: var(--fs-ui); font-weight: var(--fw-medium);
+  color: var(--ink); background: var(--surface-sunken); border: var(--stroke) solid var(--line); border-radius: var(--r-control);
+  cursor: pointer; white-space: nowrap; text-decoration: none;
+  transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
+.btn:hover:not(:disabled) { border-color: var(--line-strong); }
+.btn:disabled { opacity: .5; cursor: default; }
+.btn.primary { background: var(--accent-fill); color: var(--on-accent); border-color: var(--accent-fill); }
+.btn.primary:hover:not(:disabled) { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); }
+.btn.bare { background: none; border-color: transparent; color: var(--accent-ink); padding-inline: var(--sp-2); }
+.btn.bare:hover:not(:disabled) { background: var(--accent-tint); border-color: transparent; }
+.btn.small { min-height: 32px; padding: 0 var(--sp-3); font-size: var(--fs-small); }
+.btn.danger { color: var(--problem); }
+@container page (min-width: 760px) { .btn { min-height: 38px; } .btn.small { min-height: 30px; } }
+/* a row of actions; wraps on a phone */
+.actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+
+/* inline links. In running text a link is always underlined, in every
+   scheme: Graphite's accent is ink, so colour alone would not say "link". */
+.link { color: var(--accent-ink); text-decoration: underline; text-decoration-thickness: 1px;
+  text-underline-offset: 3px; text-decoration-color: var(--accent-line); }
+.link:hover { text-decoration-color: currentColor; }
+.prose a { color: inherit; text-decoration: underline; text-decoration-style: dotted; text-decoration-thickness: 1.5px;
+  text-underline-offset: 3px; text-decoration-color: var(--ink-faint); }
+.prose a:hover { text-decoration-style: solid; text-decoration-color: var(--ink); }
+
+/* ── fields ────────────────────────────────────────────────────────────── */
+.field { display: flex; flex-direction: column; gap: 6px; }
+.field > label, .field > .label { font-size: var(--fs-small); font-weight: var(--fw-medium); color: var(--ink-soft); }
+.input { width: 100%; min-height: var(--tap); font: inherit; font-size: var(--fs-input); color: var(--ink);
+  padding: 10px 12px; background: var(--surface-raised); border: var(--stroke) solid var(--line-strong);
+  border-radius: var(--r-control); }
+.input::placeholder { color: var(--ink-faint); }
+.input:focus { outline: 2px solid var(--focus); outline-offset: 0; border-color: var(--focus); }
+textarea.input { resize: vertical; line-height: var(--lh-body); }
+.hint { font-size: var(--fs-small); color: var(--ink-faint); }
+.check { display: flex; gap: var(--sp-3); align-items: flex-start; min-height: var(--tap); padding: 10px 0; cursor: pointer; }
+.check input { appearance: none; flex: none; width: 20px; height: 20px; margin: 1px 0 0; border-radius: 6px;
+  border: var(--stroke-heavy) solid var(--line-strong); background: var(--surface-raised); display: grid; place-items: center; }
+.check input:checked { background: var(--accent-fill); border-color: var(--accent-fill); }
+.check input:checked::after { content: ''; width: 5px; height: 10px; margin-top: -2px; border: solid var(--on-accent);
+  border-width: 0 2px 2px 0; transform: rotate(45deg); }
+.check .what { display: block; font-size: var(--fs-small); color: var(--ink-soft); }
+
+/* segmented control: two to four choices, one chosen. The chosen one is a
+   raised shape on a sunken track, never a tint alone. */
+.seg { display: inline-flex; padding: 3px; gap: 2px; background: var(--surface-sunken); border: var(--stroke) solid var(--line);
+  border-radius: var(--r-control); }
+.seg button { font: inherit; font-size: var(--fs-small); font-weight: var(--fw-medium); color: var(--ink-soft);
+  min-height: 36px; padding: 0 var(--sp-3); border: var(--stroke) solid transparent; background: none; border-radius: 7px; cursor: pointer; }
+.seg button[aria-pressed="true"] { background: var(--surface-raised); color: var(--ink); border-color: var(--line-strong);
+  box-shadow: var(--e-1); font-weight: var(--fw-semibold); }
+
+/* filter pills above the thread and the board */
+.filters { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; }
+.filters button { font: inherit; font-size: var(--fs-small); font-weight: var(--fw-medium); color: var(--ink-soft);
+  min-height: 34px; padding: 0 var(--sp-3); border: var(--stroke) solid var(--line); background: var(--surface-raised);
+  border-radius: var(--r-pill); cursor: pointer; }
+.filters button[aria-pressed="true"] { background: var(--ink); color: var(--surface-raised); border-color: var(--ink); }
+.filters .sep { width: 1px; height: 20px; background: var(--line); margin: 0 2px; }
+
+/* ── surfaces ──────────────────────────────────────────────────────────── */
+.card { background: var(--surface-raised); border: var(--stroke) solid var(--line); border-radius: var(--r-card);
+  padding: var(--sp-4); box-shadow: var(--e-1); }
+.well { background: var(--surface-sunken); border-radius: var(--r-control); padding: var(--sp-3); }
+.sheet { background: var(--surface-overlay); border: var(--stroke) solid var(--line); border-radius: var(--r-sheet);
+  box-shadow: var(--e-3); }
+.hr { height: 1px; background: var(--line); border: 0; margin: 0; }
+
+/* ── who: a member, as a disc with their initial ─────────────────────────
+   Mine is solid, the partner's is a plum ring. The same two treatments the
+   calendar uses for whose calendar an event is on, so "Bob's" looks the
+   same on a card, in a rail and on the grid. */
+.who { display: inline-grid; place-items: center; flex: none; width: 22px; height: 22px; border-radius: 50%;
+  font-size: 11px; font-weight: var(--fw-semibold); line-height: 1; }
+.who.mine { background: var(--src-mine-fill); color: var(--src-mine-ink); }
+.who.partner { background: var(--src-partner-fill); color: var(--src-partner-ink); box-shadow: inset 0 0 0 1.5px var(--src-partner-line); }
+.who.lg { width: 32px; height: 32px; font-size: 13px; }
+
+/* ── chips: one vocabulary, every scheme ─────────────────────────────────
+   chip            free text the member typed: researching, someday
+   chip due        dashed: a date, not time set aside
+   chip block      solid: time set aside
+   chip stale      Doing only, 14 days or more: amber, a clock, never red
+   chip research   Claude has research on this card (named apart from
+                   .claude, the block, so the two rules never meet)
+   chip money      the linked envelope and what is left; .over when short
+   chip asked      dashed: someone asked, nobody has answered
+   chip moved      the calendar and the plan disagree
+   who mine|partner  owner, as a disc (above)                               */
+.chips { display: flex; flex-wrap: wrap; gap: 5px; align-items: center; }
+.chip { display: inline-flex; align-items: center; gap: 4px; height: 22px; padding: 0 7px; border-radius: var(--r-chip);
+  font-size: var(--fs-micro); font-weight: var(--fw-medium); line-height: 1; white-space: nowrap;
+  color: var(--ink-soft); background: var(--surface-raised); border: var(--stroke) solid var(--line); }
+.chip.due { color: var(--ink); border: var(--stroke-heavy) dashed var(--provisional); background: transparent; }
+.chip.block { color: var(--surface-raised); background: var(--ink-soft); border-color: var(--ink-soft); }
+.chip.stale { color: var(--caution); background: var(--caution-tint); border-color: var(--caution-line); }
+.chip.research { color: var(--claude-ink); background: var(--claude-paper); border-color: var(--claude-line); }
+.chip.money { color: var(--ink-soft); }
+.chip.money b { color: var(--ink); font-weight: var(--fw-semibold); }
+.chip.money.over, .chip.money.over b { color: var(--problem); border-color: var(--problem-line); }
+.chip.asked { color: var(--ink); border: var(--stroke-heavy) dashed var(--provisional); background: transparent; }
+.chip.moved { color: var(--caution); background: var(--caution-tint); border-color: var(--caution-line); }
+.chip .i { width: 12px; height: 12px; }
+
+/* ── provisional: not real yet, waiting on a person ──────────────────────
+   One law across the app. A dashed edge means a person has to say yes:
+   a proposal, a plan someone asked you to take, a suggested event, a
+   suggestion inside Claude's research. Solid means it happened. Nothing
+   else in the app is dashed: drop zones and shelves are solid. */
+.provisional { background: var(--surface-raised); border: var(--stroke-heavy) dashed var(--provisional);
+  border-radius: var(--r-card); padding: var(--sp-4); }
+.provisional > .waiting { display: flex; align-items: center; gap: 6px; margin-bottom: var(--sp-2);
+  font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--ink-faint); }
+.provisional h3 { font-size: var(--fs-body); font-weight: var(--fw-semibold); line-height: var(--lh-snug); }
+.provisional .why { margin-top: 4px; color: var(--ink-soft); font-size: var(--fs-small); }
+.effects { list-style: none; margin: var(--sp-3) 0 0; padding: var(--sp-3); background: var(--surface-sunken);
+  border-radius: var(--r-control); font-size: var(--fs-small); color: var(--ink-soft); display: grid; gap: 4px; }
+.effects li { display: flex; gap: var(--sp-2); }
+.effects li .i { margin-top: 2px; }
+.effects li.clash { color: var(--problem); font-weight: var(--fw-medium); }
+.effects li.note { color: var(--ink-soft); }
+.provisional .actions { margin-top: var(--sp-3); }
+/* the numbers moved since this was suggested: it cannot be approved as is */
+.moved-note { display: flex; gap: 6px; align-items: flex-start; margin-top: var(--sp-3); font-size: var(--fs-small);
+  color: var(--caution); }
+/* a drift card also wears the caution tint behind its title */
+.provisional.drift > .waiting { color: var(--caution); }
+
+/* settled: one line, never a card. Who, when, what, and the reason. */
+.decided { display: flex; gap: var(--sp-2); align-items: flex-start; font-size: var(--fs-small); color: var(--ink-soft);
+  padding: 2px 0; }
+.decided b { color: var(--ink); font-weight: var(--fw-semibold); }
+.decided .i { margin-top: 3px; }
+.decided.approved .i { color: var(--good); }
+.decided .what { color: var(--ink); }
+.decided q { font-style: italic; }
+.decided q::before { content: '\201C'; } .decided q::after { content: '\201D'; }
+
+/* ── Claude ──────────────────────────────────────────────────────────────
+   Four channels, all of them every time Claude wrote something: the mark,
+   the by-line, the gold rule and the paper. Humans never get any of the
+   four; Claude never gets the accent. */
+.claude { background: var(--claude-paper); border: var(--stroke) solid var(--claude-line); border-radius: var(--r-card);
+  padding: var(--sp-4); }
+.claude .provisional { background: var(--surface-raised); }
+.byline { display: flex; align-items: center; gap: 6px; font-size: var(--fs-micro); color: var(--ink-faint); }
+.byline b { color: var(--ink); font-weight: var(--fw-semibold); }
+.byline.claude-by { color: var(--claude-ink); font-weight: var(--fw-medium); }
+.byline .mark { width: 14px; height: 14px; color: var(--claude-mark); fill: currentColor; stroke: none; }
+.asof { color: var(--ink-faint); font-weight: var(--fw-regular); }
+.looked { margin-top: var(--sp-2); font-size: var(--fs-micro); color: var(--ink-faint); }
+
+/* ── the shell ─────────────────────────────────────────────────────────── */
+.top { background: var(--surface-raised); border-bottom: var(--stroke) solid var(--line); }
+.top-inner { display: flex; align-items: center; gap: var(--sp-3); min-height: 56px; }
+.pill { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--tap); padding: 4px 10px 4px 6px; margin-left: -6px;
+  font: inherit; color: var(--ink); background: none; border: 0; border-radius: var(--r-control); cursor: pointer;
+  text-align: left; min-width: 0; }
+.pill:hover { background: var(--surface-sunken); }
+.pill .name { display: block; font-size: var(--fs-title); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; line-height: var(--lh-snug); }
+.pill .sub { display: block; font-size: var(--fs-micro); color: var(--ink-faint); line-height: 1.3; }
+.pill .chev { color: var(--ink-faint); }
+.pill.member { margin-left: auto; margin-right: -6px; padding: 4px 6px; }
+.pill.member .name { font-size: var(--fs-ui); font-weight: var(--fw-medium); }
+/* desktop tabs live in the top bar; the chosen one is underlined by the
+   accent, a shape, so Graphite reads too */
+.tabs-top { display: none; }
+@container page (min-width: 760px) {
+  .tabs-top { display: flex; align-self: stretch; gap: var(--sp-1); margin-left: var(--sp-5); }
+  .tabs-top a, .tabs-top button { position: relative; display: flex; align-items: center; gap: 6px; padding: 0 var(--sp-3);
+    font: inherit; font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--ink-soft); text-decoration: none;
+    background: none; border: 0; cursor: pointer; }
+  .tabs-top [aria-current="page"] { color: var(--ink); font-weight: var(--fw-semibold); }
+  .tabs-top [aria-current="page"]::after { content: ''; position: absolute; left: var(--sp-3); right: var(--sp-3); bottom: -1px;
+    height: 2px; border-radius: 2px; background: var(--accent); }
+}
+/* phone tabs, where a thumb is. Five slots: Today, Plan, Calendar, Budget,
+   More. More opens a sheet; it is not a sixth screen. */
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; display: grid; grid-template-columns: repeat(5, minmax(0, 1fr));
+  padding: 4px 6px calc(4px + env(safe-area-inset-bottom)); background: var(--surface-raised); border-top: var(--stroke) solid var(--line); }
+.tabbar a, .tabbar button { display: flex; flex-direction: column; align-items: center; gap: 2px; min-height: 52px; justify-content: center;
+  font: inherit; font-size: 11px; font-weight: var(--fw-medium); color: var(--ink-faint); text-decoration: none; background: none; border: 0; }
+.tabbar .ic { display: grid; place-items: center; width: 44px; height: 28px; border-radius: var(--r-pill); }
+.tabbar [aria-current="page"] { color: var(--ink); font-weight: var(--fw-semibold); }
+.tabbar [aria-current="page"] .ic { background: var(--accent-tint); color: var(--accent-ink); }
+/* a media query, not a container query: the tab bar sits outside .hp */
+@media (min-width: 760px) { .tabbar { display: none; } }
+/* tabbar and its sheet carry the page's font, since they sit outside .hp */
+.tabbar, .more-sheet { font-family: var(--font); color: var(--ink); }
+.more-sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 40; padding: var(--sp-2) var(--sp-3) calc(var(--sp-4) + env(safe-area-inset-bottom));
+  background: var(--surface-overlay); border-radius: var(--r-sheet) var(--r-sheet) 0 0; box-shadow: var(--e-3); }
+.more-sheet .grab { width: 36px; height: 4px; border-radius: 2px; background: var(--line-strong); margin: 4px auto var(--sp-3); }
+
+/* menus (desktop) and the More sheet (phone) */
+.menu-list { min-width: 240px; padding: 6px; background: var(--surface-overlay); border: var(--stroke) solid var(--line);
+  border-radius: 14px; box-shadow: var(--e-3); }
+.menu-list .group { padding: 8px 10px 4px; }
+.menu-item { display: flex; align-items: center; gap: var(--sp-3); width: 100%; min-height: var(--tap); padding: 0 10px;
+  font: inherit; font-size: var(--fs-ui); color: var(--ink); background: none; border: 0; border-radius: 9px; text-decoration: none;
+  cursor: pointer; text-align: left; }
+.menu-item:hover { background: var(--accent-tint); }
+.menu-item .sub { display: block; font-size: var(--fs-micro); color: var(--ink-faint); }
+.menu-item .leaves { margin-left: auto; color: var(--ink-faint); }
+.menu-sep { height: 1px; background: var(--hair); margin: 6px 4px; }
+
+/* the one error box per screen: under the top bar, above everything else on
+   the screen. Says what happened, then what to do. */
+.err { display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-control);
+  background: var(--problem-tint); border: var(--stroke) solid var(--problem-line); color: var(--problem); font-size: var(--fs-small); }
+.err .i { margin-top: 2px; }
+.err b { font-weight: var(--fw-semibold); }
+/* a section that cannot work right now, and why (calendar signed out,
+   attachments off). Not an error: nothing went wrong. */
+.unavailable { display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-3); border-radius: var(--r-control);
+  background: var(--surface-sunken); color: var(--ink-soft); font-size: var(--fs-small); }
+/* empty: one sentence saying what will be here, and the one way to start */
+.empty { padding: var(--sp-5) var(--sp-4); text-align: center; color: var(--ink-soft); font-size: var(--fs-small);
+  border: var(--stroke) solid var(--line); border-radius: var(--r-card); background: var(--surface-raised); }
+.empty .actions { justify-content: center; margin-top: var(--sp-3); }
+
+/* ── Today ─────────────────────────────────────────────────────────────── */
+/* Three regions. On the phone they stack: the briefing, then yours (the
+   rails), then the rest of the day's thread. From 1040px yours moves to its
+   own column, so the shared thread and each member's own layer sit side by
+   side and never interleave. */
+.today { display: grid; gap: var(--sp-5); padding-block: var(--sp-4) 0;
+  grid-template-areas: "brief" "yours" "thread"; }
+.today > .brief { grid-area: brief; display: grid; gap: var(--sp-4); min-width: 0; }
+.today > .yours { grid-area: yours; }
+.today > .thread { grid-area: thread; }
+@container page (min-width: 1040px) {
+  .today { grid-template-columns: minmax(0, var(--measure)) minmax(260px, 300px); column-gap: var(--sp-8); row-gap: var(--sp-4);
+    justify-content: center; grid-template-areas: "brief yours" "thread yours"; grid-template-rows: auto 1fr; padding-top: var(--sp-6); }
+  .today .yours { position: sticky; top: var(--sp-5); align-self: start; }
+}
+.thread-tools { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-3); align-items: center; justify-content: space-between; }
+.allb { display: inline-flex; gap: 6px; align-items: center; font-size: var(--fs-small); color: var(--ink-soft); }
+.allb input { width: 16px; height: 16px; accent-color: var(--accent-fill); }
+.thread { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+.day-head { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-small); font-weight: var(--fw-semibold); color: var(--ink-soft); }
+.day-head::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+.newsince { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--accent-ink); }
+.newsince::before, .newsince::after { content: ''; flex: 1; height: 1px; background: var(--accent-line); }
+
+/* the briefing: the page. Biggest type on the screen, widest column, first. */
+.briefing { padding: var(--sp-5); }
+.briefing .t-headline { margin-top: var(--sp-3); }
+.briefing .prose { margin-top: var(--sp-3); font-size: var(--fs-body); line-height: var(--lh-body); color: var(--ink); }
+.briefing .prose p + p { margin-top: var(--sp-3); }
+.briefing .cards { display: grid; gap: var(--sp-3); margin-top: var(--sp-4); }
+@container page (min-width: 760px) { .briefing { padding: var(--sp-6); } .briefing .prose { font-size: 16px; } }
+.briefing.plain { background: var(--surface-raised); border: var(--stroke) solid var(--line); border-radius: var(--r-card); }
+
+/* what each of you wrote: mine on the right in the accent's tint, the other
+   member's on the left on plain card. Claude is full width, on paper. */
+.msg { display: flex; flex-direction: column; gap: 5px; max-width: 88%; }
+.msg.mine { align-self: flex-end; align-items: flex-end; }
+.msg .bubble { padding: 10px 14px; border-radius: 14px; font-size: var(--fs-body); white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.mine .bubble { background: var(--accent-tint); color: var(--ink); border: var(--stroke) solid var(--accent-line); border-bottom-right-radius: 5px; }
+.msg.theirs .bubble { background: var(--surface-raised); border: var(--stroke) solid var(--line); border-bottom-left-radius: 5px; }
+/* a change made on another screen: a quiet line with a dot */
+.line { display: flex; gap: var(--sp-2); align-items: baseline; font-size: var(--fs-small); color: var(--ink-soft); }
+.line::before { content: ''; flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); transform: translateY(-2px); }
+.line b { color: var(--ink); font-weight: var(--fw-semibold); }
+.line .when { margin-left: auto; color: var(--ink-faint); font-size: var(--fs-micro); white-space: nowrap; }
+.line.flag::before { background: var(--problem); }
+
+/* "yours": the rails. What the briefing was written from, each member's own.
+   Hairline lists, not boxes: three boxes under the briefing is three widgets. */
+.yours { display: grid; gap: var(--sp-5); align-content: start; }
+.yours > .eyebrow { display: flex; align-items: center; gap: 6px; }
+.rail h4 { font-size: var(--fs-small); font-weight: var(--fw-semibold); color: var(--ink); margin: 0 0 4px; }
+.rail ul { list-style: none; margin: 0; padding: 0; }
+.rail li { border-top: var(--stroke) solid var(--hair); }
+.rail li:first-child { border-top: 0; }
+.rail a { display: flex; align-items: center; gap: var(--sp-2); min-height: 40px; font-size: var(--fs-small); color: var(--ink);
+  text-decoration: none; }
+.rail a .v { margin-left: auto; color: var(--ink-soft); font-weight: var(--fw-medium); white-space: nowrap; }
+.rail a .v.over { color: var(--problem); }
+.rail .unavailable { margin-top: 4px; }
+@container page (max-width: 1039px) {
+  .yours { padding: var(--sp-4); background: var(--surface-raised); border: var(--stroke) solid var(--line); border-radius: var(--r-card); }
+}
+
+/* the reply box: sticks to the bottom of Today, above the phone tabs */
+.composer { position: sticky; bottom: 0; z-index: 10; padding: var(--sp-3) 0 var(--sp-3);
+  background: linear-gradient(to bottom, transparent, var(--surface) 18px); }
+.composer .input { min-height: 52px; resize: none; }
+.composer-row { display: flex; gap: var(--sp-2); align-items: center; justify-content: flex-end; margin-top: var(--sp-2); }
+.composer-row .hint { margin-right: auto; }
+/* the waiting tray: how many things want a person, reachable from anywhere */
+.tray { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 var(--sp-3); margin-bottom: var(--sp-2);
+  font: inherit; font-size: var(--fs-small); font-weight: var(--fw-semibold); color: var(--accent-ink); background: var(--accent-tint);
+  border: var(--stroke) solid var(--accent-line); border-radius: var(--r-pill); cursor: pointer; }
+.tray .n { display: inline-grid; place-items: center; min-width: 20px; height: 20px; padding: 0 5px; border-radius: 10px;
+  background: var(--accent-fill); color: var(--on-accent); font-size: 11px; }
+
+/* ── Plan: the board ───────────────────────────────────────────────────── */
+.toolbar { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; justify-content: space-between; }
+/* phone: one area at a time, Planning then Doing stacked full width */
+.area { display: grid; gap: var(--sp-3); }
+.area + .area { margin-top: var(--sp-6); }
+.area-head { display: flex; align-items: baseline; gap: var(--sp-2); }
+.area-head h2 { font-size: var(--fs-title); }
+.area-head .count { font-size: var(--fs-micro); color: var(--ink-faint); }
+.lane { display: grid; gap: var(--sp-2); }
+.lane-label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-micro); font-weight: var(--fw-semibold);
+  color: var(--ink-faint); }
+.lane-label .i { width: 12px; height: 12px; }
+.lane-empty { font-size: var(--fs-small); color: var(--ink-faint); padding: 2px 0; }
+/* desk at 1040: the grid. Area labels down the side, two lanes across. */
+.board-head { display: none; }
+@container page (min-width: 1040px) {
+  .board { display: grid; grid-template-columns: 132px minmax(0, 1fr) minmax(0, 1fr); border: var(--stroke) solid var(--line);
+    border-radius: var(--r-card); background: var(--surface-raised); overflow: hidden; }
+  .board-head { display: contents; }
+  .board-head > div { padding: 10px var(--sp-4); border-bottom: var(--stroke) solid var(--line); background: var(--surface-sunken); }
+  .board-head .lane-label { font-size: var(--fs-small); color: var(--ink); }
+  .board-head .lane-label small { font-weight: var(--fw-regular); color: var(--ink-faint); margin-left: 4px; }
+  .area { display: contents; }
+  .area + .area { margin-top: 0; }
+  .area-head { padding: var(--sp-4); border-top: var(--stroke) solid var(--line); flex-direction: column; gap: 2px; }
+  .area:first-of-type .area-head { border-top: 0; }
+  .area > .lane { padding: var(--sp-3); border-top: var(--stroke) solid var(--line); border-left: var(--stroke) solid var(--hair);
+    align-content: start; min-height: 88px; }
+  .area > .lane .lane-label { display: none; }
+  .area:first-of-type > .lane { border-top: 0; }
+  .area > .shelf { grid-column: 2 / -1; margin: 0 var(--sp-3) var(--sp-3); }
+}
+.bcard { display: block; padding: 10px 12px; background: var(--surface-raised); border: var(--stroke) solid var(--line);
+  border-radius: var(--r-control); box-shadow: var(--e-1); color: var(--ink); text-decoration: none; }
+.bcard .title { display: block; font-size: var(--fs-ui); font-weight: var(--fw-medium); line-height: var(--lh-snug); }
+.bcard .chips { margin-top: 6px; }
+/* asked of you: .bcard above sets a solid edge after .provisional did, so the
+   compound rule says the dash again */
+.bcard.provisional { border: var(--stroke-heavy) dashed var(--provisional); box-shadow: none; padding: 10px 12px;
+  border-radius: var(--r-control); }
+.bcard .ask-line { display: block; margin-top: 4px; font-size: var(--fs-small); color: var(--ink-soft); }
+.bcard .actions { margin-top: var(--sp-2); }
+/* a shelf: a plan that holds items. Solid and sunken, never dashed. */
+.shelf { display: flex; align-items: center; gap: var(--sp-2); min-height: 40px; padding: 0 var(--sp-3);
+  background: var(--surface-sunken); border: var(--stroke) solid var(--line); border-radius: var(--r-control);
+  font-size: var(--fs-small); color: var(--ink-soft); text-decoration: none; }
+.shelf b { color: var(--ink); font-weight: var(--fw-semibold); }
+.shelf .go { margin-left: auto; color: var(--ink-faint); }
+
+/* ── Plan: the card ────────────────────────────────────────────────────── */
+.crumb { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: var(--fs-small); color: var(--ink-faint); }
+.crumb a { color: var(--ink-soft); text-decoration: none; }
+.crumb a:hover { color: var(--ink); text-decoration: underline; }
+.plan-head { display: grid; gap: var(--sp-3); padding-block: var(--sp-4) var(--sp-5); border-bottom: var(--stroke) solid var(--line); }
+.plan-title { font-size: var(--fs-headline); font-weight: var(--fw-semibold); line-height: var(--lh-tight); letter-spacing: -0.02em; }
+.plan-body { display: grid; gap: var(--sp-6); padding-block: var(--sp-5) var(--sp-8); }
+@container page (min-width: 1040px) {
+  .plan-body { grid-template-columns: minmax(0, 1fr) 288px; gap: var(--sp-8); }
+  .plan-side { border-left: var(--stroke) solid var(--line); padding-left: var(--sp-6); }
+}
+.plan-main, .plan-side { display: grid; gap: var(--sp-6); align-content: start; min-width: 0; }
+.sec-head { display: flex; align-items: center; gap: var(--sp-2); margin-bottom: var(--sp-2); }
+.sec-head h2 { font-size: var(--fs-ui); font-weight: var(--fw-semibold); letter-spacing: 0; }
+.sec-head .btn { margin-left: auto; }
+.md { font-size: var(--fs-body); line-height: var(--lh-body); }
+.md p + p, .md p + ul, .md ul + p { margin-top: var(--sp-2); }
+.md ul { margin: 0; padding-left: 20px; }
+.checklist { list-style: none; margin: 0; padding: 0; }
+.checklist li { border-top: var(--stroke) solid var(--hair); }
+.checklist li:first-child { border-top: 0; }
+.checklist .check { padding: 8px 0; min-height: 40px; }
+.checklist .done { color: var(--ink-faint); text-decoration: line-through; text-decoration-color: var(--ink-faint); }
+.files { display: grid; gap: var(--sp-2); grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); }
+.file { display: flex; align-items: center; gap: var(--sp-2); min-height: var(--tap); padding: 0 var(--sp-3); font-size: var(--fs-small);
+  color: var(--ink); background: var(--surface-raised); border: var(--stroke) solid var(--line); border-radius: var(--r-control);
+  text-decoration: none; min-width: 0; }
+.file .n { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.file .sz { margin-left: auto; color: var(--ink-faint); font-size: var(--fs-micro); }
+/* the drop zone is solid: dashed is reserved for provisional */
+.dropzone { display: flex; align-items: center; justify-content: center; gap: var(--sp-2); min-height: var(--tap); padding: var(--sp-3);
+  font-size: var(--fs-small); color: var(--ink-soft); background: var(--surface-sunken); border: var(--stroke) solid var(--line-strong);
+  border-radius: var(--r-control); cursor: pointer; }
+.kv { display: flex; align-items: baseline; gap: var(--sp-2); padding: 7px 0; font-size: var(--fs-small); color: var(--ink-soft);
+  border-top: var(--stroke) solid var(--hair); }
+.kv:first-of-type { border-top: 0; }
+.kv .v { margin-left: auto; color: var(--ink); font-weight: var(--fw-medium); text-align: right; }
+.kv .v.none { color: var(--ink-faint); font-weight: var(--fw-regular); }
+.person { display: flex; align-items: center; gap: var(--sp-3); padding: var(--sp-2) 0; font-size: var(--fs-small); }
+.person .av { display: grid; place-items: center; width: 32px; height: 32px; border-radius: 50%; background: var(--surface-sunken);
+  color: var(--ink-soft); flex: none; }
+.person small { display: block; color: var(--ink-faint); }
+.history { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; font-size: var(--fs-small); color: var(--ink-soft); }
+.history .when { color: var(--ink-faint); }
+
+/* ── Calendar ──────────────────────────────────────────────────────────── */
+.cal-bar { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+.cal-bar .range { font-size: var(--fs-title); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight); margin-right: auto; }
+.legend { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); font-size: var(--fs-micro); color: var(--ink-soft); }
+.legend span { display: inline-flex; align-items: center; gap: 6px; }
+.sw { display: inline-block; width: 16px; height: 12px; border-radius: 3px; }
+.sw.mine { background: var(--src-mine-fill); }
+.sw.partner { background: var(--src-partner-fill); box-shadow: inset 0 0 0 1.5px var(--src-partner-line); }
+.sw.household { background: var(--src-household-fill); box-shadow: inset 0 0 0 1.5px var(--src-household-line); }
+.sw.due { border: var(--stroke-heavy) dashed var(--provisional); }
+.sw.proposed { border: var(--stroke-heavy) dashed var(--accent); }
+.sw.moved { box-shadow: 0 0 0 2px var(--caution-line); background: var(--surface-raised); }
+.sw.clash { box-shadow: 0 0 0 2px var(--problem); background: var(--surface-raised); }
+.sw.held { background: repeating-linear-gradient(135deg, var(--hatch-line) 0 2px, transparent 2px 6px), var(--surface-sunken);
+  box-shadow: inset 0 0 0 1px var(--line); }
+
+/* an event, wherever it is drawn. Source is the fill; shape says what kind:
+   solid is an appointment or time set aside, dashed is not yet real. */
+.ev { position: relative; display: block; padding: 4px 7px; border-radius: 7px; font-size: var(--fs-micro); line-height: 1.3;
+  overflow: hidden; text-decoration: none; }
+.ev .t { display: block; font-weight: var(--fw-semibold); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev .s { display: block; opacity: .85; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ev .tag { display: inline-flex; align-items: center; gap: 3px; }
+.ev.mine { background: var(--src-mine-fill); color: var(--src-mine-ink); }
+.ev.partner { background: var(--src-partner-fill); color: var(--src-partner-ink); box-shadow: inset 0 0 0 1.5px var(--src-partner-line); }
+.ev.household { background: var(--src-household-fill); color: var(--src-household-ink); box-shadow: inset 0 0 0 1.5px var(--src-household-line); }
+/* proposed: from a card nobody has approved. Hollow and dashed in the accent. */
+.ev.proposed { background: var(--surface-raised); color: var(--ink); box-shadow: none; border: var(--stroke-heavy) dashed var(--accent); }
+/* drift: the calendar and the plan disagree. An amber ring, offset so it reads on any fill;
+   the event always also says "moved" in words, which is what carries it. */
+.ev.drift { outline: 2.5px solid var(--caution-line); outline-offset: 2px; }
+/* clash: two things at once. Problem, the only red on the grid. */
+.ev.clash { outline: 2px solid var(--problem); outline-offset: 2px; }
+/* due: an all-day marker. A date, not time: dashed. */
+.ev.due { background: transparent; color: var(--ink); box-shadow: none; border: var(--stroke-heavy) dashed var(--provisional); }
+/* held nights: a guest's stay or a member's block. Hatched, no reason. */
+.ev.held { background: repeating-linear-gradient(135deg, var(--hatch-line) 0 2px, transparent 2px 7px), var(--surface-sunken);
+  color: var(--ink-soft); box-shadow: inset 0 0 0 1px var(--line); }
+
+/* the week, desk only (1040 and up): days across, hours down */
+.week { --hour: 44px; --hours: 14; display: grid; grid-template-columns: 56px repeat(7, minmax(0, 1fr));
+  background: var(--surface-raised); border: var(--stroke) solid var(--line); border-radius: var(--r-card); overflow: hidden; }
+.week .dh { padding: 10px 8px; font-size: var(--fs-small); color: var(--ink-soft); border-bottom: var(--stroke) solid var(--line);
+  border-left: var(--stroke) solid var(--hair); }
+.week .dh b { display: block; font-size: var(--fs-title); color: var(--ink); font-weight: var(--fw-semibold); line-height: 1.2; }
+.week .dh.is-today b { color: var(--accent-ink); }
+.week .dh.is-today b span { display: inline-grid; place-items: center; min-width: 28px; height: 28px; padding: 0 4px; border-radius: 14px;
+  background: var(--accent-fill); color: var(--on-accent); }
+.week .ad { display: grid; gap: 4px; align-content: start; min-height: 40px; padding: 6px; border-bottom: var(--stroke) solid var(--line-strong);
+  border-left: var(--stroke) solid var(--hair); background: var(--surface-sunken); }
+.week .lab { font-size: var(--fs-micro); color: var(--ink-faint); padding: 6px 8px 0 0; text-align: right; }
+.week .hours { position: relative; height: calc(var(--hour) * var(--hours));
+  background: repeating-linear-gradient(to bottom, var(--hair) 0 1px, transparent 1px var(--hour)); }
+.week .col { position: relative; height: calc(var(--hour) * var(--hours)); border-left: var(--stroke) solid var(--hair);
+  background: repeating-linear-gradient(to bottom, var(--hair) 0 1px, transparent 1px var(--hour)); }
+.week .col.is-today { background-color: color-mix(in srgb, var(--accent-tint) 45%, transparent); }
+.week .col .ev { position: absolute; left: 4px; right: 4px; }
+.week .now { position: absolute; left: 0; right: 0; height: 2px; background: var(--accent); z-index: 2; }
+.week .now::before { content: ''; position: absolute; left: -4px; top: -3px; width: 8px; height: 8px; border-radius: 50%; background: var(--accent); }
+.week .hl { position: absolute; right: 8px; font-size: var(--fs-micro); color: var(--ink-faint); transform: translateY(-50%); }
+
+/* the phone: one day at a time, a week strip above it to move and to see
+   which days are busy */
+.daystrip { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 2px; }
+.daystrip button { display: flex; flex-direction: column; align-items: center; gap: 3px; min-height: 64px; padding: 6px 0;
+  font: inherit; color: var(--ink-soft); background: none; border: 0; border-radius: var(--r-control); cursor: pointer; }
+.daystrip .dn { font-size: 11px; font-weight: var(--fw-medium); }
+.daystrip .dd { font-size: var(--fs-title); font-weight: var(--fw-semibold); color: var(--ink); line-height: 1.1; }
+.daystrip .dots { display: flex; gap: 3px; height: 6px; }
+.daystrip .dots i { width: 6px; height: 6px; border-radius: 50%; }
+.daystrip .dots i.mine { background: var(--src-mine-fill); }
+.daystrip .dots i.partner { background: var(--src-partner-line); }
+.daystrip .dots i.household { background: var(--src-household-line); }
+.daystrip .dots i.due { box-shadow: inset 0 0 0 1.5px var(--provisional); }
+.daystrip [aria-current="date"] { background: var(--surface-raised); box-shadow: inset 0 0 0 1.5px var(--ink); }
+.daystrip .is-today .dd { color: var(--accent-ink); }
+.dayview { --hour: 52px; display: grid; grid-template-columns: 48px minmax(0, 1fr); background: var(--surface-raised);
+  border: var(--stroke) solid var(--line); border-radius: var(--r-card); overflow: hidden; }
+.dayview .ad { grid-column: 1 / -1; display: grid; gap: 4px; padding: var(--sp-2) var(--sp-3); background: var(--surface-sunken);
+  border-bottom: var(--stroke) solid var(--line-strong); }
+.dayview .col { position: relative; border-left: var(--stroke) solid var(--hair);
+  background: repeating-linear-gradient(to bottom, var(--hair) 0 1px, transparent 1px var(--hour)); }
+.dayview .col .ev { position: absolute; left: 6px; right: 6px; font-size: var(--fs-small); padding: 6px 10px; }
+.dayview .hrs { position: relative; }
+.dayview .hl { position: absolute; right: 6px; font-size: 11px; color: var(--ink-faint); transform: translateY(-50%); }
+
+/* ── Settings ──────────────────────────────────────────────────────────── */
+.settings { display: grid; gap: var(--sp-7); padding-block: var(--sp-5) var(--sp-8); }
+@container page (min-width: 1040px) {
+  .settings { grid-template-columns: 220px minmax(0, var(--measure)); gap: var(--sp-8); justify-content: center; }
+  .set-index { position: sticky; top: var(--sp-5); align-self: start; }
+}
+.set-index { display: grid; gap: 2px; align-content: start; }
+.set-index .eyebrow { padding: var(--sp-3) 10px 4px; }
+.set-index a { display: flex; align-items: center; min-height: 36px; padding: 0 10px; font-size: var(--fs-ui); color: var(--ink-soft);
+  text-decoration: none; border-radius: 8px; }
+.set-index a[aria-current="true"] { color: var(--ink); font-weight: var(--fw-semibold); background: var(--surface-sunken); }
+.set-group { display: grid; gap: var(--sp-4); }
+.set-group > header { display: grid; gap: 4px; }
+.set-group > header .eyebrow { color: var(--ink-soft); }
+.set-sec { display: grid; gap: var(--sp-3); }
+.set-sec > h3 { font-size: var(--fs-title); }
+.set-sec > .hint { margin-top: -6px; }
+.rows { background: var(--surface-raised); border: var(--stroke) solid var(--line); border-radius: var(--r-card); overflow: hidden; }
+.rows > * { border-top: var(--stroke) solid var(--hair); }
+.rows > :first-child { border-top: 0; }
+.rowi { display: flex; align-items: center; gap: var(--sp-3); min-height: 52px; padding: var(--sp-2) var(--sp-4); font-size: var(--fs-ui); }
+.rowi .meta { display: block; font-size: var(--fs-micro); color: var(--ink-faint); }
+.rowi .end { margin-left: auto; display: flex; gap: var(--sp-1); align-items: center; }
+.rowi .handle { color: var(--ink-faint); }
+.rows .check { padding: var(--sp-2) var(--sp-4); min-height: 52px; align-items: center; }
+.rows .check input { margin-top: 0; }
+.rows .add { display: flex; align-items: center; gap: var(--sp-2); min-height: 48px; padding: 0 var(--sp-4); font: inherit;
+  font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--accent-ink); background: none; border: 0; width: 100%; cursor: pointer; }
+/* the scheme picker: four real previews, not four names */
+.schemes { display: grid; gap: var(--sp-3); grid-template-columns: repeat(2, minmax(0, 1fr)); }
+@container page (min-width: 760px) { .schemes { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+.scheme { display: grid; gap: var(--sp-2); padding: var(--sp-2); font: inherit; text-align: left; color: var(--ink); cursor: pointer;
+  background: var(--surface-raised); border: var(--stroke) solid var(--line); border-radius: var(--r-card); }
+.scheme[aria-checked="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 1px var(--ink); }
+.scheme .pv { display: grid; gap: 5px; padding: 10px; border-radius: 8px; background: var(--surface); border: var(--stroke) solid var(--line);
+  color: var(--ink); }
+.scheme .pv .bar { height: 6px; border-radius: 3px; background: var(--line); }
+.scheme .pv .bar.s { width: 60%; }
+.scheme .pv .btnpv { width: 44px; height: 14px; border-radius: 4px; background: var(--accent-fill); }
+.scheme .nm { display: flex; align-items: center; gap: 6px; padding: 0 4px 2px; font-size: var(--fs-ui); font-weight: var(--fw-semibold); }
+.scheme .nm small { font-weight: var(--fw-regular); color: var(--ink-faint); font-size: var(--fs-micro); }
+.scheme .tick { margin-left: auto; width: 18px; height: 18px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--ink); color: var(--surface-raised); }
+.readonly { display: flex; gap: var(--sp-3); align-items: flex-start; padding: var(--sp-3) var(--sp-4); font-size: var(--fs-small);
+  color: var(--ink-soft); background: var(--surface-sunken); border-radius: var(--r-control); }
+.readonly b { color: var(--ink); font-weight: var(--fw-semibold); }
+.readonly code { font-size: var(--fs-micro); padding: 1px 5px; border-radius: 4px; background: var(--surface-raised);
+  border: var(--stroke) solid var(--line); }
+.state-on { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-small); font-weight: var(--fw-medium); color: var(--good); }
+.state-off { display: inline-flex; align-items: center; gap: 5px; font-size: var(--fs-small); font-weight: var(--fw-medium); color: var(--ink-soft); }
+
+/* ── the guest page (book.html) ──────────────────────────────────────────
+   Same tokens, never stamped: a guest has no scheme, so they see Quartz in
+   their own device's light or dark. None of the member chrome. The layout is
+   a letter, not a workspace: one centred column, a letterhead, big targets. */
+.guest { min-height: 100%; padding: var(--sp-6) var(--gutter) var(--sp-9); }
+.guest .letter { max-width: 560px; margin: 0 auto; display: grid; gap: var(--sp-6); }
+@container page (min-width: 1040px) {
+  .guest .letter { max-width: 980px; grid-template-columns: minmax(0, 1fr) 360px; gap: var(--sp-8); align-items: start; }
+  .guest .letterhead, .guest .banner { grid-column: 1 / -1; }
+}
+.letterhead { display: grid; gap: 6px; padding-bottom: var(--sp-5); border-bottom: var(--stroke) solid var(--line); }
+.letterhead .house { display: inline-flex; align-items: center; gap: var(--sp-2); font-size: var(--fs-small); color: var(--ink-soft); }
+.letterhead h1 { font-size: 26px; line-height: var(--lh-tight); letter-spacing: -0.02em; }
+.banner { display: grid; gap: var(--sp-2); padding: var(--sp-4); border-radius: var(--r-card); background: var(--accent-tint);
+  border: var(--stroke) solid var(--accent-line); }
+.banner h2 { font-size: var(--fs-body); }
+.month-bar { display: flex; align-items: center; gap: var(--sp-2); }
+.month-bar h2 { font-size: var(--fs-title); margin-right: auto; }
+.nights { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.nights .dow { font-size: 11px; font-weight: var(--fw-semibold); color: var(--ink-faint); text-align: center; padding-bottom: 2px; }
+.night { display: grid; place-items: center; aspect-ratio: 1 / 1; min-height: var(--tap); font: inherit; font-size: var(--fs-ui);
+  font-weight: var(--fw-medium); color: var(--ink); background: var(--surface-raised); border: var(--stroke) solid var(--line);
+  border-radius: var(--r-control); cursor: pointer; }
+.night.blank { visibility: hidden; }
+.night.past { color: var(--ink-faint); background: transparent; border-color: transparent; cursor: default; }
+.night.taken { color: var(--ink-faint); cursor: not-allowed; border-color: var(--line);
+  background: repeating-linear-gradient(135deg, var(--hatch-line) 0 2px, transparent 2px 7px), var(--surface-sunken); }
+.night.pending { border: var(--stroke-heavy) dashed var(--provisional); background: transparent; }
+.night.confirmed { background: var(--accent-fill); color: var(--on-accent); border-color: var(--accent-fill); }
+.night.picked { background: var(--ink); color: var(--surface-raised); border-color: var(--ink); }
+.night.inrange { background: var(--accent-tint); border-color: var(--accent-line); }
+.key { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); font-size: var(--fs-micro); color: var(--ink-soft); }
+.key span { display: inline-flex; align-items: center; gap: 6px; }
+.key i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: var(--stroke) solid var(--line); background: var(--surface-raised); }
+.key i.taken { background: repeating-linear-gradient(135deg, var(--hatch-line) 0 2px, transparent 2px 5px), var(--surface-sunken); }
+.key i.pending { border: var(--stroke-heavy) dashed var(--provisional); background: transparent; }
+.key i.confirmed { background: var(--accent-fill); border-color: var(--accent-fill); }
+.request { display: grid; gap: var(--sp-2); padding: var(--sp-4); border-radius: var(--r-card); }
+.request.pending { border: var(--stroke-heavy) dashed var(--provisional); }
+.request.confirmed { border: var(--stroke) solid var(--line); background: var(--surface-raised); }
+.request .dates { font-size: var(--fs-body); font-weight: var(--fw-semibold); }
+.request .st { font-size: var(--fs-small); color: var(--ink-soft); }
+.request .st.ok { color: var(--good); }
+
+/* ── small parts shared by several screens ─────────────────────────────── */
+/* a screen's own heading row, under the top bar: title, then its tools */
+.page-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--sp-2) var(--sp-3); padding-top: var(--sp-5); }
+.page-head h1 { font-size: var(--fs-headline); letter-spacing: -0.02em; margin-right: auto; }
+/* back, on a phone, from a card to its board */
+.back { display: inline-flex; align-items: center; gap: 2px; min-height: var(--tap); margin-left: -8px; padding: 0 8px;
+  font: inherit; font-size: var(--fs-ui); font-weight: var(--fw-medium); color: var(--accent-ink); background: none; border: 0;
+  text-decoration: none; cursor: pointer; }
+/* a one-line ask: Claude, scoped to this card */
+.askrow { display: flex; gap: var(--sp-2); align-items: flex-end; }
+.askrow .input { flex: 1; min-height: var(--tap); }
+/* notes between the members, on a card */
+.notes-list { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
+.notes-list li { display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: var(--sp-2) var(--sp-3); }
+.notes-list .head { display: flex; gap: 6px; align-items: baseline; font-size: var(--fs-small); }
+.notes-list .head b { font-weight: var(--fw-semibold); }
+.notes-list .head .when { color: var(--ink-faint); font-size: var(--fs-micro); }
+.notes-list .text { grid-column: 2; font-size: var(--fs-body); margin-top: -4px; }
+.notes-list li.quiet-line { grid-template-columns: 22px minmax(0, 1fr); font-size: var(--fs-small); color: var(--ink-faint); }
+/* the week's all-day row: one strip across seven days, so a span can cross them */
+.week .adlab { font-size: var(--fs-micro); color: var(--ink-faint); padding: 8px 8px 0 0; text-align: right; background: var(--surface-sunken);
+  border-bottom: var(--stroke) solid var(--line-strong); }
+.week .adrow { grid-column: 2 / -1; display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; align-content: start;
+  min-height: 44px; padding: 6px 4px; background: var(--surface-sunken); border-bottom: var(--stroke) solid var(--line-strong); }
+.week .adrow .ev { margin: 0 2px; }
+/* behind a sheet or menu on a phone */
+.scrim { position: fixed; inset: 0; z-index: 30; background: var(--scrim); }
+/* a member chrome-less note above a list, used by the guest page and Settings */
+.section-title { font-size: var(--fs-title); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight); }
+
+/* ── the guest page, in its place ────────────────────────────────────────
+   Used with data-place on <html>. The landscape and the fence are drawn in
+   --place-* colours only: illustration, never signal. Both are aria-hidden;
+   the page says everything it means in words. */
+.landscape { display: block; width: 100%; height: auto; }
+.landscape-frame { overflow: hidden; border-radius: var(--r-card); border: var(--stroke) solid var(--line); background: var(--place-sky); }
+.guest.with-place { padding-top: 0; }
+.guest .hero { margin: 0 calc(var(--gutter) * -1); }
+@container page (min-width: 1040px) { .guest .hero { margin: 0; grid-column: 1 / -1; } }
+.place-line { font-size: var(--fs-micro); font-weight: var(--fw-semibold); letter-spacing: .08em; text-transform: uppercase;
+  color: var(--ink-soft); }
+.fence { display: block; width: 100%; height: 22px; color: var(--line-strong); }
+.know { display: grid; gap: var(--sp-3); padding: var(--sp-4); border-radius: var(--r-card); background: var(--surface-sunken); }
+.know h2 { font-size: var(--fs-body); font-weight: var(--fw-semibold); }
+.know ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
+.know li { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: var(--sp-3); font-size: var(--fs-small); color: var(--ink-soft); }
+.know li .i { margin-top: 2px; color: var(--ink-soft); }

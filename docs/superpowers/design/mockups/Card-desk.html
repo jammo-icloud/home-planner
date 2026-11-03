@@ -1,0 +1,184 @@
+<!doctype html>
+<!-- Generated from the design canvas (Card-desk.dc.html). Lift the markup inside .hp;
+     the classes are the ones in ../components.css, the colours all come from
+     ../../../../site/tokens.css. The switcher above the frame is not part of
+     the design. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan card, on a desk</title>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap">
+<link rel="stylesheet" href="../../../../site/tokens.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+body{margin:0;background:#8a8f99;font-family:system-ui,sans-serif}
+.mock-switch{display:flex;gap:16px;align-items:center;padding:10px 16px;font:13px system-ui,sans-serif;color:#fff;background:#24272e}
+.mock-switch a{color:#9fd0ff;margin-left:auto}
+.frame{width:1280px;margin:24px auto 48px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+
+body{margin:0}
+a{color:inherit}a:hover{color:inherit}
+
+</style>
+</head>
+<body>
+
+<form class="mock-switch" aria-label="Look">
+  <label>Scheme <select data-attr="scheme"><option>quartz</option><option>lapis</option><option>iolite</option><option selected>graphite</option></select></label>
+  <label>Mode <select data-attr="mode"><option selected>light</option><option>dark</option></select></label>
+  <a href="index.html">All mockups</a>
+</form>
+<div class="frame">
+<div class="hp mock" data-scheme="graphite" data-mode="light" style="width: 1280px; height: 1640px; overflow: hidden">
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <nav class="tabs-top" aria-label="Screens" style="margin-left: 0">
+        <a href="#">Today</a>
+        <a href="#" aria-current="page">Plan</a>
+        <a href="#">Calendar</a>
+        <a href="#">Budget</a>
+        <button type="button" aria-haspopup="menu">More<svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
+      </nav>
+      <button class="pill" type="button" aria-haspopup="menu" style="margin-left: auto">
+        <span style="min-width: 0; text-align: right"><span class="name">Rivera household</span><span class="sub">Monday 2 November</span></span>
+        <svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+      </button>
+      <button class="pill member" type="button" style="margin-left: 0"><span class="who mine lg">A</span><span class="name">Alice</span></button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <div class="plan-head">
+      <nav class="crumb" aria-label="Where this is"><a href="#">Plan</a><span>›</span><a href="#">House</a><span>›</span><a href="#">Things we want to improve at the house</a></nav>
+      <h1 class="plan-title">Tankless water heater</h1>
+      <div class="actions">
+        <div class="seg" role="group" aria-label="State"><button type="button" aria-pressed="true">Planning</button><button type="button" aria-pressed="false">Doing</button></div>
+        <button class="btn" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Mark done</button>
+        <span style="width: 1px; height: 24px; background: var(--line); margin: 0 4px"></span>
+        <span class="t-small" style="display: inline-flex; align-items: center; gap: 6px"><span class="who mine">A</span>Alice owns it</span>
+        <button class="btn" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>Ask Bob to take it</button>
+        <span style="width: 1px; height: 24px; background: var(--line); margin: 0 4px"></span>
+        <button class="btn" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg>Due date</button>
+        <button class="btn" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>Block time</button>
+      </div>
+      <div class="chips"><span class="chip">researching</span><button class="btn bare small" type="button" style="min-height: 22px">Add a chip</button></div>
+    </div>
+
+    <div class="plan-body">
+      <div class="plan-main">
+
+        <section aria-labelledby="s-notes">
+          <div class="sec-head"><h2 id="s-notes">Notes</h2><button class="btn small" type="button">Edit</button></div>
+          <div class="md">
+            <p>The current heater is from 2009 and the pilot has gone out twice this fall. We want gas tankless, rated for outdoors: the utility closet is too tight to vent.</p>
+            <ul><li>The gas line may need upsizing from half an inch.</li><li>The gas company has a rebate on high-efficiency units. Check the amount.</li></ul>
+          </div>
+        </section>
+
+        <section aria-labelledby="s-check">
+          <div class="sec-head"><h2 id="s-check">Checklist</h2><span class="t-micro faint">2 of 4</span><button class="btn small" type="button">Add a step</button></div>
+          <ul class="checklist">
+            <li><label class="check"><input type="checkbox" checked><span class="done">Measure the utility closet</span></label></li>
+            <li><label class="check"><input type="checkbox" checked><span class="done">Check the gas line size</span></label></li>
+            <li><label class="check"><input type="checkbox"><span>Find out the rebate amount</span></label></li>
+            <li><label class="check"><input type="checkbox"><span>Get two quotes</span></label></li>
+          </ul>
+        </section>
+
+        <section aria-labelledby="s-att">
+          <div class="sec-head"><h2 id="s-att">Attachments</h2></div>
+          <div class="files">
+            <a class="file" href="#"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M2.5 11l3.5-3.5 3 3 2-2 2.5 2.5"/></svg><span class="n">utility-closet.png</span><span class="sz">1.2 MB</span></a>
+            <a class="file" href="#"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg><span class="n">rinnai-ru199-spec.pdf</span><span class="sz">840 KB</span></a>
+            <a class="file" href="#"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3M6 9h4M6 11h3"/></svg><span class="n">gas-line-notes.md</span><span class="sz">3 KB</span></a>
+          </div>
+          <label class="dropzone" style="margin-top: 8px"><input type="file" class="visually-hidden"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V3M5 6l3-3 3 3M3 11v2h10v-2"/></svg>Drop files here, or choose them · up to 25 MB, kept on the NAS</label>
+        </section>
+
+        <section aria-labelledby="s-claude">
+          <div class="sec-head"><h2 id="s-claude">Claude</h2></div>
+          <div class="claude" style="display: grid; gap: 10px">
+            <div class="byline claude-by"><svg class="mark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/></svg>Research <span class="asof">· as of Sat 31 Oct, 9:12 · asked by Alice</span></div>
+            <div class="md">
+              <p>Three installers within 30 miles fit outdoor gas tankless units. Sandoval Plumbing, two towns over, lists Rinnai and Navien and says it handles rebate paperwork. Example Mechanical is closer but lists no tankless work.</p>
+              <p>The gas company's rebate on high-efficiency units runs through 31 December. Installed, a unit this size usually costs $3,200 to $4,800; House reserve would cover the middle of that in about four months at its current funding.</p>
+            </div>
+            <p class="looked" style="margin-top: 0">Looked at the web and this card's envelope.</p>
+            <div class="provisional" style="padding: 10px 12px; display: flex; gap: 10px; align-items: center">
+              <span class="t-small" style="flex: 1">Add <b>Sandoval Plumbing</b> as a contact on this card</span>
+              <button class="btn small primary" type="button">Add</button><button class="btn small" type="button">Skip</button>
+            </div>
+            <div class="provisional" style="padding: 10px 12px; display: flex; gap: 10px; align-items: center">
+              <span class="t-small" style="flex: 1">Due <b>Thu 31 Dec</b>, the rebate deadline</span>
+              <button class="btn small primary" type="button">Set it</button><button class="btn small" type="button">Skip</button>
+            </div>
+          </div>
+          <div class="askrow" style="margin-top: 10px">
+            <label class="visually-hidden" for="ask-card">Ask Claude about this card</label>
+            <input class="input" id="ask-card" placeholder="Ask Claude about this card: which of these does gas line upsizing?">
+            <button class="btn" type="button">Ask Claude</button>
+          </div>
+        </section>
+
+        <section aria-labelledby="s-between">
+          <div class="sec-head"><h2 id="s-between">Between us</h2><span class="t-micro faint">Also in Today's thread</span></div>
+          <ul class="notes-list">
+            <li><span class="who partner">B</span><div class="head"><b>Bob</b><span class="when">Thu 29 Oct, 8:40pm</span></div><p class="text">The closet door won't close with anything wider than 18 inches.</p></li>
+            <li><span class="who mine">A</span><div class="head"><b>Alice</b><span class="when">Fri 30 Oct, 7:05am</span></div><p class="text">Outdoor unit, then. I measured the north wall: plenty of room by the gas meter.</p></li>
+            <li class="quiet-line"><span></span><span>Alice attached utility-closet.png · Fri 7:06am</span></li>
+          </ul>
+          <div class="askrow" style="margin-top: 12px">
+            <label class="visually-hidden" for="note-card">Leave a note for Bob about this</label>
+            <input class="input" id="note-card" placeholder="Leave a note for Bob about this">
+            <button class="btn" type="button">Leave a note</button>
+          </div>
+        </section>
+      </div>
+
+      <aside class="plan-side">
+        <section aria-labelledby="s-money">
+          <div class="sec-head"><h2 id="s-money">Money</h2><button class="btn small" type="button">Change</button></div>
+          <div class="kv">Envelope<span class="v"><a class="link" href="#">House reserve</a></span></div>
+          <div class="kv">Left this month<span class="v">$1,240</span></div>
+          <div class="kv">Estimated cost<span class="v">$4,000</span></div>
+          <div class="kv">At current funding<span class="v">4 months</span></div>
+        </section>
+        <section aria-labelledby="s-people">
+          <div class="sec-head"><h2 id="s-people">People</h2></div>
+          <div class="empty" style="padding: 16px">
+            <p>No one is linked to this card yet.</p>
+            <div class="actions"><button class="btn small" type="button">Link someone from Contacts</button></div>
+          </div>
+        </section>
+        <section aria-labelledby="s-when">
+          <div class="sec-head"><h2 id="s-when">When</h2></div>
+          <div class="kv">Due<span class="v none">None</span></div>
+          <div class="kv">Blocks<span class="v none">None</span></div>
+          <p class="hint" style="margin-top: 6px">A due date goes on the Household calendar as an all-day marker; a block, as time set aside.</p>
+        </section>
+        <section aria-labelledby="s-history">
+          <div class="sec-head"><h2 id="s-history">History</h2></div>
+          <ul class="history">
+            <li>Alice made this plan <span class="when">· Thu 22 Oct</span></li>
+            <li>Alice added the chip researching <span class="when">· Thu 22 Oct</span></li>
+            <li>Alice linked House reserve <span class="when">· Fri 23 Oct</span></li>
+            <li>Alice attached utility-closet.png <span class="when">· Fri 30 Oct</span></li>
+            <li>Claude added research <span class="when">· Sat 31 Oct</span></li>
+          </ul>
+        </section>
+      </aside>
+    </div>
+  </main>
+</div>
+</div>
+<script>
+// mockup only: re-stamp the frame's root when the switcher changes
+const root = document.querySelector('.frame > [data-mode]');
+document.querySelectorAll('.mock-switch select').forEach((s) => s.addEventListener('change', () => {
+  root.setAttribute('data-' + s.dataset.attr, s.value);
+}));
+</script>
+</body>
+</html>

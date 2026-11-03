@@ -1,0 +1,176 @@
+<!doctype html>
+<!-- Generated from the design canvas (Card-phone.dc.html). Lift the markup inside .hp;
+     the classes are the ones in ../components.css, the colours all come from
+     ../../../../site/tokens.css. The switcher above the frame is not part of
+     the design. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan card, on a phone</title>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap">
+<link rel="stylesheet" href="../../../../site/tokens.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+body{margin:0;background:#8a8f99;font-family:system-ui,sans-serif}
+.mock-switch{display:flex;gap:16px;align-items:center;padding:10px 16px;font:13px system-ui,sans-serif;color:#fff;background:#24272e}
+.mock-switch a{color:#9fd0ff;margin-left:auto}
+.frame{width:390px;margin:24px auto 48px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+
+body{margin:0}
+a{color:inherit}a:hover{color:inherit}
+.mock .tabbar{position:static;display:grid}
+
+</style>
+</head>
+<body>
+
+<form class="mock-switch" aria-label="Look">
+  <label>Scheme <select data-attr="scheme"><option>quartz</option><option>lapis</option><option selected>iolite</option><option>graphite</option></select></label>
+  <label>Mode <select data-attr="mode"><option>light</option><option selected>dark</option></select></label>
+  <a href="index.html">All mockups</a>
+</form>
+<div class="frame">
+<div class="hp mock" data-scheme="iolite" data-mode="dark" style="width: 390px; height: 2900px; display: flex; flex-direction: column; overflow: hidden">
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <button class="pill" type="button" aria-haspopup="menu">
+        <span style="min-width: 0"><span class="name">Rivera household</span><span class="sub">Monday 2 November</span></span>
+        <svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+      </button>
+      <button class="pill member" type="button" aria-label="Bob, signed in"><span class="who mine lg">B</span></button>
+    </div>
+  </header>
+
+  <main class="wrap" style="flex: 1">
+    <div class="plan-head" style="padding-top: 8px">
+      <a class="back" href="#"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 4L6 8l4 4"/></svg>Plan</a>
+      <nav class="crumb" aria-label="Where this is"><a href="#">House</a><span>›</span><a href="#">Things we want to improve at the house</a></nav>
+      <h1 class="plan-title">Tankless water heater</h1>
+      <div class="actions">
+        <div class="seg" role="group" aria-label="State"><button type="button" aria-pressed="true">Planning</button><button type="button" aria-pressed="false">Doing</button></div>
+        <button class="btn" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Mark done</button>
+      </div>
+      <div class="t-small" style="display: flex; align-items: center; gap: 8px"><span class="who partner">A</span>Alice owns it</div>
+      <div class="actions">
+        <button class="btn" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg>Due date</button>
+        <button class="btn" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>Block time</button>
+      </div>
+      <div class="chips"><span class="chip">researching</span><button class="btn bare small" type="button" style="min-height: 22px">Add a chip</button></div>
+    </div>
+
+    <div class="plan-body">
+      <section class="card" aria-label="When and money" style="padding: 6px 16px">
+        <div class="kv">Due<span class="v none">None</span></div>
+        <div class="kv">Blocks<span class="v none">None</span></div>
+        <div class="kv">Envelope<span class="v"><a class="link" href="#">House reserve</a></span></div>
+        <div class="kv">Left this month<span class="v">$1,240</span></div>
+        <div class="kv">Estimated cost<span class="v">$4,000</span></div>
+        <div class="kv">At current funding<span class="v">4 months</span></div>
+      </section>
+
+      <section aria-labelledby="p-notes">
+        <div class="sec-head"><h2 id="p-notes">Notes</h2><button class="btn small" type="button">Edit</button></div>
+        <div class="md">
+          <p>The current heater is from 2009 and the pilot has gone out twice this fall. We want gas tankless, rated for outdoors: the utility closet is too tight to vent.</p>
+          <ul><li>The gas line may need upsizing from half an inch.</li><li>The gas company has a rebate on high-efficiency units. Check the amount.</li></ul>
+        </div>
+      </section>
+
+      <section aria-labelledby="p-check">
+        <div class="sec-head"><h2 id="p-check">Checklist</h2><span class="t-micro faint">2 of 4</span><button class="btn small" type="button">Add a step</button></div>
+        <ul class="checklist">
+          <li><label class="check"><input type="checkbox" checked><span class="done">Measure the utility closet</span></label></li>
+          <li><label class="check"><input type="checkbox" checked><span class="done">Check the gas line size</span></label></li>
+          <li><label class="check"><input type="checkbox"><span>Find out the rebate amount</span></label></li>
+          <li><label class="check"><input type="checkbox"><span>Get two quotes</span></label></li>
+        </ul>
+      </section>
+
+      <section aria-labelledby="p-att">
+        <div class="sec-head"><h2 id="p-att">Attachments</h2></div>
+        <div class="files">
+          <a class="file" href="#"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M2.5 11l3.5-3.5 3 3 2-2 2.5 2.5"/></svg><span class="n">utility-closet.png</span><span class="sz">1.2 MB</span></a>
+          <a class="file" href="#"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/></svg><span class="n">rinnai-ru199-spec.pdf</span><span class="sz">840 KB</span></a>
+          <a class="file" href="#"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3M6 9h4M6 11h3"/></svg><span class="n">gas-line-notes.md</span><span class="sz">3 KB</span></a>
+        </div>
+        <label class="dropzone" style="margin-top: 8px"><input type="file" class="visually-hidden"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 11V3M5 6l3-3 3 3M3 11v2h10v-2"/></svg>Add a photo or file</label>
+      </section>
+
+      <section aria-labelledby="p-claude">
+        <div class="sec-head"><h2 id="p-claude">Claude</h2></div>
+        <div class="claude" style="display: grid; gap: 10px">
+          <div class="byline claude-by"><svg class="mark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/></svg>Research <span class="asof">· as of Sat 31 Oct, 9:12</span></div>
+          <div class="md">
+            <p>Three installers within 30 miles fit outdoor gas tankless units. Sandoval Plumbing, two towns over, lists Rinnai and Navien and says it handles rebate paperwork.</p>
+            <p>The gas company's rebate runs through 31 December. Installed, a unit this size usually costs $3,200 to $4,800.</p>
+          </div>
+          <div class="provisional" style="padding: 10px 12px; display: grid; gap: 8px">
+            <span class="t-small">Add <b>Sandoval Plumbing</b> as a contact on this card</span>
+            <div class="actions"><button class="btn small primary" type="button">Add</button><button class="btn small" type="button">Skip</button></div>
+          </div>
+          <div class="provisional" style="padding: 10px 12px; display: grid; gap: 8px">
+            <span class="t-small">Due <b>Thu 31 Dec</b>, the rebate deadline</span>
+            <div class="actions"><button class="btn small primary" type="button">Set it</button><button class="btn small" type="button">Skip</button></div>
+          </div>
+        </div>
+        <div class="askrow" style="margin-top: 10px">
+          <label class="visually-hidden" for="ask-card-p">Ask Claude about this card</label>
+          <input class="input" id="ask-card-p" placeholder="Ask Claude about this card">
+          <button class="btn" type="button">Ask</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="p-between">
+        <div class="sec-head"><h2 id="p-between">Between us</h2></div>
+        <ul class="notes-list">
+          <li><span class="who mine">B</span><div class="head"><b>You</b><span class="when">Thu 8:40pm</span></div><p class="text">The closet door won't close with anything wider than 18 inches.</p></li>
+          <li><span class="who partner">A</span><div class="head"><b>Alice</b><span class="when">Fri 7:05am</span></div><p class="text">Outdoor unit, then. I measured the north wall: plenty of room by the gas meter.</p></li>
+          <li class="quiet-line"><span></span><span>Alice attached utility-closet.png · Fri 7:06am</span></li>
+        </ul>
+        <div class="askrow" style="margin-top: 12px">
+          <label class="visually-hidden" for="note-card-p">Leave a note for Alice about this</label>
+          <input class="input" id="note-card-p" placeholder="Leave a note for Alice">
+          <button class="btn" type="button">Leave it</button>
+        </div>
+      </section>
+
+      <section aria-labelledby="p-people">
+        <div class="sec-head"><h2 id="p-people">People</h2></div>
+        <div class="empty" style="padding: 16px">
+          <p>No one is linked to this card yet.</p>
+          <div class="actions"><button class="btn small" type="button">Link someone from Contacts</button></div>
+        </div>
+      </section>
+
+      <section aria-labelledby="p-history">
+        <div class="sec-head"><h2 id="p-history">History</h2></div>
+        <ul class="history">
+          <li>Alice made this plan <span class="when">· Thu 22 Oct</span></li>
+          <li>Alice linked House reserve <span class="when">· Fri 23 Oct</span></li>
+          <li>Alice attached utility-closet.png <span class="when">· Fri 30 Oct</span></li>
+          <li>Claude added research <span class="when">· Sat 31 Oct</span></li>
+        </ul>
+      </section>
+    </div>
+  </main>
+
+  <nav class="tabbar" aria-label="Screens">
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg></span>Today</a>
+    <a href="#" aria-current="page"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="4.5" height="11" rx="1"/><rect x="9" y="2.5" width="4.5" height="7" rx="1"/></svg></span>Plan</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg></span>Calendar</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="4" width="11" height="8.5" rx="1.5"/><path d="M2.5 6.5l5.5 3.5 5.5-3.5"/></svg></span>Budget</a>
+    <button type="button" aria-haspopup="dialog"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8h.01M8 8h.01M12 8h.01" style="stroke-width: 2.4"/></svg></span>More</button>
+  </nav>
+</div>
+</div>
+<script>
+// mockup only: re-stamp the frame's root when the switcher changes
+const root = document.querySelector('.frame > [data-mode]');
+document.querySelectorAll('.mock-switch select').forEach((s) => s.addEventListener('change', () => {
+  root.setAttribute('data-' + s.dataset.attr, s.value);
+}));
+</script>
+</body>
+</html>

@@ -1,0 +1,192 @@
+<!doctype html>
+<!-- Generated from the design canvas (Settings-phone.dc.html). Lift the markup inside .hp;
+     the classes are the ones in ../components.css, the colours all come from
+     ../../../../site/tokens.css. The switcher above the frame is not part of
+     the design. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Settings, on a phone</title>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap">
+<link rel="stylesheet" href="../../../../site/tokens.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+body{margin:0;background:#8a8f99;font-family:system-ui,sans-serif}
+.mock-switch{display:flex;gap:16px;align-items:center;padding:10px 16px;font:13px system-ui,sans-serif;color:#fff;background:#24272e}
+.mock-switch a{color:#9fd0ff;margin-left:auto}
+.frame{width:390px;margin:24px auto 48px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+
+body{margin:0}
+a{color:inherit}a:hover{color:inherit}
+.mock .tabbar{position:static;display:grid}
+
+</style>
+</head>
+<body>
+
+<form class="mock-switch" aria-label="Look">
+  <label>Scheme <select data-attr="scheme"><option selected>quartz</option><option>lapis</option><option>iolite</option><option>graphite</option></select></label>
+  <label>Mode <select data-attr="mode"><option>light</option><option selected>dark</option></select></label>
+  <a href="index.html">All mockups</a>
+</form>
+<div class="frame">
+<div class="hp mock" data-scheme="quartz" data-mode="dark" style="width: 390px; height: 3120px; display: flex; flex-direction: column; overflow: hidden">
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <button class="pill" type="button" aria-haspopup="menu" style="background: var(--surface-sunken)">
+        <span style="min-width: 0"><span class="name">Rivera household</span><span class="sub">Settings</span></span>
+        <svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+      </button>
+      <button class="pill member" type="button" aria-label="Alice, signed in"><span class="who mine lg">A</span></button>
+    </div>
+  </header>
+
+  <main class="wrap" style="flex: 1">
+    <div class="page-head">
+      <h1>Settings</h1>
+      <button class="btn small" type="button">Done</button>
+    </div>
+    <div class="settings" style="padding-top: 20px">
+
+      <div class="set-group">
+        <header><div class="eyebrow">Yours</div><p class="hint">Only you see these. Bob keeps his own.</p></header>
+
+        <section class="set-sec" aria-labelledby="ph-app">
+          <h3 id="ph-app">Appearance</h3>
+          <p class="hint">Follows you to every phone and computer you sign in on.</p>
+          <div class="schemes" role="radiogroup" aria-label="Scheme">
+            
+              <button class="scheme" type="button" role="radio" aria-checked="true" data-scheme="quartz" data-mode="dark">
+                <span class="pv" aria-hidden="true">
+                  <span class="bar" style="width: 70%; background: var(--ink); height: 7px"></span>
+                  <span class="bar s"></span>
+                  <span style="display: flex; gap: 5px; align-items: center; margin-top: 3px"><span class="btnpv"></span><span class="bar" style="width: 26px; height: 14px; border-radius: 4px; background: var(--surface-sunken)"></span></span>
+                </span>
+                <span class="nm">Quartz<span class="tick"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span></span>
+              </button>
+            
+              <button class="scheme" type="button" role="radio" aria-checked="false" data-scheme="lapis" data-mode="dark">
+                <span class="pv" aria-hidden="true">
+                  <span class="bar" style="width: 70%; background: var(--ink); height: 7px"></span>
+                  <span class="bar s"></span>
+                  <span style="display: flex; gap: 5px; align-items: center; margin-top: 3px"><span class="btnpv"></span><span class="bar" style="width: 26px; height: 14px; border-radius: 4px; background: var(--surface-sunken)"></span></span>
+                </span>
+                <span class="nm">Lapis</span>
+              </button>
+            
+              <button class="scheme" type="button" role="radio" aria-checked="false" data-scheme="iolite" data-mode="dark">
+                <span class="pv" aria-hidden="true">
+                  <span class="bar" style="width: 70%; background: var(--ink); height: 7px"></span>
+                  <span class="bar s"></span>
+                  <span style="display: flex; gap: 5px; align-items: center; margin-top: 3px"><span class="btnpv"></span><span class="bar" style="width: 26px; height: 14px; border-radius: 4px; background: var(--surface-sunken)"></span></span>
+                </span>
+                <span class="nm">Iolite</span>
+              </button>
+            
+              <button class="scheme" type="button" role="radio" aria-checked="false" data-scheme="graphite" data-mode="dark">
+                <span class="pv" aria-hidden="true">
+                  <span class="bar" style="width: 70%; background: var(--ink); height: 7px"></span>
+                  <span class="bar s"></span>
+                  <span style="display: flex; gap: 5px; align-items: center; margin-top: 3px"><span class="btnpv"></span><span class="bar" style="width: 26px; height: 14px; border-radius: 4px; background: var(--surface-sunken)"></span></span>
+                </span>
+                <span class="nm">Graphite</span>
+              </button>
+            
+          </div>
+          <div class="field" style="margin-top: 6px">
+            <span class="label">Light or dark</span>
+            <div class="seg" role="group" aria-label="Light or dark" style="display: flex"><button type="button" aria-pressed="false" style="flex: 1">Light</button><button type="button" aria-pressed="false" style="flex: 1">Dark</button><button type="button" aria-pressed="true" style="flex: 1.6">Match this phone</button></div>
+            <span class="hint">On this phone, that means dark right now.</span>
+          </div>
+        </section>
+
+        <section class="set-sec" aria-labelledby="ph-conf">
+          <h3 id="ph-conf">Calendars I check for conflicts</h3>
+          <p class="hint">Read for clashes when you schedule something. Never written to.</p>
+          <div class="rows">
+            <label class="check"><input type="checkbox" checked disabled><span>My calendar<span class="what">Always checked</span></span></label>
+            <label class="check"><input type="checkbox" checked disabled><span>Household<span class="what">Always checked</span></span></label>
+            <label class="check"><input type="checkbox" checked><span>Bob · Personal<span class="what">Shared with you, read only</span></span></label>
+            <label class="check"><input type="checkbox"><span>Bob · Work<span class="what">Shared with you, read only</span></span></label>
+          </div>
+        </section>
+      </div>
+
+      <div class="set-group">
+        <header><div class="eyebrow">The household's</div><p class="hint">You both see and change these.</p></header>
+
+        <section class="set-sec" aria-labelledby="ph-areas">
+          <h3 id="ph-areas">Areas</h3>
+          <div class="rows">
+            <div class="rowi"><span>House<span class="meta">5 plans</span></span><span class="end"><button class="btn bare small" type="button">Rename</button></span></div>
+            <div class="rowi"><span>Money<span class="meta">2 plans</span></span><span class="end"><button class="btn bare small" type="button">Rename</button></span></div>
+            <div class="rowi"><span>People<span class="meta">2 plans</span></span><span class="end"><button class="btn bare small" type="button">Rename</button></span></div>
+            <div class="rowi"><span>Trips<span class="meta">3 plans</span></span><span class="end"><button class="btn bare small" type="button">Rename</button></span></div>
+            <button class="add" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>Add an area</button>
+          </div>
+          <p class="hint">An area with plans in it can't be removed until they move.</p>
+        </section>
+
+        <section class="set-sec" aria-labelledby="ph-links">
+          <h3 id="ph-links">Links under More</h3>
+          <div class="rows">
+            <div class="rowi"><span>Recipes<span class="meta">nas.rivera.home/recipes</span></span><span class="end"><button class="btn bare small" type="button">Edit</button></span></div>
+            <div class="rowi"><span>Photos<span class="meta">nas.rivera.home/photo</span></span><span class="end"><button class="btn bare small" type="button">Edit</button></span></div>
+            <div class="rowi"><span>DSM<span class="meta">nas.rivera.home:5001</span></span><span class="end"><button class="btn bare small" type="button">Edit</button></span></div>
+            <button class="add" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>Add a link</button>
+          </div>
+        </section>
+
+        <section class="set-sec" aria-labelledby="ph-hcal">
+          <h3 id="ph-hcal">Household calendar</h3>
+          <div class="rows">
+            <div class="rowi"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--src-household-line)"><path d="M2.5 7.5L8 3l5.5 4.5V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z"/><path d="M6.5 13.5v-3.5h3v3.5"/></svg><span><b style="font-weight: 600">Household</b><span class="meta">Shared with Alice and Bob, both can edit</span></span></div>
+            <button class="add" type="button">Use another calendar</button>
+          </div>
+          <p class="hint">Plans' dates go here, and it is the only calendar the shared briefing reads.</p>
+        </section>
+
+        <section class="set-sec" aria-labelledby="ph-guests">
+          <h3 id="ph-guests">Guests</h3>
+          <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap"><span class="state-on"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Booking is on</span><span class="t-small faint">book.rivera.home</span></div>
+          <div class="rows">
+            <div class="rowi"><span>The Nguyens<span class="meta">lan.nguyen@example.com</span></span><span class="end"><button class="btn bare small danger" type="button">Remove</button></span></div>
+            <div class="rowi"><span>Carmen Rivera<span class="meta">carmen@example.com</span></span><span class="end"><button class="btn bare small danger" type="button">Remove</button></span></div>
+            <div style="padding: 14px 16px; display: grid; gap: 10px">
+              <div class="field"><label for="pg-email">Email</label><input class="input" id="pg-email" placeholder="name@example.com"></div>
+              <div class="field"><label for="pg-name">Name</label><input class="input" id="pg-name" placeholder="The Parks"></div>
+              <div class="field"><label for="pg-why">How you know them</label><input class="input" id="pg-why" placeholder="The neighbours"></div>
+              <button class="btn primary" type="button">Add to the guest list</button>
+            </div>
+          </div>
+          <p class="hint">Only these addresses are sent a link. Anyone else is told the same thing and sent nothing.</p>
+        </section>
+
+        <section class="set-sec" aria-labelledby="ph-att">
+          <h3 id="ph-att">Attachments</h3>
+          <div class="readonly"><svg class="i" viewBox="0 0 16 16" aria-hidden="true" style="margin-top: 2px"><rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></svg><span><b>On.</b> Kept on the NAS in <code>/Planner/rivera</code>. Set when Home Planner was installed; it changes there, not here.</span></div>
+        </section>
+      </div>
+    </div>
+  </main>
+
+  <nav class="tabbar" aria-label="Screens">
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg></span>Today</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="4.5" height="11" rx="1"/><rect x="9" y="2.5" width="4.5" height="7" rx="1"/></svg></span>Plan</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg></span>Calendar</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="4" width="11" height="8.5" rx="1.5"/><path d="M2.5 6.5l5.5 3.5 5.5-3.5"/></svg></span>Budget</a>
+    <button type="button" aria-haspopup="dialog"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8h.01M8 8h.01M12 8h.01" style="stroke-width: 2.4"/></svg></span>More</button>
+  </nav>
+</div>
+</div>
+<script>
+// mockup only: re-stamp the frame's root when the switcher changes
+const root = document.querySelector('.frame > [data-mode]');
+document.querySelectorAll('.mock-switch select').forEach((s) => s.addEventListener('change', () => {
+  root.setAttribute('data-' + s.dataset.attr, s.value);
+}));
+</script>
+</body>
+</html>

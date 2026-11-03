@@ -1,0 +1,71 @@
+<!doctype html>
+<!-- Generated from the design canvas (More-phone.dc.html). Lift the markup inside .hp;
+     the classes are the ones in ../components.css, the colours all come from
+     ../../../../site/tokens.css. The switcher above the frame is not part of
+     the design. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>More, on a phone</title>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap">
+<link rel="stylesheet" href="../../../../site/tokens.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+body{margin:0;background:#8a8f99;font-family:system-ui,sans-serif}
+.mock-switch{display:flex;gap:16px;align-items:center;padding:10px 16px;font:13px system-ui,sans-serif;color:#fff;background:#24272e}
+.mock-switch a{color:#9fd0ff;margin-left:auto}
+.frame{width:390px;margin:24px auto 48px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+
+body{margin:0}
+a{color:inherit}a:hover{color:inherit}
+.mock .scrim,.mock .more-sheet{position:absolute}
+
+</style>
+</head>
+<body>
+
+<form class="mock-switch" aria-label="Look">
+  <label>Scheme <select data-attr="scheme"><option selected>quartz</option><option>lapis</option><option>iolite</option><option>graphite</option></select></label>
+  <label>Mode <select data-attr="mode"><option selected>light</option><option>dark</option></select></label>
+  <a href="index.html">All mockups</a>
+</form>
+<div class="frame">
+<div class="hp mock" data-scheme="quartz" data-mode="light" style="width: 390px; height: 844px; position: relative; overflow: hidden">
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <span class="pill"><span style="min-width: 0"><span class="name">Rivera household</span><span class="sub">Monday 2 November</span></span></span>
+      <span class="pill member"><span class="who mine lg">A</span></span>
+    </div>
+  </header>
+  <main class="wrap" style="padding-top: 20px; display: grid; gap: 16px" aria-hidden="true">
+    <div class="day-head">Today</div>
+    <div class="claude briefing">
+      <div class="byline claude-by"><svg class="mark" viewBox="0 0 16 16"><path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/></svg>Claude · this morning's briefing</div>
+      <p class="t-headline">The registration renewal is due Thursday, and Vehicle can't cover it yet.</p>
+    </div>
+  </main>
+
+  <div class="scrim"></div>
+  <div class="more-sheet" role="dialog" aria-label="More" style="z-index: 40">
+    <div class="grab"></div>
+    <div class="eyebrow" style="padding: 0 10px 6px">These leave Home Planner</div>
+    <a class="menu-item" href="#"><span class="who" style="width: 32px; height: 32px; border-radius: 9px; background: var(--surface-sunken); color: var(--ink-soft)"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M8 2.5v11"/></svg></span><span>Photos<span class="sub">Library</span></span><svg class="i sm leaves" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5"/></svg></a>
+    <a class="menu-item" href="#"><span class="who" style="width: 32px; height: 32px; border-radius: 9px; background: var(--surface-sunken); color: var(--ink-soft)"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M2.5 11l3.5-3.5 3 3 2-2 2.5 2.5"/></svg></span><span>Photos</span><svg class="i sm leaves" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5"/></svg></a>
+    <a class="menu-item" href="#"><span class="who" style="width: 32px; height: 32px; border-radius: 9px; background: var(--surface-sunken); color: var(--ink-soft)"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3" width="11" height="8" rx="1.5"/><path d="M6 13.5h4M8 11v2.5"/></svg></span><span>DSM</span><svg class="i sm leaves" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5"/></svg></a>
+    <div class="menu-sep"></div>
+    <a class="menu-item" href="#" style="color: var(--ink-soft)">Change these links</a>
+    <button class="btn" type="button" style="width: 100%; margin-top: 8px">Close</button>
+  </div>
+</div>
+</div>
+<script>
+// mockup only: re-stamp the frame's root when the switcher changes
+const root = document.querySelector('.frame > [data-mode]');
+document.querySelectorAll('.mock-switch select').forEach((s) => s.addEventListener('change', () => {
+  root.setAttribute('data-' + s.dataset.attr, s.value);
+}));
+</script>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{
+  "name": "household-budget-api",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22.6"
+  },
+  "scripts": {
+    "test": "node --test --experimental-strip-types test/*.test.ts",
+    "typecheck": "tsc --noEmit",
+    "fake-dsm": "node --env-file=../.env --experimental-strip-types tools/fake-dsm/server.ts",
+    "synology:check": "node --experimental-strip-types tools/synology-check/check.ts",
+    "start": "node --experimental-strip-types src/server.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.0.0",
+    "typescript": "^5.6.0"
+  },
+  "dependencies": {
+    "@anthropic-ai/sdk": "^0.116.0"
+  }
+}

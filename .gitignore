@@ -1,0 +1,32 @@
+# ── your money ───────────────────────────────────────────────────────────────
+# The event log is the household's entire financial history. Everything else in
+# the app is a replay of it, so this one directory is both the only thing worth
+# backing up and the only thing that must never be published.
+data/
+api/data/
+
+# The two files the original single-page app kept: the budget itself and the
+# imported receipts. Both are real amounts, payees and account numbers.
+site/budget.jsonl
+site/transactions.jsonl
+
+# The pre-API planner, kept for reference. It has the household's address and a
+# year of real transactions baked into the page.
+site/planner.html
+
+# ── credentials ──────────────────────────────────────────────────────────────
+# .env carries the keys and passwords, in any directory.
+.env
+
+# ── noise ────────────────────────────────────────────────────────────────────
+api/node_modules/
+api/*.log
+__pycache__/
+.DS_Store
+.claude/settings.local.json
+
+# Brainstorming mockups from the visual companion. Scratch, not source.
+.superpowers/
+
+# Worktrees for the build subagents, one per stream.
+.worktrees/

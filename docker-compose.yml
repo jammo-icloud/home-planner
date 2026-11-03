@@ -1,0 +1,94 @@
+name: household-budget
+
+services:
+  # The API. Every write goes through here, attributed to the DSM account that
+  # made it. Sign-in happens inside this service — it asks DSM whether your
+  # credentials are real and then issues its own session cookie — so nothing
+  # upstream is trusted and it is safe to publish.
+  budget-api:
+    build:
+      # Root context so the image can carry the app shell in site/ as well.
+      context: .
+      dockerfile: api/Dockerfile
+    container_name: budget-api
+    ports:
+      - "8090:8090"
+    # Lets the container reach DSM's API on the NAS itself.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PORT: "8090"
+      # Where the household is, so it lives in .env rather than here, for the
+      # same reason as ADMIN_USER. A wrong value shifts receipts across month
+      # boundaries. Unset means UTC — a default is a guess about somebody
+      # else's life.
+      TZ: "${TZ:-UTC}"
+      # DSM on the NAS itself. Only the port is configurable: 5000 on the NAS,
+      # and on a laptop whatever port the stand-in in api/tools/fake-dsm
+      # listens on, so sign-in takes the same host.docker.internal route
+      # either way.
+      DSM_URL: "http://host.docker.internal:${DSM_PORT:-5000}"
+      # Only for an install from before folders were chosen in Settings: the
+      # share its files were kept in, carried over once and suggested first in
+      # the picker. Never where a new household's files go; see DEPLOY.md.
+      PLANNER_ROOT: "${PLANNER_ROOT:-}"
+      # DSM as a phone reaches it, for Settings and the Calendar's link to
+      # Synology Calendar; see DEPLOY.md. Set in .env. Empty hides the link.
+      DSM_PUBLIC_URL: "${DSM_PUBLIC_URL:-}"
+      # Any DSM account on this NAS may sign in and gets a household of its own.
+      # Isolation is per household, not per server: membership in each log
+      # decides who sees it, so a new account signing in sees an empty app and
+      # nobody else's money.
+      #
+      # Set ALLOWED_USERS to a comma-separated list of DSM account names to
+      # narrow that to specific people. Deliberately unset here.
+      #
+      # Who administers the server. An admin sees that households exist — owner,
+      # size, last activity — and never what is in them.
+      #
+      # Your DSM account name, so it lives in .env rather than here: this file
+      # is in the repository and has to be right for anyone who clones it.
+      ADMIN_USER: "${ADMIN_USER:-}"
+      ALLOWED_USERS: "${ALLOWED_USERS:-}"
+      # One directory per household, on the volume. Must be under /data: the
+      # default is relative to the app directory, which is inside the image and
+      # not writable by the unprivileged user the app runs as.
+      HOUSEHOLDS_DIR: "/data/households"
+      # Free from api.census.gov/data/key_signup.html. Without it, county rent
+      # and property-tax lookups are unavailable; Zillow's ZIP rent index needs
+      # no key and still works.
+      CENSUS_API_KEY: "${CENSUS_API_KEY:-}"
+      # Free from eia.gov/opendata/register.php. Unlocks the average residential
+      # electricity bill for a budget's state.
+      EIA_API_KEY: "${EIA_API_KEY:-}"
+      # Set to 1 only while reaching this over plain HTTP on the LAN. Leave it
+      # unset once Let's Encrypt is in front, so the session cookie is Secure.
+      COOKIE_INSECURE: "1"
+      # Claude writes the briefings and answers questions. Without it the app
+      # still works — briefings fall back to a plain generated summary.
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      CLAUDE_MODEL: "claude-opus-5"
+      CLAUDE_EFFORT: "medium"
+      # Suggests envelopes for imported receipts no rule caught. Sent payee
+      # names and envelope names only.
+      CLAUDE_MATCH_MODEL: "${CLAUDE_MATCH_MODEL:-}"
+      # Booking, for friends on the household's guest list. Off until its page
+      # address and mail are set and an owner turns it on; see DEPLOY.md,
+      # "Booking". BOOK_URL is the public origin the sign-in links are built
+      # on, never taken from a request.
+      BOOK_URL: "${BOOK_URL:-}"
+      BOOK_HOUSEHOLD: "${BOOK_HOUSEHOLD:-}"
+      # Where mail goes out: MailPlus on the NAS or an external relay, your choice.
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      # 1 only for a relay on the NAS itself that offers no TLS; see DEPLOY.md.
+      SMTP_PLAIN_AUTH: "${SMTP_PLAIN_AUTH:-}"
+      # How many reverse proxies are in front (1 for one); for the per-IP limit.
+      TRUST_PROXY: "${TRUST_PROXY:-}"
+    volumes:
+      # The append-only log. The only state worth backing up.
+      - ./api/data:/data
+    restart: unless-stopped

@@ -1,0 +1,179 @@
+<!doctype html>
+<!-- Generated from the design canvas (Today-phone.dc.html). Lift the markup inside .hp;
+     the classes are the ones in ../components.css, the colours all come from
+     ../../../../site/tokens.css. The switcher above the frame is not part of
+     the design. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Today, on a phone</title>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap">
+<link rel="stylesheet" href="../../../../site/tokens.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+body{margin:0;background:#8a8f99;font-family:system-ui,sans-serif}
+.mock-switch{display:flex;gap:16px;align-items:center;padding:10px 16px;font:13px system-ui,sans-serif;color:#fff;background:#24272e}
+.mock-switch a{color:#9fd0ff;margin-left:auto}
+.frame{width:390px;margin:24px auto 48px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+
+body{margin:0}
+a{color:inherit}a:hover{color:inherit}
+.mock .tabbar{position:static;display:grid}
+.mock .composer{position:static}
+
+</style>
+</head>
+<body>
+
+<form class="mock-switch" aria-label="Look">
+  <label>Scheme <select data-attr="scheme"><option selected>quartz</option><option>lapis</option><option>iolite</option><option>graphite</option></select></label>
+  <label>Mode <select data-attr="mode"><option selected>light</option><option>dark</option></select></label>
+  <a href="index.html">All mockups</a>
+</form>
+<div class="frame">
+<div class="hp mock" data-scheme="quartz" data-mode="light" style="width: 390px; height: 2640px; display: flex; flex-direction: column; overflow: hidden">
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <button class="pill" type="button" aria-haspopup="menu">
+        <span style="min-width: 0"><span class="name">Rivera household</span><span class="sub">Monday 2 November</span></span>
+        <svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+      </button>
+      <button class="pill member" type="button" aria-label="Alice, signed in"><span class="who mine lg">A</span></button>
+    </div>
+  </header>
+
+  <main class="wrap" style="flex: 1">
+    <div class="today">
+
+      <div class="brief">
+        <div class="thread-tools">
+          <div class="filters" role="group" aria-label="Show">
+            <button type="button" aria-pressed="true">Everything</button>
+            <button type="button" aria-pressed="false">Mine</button>
+            <button type="button" aria-pressed="false">Theirs</button>
+            <button type="button" aria-pressed="false">Waiting</button>
+          </div>
+        </div>
+
+        <div class="day-head">Today</div>
+
+        <article class="claude briefing">
+          <div class="byline claude-by"><svg class="mark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/></svg>Claude · this morning's briefing <span class="asof">· 7:02</span></div>
+          <h1 class="t-headline">The registration renewal is due Thursday, and Vehicle can't cover it yet.</h1>
+          <div class="prose">
+            <p><a href="#">Vehicle</a> has $38 left and the <a href="#">renewal</a> is $148, so it needs about $110 before Thursday. Travel has the most room this month.</p>
+            <p>Bob moved <a href="#">the vet</a> to Tuesday at 10:30 on his phone; the plan still says Monday. <a href="#">Fix the back gate</a> has been in Doing for three weeks.</p>
+          </div>
+          <div class="cards">
+            <div class="decided approved"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg><span><span class="what">Move $110 from Travel to Vehicle.</span> Approved by <b>Bob</b> · 7:41 · <q>The Bahamas deposit is paid.</q></span></div>
+          </div>
+        </article>
+
+        <div class="provisional drift">
+          <div class="waiting"><span class="chip moved"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/></svg>moved</span>The calendar changed · 7:02</div>
+          <h3>Bob moved Vet · Juniper to Tue 3 Nov, 10:30 on his phone</h3>
+          <p class="why">The plan says Mon 2 Nov, 9:00.</p>
+          <div class="actions"><button class="btn primary" type="button">Move the plan too</button><button class="btn" type="button">Put the calendar back</button><button class="btn" type="button">Leave both</button></div>
+        </div>
+      </div>
+
+      <aside class="yours" aria-label="Yours">
+        <div class="eyebrow"><span class="who mine" style="width: 16px; height: 16px; font-size: 9px">A</span>Yours · what the briefing was written from</div>
+        <div class="rail">
+          <h4>Today and tomorrow</h4>
+          <ul>
+            <li><a href="#"><span class="who mine" style="width: 18px; height: 18px; font-size: 10px">A</span>Gym<span class="v">7:30</span></a></li>
+            <li><a href="#"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true" style="color: var(--src-household-line)"><path d="M2.5 7.5L8 3l5.5 4.5V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z"/><path d="M6.5 13.5v-3.5h3v3.5"/></svg>Vet · Juniper<span class="chip moved" style="margin-left: 4px">moved</span><span class="v">Tue 10:30</span></a></li>
+            <li><a href="#"><span class="who partner" style="width: 18px; height: 18px; font-size: 10px">B</span>Choir<span class="v">Tue 18:30</span></a></li>
+          </ul>
+        </div>
+        <div class="rail">
+          <h4>Plans that need you</h4>
+          <ul>
+            <li><a href="#">Book the chimney sweep<span class="v"><span class="chip asked">Bob asked</span></span></a></li>
+            <li><a href="#">Registration renewal<span class="v"><span class="chip due">Thu 5</span></span></a></li>
+            <li><a href="#">Fix the back gate<span class="v"><span class="chip stale">3 wks</span></span></a></li>
+          </ul>
+        </div>
+        <div class="rail">
+          <h4>Money this month</h4>
+          <ul>
+            <li><a href="#">To assign<span class="v">$0</span></a></li>
+            <li><a href="#">Vehicle<span class="v">$148 left</span></a></li>
+            <li><a href="#">Dining<span class="v over">$42 over</span></a></li>
+            <li><a href="#">Groceries<span class="v">$412 left</span></a></li>
+          </ul>
+        </div>
+      </aside>
+
+      <section class="thread" aria-label="The rest of today">
+        <div class="newsince">New since you last looked</div>
+
+        <div class="msg theirs">
+          <div class="byline"><span class="who partner" style="width: 18px; height: 18px; font-size: 10px">B</span><b>Bob</b> left a note · 7:38</div>
+          <div class="bubble">The Bahamas deposit is paid, so Travel can give a bit.</div>
+        </div>
+
+        <div class="provisional">
+          <div class="waiting"><span class="who partner" style="width: 18px; height: 18px; font-size: 10px">B</span>Bob asked you · 8:02</div>
+          <h3>Take on Book the chimney sweep</h3>
+          <p class="why"><q>You know the guy.</q></p>
+          <div class="actions"><button class="btn primary" type="button">Take it</button><button class="btn" type="button">Decline</button></div>
+        </div>
+
+        <div class="line"><span><b>Bob</b> set Registration renewal due Thu 5 Nov</span><span class="when">8:15</span></div>
+
+        <div class="msg mine">
+          <div class="byline"><b>You</b> asked Claude · 9:10</div>
+          <div class="bubble">Schedule my dentist at 10 on Thursday</div>
+        </div>
+
+        <div class="claude">
+          <div class="byline claude-by"><svg class="mark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/></svg>Claude answered <span class="asof">· as of 9:10</span></div>
+          <p style="margin-top: 6px">Thursday 10:00 to 11:00 is clear on your calendar. Bob has PT at 11:00 the same morning, so you'd both be out, but it isn't a clash.</p>
+          <p class="looked">Looked at your calendar, Bob's personal calendar and Household.</p>
+          <div class="provisional" style="margin-top: 12px">
+            <div class="waiting">Waiting for you</div>
+            <h3>Dentist · Thu 5 Nov, 10:00 to 11:00 · on your calendar</h3>
+            <ul class="effects">
+              <li>Bob has PT at 11:00 the same morning. Not a clash.</li>
+              <li>Nothing on the Household calendar.</li>
+              <li>A reminder an hour before.</li>
+            </ul>
+            <div class="actions"><button class="btn primary" type="button">Approve</button><button class="btn" type="button">Not now</button><button class="btn" type="button">Decline</button></div>
+          </div>
+        </div>
+
+        <form class="composer">
+          <button class="tray" type="button"><span class="n">3</span>waiting for you</button>
+          <label class="visually-hidden" for="say">Ask Claude, or leave a note for Bob</label>
+          <textarea class="input" id="say" rows="2" placeholder="Ask Claude, or leave a note for Bob"></textarea>
+          <div class="composer-row">
+            <button class="btn" type="button">Leave a note</button>
+            <button class="btn primary" type="submit">Ask Claude</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  </main>
+
+  <nav class="tabbar" aria-label="Screens">
+    <a href="#" aria-current="page"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg></span>Today</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="4.5" height="11" rx="1"/><rect x="9" y="2.5" width="4.5" height="7" rx="1"/></svg></span>Plan</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg></span>Calendar</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="4" width="11" height="8.5" rx="1.5"/><path d="M2.5 6.5l5.5 3.5 5.5-3.5"/></svg></span>Budget</a>
+    <button type="button" aria-haspopup="dialog"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8h.01M8 8h.01M12 8h.01" style="stroke-width: 2.4"/></svg></span>More</button>
+  </nav>
+</div>
+</div>
+<script>
+// mockup only: re-stamp the frame's root when the switcher changes
+const root = document.querySelector('.frame > [data-mode]');
+document.querySelectorAll('.mock-switch select').forEach((s) => s.addEventListener('change', () => {
+  root.setAttribute('data-' + s.dataset.attr, s.value);
+}));
+</script>
+</body>
+</html>

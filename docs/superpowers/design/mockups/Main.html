@@ -1,0 +1,508 @@
+<!doctype html>
+<!-- Generated from the design canvas (Main.dc.html). Lift the markup inside .hp;
+     the classes are the ones in ../components.css, the colours all come from
+     ../../../../site/tokens.css. The switcher above the frame is not part of
+     the design. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Home Planner design language: schemes and core</title>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap">
+<link rel="stylesheet" href="../../../../site/tokens.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+body{margin:0;background:#8a8f99;font-family:system-ui,sans-serif}
+.mock-switch{display:flex;gap:16px;align-items:center;padding:10px 16px;font:13px system-ui,sans-serif;color:#fff;background:#24272e}
+.mock-switch a{color:#9fd0ff;margin-left:auto}
+.frame{width:1440px;margin:24px auto 48px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+
+body{margin:0}
+a{color:inherit}a:hover{color:inherit}
+
+</style>
+</head>
+<body>
+
+<form class="mock-switch" aria-label="Look">
+  <span>Guests have no scheme: always Quartz.</span>
+  <label>Mode <select data-attr="mode"><option>light</option><option>dark</option></select></label>
+  <a href="index.html">All mockups</a>
+</form>
+<div class="frame">
+<div class="hp" data-scheme="quartz" data-mode="light" style="width: 1440px; height: 2240px; padding: 72px 80px; display: flex; flex-direction: column; gap: 56px; overflow: hidden">
+
+  <header style="display: grid; gap: 10px; max-width: 900px">
+    <div class="eyebrow">Home Planner · design language · 28 October 2026</div>
+    <h1 style="font-size: 40px; line-height: 1.1; letter-spacing: -0.025em">Four schemes a member can pick. One set of signals that never moves.</h1>
+    <p class="quiet" style="font-size: 17px; max-width: 760px">A scheme owns the accent and the neutrals. Good, caution, problem, Claude, provisional and the three calendar sources are the same in every scheme, tuned once for light and once for dark.</p>
+  </header>
+
+  <section style="display: grid; gap: 18px">
+    <div style="display: flex; align-items: baseline; gap: 14px">
+      <h2 style="font-size: 22px">Schemes</h2>
+      <span class="quiet t-small">data-scheme on &lt;html&gt;: quartz (default), lapis, iolite, graphite · data-mode: light, dark, or absent to follow the device</span>
+    </div>
+    <div style="display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 16px">
+      
+        <div data-scheme="quartz" data-mode="light" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; font-family: var(--font)">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 17px; font-weight: 600; letter-spacing: -0.015em">Quartz</span>
+            <span style="font-size: 12px; color: var(--ink-faint)">light</span>
+            <span style="margin-left: auto; font-size: 12px; color: var(--ink-soft)">cool, Ion blue</span>
+          </div>
+          <div style="background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--e-1); display: grid; gap: 8px">
+            <div style="display: flex; gap: 14px; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 6px">
+              <span style="font-weight: 600; color: var(--ink); box-shadow: inset 0 -2px var(--accent); padding-bottom: 5px; margin-bottom: -7px">Today</span>
+              <span style="color: var(--ink-soft)">Plan</span>
+              <span style="color: var(--ink-soft)">Calendar</span>
+            </div>
+            <div style="font-size: 15px; font-weight: 600; line-height: 1.3">Registration renewal is due Thursday</div>
+            <div style="font-size: 13px; color: var(--ink-soft)">Vehicle has <b style="color: var(--ink)">$38</b> left. <span class="link">Open the envelope</span></div>
+            <div style="font-size: 12px; color: var(--ink-faint)">Bob · 7:41</div>
+            <div style="display: flex; gap: 6px; margin-top: 2px">
+              <span class="btn primary small">Approve</span>
+              <span class="btn small">Not now</span>
+            </div>
+            <div style="align-self: start; justify-self: end; background: var(--accent-tint); border: 1px solid var(--accent-line); color: var(--ink); font-size: 13px; padding: 7px 11px; border-radius: 12px 12px 4px 12px">Your own words</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px">
+            <div title="surface" style="height: 22px; border-radius: 5px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-raised" style="height: 22px; border-radius: 5px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-sunken" style="height: 22px; border-radius: 5px; background: var(--surface-sunken)"></div>
+            <div title="ink" style="height: 22px; border-radius: 5px; background: var(--ink)"></div>
+            <div title="ink-soft" style="height: 22px; border-radius: 5px; background: var(--ink-soft)"></div>
+            <div title="accent" style="height: 22px; border-radius: 5px; background: var(--accent)"></div>
+            <div title="accent-tint" style="height: 22px; border-radius: 5px; background: var(--accent-tint); box-shadow: inset 0 0 0 1px var(--accent-line)"></div>
+          </div>
+        </div>
+      
+        <div data-scheme="lapis" data-mode="light" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; font-family: var(--font)">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 17px; font-weight: 600; letter-spacing: -0.015em">Lapis</span>
+            <span style="font-size: 12px; color: var(--ink-faint)">light</span>
+            <span style="margin-left: auto; font-size: 12px; color: var(--ink-soft)">limestone, ultramarine</span>
+          </div>
+          <div style="background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--e-1); display: grid; gap: 8px">
+            <div style="display: flex; gap: 14px; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 6px">
+              <span style="font-weight: 600; color: var(--ink); box-shadow: inset 0 -2px var(--accent); padding-bottom: 5px; margin-bottom: -7px">Today</span>
+              <span style="color: var(--ink-soft)">Plan</span>
+              <span style="color: var(--ink-soft)">Calendar</span>
+            </div>
+            <div style="font-size: 15px; font-weight: 600; line-height: 1.3">Registration renewal is due Thursday</div>
+            <div style="font-size: 13px; color: var(--ink-soft)">Vehicle has <b style="color: var(--ink)">$38</b> left. <span class="link">Open the envelope</span></div>
+            <div style="font-size: 12px; color: var(--ink-faint)">Bob · 7:41</div>
+            <div style="display: flex; gap: 6px; margin-top: 2px">
+              <span class="btn primary small">Approve</span>
+              <span class="btn small">Not now</span>
+            </div>
+            <div style="align-self: start; justify-self: end; background: var(--accent-tint); border: 1px solid var(--accent-line); color: var(--ink); font-size: 13px; padding: 7px 11px; border-radius: 12px 12px 4px 12px">Your own words</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px">
+            <div title="surface" style="height: 22px; border-radius: 5px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-raised" style="height: 22px; border-radius: 5px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-sunken" style="height: 22px; border-radius: 5px; background: var(--surface-sunken)"></div>
+            <div title="ink" style="height: 22px; border-radius: 5px; background: var(--ink)"></div>
+            <div title="ink-soft" style="height: 22px; border-radius: 5px; background: var(--ink-soft)"></div>
+            <div title="accent" style="height: 22px; border-radius: 5px; background: var(--accent)"></div>
+            <div title="accent-tint" style="height: 22px; border-radius: 5px; background: var(--accent-tint); box-shadow: inset 0 0 0 1px var(--accent-line)"></div>
+          </div>
+        </div>
+      
+        <div data-scheme="iolite" data-mode="light" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; font-family: var(--font)">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 17px; font-weight: 600; letter-spacing: -0.015em">Iolite</span>
+            <span style="font-size: 12px; color: var(--ink-faint)">light</span>
+            <span style="margin-left: auto; font-size: 12px; color: var(--ink-soft)">lavender grey, indigo</span>
+          </div>
+          <div style="background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--e-1); display: grid; gap: 8px">
+            <div style="display: flex; gap: 14px; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 6px">
+              <span style="font-weight: 600; color: var(--ink); box-shadow: inset 0 -2px var(--accent); padding-bottom: 5px; margin-bottom: -7px">Today</span>
+              <span style="color: var(--ink-soft)">Plan</span>
+              <span style="color: var(--ink-soft)">Calendar</span>
+            </div>
+            <div style="font-size: 15px; font-weight: 600; line-height: 1.3">Registration renewal is due Thursday</div>
+            <div style="font-size: 13px; color: var(--ink-soft)">Vehicle has <b style="color: var(--ink)">$38</b> left. <span class="link">Open the envelope</span></div>
+            <div style="font-size: 12px; color: var(--ink-faint)">Bob · 7:41</div>
+            <div style="display: flex; gap: 6px; margin-top: 2px">
+              <span class="btn primary small">Approve</span>
+              <span class="btn small">Not now</span>
+            </div>
+            <div style="align-self: start; justify-self: end; background: var(--accent-tint); border: 1px solid var(--accent-line); color: var(--ink); font-size: 13px; padding: 7px 11px; border-radius: 12px 12px 4px 12px">Your own words</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px">
+            <div title="surface" style="height: 22px; border-radius: 5px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-raised" style="height: 22px; border-radius: 5px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-sunken" style="height: 22px; border-radius: 5px; background: var(--surface-sunken)"></div>
+            <div title="ink" style="height: 22px; border-radius: 5px; background: var(--ink)"></div>
+            <div title="ink-soft" style="height: 22px; border-radius: 5px; background: var(--ink-soft)"></div>
+            <div title="accent" style="height: 22px; border-radius: 5px; background: var(--accent)"></div>
+            <div title="accent-tint" style="height: 22px; border-radius: 5px; background: var(--accent-tint); box-shadow: inset 0 0 0 1px var(--accent-line)"></div>
+          </div>
+        </div>
+      
+        <div data-scheme="graphite" data-mode="light" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; font-family: var(--font)">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 17px; font-weight: 600; letter-spacing: -0.015em">Graphite</span>
+            <span style="font-size: 12px; color: var(--ink-faint)">light</span>
+            <span style="margin-left: auto; font-size: 12px; color: var(--ink-soft)">greys, ink</span>
+          </div>
+          <div style="background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--e-1); display: grid; gap: 8px">
+            <div style="display: flex; gap: 14px; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 6px">
+              <span style="font-weight: 600; color: var(--ink); box-shadow: inset 0 -2px var(--accent); padding-bottom: 5px; margin-bottom: -7px">Today</span>
+              <span style="color: var(--ink-soft)">Plan</span>
+              <span style="color: var(--ink-soft)">Calendar</span>
+            </div>
+            <div style="font-size: 15px; font-weight: 600; line-height: 1.3">Registration renewal is due Thursday</div>
+            <div style="font-size: 13px; color: var(--ink-soft)">Vehicle has <b style="color: var(--ink)">$38</b> left. <span class="link">Open the envelope</span></div>
+            <div style="font-size: 12px; color: var(--ink-faint)">Bob · 7:41</div>
+            <div style="display: flex; gap: 6px; margin-top: 2px">
+              <span class="btn primary small">Approve</span>
+              <span class="btn small">Not now</span>
+            </div>
+            <div style="align-self: start; justify-self: end; background: var(--accent-tint); border: 1px solid var(--accent-line); color: var(--ink); font-size: 13px; padding: 7px 11px; border-radius: 12px 12px 4px 12px">Your own words</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px">
+            <div title="surface" style="height: 22px; border-radius: 5px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-raised" style="height: 22px; border-radius: 5px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-sunken" style="height: 22px; border-radius: 5px; background: var(--surface-sunken)"></div>
+            <div title="ink" style="height: 22px; border-radius: 5px; background: var(--ink)"></div>
+            <div title="ink-soft" style="height: 22px; border-radius: 5px; background: var(--ink-soft)"></div>
+            <div title="accent" style="height: 22px; border-radius: 5px; background: var(--accent)"></div>
+            <div title="accent-tint" style="height: 22px; border-radius: 5px; background: var(--accent-tint); box-shadow: inset 0 0 0 1px var(--accent-line)"></div>
+          </div>
+        </div>
+      
+        <div data-scheme="quartz" data-mode="dark" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; font-family: var(--font)">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 17px; font-weight: 600; letter-spacing: -0.015em">Quartz</span>
+            <span style="font-size: 12px; color: var(--ink-faint)">dark</span>
+            <span style="margin-left: auto; font-size: 12px; color: var(--ink-soft)">cool, Ion blue</span>
+          </div>
+          <div style="background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--e-1); display: grid; gap: 8px">
+            <div style="display: flex; gap: 14px; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 6px">
+              <span style="font-weight: 600; color: var(--ink); box-shadow: inset 0 -2px var(--accent); padding-bottom: 5px; margin-bottom: -7px">Today</span>
+              <span style="color: var(--ink-soft)">Plan</span>
+              <span style="color: var(--ink-soft)">Calendar</span>
+            </div>
+            <div style="font-size: 15px; font-weight: 600; line-height: 1.3">Registration renewal is due Thursday</div>
+            <div style="font-size: 13px; color: var(--ink-soft)">Vehicle has <b style="color: var(--ink)">$38</b> left. <span class="link">Open the envelope</span></div>
+            <div style="font-size: 12px; color: var(--ink-faint)">Bob · 7:41</div>
+            <div style="display: flex; gap: 6px; margin-top: 2px">
+              <span class="btn primary small">Approve</span>
+              <span class="btn small">Not now</span>
+            </div>
+            <div style="align-self: start; justify-self: end; background: var(--accent-tint); border: 1px solid var(--accent-line); color: var(--ink); font-size: 13px; padding: 7px 11px; border-radius: 12px 12px 4px 12px">Your own words</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px">
+            <div title="surface" style="height: 22px; border-radius: 5px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-raised" style="height: 22px; border-radius: 5px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-sunken" style="height: 22px; border-radius: 5px; background: var(--surface-sunken)"></div>
+            <div title="ink" style="height: 22px; border-radius: 5px; background: var(--ink)"></div>
+            <div title="ink-soft" style="height: 22px; border-radius: 5px; background: var(--ink-soft)"></div>
+            <div title="accent" style="height: 22px; border-radius: 5px; background: var(--accent)"></div>
+            <div title="accent-tint" style="height: 22px; border-radius: 5px; background: var(--accent-tint); box-shadow: inset 0 0 0 1px var(--accent-line)"></div>
+          </div>
+        </div>
+      
+        <div data-scheme="lapis" data-mode="dark" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; font-family: var(--font)">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 17px; font-weight: 600; letter-spacing: -0.015em">Lapis</span>
+            <span style="font-size: 12px; color: var(--ink-faint)">dark</span>
+            <span style="margin-left: auto; font-size: 12px; color: var(--ink-soft)">limestone, ultramarine</span>
+          </div>
+          <div style="background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--e-1); display: grid; gap: 8px">
+            <div style="display: flex; gap: 14px; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 6px">
+              <span style="font-weight: 600; color: var(--ink); box-shadow: inset 0 -2px var(--accent); padding-bottom: 5px; margin-bottom: -7px">Today</span>
+              <span style="color: var(--ink-soft)">Plan</span>
+              <span style="color: var(--ink-soft)">Calendar</span>
+            </div>
+            <div style="font-size: 15px; font-weight: 600; line-height: 1.3">Registration renewal is due Thursday</div>
+            <div style="font-size: 13px; color: var(--ink-soft)">Vehicle has <b style="color: var(--ink)">$38</b> left. <span class="link">Open the envelope</span></div>
+            <div style="font-size: 12px; color: var(--ink-faint)">Bob · 7:41</div>
+            <div style="display: flex; gap: 6px; margin-top: 2px">
+              <span class="btn primary small">Approve</span>
+              <span class="btn small">Not now</span>
+            </div>
+            <div style="align-self: start; justify-self: end; background: var(--accent-tint); border: 1px solid var(--accent-line); color: var(--ink); font-size: 13px; padding: 7px 11px; border-radius: 12px 12px 4px 12px">Your own words</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px">
+            <div title="surface" style="height: 22px; border-radius: 5px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-raised" style="height: 22px; border-radius: 5px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-sunken" style="height: 22px; border-radius: 5px; background: var(--surface-sunken)"></div>
+            <div title="ink" style="height: 22px; border-radius: 5px; background: var(--ink)"></div>
+            <div title="ink-soft" style="height: 22px; border-radius: 5px; background: var(--ink-soft)"></div>
+            <div title="accent" style="height: 22px; border-radius: 5px; background: var(--accent)"></div>
+            <div title="accent-tint" style="height: 22px; border-radius: 5px; background: var(--accent-tint); box-shadow: inset 0 0 0 1px var(--accent-line)"></div>
+          </div>
+        </div>
+      
+        <div data-scheme="iolite" data-mode="dark" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; font-family: var(--font)">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 17px; font-weight: 600; letter-spacing: -0.015em">Iolite</span>
+            <span style="font-size: 12px; color: var(--ink-faint)">dark</span>
+            <span style="margin-left: auto; font-size: 12px; color: var(--ink-soft)">lavender grey, indigo</span>
+          </div>
+          <div style="background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--e-1); display: grid; gap: 8px">
+            <div style="display: flex; gap: 14px; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 6px">
+              <span style="font-weight: 600; color: var(--ink); box-shadow: inset 0 -2px var(--accent); padding-bottom: 5px; margin-bottom: -7px">Today</span>
+              <span style="color: var(--ink-soft)">Plan</span>
+              <span style="color: var(--ink-soft)">Calendar</span>
+            </div>
+            <div style="font-size: 15px; font-weight: 600; line-height: 1.3">Registration renewal is due Thursday</div>
+            <div style="font-size: 13px; color: var(--ink-soft)">Vehicle has <b style="color: var(--ink)">$38</b> left. <span class="link">Open the envelope</span></div>
+            <div style="font-size: 12px; color: var(--ink-faint)">Bob · 7:41</div>
+            <div style="display: flex; gap: 6px; margin-top: 2px">
+              <span class="btn primary small">Approve</span>
+              <span class="btn small">Not now</span>
+            </div>
+            <div style="align-self: start; justify-self: end; background: var(--accent-tint); border: 1px solid var(--accent-line); color: var(--ink); font-size: 13px; padding: 7px 11px; border-radius: 12px 12px 4px 12px">Your own words</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px">
+            <div title="surface" style="height: 22px; border-radius: 5px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-raised" style="height: 22px; border-radius: 5px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-sunken" style="height: 22px; border-radius: 5px; background: var(--surface-sunken)"></div>
+            <div title="ink" style="height: 22px; border-radius: 5px; background: var(--ink)"></div>
+            <div title="ink-soft" style="height: 22px; border-radius: 5px; background: var(--ink-soft)"></div>
+            <div title="accent" style="height: 22px; border-radius: 5px; background: var(--accent)"></div>
+            <div title="accent-tint" style="height: 22px; border-radius: 5px; background: var(--accent-tint); box-shadow: inset 0 0 0 1px var(--accent-line)"></div>
+          </div>
+        </div>
+      
+        <div data-scheme="graphite" data-mode="dark" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 16px; display: grid; gap: 12px; font-family: var(--font)">
+          <div style="display: flex; align-items: baseline; gap: 8px">
+            <span style="font-size: 17px; font-weight: 600; letter-spacing: -0.015em">Graphite</span>
+            <span style="font-size: 12px; color: var(--ink-faint)">dark</span>
+            <span style="margin-left: auto; font-size: 12px; color: var(--ink-soft)">greys, ink</span>
+          </div>
+          <div style="background: var(--surface-raised); border: 1px solid var(--line); border-radius: 12px; padding: 14px; box-shadow: var(--e-1); display: grid; gap: 8px">
+            <div style="display: flex; gap: 14px; font-size: 13px; border-bottom: 1px solid var(--line); padding-bottom: 6px">
+              <span style="font-weight: 600; color: var(--ink); box-shadow: inset 0 -2px var(--accent); padding-bottom: 5px; margin-bottom: -7px">Today</span>
+              <span style="color: var(--ink-soft)">Plan</span>
+              <span style="color: var(--ink-soft)">Calendar</span>
+            </div>
+            <div style="font-size: 15px; font-weight: 600; line-height: 1.3">Registration renewal is due Thursday</div>
+            <div style="font-size: 13px; color: var(--ink-soft)">Vehicle has <b style="color: var(--ink)">$38</b> left. <span class="link">Open the envelope</span></div>
+            <div style="font-size: 12px; color: var(--ink-faint)">Bob · 7:41</div>
+            <div style="display: flex; gap: 6px; margin-top: 2px">
+              <span class="btn primary small">Approve</span>
+              <span class="btn small">Not now</span>
+            </div>
+            <div style="align-self: start; justify-self: end; background: var(--accent-tint); border: 1px solid var(--accent-line); color: var(--ink); font-size: 13px; padding: 7px 11px; border-radius: 12px 12px 4px 12px">Your own words</div>
+          </div>
+          <div style="display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px">
+            <div title="surface" style="height: 22px; border-radius: 5px; background: var(--surface); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-raised" style="height: 22px; border-radius: 5px; background: var(--surface-raised); box-shadow: inset 0 0 0 1px var(--line)"></div>
+            <div title="surface-sunken" style="height: 22px; border-radius: 5px; background: var(--surface-sunken)"></div>
+            <div title="ink" style="height: 22px; border-radius: 5px; background: var(--ink)"></div>
+            <div title="ink-soft" style="height: 22px; border-radius: 5px; background: var(--ink-soft)"></div>
+            <div title="accent" style="height: 22px; border-radius: 5px; background: var(--accent)"></div>
+            <div title="accent-tint" style="height: 22px; border-radius: 5px; background: var(--accent-tint); box-shadow: inset 0 0 0 1px var(--accent-line)"></div>
+          </div>
+        </div>
+      
+    </div>
+  </section>
+
+  <section style="display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 16px">
+    
+      <div data-scheme="lapis" data-mode="light" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: grid; gap: 16px; font-family: var(--font)">
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <h2 style="font-size: 18px">The core</h2>
+          <span style="font-size: 12px; color: var(--ink-faint)">shown here in Lapis, light; identical in all four</span>
+        </div>
+        <div class="chips" style="gap: 8px">
+          <span class="chip" style="color: var(--good); background: var(--good-tint); border-color: var(--good-line)"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Good · approved</span>
+          <span class="chip stale"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>Caution · 3 wks</span>
+          <span class="chip" style="color: var(--problem); background: var(--problem-tint); border-color: var(--problem-line)"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/></svg>Problem · $42 over</span>
+          <span class="chip research"><svg class="i sm mark" viewBox="0 0 16 16" aria-hidden="true" style="fill: currentColor; stroke: none"><path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/></svg>Claude · research</span>
+          <span class="chip due"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg>Provisional · due Thu 5</span>
+        </div>
+        <div class="claude" style="padding: 14px">
+          <div class="byline claude-by"><svg class="mark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/></svg>Claude answered <span class="asof">· as of 9:12</span></div>
+          <p style="margin-top: 6px; font-size: 14px">Thursday 10:00 to 11:00 is clear on your calendar. Bob has PT at 11:00 the same morning.</p>
+          <div class="provisional" style="margin-top: 10px; padding: 12px">
+            <div class="waiting">Waiting for you</div>
+            <h3>Dentist · Thu 5 Nov, 10:00 to 11:00 · on your calendar</h3>
+            <div class="actions" style="margin-top: 10px"><span class="btn primary small">Approve</span><span class="btn small">Not now</span><span class="btn small">Decline</span></div>
+          </div>
+        </div>
+        <div class="decided approved"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg><span><span class="what">Move $110 from Travel to Vehicle.</span> Approved by <b>Bob</b> · 7:41 · <q>The trip is paid for.</q></span></div>
+        <div style="display: grid; gap: 8px">
+          <div class="eyebrow">Calendar sources, relative to whoever is looking</div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+            <div class="ev mine" style="padding: 8px 10px"><span class="t">Dentist</span><span class="s">Mine · solid</span></div>
+            <div class="ev partner" style="padding: 8px 10px"><span class="t"><span class="who partner" style="width: 16px; height: 16px; font-size: 9px; margin-right: 4px; vertical-align: -3px">B</span>PT</span><span class="s">Partner · plum rule, initial</span></div>
+            <div class="ev household" style="padding: 8px 10px"><span class="t"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 3px"><path d="M2.5 7.5L8 3l5.5 4.5V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z"/><path d="M6.5 13.5v-3.5h3v3.5"/></svg>Gutters</span><span class="s">Household · stone, house</span></div>
+          </div>
+        </div>
+      </div>
+    
+      <div data-scheme="graphite" data-mode="dark" style="background: var(--surface); color: var(--ink); border: 1px solid var(--line); border-radius: 14px; padding: 20px; display: grid; gap: 16px; font-family: var(--font)">
+        <div style="display: flex; align-items: baseline; gap: 10px">
+          <h2 style="font-size: 18px">The core</h2>
+          <span style="font-size: 12px; color: var(--ink-faint)">shown here in Graphite, dark; identical in all four</span>
+        </div>
+        <div class="chips" style="gap: 8px">
+          <span class="chip" style="color: var(--good); background: var(--good-tint); border-color: var(--good-line)"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg>Good · approved</span>
+          <span class="chip stale"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>Caution · 3 wks</span>
+          <span class="chip" style="color: var(--problem); background: var(--problem-tint); border-color: var(--problem-line)"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/></svg>Problem · $42 over</span>
+          <span class="chip research"><svg class="i sm mark" viewBox="0 0 16 16" aria-hidden="true" style="fill: currentColor; stroke: none"><path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/></svg>Claude · research</span>
+          <span class="chip due"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg>Provisional · due Thu 5</span>
+        </div>
+        <div class="claude" style="padding: 14px">
+          <div class="byline claude-by"><svg class="mark" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/></svg>Claude answered <span class="asof">· as of 9:12</span></div>
+          <p style="margin-top: 6px; font-size: 14px">Thursday 10:00 to 11:00 is clear on your calendar. Bob has PT at 11:00 the same morning.</p>
+          <div class="provisional" style="margin-top: 10px; padding: 12px">
+            <div class="waiting">Waiting for you</div>
+            <h3>Dentist · Thu 5 Nov, 10:00 to 11:00 · on your calendar</h3>
+            <div class="actions" style="margin-top: 10px"><span class="btn primary small">Approve</span><span class="btn small">Not now</span><span class="btn small">Decline</span></div>
+          </div>
+        </div>
+        <div class="decided approved"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg><span><span class="what">Move $110 from Travel to Vehicle.</span> Approved by <b>Bob</b> · 7:41 · <q>The trip is paid for.</q></span></div>
+        <div style="display: grid; gap: 8px">
+          <div class="eyebrow">Calendar sources, relative to whoever is looking</div>
+          <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px">
+            <div class="ev mine" style="padding: 8px 10px"><span class="t">Dentist</span><span class="s">Mine · solid</span></div>
+            <div class="ev partner" style="padding: 8px 10px"><span class="t"><span class="who partner" style="width: 16px; height: 16px; font-size: 9px; margin-right: 4px; vertical-align: -3px">B</span>PT</span><span class="s">Partner · plum rule, initial</span></div>
+            <div class="ev household" style="padding: 8px 10px"><span class="t"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 3px"><path d="M2.5 7.5L8 3l5.5 4.5V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z"/><path d="M6.5 13.5v-3.5h3v3.5"/></svg>Gutters</span><span class="s">Household · stone, house</span></div>
+          </div>
+        </div>
+      </div>
+    
+  </section>
+
+  <section style="display: grid; grid-template-columns: 1.15fr 1fr; gap: 40px; align-items: start">
+    <div style="display: grid; gap: 14px">
+      <div style="display: flex; align-items: baseline; gap: 12px">
+        <h2 style="font-size: 22px">Sources under colour blindness</h2>
+        <span class="quiet t-small">the same three events, simulated</span>
+      </div>
+      <svg width="0" height="0" style="position: absolute" aria-hidden="true">
+        <filter id="protan" color-interpolation-filters="linearRGB"><feColorMatrix type="matrix" values="0.152286 1.052583 -0.204868 0 0  0.114503 0.786281 0.099216 0 0  -0.003882 -0.048116 1.051998 0 0  0 0 0 1 0"/></filter>
+        <filter id="deutan" color-interpolation-filters="linearRGB"><feColorMatrix type="matrix" values="0.367322 0.860646 -0.227968 0 0  0.280085 0.672501 0.047413 0 0  -0.011820 0.042940 0.968881 0 0  0 0 0 1 0"/></filter>
+        <filter id="tritan" color-interpolation-filters="linearRGB"><feColorMatrix type="matrix" values="1.255528 -0.076749 -0.178779 0 0  -0.078411 0.930809 0.147602 0 0  0.004733 0.691367 0.303900 0 0  0 0 0 1 0"/></filter>
+      </svg>
+      <div style="display: grid; gap: 8px">
+        
+          <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center">
+            <span class="t-small quiet">Typical vision</span>
+            <div data-scheme="quartz" data-mode="light" style="filter: none; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-family: var(--font)">
+              <div class="ev mine"><span class="t">Dentist</span></div>
+              <div class="ev partner"><span class="t">B · PT</span></div>
+              <div class="ev household"><span class="t">⌂ Gutters</span></div>
+            </div>
+            <div data-scheme="quartz" data-mode="dark" style="filter: none; background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-family: var(--font)">
+              <div class="ev mine"><span class="t">Dentist</span></div>
+              <div class="ev partner"><span class="t">B · PT</span></div>
+              <div class="ev household"><span class="t">⌂ Gutters</span></div>
+            </div>
+          </div>
+        
+          <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center">
+            <span class="t-small quiet">Protanopia</span>
+            <div data-scheme="quartz" data-mode="light" style="filter: url(#protan); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-family: var(--font)">
+              <div class="ev mine"><span class="t">Dentist</span></div>
+              <div class="ev partner"><span class="t">B · PT</span></div>
+              <div class="ev household"><span class="t">⌂ Gutters</span></div>
+            </div>
+            <div data-scheme="quartz" data-mode="dark" style="filter: url(#protan); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-family: var(--font)">
+              <div class="ev mine"><span class="t">Dentist</span></div>
+              <div class="ev partner"><span class="t">B · PT</span></div>
+              <div class="ev household"><span class="t">⌂ Gutters</span></div>
+            </div>
+          </div>
+        
+          <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center">
+            <span class="t-small quiet">Deuteranopia</span>
+            <div data-scheme="quartz" data-mode="light" style="filter: url(#deutan); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-family: var(--font)">
+              <div class="ev mine"><span class="t">Dentist</span></div>
+              <div class="ev partner"><span class="t">B · PT</span></div>
+              <div class="ev household"><span class="t">⌂ Gutters</span></div>
+            </div>
+            <div data-scheme="quartz" data-mode="dark" style="filter: url(#deutan); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-family: var(--font)">
+              <div class="ev mine"><span class="t">Dentist</span></div>
+              <div class="ev partner"><span class="t">B · PT</span></div>
+              <div class="ev household"><span class="t">⌂ Gutters</span></div>
+            </div>
+          </div>
+        
+          <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center">
+            <span class="t-small quiet">Tritanopia</span>
+            <div data-scheme="quartz" data-mode="light" style="filter: url(#tritan); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-family: var(--font)">
+              <div class="ev mine"><span class="t">Dentist</span></div>
+              <div class="ev partner"><span class="t">B · PT</span></div>
+              <div class="ev household"><span class="t">⌂ Gutters</span></div>
+            </div>
+            <div data-scheme="quartz" data-mode="dark" style="filter: url(#tritan); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-family: var(--font)">
+              <div class="ev mine"><span class="t">Dentist</span></div>
+              <div class="ev partner"><span class="t">B · PT</span></div>
+              <div class="ev household"><span class="t">⌂ Gutters</span></div>
+            </div>
+          </div>
+        
+          <div style="display: grid; grid-template-columns: 120px minmax(0, 1fr) minmax(0, 1fr); gap: 10px; align-items: center">
+            <span class="t-small quiet">No colour at all</span>
+            <div data-scheme="quartz" data-mode="light" style="filter: grayscale(1); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-family: var(--font)">
+              <div class="ev mine"><span class="t">Dentist</span></div>
+              <div class="ev partner"><span class="t">B · PT</span></div>
+              <div class="ev household"><span class="t">⌂ Gutters</span></div>
+            </div>
+            <div data-scheme="quartz" data-mode="dark" style="filter: grayscale(1); background: var(--surface-raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; font-family: var(--font)">
+              <div class="ev mine"><span class="t">Dentist</span></div>
+              <div class="ev partner"><span class="t">B · PT</span></div>
+              <div class="ev household"><span class="t">⌂ Gutters</span></div>
+            </div>
+          </div>
+        
+      </div>
+    </div>
+
+    <div style="display: grid; gap: 14px">
+      <h2 style="font-size: 22px">Type, on Satoshi</h2>
+      <div style="display: grid; gap: 10px">
+        <div style="display: grid; grid-template-columns: 120px 1fr; align-items: baseline; gap: 12px"><span class="t-micro faint">display · 30 · 600</span><span style="font-size: 30px; font-weight: 600; letter-spacing: -0.03em; line-height: 1.1">$1,240 left</span></div>
+        <div style="display: grid; grid-template-columns: 120px 1fr; align-items: baseline; gap: 12px"><span class="t-micro faint">headline · 21 · 600</span><span class="t-headline">The briefing leads the page</span></div>
+        <div style="display: grid; grid-template-columns: 120px 1fr; align-items: baseline; gap: 12px"><span class="t-micro faint">title · 17 · 600</span><span class="t-title">Tankless water heater</span></div>
+        <div style="display: grid; grid-template-columns: 120px 1fr; align-items: baseline; gap: 12px"><span class="t-micro faint">input · 16 · 400</span><span style="font-size: 16px">Schedule my dentist at 10 on Thursday</span></div>
+        <div style="display: grid; grid-template-columns: 120px 1fr; align-items: baseline; gap: 12px"><span class="t-micro faint">body · 15 · 400</span><span class="t-body">Vehicle has $38 left, so it needs about $110 before then.</span></div>
+        <div style="display: grid; grid-template-columns: 120px 1fr; align-items: baseline; gap: 12px"><span class="t-micro faint">ui · 14 · 500</span><span class="t-ui" style="font-weight: 500">Ask Bob to take it</span></div>
+        <div style="display: grid; grid-template-columns: 120px 1fr; align-items: baseline; gap: 12px"><span class="t-micro faint">small · 13 · 400</span><span class="t-small quiet">Bob moved Fix the back gate to Doing</span></div>
+        <div style="display: grid; grid-template-columns: 120px 1fr; align-items: baseline; gap: 12px"><span class="t-micro faint">micro · 12 · 500</span><span class="t-micro faint" style="font-weight: 500">Claude answered · as of 9:12</span></div>
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 16px; margin-top: 10px">
+        <div style="display: grid; gap: 6px; align-content: start">
+          <div class="eyebrow">Space</div>
+          <div style="display: flex; align-items: flex-end; gap: 5px">
+            <i style="width: 4px; height: 4px; background: var(--accent)"></i><i style="width: 8px; height: 8px; background: var(--accent)"></i><i style="width: 12px; height: 12px; background: var(--accent)"></i><i style="width: 16px; height: 16px; background: var(--accent)"></i><i style="width: 24px; height: 24px; background: var(--accent)"></i><i style="width: 32px; height: 32px; background: var(--accent)"></i><i style="width: 40px; height: 40px; background: var(--accent)"></i>
+          </div>
+          <span class="t-micro faint">4 · 8 · 12 · 16 · 20 · 24 · 32 · 40 · 56</span>
+        </div>
+        <div style="display: grid; gap: 6px; align-content: start">
+          <div class="eyebrow">Radii</div>
+          <div style="display: flex; gap: 6px; align-items: flex-end">
+            <i style="width: 30px; height: 30px; border: 1.5px solid var(--ink-soft); border-radius: 6px"></i><i style="width: 30px; height: 30px; border: 1.5px solid var(--ink-soft); border-radius: 10px"></i><i style="width: 30px; height: 30px; border: 1.5px solid var(--ink-soft); border-radius: 12px"></i><i style="width: 30px; height: 30px; border: 1.5px solid var(--ink-soft); border-radius: 16px"></i>
+          </div>
+          <span class="t-micro faint">chip 6 · control 10 · card 12 · sheet 16</span>
+        </div>
+        <div style="display: grid; gap: 6px; align-content: start">
+          <div class="eyebrow">Elevation</div>
+          <div style="display: flex; gap: 8px">
+            <i style="width: 34px; height: 30px; border-radius: 8px; background: var(--surface-raised); box-shadow: var(--e-1); border: 1px solid var(--line)"></i><i style="width: 34px; height: 30px; border-radius: 8px; background: var(--surface-raised); box-shadow: var(--e-2)"></i><i style="width: 34px; height: 30px; border-radius: 8px; background: var(--surface-overlay); box-shadow: var(--e-3)"></i>
+          </div>
+          <span class="t-micro faint">card · popover · sheet · motion 120 / 180 / 260 ms</span>
+        </div>
+      </div>
+    </div>
+  </section>
+</div>
+</div>
+<script>
+// mockup only: re-stamp the frame's root when the switcher changes
+const root = document.querySelector('.frame > [data-mode]');
+document.querySelectorAll('.mock-switch select').forEach((s) => s.addEventListener('change', () => {
+  root.setAttribute('data-' + s.dataset.attr, s.value);
+}));
+</script>
+</body>
+</html>

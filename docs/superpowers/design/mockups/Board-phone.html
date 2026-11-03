@@ -1,0 +1,172 @@
+<!doctype html>
+<!-- Generated from the design canvas (Board-phone.dc.html). Lift the markup inside .hp;
+     the classes are the ones in ../components.css, the colours all come from
+     ../../../../site/tokens.css. The switcher above the frame is not part of
+     the design. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Plan board, on a phone</title>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap">
+<link rel="stylesheet" href="../../../../site/tokens.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+body{margin:0;background:#8a8f99;font-family:system-ui,sans-serif}
+.mock-switch{display:flex;gap:16px;align-items:center;padding:10px 16px;font:13px system-ui,sans-serif;color:#fff;background:#24272e}
+.mock-switch a{color:#9fd0ff;margin-left:auto}
+.frame{width:390px;margin:24px auto 48px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+
+body{margin:0}
+a{color:inherit}a:hover{color:inherit}
+.mock .tabbar{position:static;display:grid}
+
+</style>
+</head>
+<body>
+
+<form class="mock-switch" aria-label="Look">
+  <label>Scheme <select data-attr="scheme"><option>quartz</option><option selected>lapis</option><option>iolite</option><option>graphite</option></select></label>
+  <label>Mode <select data-attr="mode"><option selected>light</option><option>dark</option></select></label>
+  <a href="index.html">All mockups</a>
+</form>
+<div class="frame">
+<div class="hp mock" data-scheme="lapis" data-mode="light" style="width: 390px; height: 2240px; display: flex; flex-direction: column; overflow: hidden">
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <button class="pill" type="button" aria-haspopup="menu">
+        <span style="min-width: 0"><span class="name">Rivera household</span><span class="sub">Monday 2 November</span></span>
+        <svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+      </button>
+      <button class="pill member" type="button" aria-label="Alice, signed in"><span class="who mine lg">A</span></button>
+    </div>
+  </header>
+
+  <main class="wrap" style="flex: 1; display: grid; gap: 18px; align-content: start; padding-bottom: 32px">
+    <div class="page-head">
+      <h1>Plan</h1>
+      <button class="btn primary small" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>New</button>
+    </div>
+    <div class="filters" role="group" aria-label="Show">
+      <button type="button" aria-pressed="true">Both</button>
+      <button type="button" aria-pressed="false">Mine</button>
+      <button type="button" aria-pressed="false">Bob's</button>
+      <span class="sep"></span>
+      <button type="button" aria-pressed="false">Show done</button>
+    </div>
+
+    <div class="board">
+
+      <section class="area" aria-labelledby="a-house">
+        <div class="area-head"><h2 id="a-house">House</h2><span class="count">5 plans</span></div>
+        <div class="lane">
+          <div class="lane-label">Planning</div>
+          <div class="bcard provisional">
+            <span class="title">Book the chimney sweep</span>
+            <span class="ask-line">Bob asked you · <q>You know the guy.</q></span>
+            <div class="actions"><button class="btn small primary" type="button">Take it</button><button class="btn small" type="button">Decline</button></div>
+          </div>
+          <a class="bcard" href="#">
+            <span class="title">Tankless water heater</span>
+            <span class="chips"><span class="who mine">A</span><span class="chip">researching</span><span class="chip research"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true" style="fill: currentColor; stroke: none"><path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/></svg>research</span><span class="chip money">$ House reserve · <b>$1,240 left</b></span></span>
+          </a>
+          <a class="bcard" href="#">
+            <span class="title">Solar and a battery</span>
+            <span class="chips"><span class="who partner">B</span><span class="chip">someday</span></span>
+          </a>
+        </div>
+        <div class="lane">
+          <div class="lane-label"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>Doing</div>
+          <a class="bcard" href="#">
+            <span class="title">Fix the back gate</span>
+            <span class="chips"><span class="who mine">A</span><span class="chip stale"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>3 wks</span></span>
+          </a>
+          <a class="bcard" href="#">
+            <span class="title">Clear the gutters</span>
+            <span class="chips"><span class="who mine">A</span><span class="chip block"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>Sat 2–3pm</span></span>
+          </a>
+        </div>
+        <a class="shelf" href="#"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h11M2.5 11h11M4 5v6M12 5v6"/></svg><span><b>Things we want to improve at the house</b> · holds 4</span><svg class="i sm go" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg></a>
+      </section>
+
+      <section class="area" aria-labelledby="a-money">
+        <div class="area-head"><h2 id="a-money">Money</h2><span class="count">2 plans</span></div>
+        <div class="lane">
+          <div class="lane-label">Planning</div>
+          <a class="bcard" href="#">
+            <span class="title">Refinance the car</span>
+            <span class="chips"><span class="who partner">B</span></span>
+          </a>
+        </div>
+        <div class="lane">
+          <div class="lane-label"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>Doing</div>
+          <a class="bcard" href="#">
+            <span class="title">Registration renewal</span>
+            <span class="chips"><span class="who mine">A</span><span class="chip due"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg>Thu 5</span><span class="chip money">$ Vehicle · <b>$148 left</b></span></span>
+          </a>
+        </div>
+      </section>
+
+      <section class="area" aria-labelledby="a-people">
+        <div class="area-head"><h2 id="a-people">People</h2><span class="count">2 plans</span></div>
+        <div class="lane">
+          <div class="lane-label">Planning</div>
+          <a class="bcard" href="#">
+            <span class="title">Carmen's 70th</span>
+            <span class="chips"><span class="who partner">B</span><span class="chip due"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg>Sun 22 Nov</span></span>
+          </a>
+        </div>
+        <div class="lane">
+          <div class="lane-label"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>Doing</div>
+          <a class="bcard" href="#">
+            <span class="title">Vet · Juniper</span>
+            <span class="chips"><span class="who partner">B</span><span class="chip block"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>Mon 9:00</span><span class="chip moved"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/></svg>moved</span></span>
+          </a>
+        </div>
+      </section>
+
+      <section class="area" aria-labelledby="a-trips">
+        <div class="area-head"><h2 id="a-trips">Trips</h2><span class="count">3 plans</span></div>
+        <div class="lane">
+          <div class="lane-label">Planning</div>
+          <a class="bcard" href="#">
+            <span class="title">Bahamas, March</span>
+            <span class="chips"><span class="who partner">B</span><span class="chip">researching</span><span class="chip research"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true" style="fill: currentColor; stroke: none"><path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/></svg>research</span><span class="chip money">$ Travel · <b>$510 left</b></span></span>
+          </a>
+          <a class="bcard" href="#">
+            <span class="title">Baja road trip</span>
+            <span class="chips"><span class="who partner">B</span><span class="chip">someday</span></span>
+          </a>
+        </div>
+        <div class="lane">
+          <div class="lane-label"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/></svg>Doing</div>
+          <a class="bcard" href="#">
+            <span class="title">Get the guest room ready</span>
+            <span class="chips"><span class="who mine">A</span><span class="chip due"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg>Fri 11 Dec</span></span>
+          </a>
+        </div>
+        <a class="shelf" href="#"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 5h11M2.5 11h11M4 5v6M12 5v6"/></svg><span><b>Vacations we'd like to take</b> · holds 2</span><svg class="i sm go" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg></a>
+      </section>
+
+    </div>
+  </main>
+
+  <nav class="tabbar" aria-label="Screens">
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg></span>Today</a>
+    <a href="#" aria-current="page"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="4.5" height="11" rx="1"/><rect x="9" y="2.5" width="4.5" height="7" rx="1"/></svg></span>Plan</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg></span>Calendar</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="4" width="11" height="8.5" rx="1.5"/><path d="M2.5 6.5l5.5 3.5 5.5-3.5"/></svg></span>Budget</a>
+    <button type="button" aria-haspopup="dialog"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8h.01M8 8h.01M12 8h.01" style="stroke-width: 2.4"/></svg></span>More</button>
+  </nav>
+</div>
+</div>
+<script>
+// mockup only: re-stamp the frame's root when the switcher changes
+const root = document.querySelector('.frame > [data-mode]');
+document.querySelectorAll('.mock-switch select').forEach((s) => s.addEventListener('change', () => {
+  root.setAttribute('data-' + s.dataset.attr, s.value);
+}));
+</script>
+</body>
+</html>

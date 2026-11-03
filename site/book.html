@@ -1,0 +1,790 @@
+<!doctype html>
+<html lang="en" data-place="placitas">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>Come and stay</title>
+<!-- The booking page: the one page a guest reaches, through the owner's proxy,
+     which exposes /book and nothing else. So the shared tokens are read from
+     /book/tokens.css (the same file as /tokens.css), and the page never stamps
+     a scheme: a guest has no preference to read, and a member's is personal.
+     data-place="placitas" is the place layer: accent and neutrals from the
+     place, and --place-* colours for the illustration only. No first-paint
+     script, no top bar, no household pill, and no route under /api. Satoshi
+     comes from Fontshare, as it does for every page of the app. -->
+<link href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="/book/tokens.css" />
+<style>
+  /* ── page ─────────────────────────────────────────────────────────────── */
+  html, body { margin: 0; }
+  body { background: var(--surface); }
+  .hp { container: page / inline-size; box-sizing: border-box; min-height: 100vh; background: var(--surface); color: var(--ink);
+    font-family: var(--font); font-size: var(--fs-body); line-height: var(--lh-body); -webkit-font-smoothing: antialiased;
+    font-variant-numeric: tabular-nums; }
+  .hp *, .hp *::before, .hp *::after { box-sizing: border-box; }
+  .hp h1, .hp h2, .hp h3, .hp p { margin: 0; }
+  .hp h1, .hp h2, .hp h3 { font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight); line-height: var(--lh-snug); }
+  .hp :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 4px; }
+  .hp [hidden] { display: none !important; }
+  .hp svg.i { width: 16px; height: 16px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6;
+    stroke-linecap: round; stroke-linejoin: round; }
+  .hp svg.i.sm { width: 13px; height: 13px; stroke-width: 1.8; }
+  .visually-hidden { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  .t-small { font-size: var(--fs-small); }
+  .quiet { color: var(--ink-soft); }
+  .faint { color: var(--ink-faint); }
+
+  /* ── buttons, links, fields ───────────────────────────────────────────── */
+  .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--sp-2);
+    min-height: var(--tap); padding: 0 var(--sp-4); font: inherit; font-size: var(--fs-ui); font-weight: var(--fw-medium);
+    color: var(--ink); background: var(--surface-sunken); border: var(--stroke) solid var(--line); border-radius: var(--r-control);
+    cursor: pointer; white-space: nowrap; text-decoration: none;
+    transition: background var(--t-fast) var(--ease), border-color var(--t-fast) var(--ease); }
+  .btn:hover:not(:disabled) { border-color: var(--line-strong); }
+  .btn:disabled { opacity: .5; cursor: default; }
+  .btn.primary { background: var(--accent-fill); color: var(--on-accent); border-color: var(--accent-fill); }
+  .btn.primary:hover:not(:disabled) { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); }
+  .btn.small { min-height: 32px; padding: 0 var(--sp-3); font-size: var(--fs-small); }
+  .btn.bare { background: none; border-color: transparent; color: var(--accent-ink); padding-inline: var(--sp-2); }
+  @container page (min-width: 760px) { .btn { min-height: 38px; } .btn.small { min-height: 30px; } }
+  .actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
+  .link { color: var(--accent-ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+    text-decoration-color: var(--accent-line); background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
+  .link:hover { text-decoration-color: currentColor; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field > label { font-size: var(--fs-small); font-weight: var(--fw-medium); color: var(--ink-soft); }
+  .input { width: 100%; min-height: var(--tap); font: inherit; font-size: var(--fs-input); color: var(--ink);
+    padding: 10px 12px; background: var(--surface-raised); border: var(--stroke) solid var(--line-strong); border-radius: var(--r-control); }
+  .input::placeholder { color: var(--ink-faint); }
+  .input:focus { outline: 2px solid var(--focus); outline-offset: 0; border-color: var(--focus); }
+  .input[readonly] { background: var(--surface-sunken); border-color: var(--line); }
+  textarea.input { resize: vertical; line-height: var(--lh-body); }
+  .code { letter-spacing: .3em; font-size: 20px; font-weight: 600; }
+  .hint { font-size: var(--fs-small); color: var(--ink-faint); }
+  .card { background: var(--surface-raised); border: var(--stroke) solid var(--line); border-radius: var(--r-card);
+    padding: var(--sp-4); box-shadow: var(--e-1); }
+  .section-title { font-size: var(--fs-title); font-weight: var(--fw-semibold); letter-spacing: var(--tracking-tight); }
+  .pair { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+  .stack { display: grid; gap: 14px; }
+
+  /* the one error box: what happened, in the server's words */
+  .err { display: flex; gap: var(--sp-2); align-items: flex-start; padding: var(--sp-3) var(--sp-4); border-radius: var(--r-control);
+    background: var(--problem-tint); border: var(--stroke) solid var(--problem-line); color: var(--problem); font-size: var(--fs-small); }
+  .err .i { margin-top: 2px; }
+  /* a quiet line saying something went through */
+  .done { font-size: var(--fs-small); color: var(--ink-soft); }
+
+  /* ── the guest page: a letter, not a workspace ────────────────────────── */
+  .guest { min-height: 100%; padding: 0 var(--gutter) var(--sp-9); }
+  .guest .letter { max-width: 560px; margin: 0 auto; display: grid; gap: var(--sp-6); }
+  .guest .hero { margin: 0 calc(var(--gutter) * -1); overflow: hidden; background: var(--place-sky); }
+  .landscape { display: block; width: 100%; height: 220px; }
+  .letterhead { display: grid; gap: 6px; padding-bottom: var(--sp-5); border-bottom: var(--stroke) solid var(--line); }
+  .letterhead h1 { font-size: 26px; line-height: var(--lh-tight); letter-spacing: -0.02em; }
+  .place-line { font-size: var(--fs-micro); font-weight: var(--fw-semibold); letter-spacing: .08em; text-transform: uppercase; color: var(--ink-soft); }
+  .banner { display: grid; gap: var(--sp-2); padding: var(--sp-4); border-radius: var(--r-card); background: var(--accent-tint);
+    border: var(--stroke) solid var(--accent-line); }
+  .banner h2 { font-size: var(--fs-body); }
+  .banner .actions { margin-top: 4px; }
+  .fence { display: block; width: 100%; height: 22px; color: var(--line-strong); }
+
+  /* one column on a phone, in the document's order; the two columns are only a desk's */
+  .body { display: grid; gap: var(--sp-6); }
+  @container page (min-width: 1040px) {
+    .guest { padding-top: var(--sp-7); }
+    .guest .letter { max-width: 980px; gap: var(--sp-7); }
+    .guest .letter.narrow { max-width: 560px; gap: var(--sp-6); }
+    .guest .hero { margin: 0; border-radius: var(--r-card); border: var(--stroke) solid var(--line); }
+    .landscape { height: 300px; }
+    /* The form runs down the right beside the month and the fence; their requests start under the fence. */
+    .body { grid-template-columns: minmax(0, 1fr) 360px; column-gap: var(--sp-8); row-gap: 24px; align-items: start;
+      grid-template-areas: "month ask" "fence ask" "mine ask" "mine know"; }
+    #s-month { grid-area: month; } #fence { grid-area: fence; } #s-ask { grid-area: ask; } #s-mine { grid-area: mine; } #s-know { grid-area: know; }
+    .night { aspect-ratio: auto; height: 56px; }
+    .nights { gap: 6px; }
+  }
+
+  /* the month */
+  .month-bar { display: flex; align-items: center; gap: var(--sp-2); }
+  .month-bar h2 { font-size: var(--fs-title); margin-right: auto; }
+  .nights { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+  .nights .dow { font-size: 11px; font-weight: var(--fw-semibold); color: var(--ink-faint); text-align: center; padding-bottom: 2px; }
+  .night { display: grid; place-items: center; aspect-ratio: 1 / 1; min-height: var(--tap); font: inherit; font-size: var(--fs-ui);
+    font-weight: var(--fw-medium); color: var(--ink); background: var(--surface-raised); border: var(--stroke) solid var(--line);
+    border-radius: var(--r-control); cursor: pointer; padding: 0; }
+  .night.blank { visibility: hidden; }
+  .night.past { color: var(--ink-faint); background: transparent; border-color: transparent; cursor: default; }
+  .night.taken { color: var(--ink-faint); cursor: not-allowed; border-color: var(--line);
+    background: repeating-linear-gradient(135deg, var(--hatch-line) 0 2px, transparent 2px 7px), var(--surface-sunken); }
+  .night.pending { border: var(--stroke-heavy) dashed var(--provisional); background: transparent; }
+  .night.confirmed { background: var(--accent-fill); color: var(--on-accent); border-color: var(--accent-fill); }
+  .night.inrange { background: var(--accent-tint); border-color: var(--accent-line); }
+  .night.picked { background: var(--ink); color: var(--surface-raised); border-color: var(--ink); }
+  .night.unknown { color: var(--ink-faint); cursor: progress; }
+  .night[aria-disabled="true"] { cursor: default; }
+  .key { display: flex; flex-wrap: wrap; gap: var(--sp-2) var(--sp-4); font-size: var(--fs-micro); color: var(--ink-soft); }
+  .key span { display: inline-flex; align-items: center; gap: 6px; }
+  .key i { display: inline-block; width: 14px; height: 14px; border-radius: 4px; border: var(--stroke) solid var(--line); background: var(--surface-raised); }
+  .key i.taken { background: repeating-linear-gradient(135deg, var(--hatch-line) 0 2px, transparent 2px 5px), var(--surface-sunken); }
+  .key i.pending { border: var(--stroke-heavy) dashed var(--provisional); background: transparent; }
+  .key i.confirmed { background: var(--accent-fill); border-color: var(--accent-fill); }
+  .key i.picked { background: var(--ink); border-color: var(--ink); }
+
+  /* their own requests */
+  .requests { display: grid; gap: 10px; }
+  .request { display: grid; gap: var(--sp-2); padding: var(--sp-4); border-radius: var(--r-card); }
+  .request.pending { border: var(--stroke-heavy) dashed var(--provisional); }
+  .request.confirmed { border: var(--stroke) solid var(--line); background: var(--surface-raised); }
+  .request.closed { border: var(--stroke) solid var(--line); }
+  .request.closed .dates { color: var(--ink-soft); }
+  .request .dates { font-size: var(--fs-body); font-weight: var(--fw-semibold); }
+  .request .st { font-size: var(--fs-small); color: var(--ink-soft); display: flex; gap: 6px; align-items: flex-start; }
+  .request .st .i { margin-top: 3px; }
+  .request .st.ok { color: var(--good); }
+  .request .ask { font-size: var(--fs-small); color: var(--ink); }
+
+  /* before you come */
+  .know { display: grid; gap: var(--sp-3); padding: var(--sp-4); border-radius: var(--r-card); background: var(--surface-sunken); }
+  .know h2 { font-size: var(--fs-body); font-weight: var(--fw-semibold); }
+  .know ul { list-style: none; margin: 0; padding: 0; display: grid; gap: var(--sp-3); }
+  .know li { display: grid; grid-template-columns: 20px minmax(0, 1fr); gap: var(--sp-3); font-size: var(--fs-small); color: var(--ink-soft); }
+  .know li .i { margin-top: 2px; color: var(--ink-soft); }
+</style>
+</head>
+<body>
+<div class="hp">
+  <div class="guest">
+    <div class="letter narrow" id="letter">
+      <div class="hero" aria-hidden="true">
+        <svg class="landscape" viewBox="0 0 1200 400" preserveAspectRatio="xMaxYMax slice" aria-hidden="true">
+        <rect width="1200" height="400" style="fill: var(--place-sky)"/>
+        <path d="M207 18h1.6v1.6h-1.6zM1123 96h1.6v1.6h-1.6zM190 99h1.6v1.6h-1.6zM51 96h1.6v1.6h-1.6zM1155 149h1.6v1.6h-1.6zM828 55h1.6v1.6h-1.6zM445 40h1.6v1.6h-1.6zM915 97h1.6v1.6h-1.6zM924 65h1.6v1.6h-1.6zM279 141h1.6v1.6h-1.6zM1163 147h1.6v1.6h-1.6zM955 142h1.6v1.6h-1.6zM878 49h1.6v1.6h-1.6zM620 69h1.6v1.6h-1.6zM54 18h1.6v1.6h-1.6zM344 54h1.6v1.6h-1.6zM823 163h1.6v1.6h-1.6zM539 160h1.6v1.6h-1.6zM1166 163h1.6v1.6h-1.6zM443 48h1.6v1.6h-1.6zM283 45h1.6v1.6h-1.6zM257 111h1.6v1.6h-1.6zM1064 145h1.6v1.6h-1.6zM576 116h1.6v1.6h-1.6zM948 27h1.6v1.6h-1.6zM786 156h1.6v1.6h-1.6z" style="fill: var(--place-star)"/>
+        <circle cx="1000" cy="118" r="30" style="fill: var(--place-sun)"/>
+        <path d="M0 300 L120 290 L230 262 L320 238 L400 205 L470 180 L540 150 L600 128 L660 112 L720 104 L790 98 L850 102 L900 96 L960 108 L1010 128 L1060 150 L1120 176 L1200 196 V400 H0Z" style="fill: var(--place-granite)"/>
+        <path d="M604 133C607 181 605 217 609 253L612 253C612 205 616 169 617 133ZM694 115C697 175 695 220 699 265L702 265C702 205 706 160 707 115ZM774 107C777 175 775 226 779 277L782 277C782 209 786 158 787 107ZM864 108C867 168 865 213 869 258L872 258C872 198 876 153 877 108ZM934 112C937 182 935 234 939 287L942 287C942 217 946 164 947 112ZM1024 145C1027 193 1025 229 1029 265L1032 265C1032 217 1036 181 1037 145ZM464 190C467 226 465 253 469 280L472 280C472 244 476 217 477 190Z" style="fill: var(--place-granite-shade)"/>
+        <path d="M548 150L600 133L660 117L720 109L790 103L850 107L900 101L960 113L1010 133L1056 154" style="fill: none; stroke: var(--place-rind); stroke-width: 5; stroke-linejoin: round; stroke-linecap: round"/><path d="M548 141L552.4 153H543.6ZM554 139L557.7 151H551.1ZM561 136L564.1 149H557.8ZM567 131L570.9 145H562.8ZM572 132L575.9 146H568.0ZM579 131L582.6 140H575.0ZM584 128L587.0 139H580.9ZM590 124L594.2 137H586.6ZM597 123L601.0 135H593.6ZM603 121L607.4 135H598.9ZM610 120L613.7 131H606.8ZM615 120L619.7 131H611.2ZM622 117L624.6 130H618.6ZM627 117L631.7 128H622.8ZM633 111L637.6 123H629.3ZM639 111L643.7 122H634.8ZM647 110L649.7 120H643.4ZM652 112L655.6 121H647.9ZM658 105L661.3 117H654.9ZM665 105L668.3 116H661.7ZM671 105L674.3 118H667.3ZM678 103L682.7 114H674.2ZM685 99L688.7 113H682.1ZM691 104L694.6 115H687.7ZM696 100L699.7 112H693.0ZM703 100L707.6 112H698.7ZM710 98L712.9 112H706.4ZM715 99L718.5 112H711.7ZM721 97L724.0 111H717.4ZM729 99L732.1 111H724.9ZM734 93L737.2 107H730.5ZM741 94L744.8 107H737.0ZM747 94L749.9 106H743.7ZM753 94L756.4 107H748.6ZM758 98L761.4 108H755.3ZM764 97L767.4 106H760.9ZM770 96L773.8 106H766.7ZM778 95L782.0 107H773.9ZM785 94L787.7 103H781.7ZM792 91L795.4 105H789.4ZM799 92L802.8 105H795.8ZM807 92L811.4 103H803.2ZM815 94L819.2 107H810.8ZM823 93L827.1 106H818.4ZM830 93L834.7 106H826.1ZM837 97L841.0 108H833.2ZM844 94L848.4 106H839.4ZM852 98L855.7 109H847.5ZM858 94L861.4 107H855.2ZM866 92L869.3 104H861.8ZM871 95L875.2 106H867.3ZM879 94L882.5 104H875.6ZM886 93L890.4 102H881.7ZM893 89L896.5 103H889.5ZM900 90L904.2 101H895.8ZM908 94L911.6 105H903.9ZM914 92L918.0 103H909.5ZM921 93L924.7 107H917.8ZM927 97L930.1 107H923.4ZM933 98L936.5 109H929.5ZM941 101L943.6 112H937.4ZM946 103L949.7 113H941.6ZM952 99L955.4 112H949.3ZM958 104L962.0 113H953.5ZM963 105L967.4 114H959.5ZM970 106L974.0 118H965.6ZM978 112L981.4 122H974.0ZM983 110L987.3 121H979.1ZM989 114L992.8 125H984.7ZM995 116L998.9 129H991.7ZM1003 123L1007.1 133H998.3ZM1010 121L1013.8 132H1005.9ZM1018 125L1021.9 137H1013.3ZM1025 131L1028.9 142H1021.0ZM1031 131L1034.5 144H1026.6ZM1038 132L1042.2 145H1033.3ZM1046 137L1049.1 150H1042.2ZM1053 144L1056.5 155H1050.3Z" style="fill: var(--place-rind)"/>
+        <path d="M0 330 C150 300 260 310 380 318 C520 328 640 296 780 304 C900 310 1020 290 1200 300 V400 H0Z" style="fill: var(--place-caliche)"/>
+        <path d="M0 360 C180 340 330 352 470 360 C640 370 760 342 900 348 C1030 354 1110 344 1200 350 V400 H0Z" style="fill: var(--place-pinon)"/>
+        <path d="M386 327a6 3 0 1 0 13 0a6 3 0 1 0 -13 0zM638 329a4 4 0 1 0 9 0a4 4 0 1 0 -9 0zM50 337a4 4 0 1 0 9 0a4 4 0 1 0 -9 0zM506 343a5 4 0 1 0 9 0a5 4 0 1 0 -9 0zM744 330a6 4 0 1 0 12 0a6 4 0 1 0 -12 0zM1155 307a7 4 0 1 0 14 0a7 4 0 1 0 -14 0zM175 315a5 5 0 1 0 10 0a5 5 0 1 0 -10 0zM217 325a6 4 0 1 0 13 0a6 4 0 1 0 -13 0zM652 322a4 4 0 1 0 9 0a4 4 0 1 0 -9 0zM808 317a5 4 0 1 0 10 0a5 4 0 1 0 -10 0zM538 335a7 5 0 1 0 14 0a7 5 0 1 0 -14 0zM292 329a6 5 0 1 0 12 0a6 5 0 1 0 -12 0zM863 313a7 4 0 1 0 15 0a7 4 0 1 0 -15 0zM499 342a5 4 0 1 0 9 0a5 4 0 1 0 -9 0zM50 341a7 4 0 1 0 13 0a7 4 0 1 0 -13 0zM1037 312a6 4 0 1 0 13 0a6 4 0 1 0 -13 0zM687 326a7 5 0 1 0 14 0a7 5 0 1 0 -14 0zM565 341a4 5 0 1 0 9 0a4 5 0 1 0 -9 0zM767 328a7 4 0 1 0 14 0a7 4 0 1 0 -14 0zM461 339a4 4 0 1 0 9 0a4 4 0 1 0 -9 0zM204 315a4 5 0 1 0 9 0a4 5 0 1 0 -9 0zM157 320a5 5 0 1 0 11 0a5 5 0 1 0 -11 0zM97 369a8 6 0 1 0 16 0a8 6 0 1 0 -16 0zM1022 361a7 5 0 1 0 15 0a7 5 0 1 0 -15 0zM1047 379a6 5 0 1 0 13 0a6 5 0 1 0 -13 0zM276 357a8 6 0 1 0 15 0a8 6 0 1 0 -15 0zM313 354a7 5 0 1 0 15 0a7 5 0 1 0 -15 0zM670 388a9 6 0 1 0 17 0a9 6 0 1 0 -17 0zM733 378a6 6 0 1 0 12 0a6 6 0 1 0 -12 0zM1035 375a7 5 0 1 0 15 0a7 5 0 1 0 -15 0zM126 372a6 5 0 1 0 12 0a6 5 0 1 0 -12 0zM249 353a7 5 0 1 0 14 0a7 5 0 1 0 -14 0zM4 367a6 5 0 1 0 12 0a6 5 0 1 0 -12 0zM32 384a8 5 0 1 0 17 0a8 5 0 1 0 -17 0zM300 362a7 5 0 1 0 14 0a7 5 0 1 0 -14 0zM1004 379a8 5 0 1 0 15 0a8 5 0 1 0 -15 0zM104 359a7 5 0 1 0 14 0a7 5 0 1 0 -14 0z" style="fill: var(--place-juniper)"/>
+        <path d="M836 354 V318 q4 -3 8 0 h52 q4 -3 8 0 V354Z" style="fill: var(--place-adobe)"/>
+        <path d="M904 354 V322 L930 326 V354Z" style="fill: var(--place-adobe-shade)"/>
+        <path d="M842 324h3M856 324h3M870 324h3M884 324h3M898 324h3" style="stroke: var(--place-adobe-shade); stroke-width: 3"/>
+        <rect x="846" y="331" width="13" height="11" rx="1" style="fill: var(--place-window)"/>
+        <rect x="878" y="332" width="12" height="22" rx="1.5" style="fill: var(--place-door)"/>
+        <path d="M936 354V334M941 354V331M946 354V335M951 354V330M956 354V334M961 354V332M966 354V336M971 354V331M936 340H971M936 347H971" style="stroke: var(--place-adobe-shade); stroke-width: 2.2"/>
+        </svg>
+      </div>
+
+      <header class="letterhead">
+        <span class="place-line">Placitas, New Mexico · 5,955 feet</span>
+        <h1 id="title">Come and stay</h1>
+        <p class="quiet" id="lede"></p>
+      </header>
+
+      <div class="err" id="err" role="alert" hidden><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/></svg><span id="err-text"></span></div>
+
+      <!-- Signing in: the address, then the code or the link from the email. -->
+      <form class="stack" id="f-email" hidden>
+        <div class="field">
+          <label for="g-email">Your email</label>
+          <input class="input" id="g-email" type="email" autocomplete="email" required maxlength="200">
+        </div>
+        <button class="btn primary" type="submit">Send me a link</button>
+      </form>
+      <div class="banner" id="sent" role="status" hidden>
+        <h2 id="sent-text"></h2>
+        <p class="t-small quiet">The email has a link and a six-digit code. Either one signs you in. The code works for ten minutes.</p>
+      </div>
+      <form class="stack" id="f-code" hidden>
+        <div class="field">
+          <label for="g-code">Or type the code</label>
+          <input class="input code" id="g-code" inputmode="numeric" autocomplete="one-time-code" placeholder="6 digits" maxlength="6" required pattern="[0-9]{6}">
+        </div>
+        <button class="btn" type="submit">Sign in</button>
+        <button class="link t-small" type="button" id="other-address" style="justify-self: center">Use a different address</button>
+      </form>
+
+      <!-- Signed in: other dates put to them, the month, their requests, the form. -->
+      <div class="banner" id="suggest" role="status" hidden>
+        <h2 id="suggest-h"></h2>
+        <p class="t-small" id="suggest-why"></p>
+        <p class="hint">These nights aren't held. If they suit you, accepting sends a fresh request for them.</p>
+        <div class="actions">
+          <button class="btn primary" type="button" id="suggest-yes">Ask for these nights</button>
+          <button class="btn" type="button" id="suggest-no">No thanks</button>
+        </div>
+      </div>
+
+      <!-- One column on a phone, in this order; on a desk the month, the fence and their requests on the left,
+           the form and "before you come" on the right (grid areas, not reordering). -->
+      <div class="body" id="body" hidden>
+        <section class="stack" id="s-month" aria-labelledby="m-title" style="gap: 12px">
+          <div class="month-bar">
+            <h2 id="m-title"></h2>
+            <button class="btn small" type="button" id="m-prev" aria-label="Previous month"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 4L6 8l4 4"/></svg></button>
+            <button class="btn small" type="button" id="m-next" aria-label="Next month"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg></button>
+          </div>
+          <div class="nights" id="nights" role="group" aria-labelledby="m-title"></div>
+          <div class="key">
+            <span><i></i>Open</span>
+            <span><i class="taken"></i>Taken</span>
+            <span><i class="pending"></i>Yours, waiting</span>
+            <span><i class="confirmed"></i>Yours, confirmed</span>
+            <span><i class="picked"></i>Chosen</span>
+          </div>
+        </section>
+
+        <svg class="fence" id="fence" viewBox="0 0 600 22" preserveAspectRatio="xMinYMax slice" aria-hidden="true"><path d="M2.0 22V4.2M7.9 22V7.2M12.4 22V4.1M17.4 22V4.0M23.7 22V8.0M28.8 22V2.5M34.6 22V10.3M39.1 22V10.5M45.3 22V3.9M49.8 22V3.7M56.1 22V5.4M61.1 22V6.5M65.6 22V11.9M71.9 22V5.5M77.3 22V2.7M82.4 22V3.3M88.5 22V9.9M93.2 22V9.1M97.9 22V6.1M102.7 22V7.8M107.2 22V2.9M112.2 22V7.4M117.7 22V3.0M122.8 22V2.8M128.1 22V6.7M133.4 22V11.8M138.6 22V10.2M142.8 22V4.0M147.4 22V7.3M153.2 22V6.4M158.1 22V6.8M163.5 22V4.2M168.0 22V6.4M172.7 22V9.2M178.6 22V6.9M184.1 22V4.4M190.3 22V7.6M195.8 22V6.9M201.1 22V5.1M206.3 22V6.7M211.6 22V2.6M217.3 22V3.2M223.6 22V9.4M229.0 22V2.6M235.1 22V10.6M239.5 22V7.6M243.9 22V9.6M248.3 22V5.3M254.2 22V3.0M258.7 22V4.8M264.4 22V10.6M270.5 22V2.3M275.2 22V2.5M280.3 22V7.1M286.7 22V3.7M291.2 22V7.7M296.5 22V8.6M301.2 22V8.8M307.0 22V11.8M312.4 22V7.6M316.6 22V8.7M322.2 22V6.9M326.5 22V2.1M332.5 22V2.3M336.9 22V9.3M341.2 22V4.2M346.0 22V10.7M351.1 22V2.9M357.1 22V9.4M361.6 22V2.8M367.1 22V5.0M371.5 22V11.4M377.2 22V7.7M381.6 22V2.6M387.2 22V4.0M391.6 22V3.4M395.9 22V3.4M401.1 22V8.6M406.5 22V2.7M2 15H410M2 19H410" style="fill: none; stroke: currentColor; stroke-width: 2"/></svg>
+
+        <form class="card stack" id="s-ask" aria-labelledby="ask-h">
+          <h2 id="ask-h" class="section-title">Ask for nights</h2>
+          <p class="hint" id="ask-how">Tap the night you arrive, then the last night you stay.</p>
+          <div class="pair">
+            <div class="field"><label for="g-arr">Arriving</label><input class="input" id="g-arr" type="text" readonly placeholder="Choose a night"></div>
+            <div class="field"><label for="g-dep">Leaving</label><input class="input" id="g-dep" type="text" readonly placeholder="Choose a day"></div>
+          </div>
+          <div class="field"><label for="g-n">How many of you</label><input class="input" id="g-n" type="number" inputmode="numeric" min="1" max="20" required></div>
+          <div class="field"><label for="g-note">A note for them</label><textarea class="input" id="g-note" rows="3" maxlength="500" placeholder="Anything they should know"></textarea></div>
+          <div class="actions">
+            <button class="btn primary" type="submit" id="ask-send">Send the request</button>
+            <button class="btn" type="button" id="ask-keep" hidden>Keep it as it is</button>
+          </div>
+          <p class="hint" id="ask-stands" hidden></p>
+          <p class="hint">Your nights are held for you until they answer. Taken nights just say taken.</p>
+          <p class="done" id="ask-done" role="status" hidden></p>
+        </form>
+
+        <section class="stack" id="s-mine" aria-labelledby="mine-h" style="gap: 10px">
+          <h2 id="mine-h" class="section-title">Your requests</h2>
+          <p class="hint" id="mine-empty">Nothing asked for yet. The nights you ask for show here, with their answer.</p>
+          <div class="requests" id="mine"></div>
+        </section>
+
+        <section class="know" id="s-know" aria-labelledby="know-h">
+          <h2 id="know-h">Before you come</h2>
+          <ul>
+            <li><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M1.5 13.5L6 6l3 4 2-2.5 3.5 6z"/></svg><span>Placitas sits at almost 6,000 feet. Afternoons can be warm and nights cold, so bring layers, and drink more water than you think you need.</span></li>
+            <li><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M4.5 3v5a3.5 3.5 0 0 0 7 0V3M3.5 3h2M10.5 3h2"/></svg><span>Free-roaming horses graze the ridges here. Give them room, and please don't feed them.</span></li>
+            <li id="know-dec" hidden><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 2.5c1.5 2 2.5 3.4 2.5 5a2.5 2.5 0 0 1-5 0c0-1.6 1-3 2.5-5zM5 13.5h6"/></svg><span>In December, farolitos line the walk to the San Antonio Mission for Las Posadas on Christmas Eve.</span></li>
+            <li><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="4" width="11" height="8.5" rx="1.5"/><path d="M2.5 6.5l5.5 3.5 5.5-3.5"/></svg><span id="know-arrival">They'll send the address and how to get in before you arrive.</span></li>
+          </ul>
+        </section>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// The page speaks to /book and below, and to nothing else. A guest sees
+// nights as open or taken, and their own; never who, never why.
+const $ = (id) => document.getElementById(id);
+// A number field under the wheel keeps its value: the wheel scrolls the page.
+// (Blurring on wheel is the one way every browser respects; the field
+// regains focus on the next tap.)
+document.addEventListener('wheel', (e) => {
+  const el = document.activeElement;
+  if (el instanceof HTMLInputElement && el.type === 'number' && el.contains(e.target)) el.blur();
+}, { passive: true });
+function node(tag, cls, text) {
+  const n = document.createElement(tag);
+  if (cls) n.className = cls;
+  if (text !== undefined) n.textContent = text;
+  return n;
+}
+function icon(path) {
+  const ns = 'http://www.w3.org/2000/svg';
+  const s = document.createElementNS(ns, 'svg');
+  s.setAttribute('class', 'i sm');
+  s.setAttribute('viewBox', '0 0 16 16');
+  s.setAttribute('aria-hidden', 'true');
+  const p = document.createElementNS(ns, 'path');
+  p.setAttribute('d', path);
+  s.appendChild(p);
+  return s;
+}
+
+/** A call under /book. A refusal throws with the server's own words and its status. */
+async function call(path, body) {
+  const res = await fetch(path, {
+    method: body === undefined ? 'GET' : 'POST',
+    headers: body === undefined ? {} : { 'content-type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+    credentials: 'same-origin',
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok) {
+    const words = data.error || "That didn't go through, and the page wasn't told why";
+    throw Object.assign(new Error(words), { status: res.status });
+  }
+  return data;
+}
+
+/** The server's words as a sentence: a capital, and a full stop. */
+const sentence = (t) => { const s = String(t).trim(); return s.charAt(0).toUpperCase() + s.slice(1) + (/[.?!”]$/.test(s) ? '' : '.'); };
+function showErr(ex) {
+  $('err-text').textContent = sentence(ex.message);
+  $('err').hidden = false;
+  $('err').scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+}
+const clearErr = () => { $('err').hidden = true; };
+
+// ── days ──
+const pad = (n) => String(n).padStart(2, '0');
+const keyOf = (d) => `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+/** Today in a time zone, as YYYY-MM-DD; the browser's own if the zone is not one it knows. */
+function dayIn(tz) {
+  try { return new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date()); }
+  catch { return keyOf(new Date()); }
+}
+// The household's day, once /book/me says where the household is: a night is past by its clock, not the guest's.
+let today = keyOf(new Date());
+const addDays = (key, n) => { const [y, m, d] = key.split('-').map(Number); return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10); };
+const atNoon = (key) => new Date(`${key}T12:00:00Z`);
+const words = (key, opts) => atNoon(key).toLocaleDateString('en-US', { ...opts, timeZone: 'UTC' });
+const dayNum = (key) => Number(key.slice(8));
+/** "Sat 12 Dec" */
+const shortDay = (key) => `${words(key, { weekday: 'short' })} ${dayNum(key)} ${words(key, { month: 'short' })}`;
+/** "Sat 12 to Tue 15 December", "Mon 30 November to Wed 2 December", and the year when it is not this one. */
+function datesWords(arrive, depart) {
+  const year = arrive.slice(0, 4) === today.slice(0, 4) && depart.slice(0, 4) === today.slice(0, 4) ? '' : ` ${depart.slice(0, 4)}`;
+  const from = `${words(arrive, { weekday: 'short' })} ${dayNum(arrive)}`;
+  const to = `${words(depart, { weekday: 'short' })} ${dayNum(depart)} ${words(depart, { month: 'long' })}`;
+  return arrive.slice(0, 7) === depart.slice(0, 7) ? `${from} to ${to}${year}` : `${from} ${words(arrive, { month: 'long' })} to ${to}${year}`;
+}
+const people = (n) => `${n} ${n === 1 ? 'person' : 'people'}`;
+const monthOf = (key) => key.slice(0, 7);
+const addMonth = (month, n) => { const [y, m] = month.split('-').map(Number); const d = new Date(Date.UTC(y, m - 1 + n, 1)); return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}`; };
+
+// ── what the page knows ──
+let me = null;                 // { email, household }
+let month = monthOf(today);    // the month on screen
+const months = new Map();      // month -> Map(night -> status), as /book/nights answered
+let pick = null;               // { arrive, last }: the nights chosen, the last one included
+let changing = null;           // the request being changed, or null
+let requests = [];             // /book/mine
+let asked = '';                // the address a link was asked for
+const dismissed = new Set();
+try { for (const id of JSON.parse(sessionStorage.getItem('book.dismissed') || '[]')) dismissed.add(id); } catch { /* nothing kept */ }
+
+function view(which) {
+  clearErr();
+  const signin = which === 'signin';
+  const book = which === 'book';
+  $('letter').classList.toggle('narrow', !book);
+  $('f-email').hidden = !signin;
+  $('sent').hidden = true;
+  $('f-code').hidden = true;
+  $('body').hidden = !book;
+  if (!book) $('suggest').hidden = true;
+}
+
+function showOff() {
+  view('off');
+  $('title').textContent = "This page isn't available right now.";
+  $('lede').textContent = '';
+  $('lede').className = 'quiet';
+}
+
+function showSignIn() {
+  view('signin');
+  $('title').textContent = 'Come and stay';
+  $('lede').className = 'quiet';
+  $('lede').textContent = "On the north side of the Sandias. Pick nights that are open and send a request; we'll answer by email.";
+}
+
+async function showBooking() {
+  view('book');
+  if (me.tz) { today = dayIn(me.tz); month = monthOf(today); }
+  // Only promised when the household has written it down; otherwise they'll send it themselves.
+  $('know-arrival').textContent = me.arrival ? 'The address and how to get in come with your confirmation email.'
+    : "They'll send the address and how to get in before you arrive.";
+  $('title').textContent = 'Pick your nights';
+  const lede = $('lede');
+  lede.textContent = '';
+  lede.className = 't-small quiet';
+  const out = node('button', 'link', 'Sign out');
+  out.type = 'button';
+  out.addEventListener('click', signOut);
+  lede.append(`${me.household ? `With the ${me.household} household · ` : ''}signed in as ${me.email} · `, out);
+  await refresh();
+}
+
+/** The month on screen and their requests, read again. */
+async function refresh() {
+  months.clear();
+  await Promise.all([loadMonth(month), loadMine()]);
+}
+
+async function loadMonth(m) {
+  renderMonth();
+  try {
+    const r = await call(`/book/nights?month=${m}`);
+    months.set(m, new Map(r.nights.map((n) => [n.night, n.status])));
+  } catch (ex) {
+    if (ex.status === 401) return signedOut();
+    showErr(ex);
+  }
+  if (m === month) renderMonth();
+}
+
+async function loadMine() {
+  try {
+    requests = (await call('/book/mine')).requests;
+  } catch (ex) {
+    if (ex.status === 401) return signedOut();
+    showErr(ex);
+  }
+  renderMine();
+  renderSuggestion();
+}
+
+/** Their session ended (signed out elsewhere, or taken off the list): back to the start. */
+function signedOut() {
+  me = null;
+  showSignIn();
+}
+
+// ── the month ──
+/** A night of the request being changed: theirs to choose again. */
+const inChange = (night) => changing !== null && changing.arrive <= night && night < changing.depart;
+function statusOf(night) {
+  const known = months.get(monthOf(night));
+  if (!known) return 'unknown';
+  if (night < today) return 'past';
+  return known.get(night) ?? 'taken';
+}
+const pickable = (night) => { const s = statusOf(night); return s === 'open' || s === 'unknown' || (inChange(night) && s.startsWith('mine-')); };
+const SAID = { open: 'open', taken: 'taken', past: 'past', unknown: 'not read yet', 'mine-pending': 'yours, waiting for an answer', 'mine-approved': 'yours, confirmed' };
+
+function renderMonth() {
+  const [y, m] = month.split('-').map(Number);
+  $('m-title').textContent = words(`${month}-01`, { month: 'long', year: 'numeric' });
+  $('m-prev').disabled = month <= monthOf(today);
+  $('know-dec').hidden = m !== 12;
+  const grid = $('nights');
+  grid.textContent = '';
+  for (const d of ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun']) grid.appendChild(node('span', 'dow', d));
+  const first = (new Date(Date.UTC(y, m - 1, 1)).getUTCDay() + 6) % 7;
+  const length = new Date(Date.UTC(y, m, 0)).getUTCDate();
+  for (let i = 0; i < first; i++) { const b = node('span', 'night blank'); b.setAttribute('aria-hidden', 'true'); grid.appendChild(b); }
+  for (let d = 1; d <= length; d++) {
+    const night = `${month}-${pad(d)}`;
+    const st = statusOf(night);
+    const b = node('button', 'night', String(d));
+    b.type = 'button';
+    b.dataset.night = night;
+    const chosen = pick && pick.arrive <= night && night <= pick.last;
+    if (st === 'taken') b.classList.add('taken');
+    else if (st === 'past') b.classList.add('past');
+    else if (st === 'mine-pending') b.classList.add('pending');
+    else if (st === 'mine-approved') b.classList.add('confirmed');
+    else if (st === 'unknown') b.classList.add('unknown');
+    if (chosen) b.classList.add(night === pick.arrive || night === pick.last ? 'picked' : 'inrange');
+    const can = pickable(night) && st !== 'unknown';
+    if (st === 'taken' || st === 'past') b.disabled = true;
+    else if (!can) b.setAttribute('aria-disabled', 'true');
+    b.setAttribute('aria-label', `${words(night, { weekday: 'short' })} ${d} ${words(night, { month: 'long' })}, ${SAID[st]}${chosen ? ', chosen' : ''}`);
+    if (chosen) b.setAttribute('aria-pressed', 'true');
+    b.addEventListener('click', () => { if (can) choose(night); });
+    grid.appendChild(b);
+  }
+}
+
+/** Tap the night you arrive, then the last night you stay. A third tap starts again. */
+function choose(night) {
+  clearErr();
+  $('ask-done').hidden = true;
+  if (pick && pick.arrive === pick.last && night > pick.arrive) {
+    let n = pick.arrive;
+    let count = 1;
+    while (n < night) {
+      n = addDays(n, 1);
+      count++;
+      if (!pickable(n)) { showErr(new Error(`${shortDay(n)} is taken, so a stay from ${shortDay(pick.arrive)} can't run past it. Choose nights next to each other`)); return; }
+    }
+    if (count > 30) { showErr(new Error('A stay can be at most 30 nights')); return; }
+    pick = { arrive: pick.arrive, last: night };
+  } else {
+    pick = { arrive: night, last: night };
+  }
+  renderPick();
+  renderMonth();
+  const again = document.querySelector(`[data-night="${night}"]`);
+  again?.focus();
+}
+
+function renderPick() {
+  $('g-arr').value = pick ? shortDay(pick.arrive) : '';
+  $('g-dep').value = pick ? shortDay(addDays(pick.last, 1)) : '';
+  $('ask-how').textContent = !pick ? 'Tap the night you arrive, then the last night you stay.'
+    : pick.arrive === pick.last ? `One night so far. Tap the last night you stay, or send it as it is.`
+    : `${addDaysCount(pick.arrive, pick.last)} nights. Tap another night to start again.`;
+}
+const addDaysCount = (a, b) => Math.round((Date.parse(`${b}T00:00:00Z`) - Date.parse(`${a}T00:00:00Z`)) / 86_400_000) + 1;
+
+$('m-prev').addEventListener('click', () => { month = addMonth(month, -1); void loadMonth(month); });
+$('m-next').addEventListener('click', () => { month = addMonth(month, 1); void loadMonth(month); });
+
+// ── their requests ──
+function renderMine() {
+  const box = $('mine');
+  box.textContent = '';
+  $('mine-empty').hidden = requests.length > 0;
+  // Newest first: the one they just sent is the one they look for.
+  for (const r of [...requests].reverse()) {
+    const open = r.status === 'pending' || r.status === 'approved';
+    const row = node('div', `request ${r.status === 'pending' ? 'pending' : r.status === 'approved' ? 'confirmed' : 'closed'}`);
+    row.appendChild(node('span', 'dates', datesWords(r.arrive, r.depart)));
+    const st = node('span', 'st');
+    const head = people(r.headcount);
+    // A change to a confirmed stay waits beside it; the stay stands until it is answered.
+    const was = r.replaces ? stayRow(r.replaces) : null;
+    const change = r.status === 'approved' && r.stay ? changeFor(r.stay) : null;
+    if (r.status === 'pending') {
+      st.textContent = was ? `${head} · a change to ${datesWords(was.arrive, was.depart)}, waiting for an answer. That stay stands until then.`
+        : `${head} · waiting for an answer`;
+    } else if (r.status === 'approved') {
+      st.classList.add('ok');
+      st.append(icon('M3.5 8.5l3 3 6-7'), node('span', '', change
+        ? `${head} · confirmed, and it stands while your change to ${datesWords(change.arrive, change.depart)} waits for an answer.`
+        : `${head} · confirmed. It's on their calendar.`));
+    } else if (r.status === 'declined') st.textContent = `${head} · they can't have you then${r.why ? `: “${r.why}”` : '.'}`;
+    else if (r.status === 'suggested' && r.suggested) {
+      st.textContent = `${head} · they suggested ${datesWords(r.suggested.arrive, r.suggested.depart)} instead`
+        + `${r.suggested.asked ? ', and you asked for them' : ''}.`;
+    } else if (r.status === 'lapsed' && r.suggested) {
+      st.textContent = `${head} · they suggested ${datesWords(r.suggested.arrive, r.suggested.depart)} instead`
+        + `${r.suggested.asked ? ', and you asked for them' : ', and those dates have passed'}.`;
+    } else st.textContent = `${head} · cancelled`;
+    row.appendChild(st);
+    if (r.status === 'suggested' && r.suggested && !r.suggested.asked) {
+      const acts = node('div', 'actions');
+      const yes = node('button', 'btn small', 'Ask for these nights');
+      yes.type = 'button';
+      yes.addEventListener('click', () => acceptSuggestion(r.suggested.id, yes));
+      acts.appendChild(yes);
+      row.appendChild(acts);
+    }
+    if (open) row.appendChild(rowActions(r, row));
+    box.appendChild(row);
+  }
+}
+
+/** The confirmed stay a change would replace, as a row of theirs. */
+const stayRow = (stay) => requests.find((x) => x.stay === stay && x.status === 'approved') ?? null;
+/** The change waiting on one of their confirmed stays, if there is one. */
+const changeFor = (stay) => requests.find((x) => x.status === 'pending' && x.replaces === stay) ?? null;
+
+function rowActions(r, row) {
+  const acts = node('div', 'actions');
+  const waiting = r.status === 'approved' && r.stay ? changeFor(r.stay) : null;
+  const was = r.replaces ? stayRow(r.replaces) : null;
+  const change = node('button', 'btn small', 'Change');
+  change.type = 'button';
+  change.addEventListener('click', () => startChange(r));
+  const cancel = node('button', 'btn small', r.replaces ? 'Withdraw the change' : 'Cancel');
+  cancel.type = 'button';
+  cancel.addEventListener('click', () => {
+    // Asked once, in place: the row says what cancelling does, and waits.
+    const sure = node('div', 'stack');
+    sure.style.gap = '8px';
+    sure.appendChild(node('p', 'ask', r.status === 'approved'
+      ? `Cancel this stay? Your nights are freed at once, and they are told.${waiting ? ' The change you asked for goes with it.' : ''}`
+      : was ? `Withdraw this change? Your stay on ${datesWords(was.arrive, was.depart)} stands as it is.`
+      : 'Withdraw this request? Your nights are freed at once.'));
+    const a = node('div', 'actions');
+    const yes = node('button', 'btn small primary', r.status === 'approved' ? 'Cancel the stay' : 'Withdraw it');
+    yes.type = 'button';
+    yes.addEventListener('click', async () => {
+      yes.disabled = true;
+      clearErr();
+      try {
+        await call('/book/cancel', { id: r.id });
+        if (changing?.id === r.id) endChange();
+        await refresh();
+      } catch (ex) {
+        yes.disabled = false;
+        if (ex.status === 401) return signedOut();
+        showErr(ex);
+      }
+    });
+    const keep = node('button', 'btn small', 'Keep it');
+    keep.type = 'button';
+    keep.addEventListener('click', () => { sure.replaceWith(acts); cancel.focus(); });
+    a.append(yes, keep);
+    sure.appendChild(a);
+    acts.replaceWith(sure);
+    yes.focus();
+  });
+  // One change waits on a stay at a time: its own row is where to change it again.
+  if (!waiting) acts.append(change);
+  acts.append(cancel);
+  return acts;
+}
+
+function startChange(r) {
+  changing = r;
+  pick = { arrive: r.arrive, last: addDays(r.depart, -1) };
+  $('ask-h').textContent = `Change ${datesWords(r.arrive, r.depart)}`;
+  $('ask-send').textContent = 'Send the change';
+  $('ask-keep').hidden = false;
+  // A confirmed stay is not given up by asking: it stands until they answer.
+  const kept = r.status === 'approved' ? r : r.replaces ? stayRow(r.replaces) : null;
+  $('ask-stands').textContent = kept ? `Your stay on ${datesWords(kept.arrive, kept.depart)} stands until they answer the change.` : '';
+  $('ask-stands').hidden = !kept;
+  $('g-n').value = String(r.headcount);
+  $('g-note').value = r.note || '';
+  $('ask-done').hidden = true;
+  if (monthOf(r.arrive) !== month) { month = monthOf(r.arrive); void loadMonth(month); } else renderMonth();
+  renderPick();
+  $('s-ask').scrollIntoView({ block: 'start', behavior: 'smooth' });
+  $('g-n').focus({ preventScroll: true });
+}
+
+function endChange() {
+  changing = null;
+  pick = null;
+  $('ask-h').textContent = 'Ask for nights';
+  $('ask-send').textContent = 'Send the request';
+  $('ask-keep').hidden = true;
+  $('ask-stands').hidden = true;
+  $('s-ask').reset();
+  renderPick();
+  renderMonth();
+}
+$('ask-keep').addEventListener('click', endChange);
+
+$('s-ask').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearErr();
+  if (!pick) { showErr(new Error('Choose your nights on the calendar first: the night you arrive, then the last night you stay')); return; }
+  const send = $('ask-send');
+  const body = {
+    arrive: pick.arrive, depart: addDays(pick.last, 1),
+    headcount: Number($('g-n').value), note: $('g-note').value.trim(),
+  };
+  const was = changing;
+  send.disabled = true;
+  try {
+    if (was) await call('/book/change', { id: was.id, ...body });
+    else await call('/book/request', body);
+    const kept = was ? (was.status === 'approved' ? was : was.replaces ? stayRow(was.replaces) : null) : null;
+    endChange();
+    const done = $('ask-done');
+    done.textContent = `Sent: ${datesWords(body.arrive, body.depart)}, ${people(body.headcount)}. They'll answer by email.`
+      + (kept ? ` Your stay on ${datesWords(kept.arrive, kept.depart)} stands until then.` : '');
+    done.hidden = false;
+    await refresh();
+  } catch (ex) {
+    if (ex.status === 401) return signedOut();
+    showErr(ex);
+  } finally {
+    send.disabled = false;
+  }
+});
+
+// ── other dates put to them ──
+function renderSuggestion() {
+  const wanted = new URLSearchParams(location.search).get('suggest');
+  const open = requests.filter((r) => r.status === 'suggested' && r.suggested && !r.suggested.asked && !dismissed.has(r.suggested.id));
+  const s = open.find((r) => r.suggested.id === wanted) ?? open.at(-1);
+  const box = $('suggest');
+  box.hidden = !s;
+  if (!s) return;
+  $('suggest-h').textContent = `Those dates don't work, but how about ${datesWords(s.suggested.arrive, s.suggested.depart)}?`;
+  const why = $('suggest-why');
+  why.textContent = '';
+  if (s.why) why.appendChild(node('q', '', s.why));
+  $('suggest-yes').onclick = () => acceptSuggestion(s.suggested.id, $('suggest-yes'));
+  $('suggest-no').onclick = () => {
+    dismissed.add(s.suggested.id);
+    try { sessionStorage.setItem('book.dismissed', JSON.stringify([...dismissed])); } catch { /* for this visit only */ }
+    renderSuggestion();
+  };
+}
+
+async function acceptSuggestion(id, button) {
+  clearErr();
+  button.disabled = true;
+  try {
+    await call('/book/accept-suggestion', { id });
+    // The link that brought them here has done its work.
+    if (location.search) history.replaceState(null, '', location.pathname);
+    const done = $('ask-done');
+    done.textContent = "Asked for those nights. They'll answer by email.";
+    done.hidden = false;
+    await refresh();
+  } catch (ex) {
+    if (ex.status === 401) return signedOut();
+    showErr(ex);
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// ── signing in, and out ──
+$('f-email').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearErr();
+  const b = e.submitter ?? $('f-email').querySelector('button');
+  b.disabled = true;
+  asked = $('g-email').value.trim();
+  try {
+    const r = await call('/book/start', { email: asked });
+    $('sent-text').textContent = r.message;
+    $('f-email').hidden = true;
+    $('sent').hidden = false;
+    $('f-code').hidden = false;
+    $('g-code').value = '';
+    $('g-code').focus();
+  } catch (ex) {
+    showErr(ex);
+  } finally {
+    b.disabled = false;
+  }
+});
+
+$('f-code').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearErr();
+  const b = $('f-code').querySelector('button[type="submit"]');
+  b.disabled = true;
+  try {
+    await call('/book/code', { email: asked, code: $('g-code').value.trim() });
+    await start();
+  } catch (ex) {
+    showErr(ex);
+  } finally {
+    b.disabled = false;
+  }
+});
+
+$('other-address').addEventListener('click', () => {
+  showSignIn();
+  $('g-email').focus();
+});
+
+async function signOut() {
+  try { await call('/book/signout', {}); } catch { /* signed out here either way */ }
+  months.clear();
+  requests = [];
+  pick = null;
+  changing = null;
+  signedOut();
+}
+
+async function start() {
+  try {
+    me = await call('/book/me');
+  } catch (ex) {
+    if (ex.status === 401) return showSignIn();
+    if (ex.status === 404) return showOff();
+    showSignIn();
+    return showErr(ex);
+  }
+  await showBooking();
+}
+void start();
+</script>
+</body>
+</html>

@@ -1,0 +1,526 @@
+/* ==========================================================================
+   tokens.css · the household's design language
+   ==========================================================================
+
+   One file, loaded by Home Planner and by any other app on the NAS that wants
+   to look like it belongs to the same house.
+   It holds custom properties and nothing else: no selectors for elements, no
+   component classes. Each app keeps its own components in its own stylesheet
+   and reads these names.
+
+   HOW A PAGE PICKS ITS LOOK
+
+     <html data-scheme="lapis" data-mode="dark">
+
+   data-scheme   quartz (the default) | lapis | iolite | graphite
+   data-mode     light | dark; leave it off to follow the device
+
+   Resolution, in order of strength:
+     1. data-mode on the element      (the member chose)
+     2. prefers-color-scheme          (the device says)
+     3. light                         (nothing said anything)
+   No data-scheme means Quartz. An un-stamped page therefore renders as
+   Quartz, light or dark to match the device, which is also exactly what a
+   guest on the booking page sees.
+
+   Both attributes also work on any element, which scopes the look to that
+   subtree (the mockups use this to put two schemes side by side). A scoped
+   element must carry BOTH attributes: data-mode alone resets to Quartz, and
+   data-scheme alone does not know the mode.
+
+   WHAT A SCHEME MAY CHANGE, AND WHAT IT MAY NOT
+
+   A scheme owns the accent and the neutrals: surfaces, ink, lines, elevation.
+   It never touches the semantic core: good, caution, problem, Claude, the
+   three calendar sources, and the provisional line. Those are tuned per mode,
+   once, below. This is what lets Alice read the household in Lapis while Bob
+   reads it in Graphite and both learn one set of signals. It is also why no
+   scheme may have a red, amber, green or gold accent: those hues are spoken
+   for.
+
+   CASCADE NOTE FOR MAINTAINERS
+
+   Every rule is wrapped in :where(), so every rule has zero specificity and
+   source order alone decides. The order below is load-bearing:
+     base light  ->  base dark (device)  ->  base dark (explicit)
+     ->  each scheme: light, dark (device), dark (explicit)
+   Each scheme's two dark blocks must stay identical; plain CSS has no way to
+   share one block between a media query and an attribute selector. (When
+   every device in the house runs Safari 17.5 or later, light-dark() can fold
+   each pair into one declaration. The guest page is why that is not yet.)
+
+   FONTS
+
+   Satoshi, loaded by each app, not by this file. Use the variable cut:
+     https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap
+   Fontshare has no static 600; the static request the app makes today
+   (satoshi@400,500,600) returns 400 and 500 only, so every 600 heading has
+   been a synthesized bold. The variable cut is one file and has a true 600.
+   ========================================================================== */
+
+
+/* --------------------------------------------------------------------------
+   1. BASE, LIGHT. Mode-invariant scales, the semantic core in light, and the
+      Quartz neutrals. Applies to the page root and to any element stamped
+      data-mode="light".
+   -------------------------------------------------------------------------- */
+:where(:root, [data-mode="light"]) {
+  color-scheme: light;
+
+  /* ── type ─────────────────────────────────────────────────────────────
+     Satoshi, three weights. 16px is the floor for anything typed into, or
+     iOS zooms the page on focus. Sizes are a short ladder, not a ratio: each
+     step is a role that already exists in the app. */
+  --font: "Satoshi", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fw-regular: 400;
+  --fw-medium: 500;
+  --fw-semibold: 600;
+
+  --fs-nano: 10px;      /* a member's initial in a small disc, and nothing else */
+  --fs-micro: 12px;     /* timestamps, by-lines, chip text, table heads        */
+  --fs-small: 13px;     /* secondary lines, effects, quiet changes             */
+  --fs-ui: 14px;        /* buttons, menu items, list rows                      */
+  --fs-body: 15px;      /* reading text: thread, notes, card bodies            */
+  --fs-input: 16px;     /* anything typed into; never smaller (iOS zoom)       */
+  --fs-title: 17px;     /* section titles, pill names, the card title on phone */
+  --fs-headline: 21px;  /* the briefing's headline, the card page's title      */
+  --fs-display: 30px;   /* one number per screen, at most: left to assign      */
+
+  --lh-tight: 1.25;     /* headlines, display figures                         */
+  --lh-snug: 1.35;      /* titles, chips, one-line rows                        */
+  --lh-body: 1.55;      /* reading text                                       */
+  --tracking-tight: -0.015em;  /* headlines and titles only                   */
+
+  /* ── space ────────────────────────────────────────────────────────────
+     Four-point steps. Use the name, not the number, so a dense scheme could
+     one day tighten them without a hunt. */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-7: 32px;
+  --sp-8: 40px;
+  --sp-9: 56px;
+  --gutter: 16px;            /* page side margin on a phone                   */
+  --gutter-wide: 32px;       /* page side margin from 760px up                */
+  --measure: 680px;          /* the reading column: thread, briefing, card    */
+  --page: 1180px;            /* widest any member screen gets                 */
+  --tap: 44px;               /* smallest thing a thumb is asked to hit        */
+
+  /* ── shape ─────────────────────────────────────────────────────────── */
+  --r-chip: 6px;
+  --r-control: 10px;
+  --r-card: 12px;
+  --r-sheet: 16px;
+  --r-pill: 999px;
+  --stroke: 1px;             /* every hairline and border                    */
+  --stroke-heavy: 1.5px;     /* the provisional dash; selected outlines       */
+  --dash: 5px 4px;           /* the provisional dash pattern, for SVG lines   */
+
+  /* ── motion ────────────────────────────────────────────────────────────
+     Short. Nothing here animates for delight; motion only says where a
+     thing went. prefers-reduced-motion zeroes all three (see the end). */
+  --t-fast: 120ms;
+  --t-base: 180ms;
+  --t-slow: 260ms;
+  --ease: cubic-bezier(.2, .7, .2, 1);
+
+  /* ── the semantic core, light ─────────────────────────────────────────
+     Scheme-invariant. Each signal has an ink (text and icons, 4.5:1 or
+     better on every surface in every scheme), a tint (a quiet background)
+     and a line (a border that reads at 3:1 on its tint). */
+  --good: #0B7A50;
+  --good-tint: #E5F5EC;
+  --good-line: #8FCFB0;
+
+  --caution: #8F4D06;
+  --caution-tint: #FEF0DD;
+  --caution-line: #E8AE63;
+
+  --problem: #B0223E;
+  --problem-tint: #FCECEF;
+  --problem-line: #EBA3B3;
+
+  /* Claude. Everything Claude wrote sits on --claude-paper inside a
+     --claude-line rule, under a by-line in --claude-ink with the mark. The
+     paper is the weakest of those four channels on purpose: the mark and the
+     by-line carry it on the warmest scheme too. Never used for a human. */
+  --claude-ink: #7B5A0E;
+  --claude-mark: #A27716;
+  --claude-paper: #FAF6E7;
+  --claude-line: #DCC88F;
+
+  /* Provisional: the one dashed line. Not real yet, waiting on a person.
+     A proposal, a plan someone asked you to take, a suggested event, a due
+     date (a date, not time set aside), a guest's pending nights. */
+  --provisional: #6F7A8C;
+
+  /* Calendar sources, relative to whoever is looking.
+       mine       solid, the darkest thing on the grid (in dark mode, the
+                  lightest), no hue at all
+       partner    a pale plum fill inside a plum rule, with their initial
+       household  a pale stone fill inside a stone rule, with the house mark
+     Lightness alone separates mine from the other two; plum against stone is
+     the blue-yellow axis that red-green colour blindness keeps; and the
+     initial and the house mark separate them when nothing else does. */
+  --src-mine-fill: #1D2129;
+  --src-mine-ink: #FFFFFF;
+  --src-partner-fill: #F4E9F8;
+  --src-partner-line: #9A55B7;
+  --src-partner-ink: #5B2675;
+  --src-household-fill: #F1E9DC;
+  --src-household-line: #8E6E45;
+  --src-household-ink: #57411F;
+
+  /* The hatch for nights that are taken or held: a booking span, a member's
+     blocked nights, a taken night on the guest page. Reads as "not open"
+     without saying why. */
+  --hatch-line: rgba(23, 25, 31, .14);
+
+  /* ── Quartz, light: the default neutrals and accent ─────────────────── */
+  --surface: #F6F9FE;          /* the page                                   */
+  --surface-raised: #FFFFFF;   /* cards, sheets, the top bar                 */
+  --surface-sunken: #EDF2F9;   /* wells: inputs, effects lists, the tab track */
+  --surface-overlay: #FFFFFF;  /* menus and sheets that float                */
+
+  --ink: #17191F;
+  --ink-soft: #4E5868;
+  --ink-faint: #646E80;
+
+  --line: #DCE5F1;             /* dividers between rows; decorative          */
+  --line-strong: #8390A4;      /* the edge of a control: inputs, checkboxes  */
+  --hair: #EBF0F7;             /* the faintest rule, inside a card           */
+
+  --accent: #0C8CE9;           /* Ion. Marks, focus, the selected tab        */
+  --accent-fill: #0A6FBF;      /* a primary button's background              */
+  --accent-fill-hover: #085C9F;
+  --accent-ink: #0A67B1;       /* accent as text: links, counts, the tray    */
+  --accent-tint: #E5F0FC;      /* selected rows, a member's own words        */
+  --accent-line: #A9CDF2;
+  --on-accent: #FFFFFF;        /* text on --accent-fill                      */
+  --focus: #0C8CE9;
+
+  --e-1: 0 1px 2px rgba(23, 25, 31, .05);
+  --e-2: 0 2px 8px rgba(23, 25, 31, .07), 0 1px 2px rgba(23, 25, 31, .05);
+  --e-3: 0 16px 40px rgba(23, 25, 31, .14), 0 2px 6px rgba(23, 25, 31, .06);
+  --scrim: rgba(23, 25, 31, .32);
+}
+
+
+/* --------------------------------------------------------------------------
+   2. BASE, DARK. Designed, not inverted: surfaces step up in lightness as
+      they come forward, shadows give way to edges, and every signal is
+      re-tuned to hold its contrast on near-black.
+      Two copies, identical: the device's preference, then an explicit choice.
+   -------------------------------------------------------------------------- */
+@media (prefers-color-scheme: dark) {
+  :where(:root:not([data-mode="light"])) {
+    color-scheme: dark;
+
+    --good: #5ED39E;          --good-tint: #0F2A20;     --good-line: #2C6B4F;
+    --caution: #F4B25E;       --caution-tint: #2D2110;  --caution-line: #7A5321;
+    --problem: #FF8EA5;       --problem-tint: #33141C;  --problem-line: #7A2F40;
+
+    --claude-ink: #E1BE68;    --claude-mark: #D9B254;
+    --claude-paper: #1F1C13;  --claude-line: #574A26;
+
+    --provisional: #8E99AB;
+
+    --src-mine-fill: #E9EEF6;       --src-mine-ink: #11151C;
+    --src-partner-fill: #2C2035;    --src-partner-line: #C18BDC;  --src-partner-ink: #EBD3F5;
+    --src-household-fill: #2A251D;  --src-household-line: #C2A57F; --src-household-ink: #EEE0C9;
+    --hatch-line: rgba(233, 238, 246, .13);
+
+    --surface: #0F131A;   --surface-raised: #171C25;  --surface-sunken: #0B0E13;  --surface-overlay: #1E2430;
+    --ink: #E9EEF6;       --ink-soft: #AAB4C3;        --ink-faint: #8B96A7;
+    --line: #262E3A;      --line-strong: #5E6A7C;     --hair: #1D232D;
+    --accent: #3AA6F5;    --accent-fill: #3AA6F5;     --accent-fill-hover: #5DB6F7;
+    --accent-ink: #6DBDF8; --accent-tint: #11283C;    --accent-line: #22507A;
+    --on-accent: #06121F; --focus: #5DB6F7;
+    --e-1: 0 0 0 1px rgba(255, 255, 255, .02);
+    --e-2: 0 2px 10px rgba(0, 0, 0, .45);
+    --e-3: 0 18px 44px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .04);
+    --scrim: rgba(0, 0, 0, .55);
+  }
+}
+:where([data-mode="dark"]) {
+  color-scheme: dark;
+
+  --good: #5ED39E;          --good-tint: #0F2A20;     --good-line: #2C6B4F;
+  --caution: #F4B25E;       --caution-tint: #2D2110;  --caution-line: #7A5321;
+  --problem: #FF8EA5;       --problem-tint: #33141C;  --problem-line: #7A2F40;
+
+  --claude-ink: #E1BE68;    --claude-mark: #D9B254;
+  --claude-paper: #1F1C13;  --claude-line: #574A26;
+
+  --provisional: #8E99AB;
+
+  --src-mine-fill: #E9EEF6;       --src-mine-ink: #11151C;
+  --src-partner-fill: #2C2035;    --src-partner-line: #C18BDC;  --src-partner-ink: #EBD3F5;
+  --src-household-fill: #2A251D;  --src-household-line: #C2A57F; --src-household-ink: #EEE0C9;
+  --hatch-line: rgba(233, 238, 246, .13);
+
+  --surface: #0F131A;   --surface-raised: #171C25;  --surface-sunken: #0B0E13;  --surface-overlay: #1E2430;
+  --ink: #E9EEF6;       --ink-soft: #AAB4C3;        --ink-faint: #8B96A7;
+  --line: #262E3A;      --line-strong: #5E6A7C;     --hair: #1D232D;
+  --accent: #3AA6F5;    --accent-fill: #3AA6F5;     --accent-fill-hover: #5DB6F7;
+  --accent-ink: #6DBDF8; --accent-tint: #11283C;    --accent-line: #22507A;
+  --on-accent: #06121F; --focus: #5DB6F7;
+  --e-1: 0 0 0 1px rgba(255, 255, 255, .02);
+  --e-2: 0 2px 10px rgba(0, 0, 0, .45);
+  --e-3: 0 18px 44px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .04);
+  --scrim: rgba(0, 0, 0, .55);
+}
+
+
+/* --------------------------------------------------------------------------
+   3. SCHEMES. Accent and neutrals only. Quartz is the base above, so it has
+      no block of its own; data-scheme="quartz" is valid and changes nothing.
+
+      Each is named for a stone, like the tokens the app started with:
+        Quartz    cool blue-white, Ion blue. Today's app.
+        Lapis     warm limestone paper, ultramarine. Softer on the eyes,
+                  a little more like a notebook than a screen.
+        Iolite    cool lavender-grey, indigo-violet. Quiet and even.
+        Graphite  neutral greys, ink for an accent. No hue but the signals,
+                  so the signals are all you see.
+   -------------------------------------------------------------------------- */
+
+/* ── Lapis ─────────────────────────────────────────────────────────────── */
+:where([data-scheme="lapis"]) {
+  --surface: #F7F4EE;   --surface-raised: #FFFDF9;  --surface-sunken: #EEE9E0;  --surface-overlay: #FFFDF9;
+  --ink: #1D1A16;       --ink-soft: #57514A;        --ink-faint: #6E675D;
+  --line: #E5DED2;      --line-strong: #928B7C;     --hair: #EFEAE1;
+  --accent: #2F50D9;    --accent-fill: #2B48C8;     --accent-fill-hover: #233BA6;
+  --accent-ink: #2A45C1; --accent-tint: #E9EDFB;    --accent-line: #B8C5F2;
+  --on-accent: #FFFFFF; --focus: #2F50D9;
+  --e-1: 0 1px 2px rgba(29, 26, 22, .05);
+  --e-2: 0 2px 8px rgba(29, 26, 22, .07), 0 1px 2px rgba(29, 26, 22, .05);
+  --e-3: 0 16px 40px rgba(29, 26, 22, .14), 0 2px 6px rgba(29, 26, 22, .06);
+  --scrim: rgba(29, 26, 22, .32);
+}
+@media (prefers-color-scheme: dark) {
+  :where([data-scheme="lapis"]:not([data-mode="light"])) {
+    --surface: #15130F;   --surface-raised: #1E1B16;  --surface-sunken: #100E0B;  --surface-overlay: #26221C;
+    --ink: #EFEAE1;       --ink-soft: #B9B1A4;        --ink-faint: #978E80;
+    --line: #2F2B24;      --line-strong: #6D6859;     --hair: #241F19;
+    --accent: #7D94FF;    --accent-fill: #7D94FF;     --accent-fill-hover: #99ABFF;
+    --accent-ink: #9BADFF; --accent-tint: #1C2142;    --accent-line: #34407A;
+    --on-accent: #0D1230; --focus: #99ABFF;
+    --e-1: 0 0 0 1px rgba(255, 255, 255, .02);
+    --e-2: 0 2px 10px rgba(0, 0, 0, .45);
+    --e-3: 0 18px 44px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .04);
+    --scrim: rgba(0, 0, 0, .55);
+  }
+}
+:where([data-scheme="lapis"][data-mode="dark"]) {
+  --surface: #15130F;   --surface-raised: #1E1B16;  --surface-sunken: #100E0B;  --surface-overlay: #26221C;
+  --ink: #EFEAE1;       --ink-soft: #B9B1A4;        --ink-faint: #978E80;
+  --line: #2F2B24;      --line-strong: #6D6859;     --hair: #241F19;
+  --accent: #7D94FF;    --accent-fill: #7D94FF;     --accent-fill-hover: #99ABFF;
+  --accent-ink: #9BADFF; --accent-tint: #1C2142;    --accent-line: #34407A;
+  --on-accent: #0D1230; --focus: #99ABFF;
+  --e-1: 0 0 0 1px rgba(255, 255, 255, .02);
+  --e-2: 0 2px 10px rgba(0, 0, 0, .45);
+  --e-3: 0 18px 44px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .04);
+  --scrim: rgba(0, 0, 0, .55);
+}
+
+/* ── Iolite ────────────────────────────────────────────────────────────── */
+:where([data-scheme="iolite"]) {
+  --surface: #F6F6FB;   --surface-raised: #FFFFFF;  --surface-sunken: #EDEDF6;  --surface-overlay: #FFFFFF;
+  --ink: #19182B;       --ink-soft: #52516E;        --ink-faint: #696884;
+  --line: #E1E0EF;      --line-strong: #8C8AA6;     --hair: #EEEDF6;
+  --accent: #5B4FE0;    --accent-fill: #5146D3;     --accent-fill-hover: #4337B4;
+  --accent-ink: #4D42CC; --accent-tint: #EEECFD;    --accent-line: #C7C1F6;
+  --on-accent: #FFFFFF; --focus: #5B4FE0;
+  --e-1: 0 1px 2px rgba(25, 24, 43, .05);
+  --e-2: 0 2px 8px rgba(25, 24, 43, .07), 0 1px 2px rgba(25, 24, 43, .05);
+  --e-3: 0 16px 40px rgba(25, 24, 43, .14), 0 2px 6px rgba(25, 24, 43, .06);
+  --scrim: rgba(25, 24, 43, .32);
+}
+@media (prefers-color-scheme: dark) {
+  :where([data-scheme="iolite"]:not([data-mode="light"])) {
+    --surface: #111020;   --surface-raised: #191829;  --surface-sunken: #0C0B17;  --surface-overlay: #212035;
+    --ink: #ECEBFA;       --ink-soft: #AEACCA;        --ink-faint: #8D8BAA;
+    --line: #29283F;      --line-strong: #666484;     --hair: #1E1D30;
+    --accent: #9C93FF;    --accent-fill: #9C93FF;     --accent-fill-hover: #B3ACFF;
+    --accent-ink: #B2ABFF; --accent-tint: #231F48;    --accent-line: #423A84;
+    --on-accent: #120F33; --focus: #B3ACFF;
+    --e-1: 0 0 0 1px rgba(255, 255, 255, .02);
+    --e-2: 0 2px 10px rgba(0, 0, 0, .45);
+    --e-3: 0 18px 44px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .04);
+    --scrim: rgba(0, 0, 0, .55);
+  }
+}
+:where([data-scheme="iolite"][data-mode="dark"]) {
+  --surface: #111020;   --surface-raised: #191829;  --surface-sunken: #0C0B17;  --surface-overlay: #212035;
+  --ink: #ECEBFA;       --ink-soft: #AEACCA;        --ink-faint: #8D8BAA;
+  --line: #29283F;      --line-strong: #666484;     --hair: #1E1D30;
+  --accent: #9C93FF;    --accent-fill: #9C93FF;     --accent-fill-hover: #B3ACFF;
+  --accent-ink: #B2ABFF; --accent-tint: #231F48;    --accent-line: #423A84;
+  --on-accent: #120F33; --focus: #B3ACFF;
+  --e-1: 0 0 0 1px rgba(255, 255, 255, .02);
+  --e-2: 0 2px 10px rgba(0, 0, 0, .45);
+  --e-3: 0 18px 44px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .04);
+  --scrim: rgba(0, 0, 0, .55);
+}
+
+/* ── Graphite ──────────────────────────────────────────────────────────────
+   The accent is ink. Two consequences the components already honour: a link
+   is told from text by its underline, never by colour; and a selected thing
+   is told by a filled shape, never by a tint alone. */
+:where([data-scheme="graphite"]) {
+  --surface: #F5F5F3;   --surface-raised: #FFFFFF;  --surface-sunken: #ECECE9;  --surface-overlay: #FFFFFF;
+  --ink: #161616;       --ink-soft: #525252;        --ink-faint: #6A6A6A;
+  --line: #E2E2DF;      --line-strong: #8E8E8A;     --hair: #EEEEEB;
+  --accent: #161616;    --accent-fill: #161616;     --accent-fill-hover: #383838;
+  --accent-ink: #161616; --accent-tint: #EAEAE7;    --accent-line: #B5B5B1;
+  --on-accent: #FFFFFF; --focus: #161616;
+  --e-1: 0 1px 2px rgba(0, 0, 0, .05);
+  --e-2: 0 2px 8px rgba(0, 0, 0, .07), 0 1px 2px rgba(0, 0, 0, .05);
+  --e-3: 0 16px 40px rgba(0, 0, 0, .14), 0 2px 6px rgba(0, 0, 0, .06);
+  --scrim: rgba(0, 0, 0, .32);
+}
+@media (prefers-color-scheme: dark) {
+  :where([data-scheme="graphite"]:not([data-mode="light"])) {
+    --surface: #121212;   --surface-raised: #1B1B1B;  --surface-sunken: #0C0C0C;  --surface-overlay: #232323;
+    --ink: #EDEDED;       --ink-soft: #ADADAD;        --ink-faint: #8E8E8E;
+    --line: #2B2B2B;      --line-strong: #686868;     --hair: #202020;
+    --accent: #EDEDED;    --accent-fill: #EDEDED;     --accent-fill-hover: #FFFFFF;
+    --accent-ink: #FFFFFF; --accent-tint: #2A2A2A;    --accent-line: #4A4A4A;
+    --on-accent: #121212; --focus: #FFFFFF;
+    --e-1: 0 0 0 1px rgba(255, 255, 255, .02);
+    --e-2: 0 2px 10px rgba(0, 0, 0, .5);
+    --e-3: 0 18px 44px rgba(0, 0, 0, .65), 0 0 0 1px rgba(255, 255, 255, .04);
+    --scrim: rgba(0, 0, 0, .6);
+  }
+}
+:where([data-scheme="graphite"][data-mode="dark"]) {
+  --surface: #121212;   --surface-raised: #1B1B1B;  --surface-sunken: #0C0C0C;  --surface-overlay: #232323;
+  --ink: #EDEDED;       --ink-soft: #ADADAD;        --ink-faint: #8E8E8E;
+  --line: #2B2B2B;      --line-strong: #686868;     --hair: #202020;
+  --accent: #EDEDED;    --accent-fill: #EDEDED;     --accent-fill-hover: #FFFFFF;
+  --accent-ink: #FFFFFF; --accent-tint: #2A2A2A;    --accent-line: #4A4A4A;
+  --on-accent: #121212; --focus: #FFFFFF;
+  --e-1: 0 0 0 1px rgba(255, 255, 255, .02);
+  --e-2: 0 2px 10px rgba(0, 0, 0, .5);
+  --e-3: 0 18px 44px rgba(0, 0, 0, .65), 0 0 0 1px rgba(255, 255, 255, .04);
+  --scrim: rgba(0, 0, 0, .6);
+}
+
+
+/* --------------------------------------------------------------------------
+   3b. PLACE. A layer for a page about the house rather than for a member:
+       today, only the guest page (book.html stamps data-place on <html>).
+       Same contract as a scheme: accent and neutrals, never the core, so a
+       taken night, a pending request and a confirmed stay mean on the guest
+       page exactly what they mean in the app. On top of that, a set of
+       --place-* colours for illustration only. They are decoration: nothing
+       interactive and no signal may use them, which is why the granite pink
+       can sit near the problem hue without trouble.
+
+       Placitas, New Mexico, at 5,955 feet on the north flank of the Sandias.
+         neutrals   natural adobe and caliche
+         accent     the sky-blue of a northern New Mexico door, the colour of
+                    a cloudless sky straight overhead, which is the traditional
+                    pairing with adobe
+         art, light the Sandias at watermelon hour: pink granite, the dark
+                    band of conifers along the crest, piñon-juniper below
+         art, dark  the same view at night, one window lit
+   -------------------------------------------------------------------------- */
+:where([data-place="placitas"]) {
+  --surface: #F6EFE5;   --surface-raised: #FFFBF6;  --surface-sunken: #EEE4D6;  --surface-overlay: #FFFBF6;
+  --ink: #2A2019;       --ink-soft: #64554A;        --ink-faint: #706255;
+  --line: #E6DACB;      --line-strong: #968470;     --hair: #F0E7DB;
+  --accent: #1F6FB2;    --accent-fill: #1D67A6;     --accent-fill-hover: #17568B;
+  --accent-ink: #1B5F9B; --accent-tint: #E4EEF8;    --accent-line: #A9C8E6;
+  --on-accent: #FFFFFF; --focus: #1F6FB2;
+  --e-1: 0 1px 2px rgba(42, 32, 25, .06);
+  --e-2: 0 2px 8px rgba(42, 32, 25, .08), 0 1px 2px rgba(42, 32, 25, .05);
+  --e-3: 0 16px 40px rgba(42, 32, 25, .14), 0 2px 6px rgba(42, 32, 25, .06);
+  --scrim: rgba(42, 32, 25, .32);
+  --hatch-line: rgba(42, 32, 25, .14);
+
+  --place-sky: #F4DFCC;      --place-sun: #F5C68A;
+  --place-granite: #D69488;  --place-granite-shade: #C07F75;  --place-rind: #4B5E47;
+  --place-caliche: #CDB496;  --place-pinon: #929062;  --place-juniper: #5E6942;
+  --place-adobe: #C99F7A;    --place-adobe-shade: #B48A66;  --place-door: #1F6FB2;  --place-window: #7E9DB4;
+  --place-star: transparent;
+}
+@media (prefers-color-scheme: dark) {
+  :where([data-place="placitas"]:not([data-mode="light"])) {
+    --surface: #12151C;   --surface-raised: #1A1E27;  --surface-sunken: #0D1015;  --surface-overlay: #222733;
+    --ink: #F1E9DE;       --ink-soft: #B9AE9F;        --ink-faint: #998E80;
+    --line: #2A2F3A;      --line-strong: #646C7A;     --hair: #20242D;
+    --accent: #78B6EC;    --accent-fill: #78B6EC;     --accent-fill-hover: #97C7F1;
+    --accent-ink: #8EC2F0; --accent-tint: #15283B;    --accent-line: #2C5378;
+    --on-accent: #0A1622; --focus: #97C7F1;
+    --e-1: 0 0 0 1px rgba(255, 255, 255, .02);
+    --e-2: 0 2px 10px rgba(0, 0, 0, .45);
+    --e-3: 0 18px 44px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .04);
+    --scrim: rgba(0, 0, 0, .55);
+    --hatch-line: rgba(241, 233, 222, .12);
+
+    --place-sky: #19213A;      --place-sun: #E9E2CF;
+    --place-granite: #4C3946;  --place-granite-shade: #3E2E3A;  --place-rind: #26332D;
+    --place-caliche: #2A2628;  --place-pinon: #1F241D;  --place-juniper: #2D3628;
+    --place-adobe: #3E322B;    --place-adobe-shade: #33291F;  --place-door: #3E7FBF;  --place-window: #F2B65A;
+    --place-star: rgba(241, 233, 222, .75);
+  }
+}
+:where([data-place="placitas"][data-mode="dark"]) {
+  --surface: #12151C;   --surface-raised: #1A1E27;  --surface-sunken: #0D1015;  --surface-overlay: #222733;
+  --ink: #F1E9DE;       --ink-soft: #B9AE9F;        --ink-faint: #998E80;
+  --line: #2A2F3A;      --line-strong: #646C7A;     --hair: #20242D;
+  --accent: #78B6EC;    --accent-fill: #78B6EC;     --accent-fill-hover: #97C7F1;
+  --accent-ink: #8EC2F0; --accent-tint: #15283B;    --accent-line: #2C5378;
+  --on-accent: #0A1622; --focus: #97C7F1;
+  --e-1: 0 0 0 1px rgba(255, 255, 255, .02);
+  --e-2: 0 2px 10px rgba(0, 0, 0, .45);
+  --e-3: 0 18px 44px rgba(0, 0, 0, .6), 0 0 0 1px rgba(255, 255, 255, .04);
+  --scrim: rgba(0, 0, 0, .55);
+  --hatch-line: rgba(241, 233, 222, .12);
+
+  --place-sky: #19213A;      --place-sun: #E9E2CF;
+  --place-granite: #4C3946;  --place-granite-shade: #3E2E3A;  --place-rind: #26332D;
+  --place-caliche: #2A2628;  --place-pinon: #1F241D;  --place-juniper: #2D3628;
+  --place-adobe: #3E322B;    --place-adobe-shade: #33291F;  --place-door: #3E7FBF;  --place-window: #F2B65A;
+  --place-star: rgba(241, 233, 222, .75);
+}
+
+
+/* --------------------------------------------------------------------------
+   4. REDUCED MOTION. Durations go to zero rather than components each
+      remembering to check.
+   -------------------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  :where(:root, [data-mode]) {
+    --t-fast: 0ms;
+    --t-base: 0ms;
+    --t-slow: 0ms;
+  }
+}
+
+
+/* --------------------------------------------------------------------------
+   5. THE OLD NAMES. site/index.html reads these today. They point at the new
+      tokens so the app keeps working, scheme and mode included, the day this
+      file lands; the migration replaces each use and then deletes this block.
+      Nothing new may use them.
+   -------------------------------------------------------------------------- */
+:where(:root, [data-mode], [data-scheme]) {
+  --ion: var(--accent);
+  --quartz: var(--accent-tint);
+  --graphite: var(--ink);
+  --emerald: var(--good);
+  --sand: var(--caution-line);
+  --rose: var(--problem);
+  --card: var(--surface-raised);
+  --bg: var(--surface);
+  --radius: var(--r-card);
+  --shadow: var(--e-1);
+  /* --ink-soft, --ink-faint, --line and --hair keep their names. */
+}

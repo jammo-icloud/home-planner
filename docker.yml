@@ -1,0 +1,104 @@
+# Home Planner on the Synology, behind DSM's reverse proxy.
+#
+# In DSM: Container Manager → Project → Create, on a folder made in File
+# Station, uploading this file as the compose file (DEPLOY.md has every step).
+# From a shell instead, in that folder:
+#
+#   docker compose -f docker.yml up -d --build
+#
+# One container: the API, which also serves the app shell and the guest page.
+# TLS is not in here. DSM's reverse proxy (Control Panel → Login Portal →
+# Advanced → Reverse Proxy) terminates https://planner.example.com on 443
+# with the NAS's Let's Encrypt certificate and forwards to this container on
+# 8090, so the port below is bound to the NAS's loopback only: nothing on the
+# LAN or the internet reaches the app except through the proxy. The router
+# sends 443 to the NAS; nothing else needs forwarding.
+#
+# A .env beside this file is optional: every value below has a default, and
+# the rest is set in the app, by an administrator on Connectors and by each
+# household's owner in Settings. The defaults written here are the household's
+# time zone and one proxy in front; the public address the sign-in links are
+# built on is empty until Connectors (or a .env) sets it.
+name: home-planner
+
+services:
+  planner:
+    build:
+      # The image is built from the repository on GitHub, so only this file
+      # needs to be on the NAS. The context is the repository root so the
+      # image carries site/ (the shell and /book) as well as api/.
+      context: https://github.com/jammo-icloud/home-planner.git#main
+      dockerfile: api/Dockerfile
+    container_name: home-planner
+    ports:
+      # Loopback only: DSM's reverse proxy is on the same host and is the one
+      # door in. Drop the 127.0.0.1: prefix if you ever want it on the LAN
+      # without TLS (and then set COOKIE_INSECURE=1, or no one stays signed in).
+      - "127.0.0.1:8090:8090"
+    # Lets the container reach DSM's API, Synology Calendar, Contacts and File
+    # Station on the NAS itself.
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    environment:
+      PORT: "8090"
+      # Where the household is. An IANA name, never an abbreviation: it is the
+      # tz_id on every calendar event the app makes and decides which day a
+      # due-date marker falls on.
+      TZ: "${TZ:-America/Denver}"
+      # DSM on this NAS, over HTTP on the loopback the proxy never sees.
+      DSM_URL: "http://host.docker.internal:${DSM_PORT:-5000}"
+      # Only for an install from before folders were chosen in Settings: the
+      # share its files were kept in (e.g. /Planner), carried over once and
+      # suggested first in the picker. Never where a new household's files go;
+      # see DEPLOY.md.
+      PLANNER_ROOT: "${PLANNER_ROOT:-}"
+      # DSM as a phone reaches it from outside, e.g. https://nas.example.com:5001:
+      # what Settings tells an iPhone to add the calendar at, and where the
+      # Calendar's link to Synology Calendar goes. Empty hides the link.
+      DSM_PUBLIC_URL: "${DSM_PUBLIC_URL:-}"
+      # Your DSM account: sees that households exist, never what is in them.
+      ADMIN_USER: "${ADMIN_USER:-}"
+      # The DSM accounts that may sign in, comma separated. Empty means any
+      # account on this NAS, each getting a household of its own.
+      ALLOWED_USERS: "${ALLOWED_USERS:-}"
+      # One directory per household, on the volume below.
+      HOUSEHOLDS_DIR: "/data/households"
+      # The session cookie is Secure: this is only ever reached over https.
+      # COOKIE_INSECURE is deliberately not set here.
+      #
+      # Claude writes the briefings and answers questions. Without the key the
+      # app still runs and briefings fall back to a plain generated summary.
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      CLAUDE_MODEL: "${CLAUDE_MODEL:-claude-opus-5}"
+      CLAUDE_EFFORT: "${CLAUDE_EFFORT:-medium}"
+      CLAUDE_MATCH_MODEL: "${CLAUDE_MATCH_MODEL:-}"
+      # Public measured data for pricing a budget; both keys are free and
+      # optional.
+      CENSUS_API_KEY: "${CENSUS_API_KEY:-}"
+      EIA_API_KEY: "${EIA_API_KEY:-}"
+      # Booking: friends on the guest list ask to stay from /book. Off until
+      # the page's address and the mail are set (here, or on Connectors) and an
+      # owner turns it on in Settings; Settings says which is missing. BOOK_URL
+      # is the address the sign-in links are built on, never taken from a request:
+      # empty unless .env sets it, and an administrator can also save it on
+      # Connectors.
+      BOOK_URL: "${BOOK_URL:-}"
+      BOOK_HOUSEHOLD: "${BOOK_HOUSEHOLD:-}"
+      SMTP_HOST: "${SMTP_HOST:-}"
+      SMTP_PORT: "${SMTP_PORT:-}"
+      SMTP_USER: "${SMTP_USER:-}"
+      SMTP_PASS: "${SMTP_PASS:-}"
+      SMTP_FROM: "${SMTP_FROM:-}"
+      # 1 only for a relay on the NAS itself that offers no TLS. See DEPLOY.md.
+      SMTP_PLAIN_AUTH: "${SMTP_PLAIN_AUTH:-}"
+      # DSM's reverse proxy is the one proxy in front, so the per-address limit
+      # on sign-in emails reads the real client from X-Forwarded-For. The
+      # router's port forward is not a proxy and does not count.
+      TRUST_PROXY: "${TRUST_PROXY:-1}"
+    volumes:
+      # The household logs, sessions and nothing else: the only state worth
+      # backing up. Created beside this file on first start if it is missing.
+      # The container gives it to the app's own user (node) as it starts, so a
+      # folder made in File Station works as it is.
+      - ./api/data:/data
+    restart: unless-stopped

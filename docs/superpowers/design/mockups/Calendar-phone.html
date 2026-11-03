@@ -1,0 +1,122 @@
+<!doctype html>
+<!-- Generated from the design canvas (Calendar-phone.dc.html). Lift the markup inside .hp;
+     the classes are the ones in ../components.css, the colours all come from
+     ../../../../site/tokens.css. The switcher above the frame is not part of
+     the design. -->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Calendar day, on a phone</title>
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap">
+<link rel="stylesheet" href="../../../../site/tokens.css">
+<link rel="stylesheet" href="../components.css">
+<style>
+body{margin:0;background:#8a8f99;font-family:system-ui,sans-serif}
+.mock-switch{display:flex;gap:16px;align-items:center;padding:10px 16px;font:13px system-ui,sans-serif;color:#fff;background:#24272e}
+.mock-switch a{color:#9fd0ff;margin-left:auto}
+.frame{width:390px;margin:24px auto 48px;box-shadow:0 10px 40px rgba(0,0,0,.35)}
+
+body{margin:0}
+a{color:inherit}a:hover{color:inherit}
+.mock .tabbar{position:static;display:grid}
+
+</style>
+</head>
+<body>
+
+<form class="mock-switch" aria-label="Look">
+  <label>Scheme <select data-attr="scheme"><option>quartz</option><option>lapis</option><option>iolite</option><option selected>graphite</option></select></label>
+  <label>Mode <select data-attr="mode"><option>light</option><option selected>dark</option></select></label>
+  <a href="index.html">All mockups</a>
+</form>
+<div class="frame">
+<div class="hp mock" data-scheme="graphite" data-mode="dark" style="width: 390px; height: 1420px; display: flex; flex-direction: column; overflow: hidden">
+
+  <header class="top">
+    <div class="wrap top-inner">
+      <button class="pill" type="button" aria-haspopup="menu">
+        <span style="min-width: 0"><span class="name">Rivera household</span><span class="sub">Monday 2 November</span></span>
+        <svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
+      </button>
+      <button class="pill member" type="button" aria-label="Alice, signed in"><span class="who mine lg">A</span></button>
+    </div>
+  </header>
+
+  <main class="wrap" style="flex: 1; display: grid; gap: 14px; align-content: start; padding-top: 16px; padding-bottom: 24px">
+    <div class="cal-bar">
+      <span class="range">November 2026</span>
+      <button class="btn small" type="button" aria-label="Previous week"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 4L6 8l4 4"/></svg></button>
+      <button class="btn small" type="button" aria-label="Next week"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg></button>
+      <button class="btn small primary" type="button" aria-label="New event"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg></button>
+    </div>
+
+    <div class="daystrip" role="group" aria-label="This week">
+      <button type="button" class="is-today"><span class="dn">Mon</span><span class="dd">2</span><span class="dots"><i class="mine"></i></span></button>
+      <button type="button"><span class="dn">Tue</span><span class="dd">3</span><span class="dots"><i class="household"></i><i class="partner"></i></span></button>
+      <button type="button"><span class="dn">Wed</span><span class="dd">4</span><span class="dots"><i class="mine"></i></span></button>
+      <button type="button" aria-current="date"><span class="dn">Thu</span><span class="dd">5</span><span class="dots"><i class="due"></i><i class="partner"></i><i class="household"></i></span></button>
+      <button type="button"><span class="dn">Fri</span><span class="dd">6</span><span class="dots"><i class="household"></i><i class="mine"></i></span></button>
+      <button type="button"><span class="dn">Sat</span><span class="dd">7</span><span class="dots"><i class="household"></i></span></button>
+      <button type="button"><span class="dn">Sun</span><span class="dd">8</span><span class="dots"><i class="household"></i></span></button>
+    </div>
+
+    <div style="display: flex; align-items: baseline; gap: 8px">
+      <h1 class="t-title">Thursday 5 November</h1>
+      <span class="t-small faint">3 things</span>
+    </div>
+
+    <div class="dayview" style="--hour: 52px">
+      <div class="ad">
+        <a class="ev due" href="#" style="font-size: 13px; padding: 6px 10px"><span class="t">Registration renewal</span><span class="s">due today · Plan › Money</span></a>
+      </div>
+      <div class="hrs" style="height: 728px">
+        <span class="hl" style="top: 0; transform: none; padding-top: 2px">7</span>
+        <span class="hl" style="top: 52px">8</span>
+        <span class="hl" style="top: 104px">9</span>
+        <span class="hl" style="top: 156px">10</span>
+        <span class="hl" style="top: 208px">11</span>
+        <span class="hl" style="top: 260px">12</span>
+        <span class="hl" style="top: 312px">13</span>
+        <span class="hl" style="top: 364px">14</span>
+        <span class="hl" style="top: 416px">15</span>
+        <span class="hl" style="top: 468px">16</span>
+        <span class="hl" style="top: 520px">17</span>
+        <span class="hl" style="top: 572px">18</span>
+        <span class="hl" style="top: 624px">19</span>
+        <span class="hl" style="top: 676px">20</span>
+      </div>
+      <div class="col" style="height: 728px">
+        <a class="ev proposed" href="#" style="top: 157px; height: 49px"><span class="t">Dentist</span><span class="s">10:00 to 11:00 · proposed, waiting for you</span></a>
+        <a class="ev partner" href="#" style="top: 209px; height: 49px"><span class="t"><span class="who partner" style="width: 16px; height: 16px; font-size: 9px; margin-right: 5px; vertical-align: -3px">B</span>PT</span><span class="s">11:00 to 12:00 · Bob's</span></a>
+        <a class="ev household" href="#" style="top: 625px; height: 102px"><span class="t"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true" style="vertical-align: -2px; margin-right: 4px"><path d="M2.5 7.5L8 3l5.5 4.5V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z"/><path d="M6.5 13.5v-3.5h3v3.5"/></svg>Book club, at ours</span><span class="s">19:00 to 21:00 · Household</span></a>
+      </div>
+    </div>
+
+    <div class="legend">
+      <span><i class="sw mine"></i>Mine</span>
+      <span><i class="sw partner"></i>Bob's</span>
+      <span><i class="sw household"></i>Household</span>
+      <span><i class="sw due"></i>Due</span>
+      <span><i class="sw proposed"></i>Proposed</span>
+    </div>
+  </main>
+
+  <nav class="tabbar" aria-label="Screens">
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><path d="M2.5 4.5h11v7h-6l-3 2.5v-2.5h-2z"/></svg></span>Today</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="2.5" width="4.5" height="11" rx="1"/><rect x="9" y="2.5" width="4.5" height="7" rx="1"/></svg></span>Plan</a>
+    <a href="#" aria-current="page"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/></svg></span>Calendar</a>
+    <a href="#"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><rect x="2.5" y="4" width="11" height="8.5" rx="1.5"/><path d="M2.5 6.5l5.5 3.5 5.5-3.5"/></svg></span>Budget</a>
+    <button type="button" aria-haspopup="dialog"><span class="ic"><svg class="i lg" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 8h.01M8 8h.01M12 8h.01" style="stroke-width: 2.4"/></svg></span>More</button>
+  </nav>
+</div>
+</div>
+<script>
+// mockup only: re-stamp the frame's root when the switcher changes
+const root = document.querySelector('.frame > [data-mode]');
+document.querySelectorAll('.mock-switch select').forEach((s) => s.addEventListener('change', () => {
+  root.setAttribute('data-' + s.dataset.attr, s.value);
+}));
+</script>
+</body>
+</html>

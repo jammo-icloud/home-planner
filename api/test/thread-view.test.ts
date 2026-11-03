@@ -1,0 +1,456 @@
+import { test, describe } from 'node:test';
+import assert from 'node:assert/strict';
+import { mkdtemp } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+import { parseDollars } from '../src/money.ts';
+import { Store } from '../src/store.ts';
+import { ProposalStore } from '../src/tools.ts';
+import type { ToolContext } from '../src/tools.ts';
+import { offer, decide } from '../src/offers.ts';
+import { thread, budgetOf } from '../src/thread.ts';
+import type { ThreadEntry } from '../src/thread.ts';
+import type { Event } from '../src/types.ts';
+
+const NOW = '2026-08-13T09:00:00Z';
+const DOC = { link: 'f3c1', file_id: '881', hash: 'abc', version_id: '1', path: '/team-folders/Planner/h1/today/2026-08-13-household.md' };
+
+async function ctx(): Promise<ToolContext> {
+  const path = join(await mkdtemp(join(tmpdir(), 'pb-view-')), 'events.jsonl');
+  const store = new Store({ path, now: () => new Date(NOW) });
+  await store.load();
+  await store.append('alice', [
+    { op: 'household.claim', label: 'Home' },
+    { op: 'member.add', member: 'bob', why: 'my partner' },
+    { op: 'category.define', category: 'groceries', label: 'Groceries' },
+    { op: 'category.define', category: 'travel', label: 'Travel' },
+    { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
+    { op: 'budget.create', budget: 'ridge', label: 'Ridge' },
+    { op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'Food', group: 'People',
+      match: { categories: ['groceries'] }, template: parseDollars('600.00'), order: 0 },
+    { op: 'envelope.define', budget: 'harbor', envelope: 'trip', label: 'Travel', group: 'Future',
+      match: { categories: ['travel'] }, template: parseDollars('400.00'), order: 1 },
+    { op: 'envelope.define', budget: 'ridge', envelope: 'food', label: 'Food', group: 'People',
+      match: { categories: ['groceries'] }, template: parseDollars('700.00'), order: 0 },
+    { op: 'month.open', budget: 'harbor', month: '2026-08', income: parseDollars('1000.00') },
+    { op: 'month.open', budget: 'ridge', month: '2026-08', income: parseDollars('700.00') },
+  ]);
+  return { store, who: 'alice', today: '2026-08-13', proposals: new ProposalStore(), sid: null };
+}
+
+const brief = (c: ToolContext, over: Record<string, unknown> = {}) =>
+  c.store.append('claude', { op: 'thread.briefing', day: '2026-08-13', source: 'budget', budget: 'harbor',
+    headline: 'Food is running ahead', body: 'Longer account.', writtenBy: 'claude', ...over } as never)
+    .then(([e]) => e!);
+
+const kinds = (entries: readonly ThreadEntry[]) => entries.map((e) => e.kind);
+const page = (c: ToolContext, o: Partial<Parameters<typeof thread>[1]> = {}) =>
+  thread(c.store, { who: 'alice', budget: 'harbor', ...o });
+
+describe('the thread', () => {
+  test('answers attach to their question, and cards to what prompted them', async () => {
+    const c = await ctx();
+    const b = await brief(c);
+    const card = await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: b.id },
+      args: { budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amountCents: 5000, why: 'x' } });
+    const [q] = await c.store.append('bob', { op: 'thread.ask', question: 'Can we cover food?', budget: 'harbor' });
+    const [a] = await c.store.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'Yes, from Travel.',
+      tools: [{ name: 'get_month', args: {} }], model: 'm' });
+    const answerCard = await offer(c, { tool: 'set_assignment', prompt: { kind: 'answer', ref: a!.id },
+      args: { budget: 'harbor', month: '2026-08', envelope: 'food', toCents: 65000, why: 'y' } });
+
+    const { entries } = await page(c);
+    const tail = entries.slice(-2);
+    assert.deepEqual(kinds(tail), ['briefing', 'ask']);
+    const [bb, qq] = tail as [Extract<ThreadEntry, { kind: 'briefing' }>, Extract<ThreadEntry, { kind: 'ask' | 'note' }>];
+    // The second card replaced the first, since both touch Food in August.
+    assert.deepEqual(bb.cards.map((x) => [x.id, x.status]), [[card.id, 'replaced']]);
+    assert.equal(qq.who, 'bob');
+    assert.equal(qq.answer?.text, 'Yes, from Travel.');
+    assert.deepEqual(qq.answer?.tools, ['get_month']);
+    assert.deepEqual(qq.answer?.cards.map((x) => x.id), [answerCard.id]);
+  });
+
+  test('a member\'s adjusted card stands on its own in the thread', async () => {
+    const c = await ctx();
+    const { adjust } = await import('../src/offers.ts');
+    const b = await brief(c);
+    const card = await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: b.id },
+      args: { budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amountCents: 5000, why: 'x' } });
+    const mine = await adjust({ ...c, who: 'bob' }, card.id, { amountCents: 2000 });
+    const { entries } = await page(c);
+    const last = entries.at(-1)!;
+    assert.equal(last.kind, 'card');
+    assert.ok(last.kind === 'card' && last.offer.id === mine.id && last.offer.who === 'bob');
+  });
+
+  test('a question, a note and a card on a plan say which plan, by name', async () => {
+    const c = await ctx();
+    await c.store.append('alice', { op: 'plan.create', plan: 'heater', title: 'Tankless water heater', area: 'House' });
+    const [q] = await c.store.append('alice', { op: 'thread.ask', question: 'What would it cost?', budget: null, plan: 'heater' });
+    const [a] = await c.store.append('claude', { op: 'thread.answer', replyTo: q!.id, plan: 'heater', text: 'About $1,800.',
+      tools: [], model: 'm' });
+    await c.store.append('bob', { op: 'thread.note', text: 'Quote came in', budget: null, plan: 'heater' });
+    const { adjust } = await import('../src/offers.ts');
+    const found = await offer(c, { tool: 'set_plan_due', args: { plan: 'heater', due: '2026-11-14' },
+      prompt: { kind: 'research', ref: a!.id }, plan: 'heater' });
+    const mine = await adjust({ ...c, who: 'bob' }, found.id, { due: '2026-11-21' });
+    await c.store.append('alice', { op: 'thread.note', text: 'Not about a plan', budget: null });
+
+    const { entries } = await page(c);
+    const on = { id: 'heater', title: 'Tankless water heater' };
+    const ask = entries.find((e) => e.id === q!.id) as Extract<ThreadEntry, { kind: 'ask' | 'note' }>;
+    assert.deepEqual(ask.plan, on);
+    const note = entries.find((e) => e.kind === 'note' && e.text === 'Quote came in') as Extract<ThreadEntry, { kind: 'ask' | 'note' }>;
+    assert.deepEqual(note.plan, on);
+    const card = entries.find((e) => e.id === mine.id) as Extract<ThreadEntry, { kind: 'card' }>;
+    assert.deepEqual(card.plan, on);
+    const plain = entries.find((e) => e.kind === 'note' && e.text === 'Not about a plan')!;
+    assert.ok(!('plan' in plain), 'a line about no plan names none');
+    // Renamed, the plan is called what it is called now.
+    await c.store.append('alice', { op: 'plan.set', plan: 'heater', title: 'Heat pump water heater' });
+    const again = (await page(c)).entries.find((e) => e.id === q!.id) as Extract<ThreadEntry, { kind: 'ask' | 'note' }>;
+    assert.equal(again.plan?.title, 'Heat pump water heater');
+  });
+
+  test('a briefing kept in Drive is its headline, no body, and where it is', async () => {
+    const c = await ctx();
+    await brief(c, { doc: DOC, body: undefined });
+    const [entry] = (await page(c)).entries.filter((e) => e.kind === 'briefing');
+    assert.ok(entry && entry.kind === 'briefing');
+    assert.equal(entry.headline, 'Food is running ahead');
+    assert.equal(entry.body, null);
+    assert.deepEqual(entry.doc, { path: DOC.path }, 'only where it is: never the link, the file id, the hash or the version');
+  });
+
+  test('an answer kept in Drive carries its headline and where the rest is', async () => {
+    const c = await ctx();
+    const [q] = await c.store.append('bob', { op: 'thread.ask', question: 'Why is food ahead?', budget: 'harbor' });
+    await c.store.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'Because.', tools: [], model: 'm', doc: DOC });
+    await c.store.append('bob', { op: 'thread.ask', question: 'And travel?', budget: 'harbor' });
+    const entries = (await page(c)).entries;
+    const ask = entries.find((e) => e.id === q!.id) as Extract<ThreadEntry, { kind: 'ask' | 'note' }>;
+    assert.equal(ask.answer?.text, 'Because.');
+    assert.deepEqual(ask.answer?.doc, { path: DOC.path });
+    const bare = entries.find((e) => e.kind === 'ask' && e.text === 'And travel?') as Extract<ThreadEntry, { kind: 'ask' | 'note' }>;
+    assert.ok(!bare.answer, 'unanswered');
+  });
+
+  test('a briefing and an answer kept in the log name no document', async () => {
+    const c = await ctx();
+    await brief(c);
+    const [q] = await c.store.append('bob', { op: 'thread.ask', question: 'Why?', budget: 'harbor' });
+    await c.store.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'Because.', tools: [], model: 'm' });
+    const entries = (await page(c)).entries;
+    const b = entries.find((e) => e.kind === 'briefing')!;
+    assert.ok(b.kind === 'briefing' && b.body === 'Longer account.' && !('doc' in b));
+    const ask = entries.find((e) => e.id === q!.id) as Extract<ThreadEntry, { kind: 'ask' | 'note' }>;
+    assert.ok(ask.answer && !('doc' in ask.answer));
+  });
+
+  test('a briefing replaced later that day shows only the newer one, with the older one\'s cards', async () => {
+    const c = await ctx();
+    const old = await brief(c, { writtenBy: 'fallback', headline: 'Plain summary' });
+    const card = await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: old.id },
+      args: { budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amountCents: 5000, why: 'x' } });
+    await brief(c, { replaces: old.id });
+    const briefings = (await page(c)).entries.filter((e) => e.kind === 'briefing');
+    assert.equal(briefings.length, 1);
+    const only = briefings[0]!;
+    assert.ok(only.kind === 'briefing' && only.writtenBy === 'claude' && only.cards.some((x) => x.id === card.id));
+  });
+
+  test('direct changes are change entries, collapsed as Activity collapsed them; removals never collapse', async () => {
+    const c = await ctx();
+    await c.store.append('alice', { op: 'txn.add', txns: [
+      { id: 't1', date: '2026-08-02', payee: 'A', amount: parseDollars('-1.00'), dedupeKey: 't1', category: null },
+      { id: 't2', date: '2026-08-02', payee: 'B', amount: parseDollars('-2.00'), dedupeKey: 't2', category: null },
+    ] });
+    await c.store.append('alice', [
+      { op: 'txn.categorize', txn: 't1', category: 'groceries', manual: true },
+      { op: 'txn.categorize', txn: 't2', category: 'groceries', manual: true },
+    ]);
+    await c.store.append('bob', [
+      { op: 'txn.remove', txn: 't1', why: 'dupe' },
+      { op: 'txn.remove', txn: 't2', why: 'dupe' },
+    ]);
+    const changes = (await page(c)).entries.filter((e) => e.kind === 'change').slice(-3);
+    assert.ok(changes[0]!.kind === 'change' && changes[0]!.count === 2);
+    assert.ok(changes.slice(1).every((e) => e.kind === 'change' && e.count === 1 && e.flag?.removed));
+    // Bob removed them; Alice has not looked yet.
+    assert.ok(changes.slice(1).every((e) => e.kind === 'change' && e.flag?.seenByMe === false));
+  });
+
+  test('bookkeeping never appears', async () => {
+    const c = await ctx();
+    const b = await brief(c);
+    const card = await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: b.id },
+      args: { budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amountCents: 5000, why: 'x' } });
+    await decide(c, card.id, 'declined');
+    await c.store.append('alice', [{ op: 'briefing.read', upTo: b.id }, { op: 'flag.seen', event: 'zz' }]);
+    const all = (await page(c)).entries;
+    const after = all.slice(all.findIndex((e) => e.id === b.id));
+    assert.deepEqual(kinds(after), ['briefing']);
+  });
+
+  test('the default view is the budget in view plus household-wide entries', async () => {
+    const c = await ctx();
+    await c.store.append('alice', { op: 'assign', budget: 'ridge', month: '2026-08', envelope: 'food', to: parseDollars('650.00'), why: 'r' });
+    await c.store.append('alice', { op: 'txn.add', txns: [
+      { id: 't9', date: '2026-08-02', payee: 'A', amount: parseDollars('-1.00'), dedupeKey: 't9', category: null }] });
+    const harbor = (await page(c)).entries;
+    assert.ok(!harbor.some((e) => e.kind === 'change' && /650/.test(e.what)));
+    assert.ok(harbor.some((e) => e.kind === 'change' && /imported 1/.test(e.what)));
+    const all = (await page(c, { allBudgets: true })).entries;
+    assert.ok(all.some((e) => e.kind === 'change' && /650/.test(e.what)));
+  });
+
+  test('budgetOf says household-wide for receipts and rules', () => {
+    const base = { id: 'x', at: NOW, who: 'a' };
+    assert.equal(budgetOf({ ...base, op: 'rule.remove', rule: 'r' } as Event), null);
+    assert.equal(budgetOf({ ...base, op: 'month.open', budget: 'ridge', month: '2026-08', income: 0 } as unknown as Event), 'ridge');
+  });
+
+  test('mine and theirs filter by who wrote it', async () => {
+    const c = await ctx();
+    await c.store.append('bob', { op: 'thread.note', text: 'trip is paid for', budget: 'harbor' });
+    await c.store.append('alice', { op: 'thread.note', text: 'thanks', budget: 'harbor' });
+    const mine = (await page(c, { filter: 'mine' })).entries;
+    const theirs = (await page(c, { filter: 'theirs' })).entries;
+    assert.ok(mine.every((e) => 'who' in e && e.who === 'alice'));
+    assert.ok(theirs.length > 0 && theirs.every((e) => 'who' in e && e.who === 'bob'));
+  });
+
+  test('waiting shows only entries with something waiting on me', async () => {
+    const c = await ctx();
+    await brief(c);
+    const b2 = await brief(c, { budget: 'harbor', headline: 'Another' });
+    await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: b2.id },
+      args: { budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amountCents: 5000, why: 'x' } });
+    const w = await page(c, { filter: 'waiting' });
+    assert.deepEqual(w.entries.map((e) => e.id), [b2.id]);
+    assert.equal(w.waiting.filter((x) => x.kind === 'offer').length, 1);
+  });
+
+  test('the divider sits at what I last read', async () => {
+    const c = await ctx();
+    const b = await brief(c);
+    await c.store.append('alice', { op: 'briefing.read', upTo: b.id });
+    assert.equal((await page(c)).newSince, b.id);
+    assert.equal((await thread(c.store, { who: 'bob', budget: 'harbor' })).newSince, null);
+  });
+
+  test('paging returns the newest page first and a cursor further up', async () => {
+    const c = await ctx();
+    for (let i = 0; i < 25; i++) {
+      await c.store.append(i % 2 ? 'alice' : 'bob', { op: 'thread.note', text: `note ${i}`, budget: 'harbor' });
+    }
+    const first = await page(c, { limit: 10 });
+    assert.equal(first.entries.length, 10);
+    assert.ok(first.entries.at(-1)!.kind === 'note');
+    assert.ok(first.before);
+    let before: string | null = first.before;
+    let total = first.entries.length;
+    while (before) {
+      const next = await page(c, { limit: 10, before });
+      total += next.entries.length;
+      before = next.before;
+    }
+    assert.equal(total, (await page(c, { limit: 1000 })).entries.length);
+  });
+
+  test('what an approval applied is shown on its card, not again as a change', async () => {
+    const c = await ctx();
+    const b = await brief(c);
+    const card = await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: b.id },
+      args: { budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amountCents: 5000, why: 'x' } });
+    await decide(c, card.id, 'approved', 'trip is paid');
+    await c.store.append('bob', { op: 'thread.note', text: 'after', budget: 'harbor' });
+    const all = (await page(c)).entries;
+    const tail = all.slice(all.findIndex((e) => e.id === b.id));
+    assert.deepEqual(kinds(tail), ['briefing', 'note']);
+  });
+
+  test('what is waiting counts only what this view can show', async () => {
+    const c = await ctx();
+    await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: null },
+      args: { budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amountCents: 5000, why: 'x' } });
+    await offer(c, { tool: 'set_assignment', prompt: { kind: 'briefing', ref: null },
+      args: { budget: 'ridge', month: '2026-08', envelope: 'food', toCents: 75000, why: 'y' } });
+    const offers = (p: Awaited<ReturnType<typeof page>>) => p.waiting.filter((w) => w.kind === 'offer').length;
+    assert.equal(offers(await page(c)), 1);
+    assert.equal(offers(await page(c, { allBudgets: true })), 2);
+  });
+
+  describe('plans', () => {
+    const lines = (entries: readonly ThreadEntry[]) =>
+      entries.flatMap((e) => (e.kind === 'change' ? [e.what] : []));
+
+    test('a plan\'s state change is a quiet line; its checklist is not', async () => {
+      const c = await ctx();
+      await c.store.append('alice', { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' });
+      await c.store.append('bob', { op: 'plan.state', plan: 'gate', state: 'doing' });
+      await c.store.append('bob', { op: 'plan.checklist', plan: 'gate', items: [{ id: 'i1', text: 'Buy hinges', done: false }] });
+      await c.store.append('bob', { op: 'plan.set', plan: 'gate', notes: 'ask the neighbour', chips: ['urgent'] });
+      const all = lines((await page(c)).entries);
+      assert.deepEqual(all.slice(-2), ['made a plan: Fix the gate', 'moved Fix the gate to doing']);
+      assert.ok(!all.some((w) => /checklist|notes/.test(w)));
+      const last = (await page(c)).entries.at(-1)!;
+      assert.ok(last.kind === 'change' && last.who === 'bob' && last.budget === null);
+    });
+
+    test('every plan op a member would want to see appears; the fine-grained ones do not', async () => {
+      const c = await ctx();
+      await c.store.append('alice', [
+        { op: 'plan.create', plan: 'p', title: 'Paint', area: 'House' },
+        { op: 'plan.due', plan: 'p', due: '2026-09-01' },
+        { op: 'plan.block', plan: 'p', block: 'b1', start: '2026-08-20T09:00:00', end: '2026-08-20T11:00:00' },
+        { op: 'plan.unblock', plan: 'p', block: 'b1', why: 'rain' },
+        { op: 'plan.attach', plan: 'p', path: '/Planner/p/quote.pdf', name: 'quote.pdf', size: 10 },
+        { op: 'plan.detach', plan: 'p', path: '/Planner/p/quote.pdf', why: 'old' },
+        { op: 'plan.contact.link', plan: 'p', contact_id: 1, addressbook_id: 1, display: 'Sam' },
+        { op: 'plan.contact.unlink', plan: 'p', contact_id: 1 },
+        { op: 'plan.remove', plan: 'p', why: 'done differently' },
+      ] as never);
+      const shown = (await page(c)).entries.filter((e) => e.kind === 'change').map((e) => (e as { what: string }).what);
+      for (const want of [/made a plan/, /due 2026-09-01/, /set aside time/, /let go of time/, /attached quote\.pdf/,
+        /took quote\.pdf off/, /removed Paint/]) {
+        assert.ok(shown.some((w) => want.test(w)), String(want));
+      }
+      assert.ok(!shown.some((w) => /linked|unlinked/.test(w)));
+    });
+
+    test('an ask to take a plan is one card, not a card and a line', async () => {
+      const c = await ctx();
+      await c.store.append('alice', { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' });
+      const [asked] = await c.store.append('alice', { op: 'plan.ask', plan: 'gate', to: 'bob', why: 'you know the gate' });
+      await offer(c, { tool: 'answer_ask', args: { plan: 'gate', answer: 'accept' }, prompt: { kind: 'ask', ref: asked!.id } });
+      const { entries } = await page(c);
+      assert.equal(entries.filter((e) => e.kind === 'card' && e.offer.prompt.kind === 'ask').length, 1);
+      assert.ok(!lines(entries).some((w) => /asked bob/.test(w)), 'plan.ask is not also a quiet line');
+    });
+
+    test('accepting through the card shows on the card, not again as a line', async () => {
+      const c = await ctx();
+      await c.store.append('alice', { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' });
+      const [asked] = await c.store.append('alice', { op: 'plan.ask', plan: 'gate', to: 'bob', why: 'you know the gate' });
+      const card = await offer(c, { tool: 'answer_ask', args: { plan: 'gate', answer: 'accept' }, prompt: { kind: 'ask', ref: asked!.id } });
+      await decide({ ...c, who: 'bob' }, card.id, 'approved');
+      assert.ok(!lines((await page(c)).entries).some((w) => /took on/.test(w)));
+    });
+
+    test('an answer is said once, by the settled card, and never again as a quiet line', async () => {
+      const c = await ctx();
+      await c.store.append('alice', [
+        { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' },
+        { op: 'plan.create', plan: 'shed', title: 'Sort the shed', area: 'House' },
+      ]);
+      const { recordAsk } = await import('../src/plan-edits.ts');
+      await recordAsk(c, 'gate', 'bob', 'you know the gate');
+      await recordAsk(c, 'shed', 'bob', 'your tools');
+      // Answered directly, as Take it and Decline do: no proposal.decide, only the plan line.
+      await c.store.append('bob', { op: 'plan.ask.decline', plan: 'gate', why: 'no time' });
+      await c.store.append('bob', { op: 'plan.ask.accept', plan: 'shed' });
+
+      const { entries } = await page(c);
+      const settled = (plan: string) => (entries.find((e) => e.kind === 'card' && e.plan?.id === plan) as
+        Extract<ThreadEntry, { kind: 'card' }>).offer;
+      const gate = settled('gate');
+      assert.deepEqual([gate.status, gate.decidedBy, gate.why], ['declined', 'bob', 'no time']);
+      const shed = settled('shed');
+      assert.deepEqual([shed.status, shed.decidedBy], ['approved', 'bob']);
+      assert.ok(!lines(entries).some((w) => /declined Fix the gate|took on Sort the shed/.test(w)),
+        'no quiet line repeats the answer');
+    });
+      test('a drift card stands on its own, names its plan, and says how it was settled', async () => {
+      const c = await ctx();
+      const CAL = { cal_id: '/alice/hh/', original_cal_id: '/alice/hh/' };
+      await c.store.append('alice', [
+        { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' },
+        { op: 'plan.due', plan: 'gate', due: '2026-11-07' },
+        { op: 'plan.calendar.link', plan: 'gate', kind: 'due', ...CAL, evt_id: 7, ical_uid: 'u7', dav_etag: 'E1' },
+      ]);
+      const [d] = await c.store.append('alice', { op: 'calendar.drift', plan: 'gate', evt_id: 7,
+        theirs: { dtstart: 1_794_096_000, dtend: 1_794_182_400, summary: 'Fix the gate' },
+        ours: { dtstart: 1_794_009_600, dtend: 1_794_096_000, summary: 'Fix the gate' }, dav_etag: 'E2', changedBy: 'bob' });
+      const card = await offer(c, { tool: 'resolve_drift', args: { drift: d!.id, plan: 'gate', choice: 'plan' },
+        prompt: { kind: 'drift', ref: d!.id }, by: 'alice' });
+
+      const entryOf = async () => (await page(c)).entries.find((e) => e.kind === 'card' && e.offer.id === card.id) as
+        Extract<ThreadEntry, { kind: 'card' }>;
+      let entry = await entryOf();
+      assert.ok(entry, 'a card of its own');
+      assert.deepEqual(entry.plan, { id: 'gate', title: 'Fix the gate' });
+      assert.deepEqual(entry.drift, { on: 'calendar', resolved: null, deleted: false, replaced: false, unreadable: false });
+      assert.ok((await page(c, { filter: 'waiting' })).entries.some((e) => e.id === card.id), 'waiting for either of you');
+      assert.ok((await page(c, { who: 'bob', filter: 'waiting' })).entries.some((e) => e.id === card.id));
+
+      // Settled with Leave both: the card says so; the resolve is not said again as a line.
+      await decide({ ...c, who: 'bob' }, card.id, 'approved', undefined, { choice: 'leave' });
+      entry = await entryOf();
+      assert.equal(entry.offer.status, 'approved');
+      assert.equal(entry.offer.decidedBy, 'bob');
+      assert.deepEqual(entry.drift, { on: 'calendar', resolved: 'leave', deleted: false, replaced: false, unreadable: false });
+      assert.ok(!lines((await page(c)).entries).some((w) => /let the calendar be/.test(w)));
+    });
+
+    test('a drift settled by removing its plan is not said as a line of its own', async () => {
+      const c = await ctx();
+      const CAL = { cal_id: '/alice/hh/', original_cal_id: '/alice/hh/' };
+      await c.store.append('alice', [
+        { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' },
+        { op: 'plan.calendar.link', plan: 'gate', kind: 'due', ...CAL, evt_id: 7, ical_uid: 'u7', dav_etag: 'E1' },
+      ]);
+      const [d] = await c.store.append('alice', { op: 'calendar.drift', plan: 'gate', evt_id: 7, theirs: null,
+        ours: { dtstart: 1_794_009_600, dtend: 1_794_096_000, summary: 'Fix the gate' } });
+      const card = await offer(c, { tool: 'resolve_drift', args: { drift: d!.id, plan: 'gate', choice: 'plan' },
+        prompt: { kind: 'drift', ref: d!.id }, by: 'alice' });
+      await c.store.append('bob', [
+        { op: 'plan.calendar.unlink', plan: 'gate', kind: 'due' },
+        { op: 'calendar.drift.resolve', drift: d!.id, choice: 'leave' },
+        { op: 'plan.remove', plan: 'gate', why: 'fixed it ourselves' },
+      ]);
+      const { entries } = await page(c);
+      const entry = entries.find((e) => e.kind === 'card' && e.offer.id === card.id) as Extract<ThreadEntry, { kind: 'card' }>;
+      assert.equal(entry.offer.status, 'replaced');
+      assert.deepEqual(entry.drift, { on: 'calendar', resolved: 'leave', deleted: true, replaced: false, unreadable: false });
+      assert.ok(lines(entries).some((w) => /removed Fix the gate/.test(w)));
+      assert.ok(!lines(entries).some((w) => /let the calendar be/.test(w)), 'the remove says it');
+    });
+
+    test("a page's card says it is about the page", async () => {
+      const c = await ctx();
+      await c.store.append('alice', { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' });
+      const theirs = { ...DOC, path: '/team-folders/Planner/h1/gate/plan.md', hash: 'def' };
+      const [d] = await c.store.append('alice', { op: 'plan.page.drift', plan: 'gate', theirs,
+        changes: [{ field: 'title', from: 'Fix the gate', to: 'Fix the side gate' }] });
+      const card = await offer(c, { tool: 'resolve_drift', args: { drift: d!.id, plan: 'gate', choice: 'plan' },
+        prompt: { kind: 'drift', ref: d!.id }, by: 'alice' });
+      assert.equal(card.summary, 'The page for Fix the gate was changed in Drive: title "Fix the gate" → "Fix the side gate"');
+
+      const entryOf = async () => (await page(c)).entries.find((e) => e.kind === 'card' && e.offer.id === card.id) as
+        Extract<ThreadEntry, { kind: 'card' }>;
+      let entry = await entryOf();
+      assert.ok(entry, 'a card of its own');
+      assert.deepEqual(entry.plan, { id: 'gate', title: 'Fix the gate' });
+      assert.deepEqual(entry.drift, { on: 'page', resolved: null, deleted: false, replaced: false, unreadable: false });
+
+      // Left as edited, by bob: the version in Drive is the one the app knows.
+      await decide({ ...c, who: 'bob' }, card.id, 'approved', undefined, { choice: 'leave' });
+      entry = await entryOf();
+      assert.equal(entry.offer.decidedBy, 'bob');
+      assert.deepEqual(entry.drift, { on: 'page', resolved: 'leave', deleted: false, replaced: false, unreadable: false });
+      assert.equal(c.store.state.plans.get('gate')!.page!.doc.hash, 'def');
+
+      // A page that cannot be read says so, so the card offers nothing to take.
+      const [u] = await c.store.append('alice', { op: 'plan.page.drift', plan: 'gate', theirs: { ...theirs, hash: 'ghi' },
+        changes: [], unreadable: true });
+      const unreadable = await offer(c, { tool: 'resolve_drift', args: { drift: u!.id, plan: 'gate', choice: 'plan' },
+        prompt: { kind: 'drift', ref: u!.id }, by: 'alice' });
+      const said = (await page(c)).entries.find((e) => e.kind === 'card' && e.offer.id === unreadable.id) as
+        Extract<ThreadEntry, { kind: 'card' }>;
+      assert.deepEqual(said.drift, { on: 'page', resolved: null, deleted: false, replaced: false, unreadable: true });
+    });
+  });
+});
