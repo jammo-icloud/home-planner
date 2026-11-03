@@ -25,8 +25,9 @@ services:
   planner:
     build:
       # The image is built from the repository on GitHub, so only this file
-      # needs to be on the NAS. The context is the repository root so the
-      # image carries site/ (the shell and /book) as well as api/.
+      # needs to be on the NAS. Docker clones it with the NAS's own git (the
+      # Git Server package). The context is the repository root so the image
+      # carries site/ (the shell and /book) as well as api/.
       context: https://github.com/jammo-icloud/home-planner.git#main
       dockerfile: api/Dockerfile
     container_name: home-planner

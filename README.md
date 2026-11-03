@@ -135,7 +135,7 @@ Drive, Calendar, booking and TLS setup, and what each failure in the log means.
 ### On the NAS
 
 Everything is done in DSM; no `.env` or shell is needed. Install Container
-Manager, Synology Calendar and Synology Drive from Package Center, and make a
+Manager, Git Server, Synology Calendar and Synology Drive from Package Center, and make a
 folder for the project in File Station, such as `docker/home-planner`. Then
 Container Manager → Project → Create on that folder, uploading
 [`docker.yml`](docker.yml) as the compose file: it builds the image from this

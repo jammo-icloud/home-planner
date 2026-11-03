@@ -751,8 +751,11 @@ Nothing is cloned onto the NAS and nothing is typed into a shell: only the
 compose file is there, and everything below is done in DSM. The repository is
 public, so the build needs no credentials.
 
-1. **Packages.** In Package Center, install Container Manager, Synology
-   Calendar and Synology Drive. Then, in Synology Drive Admin Console, enable a
+1. **Packages.** In Package Center, install Container Manager, Git Server,
+   Synology Calendar and Synology Drive. Git Server puts `git` on the NAS,
+   which Docker uses to clone the repository when it builds the image; a NAS
+   that already builds another project from GitHub has it. Then, in Synology
+   Drive Admin Console, enable a
    shared folder as a Team Folder, with read/write for every member's account,
    for each household's owner to choose in Settings (see Documents in Synology
    Drive).
@@ -806,16 +809,10 @@ current `main` and rebuilds the image; then Start, if the project did not
 restart on its own. The log under `api/data` is the only state, so nothing is
 lost.
 
-**Confirm on first run.** Two things no documentation settles:
-
-- Whether Docker on DSM can build from a git URL. If the project fails to build
-  with a message about git, download the repository as a ZIP from GitHub
-  (Code → Download ZIP), unpack it with File Station and move what is inside
-  its top folder into the project folder, so `api/` and `site/` sit beside
-  `docker-compose.yml`, and change `context:` in `docker-compose.yml` to `.`.
-  An upgrade is then a fresh ZIP unpacked over it before Build.
-- Whether Build alone recreates the running container with the new image, or
-  needs Start (or Stop and then Start) afterwards.
+**Confirm on first run.** One thing no documentation settles: whether Build
+alone recreates the running container with the new image, or needs Start (or
+Stop and then Start) afterwards. A build that fails with a message about git
+means Git Server is not installed (step 1).
 
 ## TLS
 
