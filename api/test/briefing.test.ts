@@ -1071,7 +1071,7 @@ describe("the household's briefing as a page in Drive", () => {
     const { store } = await homed();
     const warn = mock.method(console, 'warn', () => {});
     const sid = await nas.signIn('alice');
-    nas.fail((m, p) => m === 'PUT' && p.endsWith('/files/upload'), 1003);
+    nas.fail((m, p) => m === 'PUT' && p.endsWith('/files/upload'), 1000);
     fake([draft()]);
     try {
       await ensureHousehold(store, opts({ today: '2026-08-15', sid, household: 'h1', f: nas.via }));

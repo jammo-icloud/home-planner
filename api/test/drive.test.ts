@@ -38,9 +38,9 @@ describe('Drive: one file', () => {
     assert.doesNotMatch(c.body, /S3CRET/, 'the sid is the cookie, not a part');
   });
   test('a refusal at HTTP 200 is a SynologyError with its code', async () => {
-    const d = fakeDsm({ success: false, error: { code: 1002 } });
+    const d = fakeDsm({ success: false, error: { code: 1003 } });
     await assert.rejects(() => getFile('S', '/team-folders/Planner/x', d.fn),
-      (e: unknown) => e instanceof SynologyError && e.code === 1002 && e.api === 'SYNO.SynologyDrive.Files');
+      (e: unknown) => e instanceof SynologyError && e.code === 1003 && e.api === 'SYNO.SynologyDrive.Files');
   });
   test('a session that ended is SessionLost', async () => {
     const d = fakeDsm({ success: false, error: { code: 119 } });
@@ -66,7 +66,7 @@ describe('Drive: folders and moves', () => {
     assert.deepEqual(JSON.parse(d.calls[0]!.body), { files: ['link:f3c1'], to_parent_folder: '/team-folders/Planner/home/today', conflict_action: 'stop' });
   });
   test('a name already taken is a refusal Drive gives at once', async () => {
-    const d = fakeDsm({ success: false, error: { code: 1003 } });
+    const d = fakeDsm({ success: false, error: { code: 1022 } });
     await assert.rejects(() => moveFile('S', 'link:f3c1', '/team-folders/Planner/h2', d.fn), isNameTaken);
   });
 });
@@ -124,9 +124,9 @@ describe('Drive: many files', () => {
     assert.match(d.calls[0]!.url, /\/team-folder\/members\?team_id=%224%22$/, 'the spec types team_id double-quoted-string');
   });
   test('a taken name is the code Drive gives for it, and no other', () => {
-    assert.equal(isNameTaken(new SynologyError('x', 'SYNO.SynologyDrive.Files', 1003)), true);
-    assert.equal(isNameTaken(new SynologyError('x', 'SYNO.SynologyDrive.Files', 1002)), false);
-    assert.equal(isNameTaken(new Error('1003')), false);
+    assert.equal(isNameTaken(new SynologyError('x', 'SYNO.SynologyDrive.Files', 1022)), true);
+    assert.equal(isNameTaken(new SynologyError('x', 'SYNO.SynologyDrive.Files', 1003)), false, '1003 is no such file');
+    assert.equal(isNameTaken(new Error('1022')), false);
   });
   test('the share as Drive addresses it', () => {
     assert.equal(teamFolderPath('/Planner'), '/team-folders/Planner');
@@ -134,7 +134,7 @@ describe('Drive: many files', () => {
     assert.equal(teamFolderName('/Planner/home'), 'Planner');
   });
   test('no such file is named as such', () => {
-    assert.equal(isNoSuchFile(new SynologyError('x', 'SYNO.SynologyDrive.Files', 1002)), true);
-    assert.equal(isNoSuchFile(new SynologyError('x', 'SYNO.SynologyDrive.Files', 1003)), false);
+    assert.equal(isNoSuchFile(new SynologyError('x', 'SYNO.SynologyDrive.Files', 1003)), true, 'confirmed on the real NAS');
+    assert.equal(isNoSuchFile(new SynologyError('x', 'SYNO.SynologyDrive.Files', 1022)), false);
   });
 });

@@ -112,7 +112,8 @@ export interface DocAccess { readonly sid: string | null; readonly household?: s
 
 /** A file as the log remembers it: the link to read it by, and what it was when written. */
 export const toDocRef = (f: DriveFile): DocRef => ({
-  link: f.permanent_link, file_id: f.file_id, hash: f.hash, version_id: f.version_id, path: f.display_path || f.path,
+  // `display_path`, the whole /team-folders/<team>/… path: Drive's `path` is relative to the Team Folder.
+  link: f.permanent_link, file_id: f.file_id, hash: f.hash, version_id: f.version_id, path: f.display_path,
 });
 
 /** A document as it is now: followed through every move the log has recorded. */
@@ -134,10 +135,9 @@ export function inHousehold(file: DriveFile, state: State): boolean {
   const homes: DocumentsFolder[] = [];
   if (folder) homes.push(folder);
   if (previous && waiting.size) homes.push(previous);
-  return homes.some((c) => {
-    const prefix = `${drivePathOf(c)}/`;
-    return file.path.startsWith(prefix) || file.display_path.startsWith(prefix);
-  });
+  // Only `display_path` is the whole /team-folders/<team>/… path; Drive's `path`
+  // is relative to the Team Folder (the real NAS, 2026-11-03).
+  return homes.some((c) => file.display_path.startsWith(`${drivePathOf(c)}/`));
 }
 
 /** The folders already made in this process, by File Station path: asking again is a call saved. */

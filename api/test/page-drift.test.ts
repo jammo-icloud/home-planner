@@ -545,7 +545,7 @@ describe("a plan's page, looked at in Drive", () => {
   test("a page behind the plan and edited in Drive asks only about Drive's edit", async () => {
     const { s, ctx, file, editOnDisk } = await withPages();
     const warn = mock.method(console, 'warn', () => {});
-    nas.fail(isUpload, 1003);
+    nas.fail(isUpload, 1000);
     try {
       // The plan moves to 25 Nov while Drive will not take the page: the page still says 20 Nov.
       await s.append('alice', { op: 'plan.due', plan: 'gate', due: '2026-11-25' });
@@ -773,7 +773,7 @@ describe("settling a page's card", () => {
     const { s, bob, d, card } = await edited(dueEdit);
     const before = (await s.since(null)).length;
     const warn = mock.method(console, 'warn', () => {});
-    nas.fail(isUpload, 1003);
+    nas.fail(isUpload, 1000);
     try {
       await assert.rejects(decide(bob, card.id, 'approved', undefined, { choice: 'calendar' }),
         (e: unknown) => e instanceof ToolError && e.status === 502 && e.message === 'Drive did not take the page; try again');

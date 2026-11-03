@@ -331,7 +331,7 @@ describe('Synology Drive: folders and moves', () => {
     try {
       const a = await nas.signIn('alice');
       const made = await drive.makeFolder(a, '/team-folders/Planner/h1', nas.via);
-      assert.deepEqual([made.type, made.name, made.path], ['dir', 'h1', '/team-folders/Planner/h1']);
+      assert.deepEqual([made.type, made.name, made.path, made.display_path], ['dir', 'h1', '/h1', '/team-folders/Planner/h1']);
       await drive.makeFolder(a, '/team-folders/Planner/h1/today', nas.via);
       await drive.writeFile(a, '/team-folders/Planner/h1/note.md', 'a file', nas.via);
       await assert.rejects(() => drive.makeFolder(a, '/team-folders/Planner/h1', nas.via), drive.isNameTaken);
@@ -346,7 +346,7 @@ describe('Synology Drive: folders and moves', () => {
     }
   });
 
-  test('a move is asynchronous: the file is at its new path after the delay, with its link kept or changed', async () => {
+  test('a move is asynchronous: the file is at its new path after the delay, with its link kept', async () => {
     const nas = await fakeNas();
     try {
       const a = await nas.signIn('alice');
@@ -365,15 +365,14 @@ describe('Synology Drive: folders and moves', () => {
       assert.equal(await drive.readFile(a, drive.byLink(one.permanent_link), nas.via), 'kept link');
       await assert.rejects(() => drive.getFile(a, '/team-folders/Planner/h1/today/a.md', nas.via), drive.isNoSuchFile);
 
-      nas.nas.moves.changeLink = true;
+      // Onto a taken name: accepted like any move, and nothing changes (the real NAS, 2026-11-03).
       nas.nas.moves.delayMs = 0;
-      const two = await drive.writeFile(a, '/team-folders/Planner/h1/today/b.md', 'new link', nas.via);
-      await drive.moveFile(a, drive.byLink(two.permanent_link), '/team-folders/Planner/h2/today', nas.via);
-      const after = await drive.getFile(a, '/team-folders/Planner/h2/today/b.md', nas.via);
-      assert.notEqual(after.permanent_link, two.permanent_link);
-      assert.equal(after.hash, two.hash);
-      await assert.rejects(() => drive.getFile(a, drive.byLink(two.permanent_link), nas.via), drive.isNoSuchFile);
-      assert.equal(await drive.readFile(a, drive.byLink(after.permanent_link), nas.via), 'new link');
+      const two = await drive.writeFile(a, '/team-folders/Planner/h1/today/b.md', 'the source', nas.via);
+      const there = await drive.writeFile(a, '/team-folders/Planner/h2/today/b.md', 'already there', nas.via);
+      assert.ok(await drive.moveFile(a, drive.byLink(two.permanent_link), '/team-folders/Planner/h2/today', nas.via));
+      assert.equal(await drive.readFile(a, '/team-folders/Planner/h2/today/b.md', nas.via), 'already there');
+      assert.equal((await drive.getFile(a, '/team-folders/Planner/h2/today/b.md', nas.via)).permanent_link, there.permanent_link);
+      assert.equal(await drive.readFile(a, '/team-folders/Planner/h1/today/b.md', nas.via), 'the source');
     } finally {
       await nas.close();
     }
@@ -392,13 +391,13 @@ describe('Synology Drive: folders and moves', () => {
       const now = await cursors();
       assert.notEqual(now[0], before[0]);
       assert.notEqual(now[1], before[1]);
-      assert.equal((await drive.getFile(a, drive.byLink(w.permanent_link), nas.via)).path, '/team-folders/Planner/h2/a.md');
+      assert.equal((await drive.getFile(a, drive.byLink(w.permanent_link), nas.via)).display_path, '/team-folders/Planner/h2/a.md');
     } finally {
       await nas.close();
     }
   });
 
-  test('a taken name at the destination is refused at once; a name told to fail fails', async () => {
+  test('a taken name at the destination is accepted and changes nothing, as on the real NAS; a name told to fail fails', async () => {
     const nas = await fakeNas({ teamFolders: ['Planner', 'Family'], readOnly: { alice: ['Family'] } });
     try {
       const a = await nas.signIn('alice');
@@ -406,7 +405,7 @@ describe('Synology Drive: folders and moves', () => {
       for (const p of ['h1', 'h2']) await drive.makeFolder(a, `/team-folders/Planner/${p}`, nas.via);
       const x = await drive.writeFile(a, '/team-folders/Planner/h1/x.md', 'mine', nas.via);
       await drive.writeFile(a, '/team-folders/Planner/h2/x.md', 'theirs', nas.via);
-      await assert.rejects(() => drive.moveFile(a, drive.byLink(x.permanent_link), '/team-folders/Planner/h2', nas.via), drive.isNameTaken);
+      assert.ok(await drive.moveFile(a, drive.byLink(x.permanent_link), '/team-folders/Planner/h2', nas.via), 'a task id, like any move');
       await sleep(350);
       assert.equal(await drive.readFile(a, '/team-folders/Planner/h2/x.md', nas.via), 'theirs', 'never overwritten');
       assert.equal(await drive.readFile(a, '/team-folders/Planner/h1/x.md', nas.via), 'mine');

@@ -10,8 +10,11 @@
 // A file goes to the parent its kind says (`today`, `answers` or its plan's
 // id), never to wherever its stale path pointed. Drive's move answers a task id
 // and moves in the background, with nothing to ask after it, so a move is
-// confirmed only by finding the file at its expected new path. The link is not
-// assumed to survive: what is recorded is what that look gives back.
+// confirmed only by finding the file at its expected new path under its own
+// `permanent_link`, which Drive keeps across a move. A move onto a taken name is
+// accepted and does nothing, so another link at that path means the name is
+// taken. A card's file is confirmed through File Station's own lists, never
+// through Drive, which indexes File Station's changes late.
 //
 // Files taken off a card, and anything the app did not write, stay behind:
 // nothing is deleted. While files wait, the folder being left stays taken in
@@ -27,7 +30,7 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { segment } from './attachments.ts';
 import { inHousehold, toDocRef } from './docs.ts';
 import type { DocAccess } from './docs.ts';
-import { byLink, getFile, isNameTaken, isNoSuchFile, moveFile } from './drive.ts';
+import { DRIVE_API, DRIVE_NAME_TAKEN, byLink, getFile, isNameTaken, isNoSuchFile, moveFile } from './drive.ts';
 import type { DriveFile } from './drive.ts';
 import { ToolError } from './errors.ts';
 import { drivePathOf, nasPathOf, rememberDocuments } from './folders.ts';
@@ -118,26 +121,42 @@ const onCard = (state: State, file: CardFile): Attachment | undefined => {
   return p && !p.removed ? p.attachments.find((x) => x.name === file.name) : undefined;
 };
 
-/** A Drive document: looked for where it goes, then by its link, then moved and looked for again. */
+/**
+ * Another file holds the name where this one goes: said as Drive's own "taken",
+ * so the words moveOne gives a taken name apply. Drive does not refuse a move
+ * onto a taken name (the real NAS, 2026-11-03): it accepts it and leaves both
+ * files as they were, so a taken name is only ever found by looking.
+ */
+const nameTaken = (expected: string): SynologyError =>
+  new SynologyError(`Drive has another file at ${expected}`, DRIVE_API, [...DRIVE_NAME_TAKEN][0]!, 409);
+
+/**
+ * A Drive document: looked for where it goes, then by its link, then moved and
+ * looked for again. Drive keeps a file's `permanent_link` when it moves it (the
+ * real NAS, 2026-11-03), so the file at the new path is this one only if its
+ * link is this one's; a file there under another link is a taken name.
+ */
 async function moveDoc(sid: string, a: MoveAccess, file: DocFile, to: Where, record: Record, f?: DsmFetch): Promise<Event[]> {
   const expected = `${to.drive}/${to.name}`;
   const movedTo = (d: DriveFile) => ({ link: file.link, doc: toDocRef(d) });
+  const ours = (d: DriveFile) => d.permanent_link === file.link;
   // Already there: it was moved and its event lost (a restart mid-move).
   const there = await lookFor(sid, expected, f);
-  if (there) return record(movedTo(there));
+  if (there && ours(there)) return record(movedTo(there));
   const now = await lookFor(sid, byLink(file.link), f);
-  if (!now) {
-    // A move asked before may have landed between the two looks, under a new link: one more look where it goes.
-    const landed = await lookFor(sid, expected, f);
-    return landed ? record(movedTo(landed)) : record({ link: file.link }, true);
-  }
+  if (!now) return record({ link: file.link }, true);
   // A copy-restored household's link names the original's file: not this household's to move.
   if (!inHousehold(now, a.store.state)) return record({ link: file.link });
+  // Someone else's file has the name: Drive would accept the move and do nothing.
+  if (there) throw nameTaken(expected);
   await moveFile(sid, byLink(file.link), to.drive, f);
   const deadline = Date.now() + MOVE_WAIT_MS;
   for (;;) {
     const landed = await lookFor(sid, expected, f);
-    if (landed) return record(movedTo(landed));
+    if (landed) {
+      if (ours(landed)) return record(movedTo(landed));
+      throw nameTaken(expected);
+    }
     if (Date.now() + MOVE_POLL_MS > deadline) return []; // not there yet: the next pass looks again
     await sleep(MOVE_POLL_MS);
   }

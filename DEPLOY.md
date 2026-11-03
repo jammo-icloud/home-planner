@@ -52,7 +52,9 @@ ones most likely to matter:
 | The same change says "the NAS refused SYNO.Cal.Event set (code 9007)", or 9009 or 9017, instead of raising the card | That code is the stale-etag refusal after all: take it out of `NOT_AN_ETAG_REFUSAL` in `synology.ts`. |
 | An administrator is `REFUSED` the question of who is in the administrators group or which accounts exist (probes 1 and 2), or the reply is not `{ users: [{ name }] }` | Change `ADMIN_GROUP_CALL` or `ACCOUNTS_CALL` in `api/src/accounts.ts`. Until then name the administrator in `ADMIN_USER`: a reply the app cannot read counts as nobody, so a real administrator would be taken for an ordinary member. |
 | No Team Folder shows `can_write` (probe 3) | Every Team Folder would be read-only to the app: `teamFolders` in `drive.ts` reads that field. Report the reply. |
-| A name already taken is answered with something other than **1003** (probes 4 and 5) | Put the code in `DRIVE_NAME_TAKEN` in `drive.ts`. |
+| A missing path is answered with something other than **1003** (`Drive files get` on `.planner-check-missing`) | 1003 is confirmed on the real NAS for no such file; another code goes in `DRIVE_NO_SUCH_FILE` in `drive.ts`. |
+| A folder made where the name is taken is answered with something other than **1022** (probe 4) | 1022 is confirmed on the real NAS (2026-11-03). Another code goes in `DRIVE_NAME_TAKEN` in `drive.ts`. |
+| A Drive move onto a taken name (probe 5) is accepted and changes nothing | Nothing: that is what the real NAS does. The app finds the name taken by looking at the new path after the move (`moveDoc` in `moves.ts`): another file's `permanent_link` there means taken. |
 | A moved file is found later than 3000 ms (probe 5) | Raise `MOVE_WAIT_MS` in `moves.ts`. Until then a slow move is left for the next pass, and nothing is lost. |
 
 The check also asks seven things that Connectors and Settings rest on: how DSM

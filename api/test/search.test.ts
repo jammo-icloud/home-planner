@@ -95,8 +95,8 @@ describe('search across the household', () => {
     const tagged = (async (input: string | URL | Request, init?: RequestInit) => {
       const res = await nas.via(input, init);
       if (!String(input instanceof Request ? input.url : input).includes('/files/search')) return res;
-      const body = await res.json() as { data: { items: { path: string; content_snippet: string }[] } };
-      for (const i of body.data.items) if (i.path === '/team-folders/Planner/h1/gate/plan.md') i.content_snippet = long;
+      const body = await res.json() as { data: { items: { display_path: string; content_snippet: string }[] } };
+      for (const i of body.data.items) if (i.display_path === '/team-folders/Planner/h1/gate/plan.md') i.content_snippet = long;
       return Response.json(body);
     }) as DsmFetch;
     const r = await searchHousehold(ctx, 'Fix the gate', undefined, tagged);
@@ -129,7 +129,7 @@ describe('search across the household', () => {
     assert.equal(nas.calls.length, before, 'Drive was not asked');
 
     // Drive refusing is the same: the log is still searched, and nothing is thrown.
-    nas.fail(isSearch, 1003);
+    nas.fail(isSearch, 1000);
     try {
       const r = await searchHousehold(member(s), 'gate', undefined, nas.via);
       assert.equal(r.documents, 'not searched');

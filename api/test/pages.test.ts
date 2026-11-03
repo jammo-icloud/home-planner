@@ -439,7 +439,7 @@ describe("a plan's page, kept in Drive", () => {
     const s = await fresh();
     await s.append('alice', { op: 'plan.create', plan: 'shed', title: 'Clear the shed', area: 'House' });
     const ctx = member(s);
-    nas.fail(isUpload, 1003);
+    nas.fail(isUpload, 1000);
     try {
       const first = uploads();
       assert.deepEqual(await followOn(ctx, nas.via), []);

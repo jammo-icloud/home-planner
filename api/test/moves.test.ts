@@ -152,16 +152,44 @@ describe('moving the documents', () => {
 
   test('a name already taken in the new folder fails in words a person can act on', async () => {
     await setup();
-    nas.fail((method, path) => method === 'POST' && path === MOVE, 1003);
+    // Drive accepts a move onto a taken name and does nothing (the real NAS), so it is found by looking.
+    await mkdir(join(nas.nas.root, 'Planner/home/h1/gate'), { recursive: true });
+    await writeFile(join(nas.nas.root, 'Planner/home/h1/gate/plan.md'), 'a member\'s own file');
     const warn = mock.method(console, 'warn', () => {});
     try {
-      assert.deepEqual(await movePass(ctx, nas.via), []);
+      assert.equal(moved(await movePass(ctx, nas.via)).length, 2, 'the other two moved');
     } finally {
       warn.mock.restore();
     }
-    assert.equal(movesLeft(s.state), 3);
+    assert.equal(movesLeft(s.state), 1);
     const plan = moveFailures(s.path).find((x) => x.name === 'plan.md')!;
     assert.equal(plan.words, 'a file called plan.md is already in Planner/home/h1/gate: move or rename it there');
+    assert.equal(await readFile(join(nas.nas.root, 'Planner/home/h1/gate/plan.md'), 'utf8'), 'a member\'s own file');
+    assert.ok(existsSync(join(nas.nas.root, 'Planner/h1/gate/plan.md')), 'still where it was');
+  });
+
+  test('a name taken while the move is under way is said as taken, not left for ever', async () => {
+    await setup();
+    nas.nas.moves.delayMs = 100;
+    // Another file lands at the page's new path between the first look and the move's settling.
+    const sneaky: DsmFetch = (async (input: string | URL | Request, init?: RequestInit) => {
+      const url = new URL(String(input), 'http://nas');
+      const res = await nas.via(input, init);
+      if (url.pathname === MOVE && String(init?.body ?? '').includes('gate')) {
+        await mkdir(join(nas.nas.root, 'Planner/home/h1/gate'), { recursive: true });
+        await writeFile(join(nas.nas.root, 'Planner/home/h1/gate/plan.md'), 'there first');
+      }
+      return res;
+    }) as DsmFetch;
+    const warn = mock.method(console, 'warn', () => {});
+    try {
+      await movePass(ctx, sneaky);
+    } finally {
+      warn.mock.restore();
+    }
+    const plan = moveFailures(s.path).find((x) => x.name === 'plan.md')!;
+    assert.match(plan.words, /already in Planner\/home\/h1\/gate/);
+    assert.equal(await readFile(join(nas.nas.root, 'Planner/home/h1/gate/plan.md'), 'utf8'), 'there first');
   });
 
   test('a file that is gone is recorded gone, so the move can finish', async () => {
@@ -176,15 +204,15 @@ describe('moving the documents', () => {
     assert.ok(!existsSync(join(nas.nas.root, 'Planner/home/h1/answers', `${askId}.md`)));
   });
 
-  test('a changed link is replaced in every pointer: the thread, the card, the docs route', async () => {
+  test('a moved file keeps its link, and its new path is followed in every pointer: the thread, the card, the docs route', async () => {
     await setup();
-    nas.nas.moves.changeLink = true;
     await movePass(ctx, nas.via);
     const b = (await s.since(null)).find((e) => e.op === 'thread.briefing')!;
     assert.equal(b.op, 'thread.briefing');
     if (b.op !== 'thread.briefing') return;
     const now = currentDoc(s.state, b.doc!);
-    assert.notEqual(now.link, b.doc!.link);
+    assert.equal(now.link, b.doc!.link, 'Drive keeps the link across a move');
+    assert.equal(now.path, `/team-folders/Planner/home/h1/today/${BRIEFING}`);
     assert.equal(await readDoc({ ...ctx }, now, nas.via), await readFile(join(nas.nas.root, 'Planner/home/h1/today', BRIEFING), 'utf8'));
     assert.equal(s.state.plans.get('gate')!.page!.doc.path, '/team-folders/Planner/home/h1/gate/plan.md');
   });
@@ -192,10 +220,12 @@ describe('moving the documents', () => {
   test('a file the NAS moved whose record was lost is found at its new path and recorded', async () => {
     await setup();
     await mkdir(join(nas.nas.root, 'Planner/home/h1/today'), { recursive: true });
-    await rename(join(nas.nas.root, 'Planner/h1/today', BRIEFING), join(nas.nas.root, 'Planner/home/h1/today', BRIEFING));
+    // Moved by Drive, so under its own link, with no documents.moved for it.
+    await moveFile(ctx.sid!, byLink(briefingLink), '/team-folders/Planner/home/h1/today', nas.via);
+    const before = nas.calls.filter((c) => c.path === MOVE).length;
     const out = moved(await movePass(ctx, nas.via));
     assert.equal(out.length, 3);
-    assert.equal(nas.calls.filter((c) => c.path === MOVE).length, 2, 'the briefing was not asked to move again');
+    assert.equal(nas.calls.filter((c) => c.path === MOVE).length - before, 2, 'the briefing was not asked to move again');
     const b = out.find((e) => 'link' in e.file && e.file.link === briefingLink)!;
     assert.ok('link' in b.file);
     assert.equal(b.file.doc!.path, `/team-folders/Planner/home/h1/today/${BRIEFING}`);
@@ -224,27 +254,6 @@ describe('moving the documents', () => {
     // Behind the plan now, so only its waiting keeps the follow-on from writing it.
     await s.append('alice', { op: 'plan.set', plan: 'gate', notes: 'The latch sticks.' });
     assert.deepEqual(await followOn(ctx, nas.via), [], "gate's page has not moved, so it is not written");
-  });
-
-  test('a move that lands with a new link between the two looks is found where it went, not called gone', async () => {
-    await setup();
-    nas.nas.moves.changeLink = true;
-    nas.nas.moves.delayMs = 200;
-    await mkdir(join(nas.nas.root, 'Planner/home/h1/today'), { recursive: true });
-    // A move asked by an earlier pass, still under way when this one looks where the briefing goes.
-    await moveFile(ctx.sid!, byLink(briefingLink), '/team-folders/Planner/home/h1/today', nas.via);
-    // The look by its old link is held until the move has landed, which takes that link away.
-    const slow: DsmFetch = (async (input: string | URL | Request, init?: RequestInit) => {
-      const url = new URL(String(input), 'http://nas');
-      if (url.pathname.endsWith('/files') && url.searchParams.get('path') === byLink(briefingLink)) await sleep(400);
-      return nas.via(input, init);
-    }) as DsmFetch;
-    nas.nas.moves.delayMs = 0;
-    const b = moved(await movePass(ctx, slow)).find((e) => 'link' in e.file && e.file.link === briefingLink)!;
-    assert.equal(b.gone, undefined, 'not recorded gone');
-    assert.ok('link' in b.file);
-    assert.equal(b.file.doc!.path, `/team-folders/Planner/home/h1/today/${BRIEFING}`);
-    assert.notEqual(b.file.doc!.link, briefingLink);
   });
 
   test("a failure's words never carry the sid", async () => {

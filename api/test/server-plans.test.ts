@@ -811,7 +811,7 @@ describe("a plan's page in Drive follows every change", () => {
     setDsmFetch((async (input: string | URL | Request, init?: RequestInit) => {
       const url = new URL(input instanceof Request ? input.url : String(input));
       if ((init?.method ?? 'GET') === 'PUT' && url.pathname.endsWith('/files/upload')) {
-        return Response.json({ success: false, error: { code: 1003 } });
+        return Response.json({ success: false, error: { code: 1000 } });
       }
       return fetch(input, init);
     }) as typeof fetch);

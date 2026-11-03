@@ -245,7 +245,7 @@ async function driveReads(
       noteCode(code);
       if (!isNoSuchFile(refusal)) failed.push(`missing path answered code ${code}`);
       return `error code ${code}${isNoSuchFile(refusal) ? ', which the client takes as no such file' : ''}; `
-        + 'if this is not 1002, set it in DRIVE_NO_SUCH_FILE (src/drive.ts)';
+        + 'the real NAS answered 1003 (2026-11-03); if this is not 1003, set it in DRIVE_NO_SUCH_FILE (src/drive.ts)';
     });
 
   // 5. The one write, only when asked.
@@ -328,12 +328,14 @@ async function driveReads(
         + 'No snippet means Universal Search is not indexing the share yet; the search tool finds names only until it does';
     });
 
-  // The search tool keeps only hits whose path is under the household's folder, in the form it asked with.
+  // The search tool keeps only hits whose display_path is under the household's folder, in the form it asked with.
+  // Drive's `path` is relative to the Team Folder (the real NAS, 2026-11-03), so the app never compares it.
   const hit = hits.find((h) => h.name === 'check.md');
   if (hit) {
-    const under = hit.path.startsWith(`${dir}/`);
-    if (!under) failed.push("a search hit's path is not in the form of the location asked");
-    say(`\n  the hit's path ${JSON.stringify(hit.path)} ${under ? 'starts' : 'does NOT start'} with the location asked, "${dir}/"; `
+    const under = hit.display_path.startsWith(`${dir}/`);
+    if (!under) failed.push("a search hit's display_path is not in the form of the location asked");
+    say(`\n  the hit's display_path ${JSON.stringify(hit.display_path)} ${under ? 'starts' : 'does NOT start'} with the location asked, "${dir}/" `
+      + `(its path, which the app does not use, is ${JSON.stringify(hit.path)}); `
       + 'if not, every Drive search hit is dropped by the household filter (src/search.ts): set the prefix to match this form');
   }
 
@@ -657,9 +659,9 @@ async function checkDesign(): Promise<void> {
     async () => { byLinkFile = await getFile(sid, byLink(checkMd.permanent_link)); return byLinkFile; },
     async () => {
       const f = byLinkFile!;
-      const ok = f.path.startsWith(prefix) || f.display_path.startsWith(prefix);
-      if (!ok) failed.push('a file reached by link has no /team-folders/<team>/ path');
-      return `${formOf(f, prefix)}. ${ok ? 'inHousehold finds it' : "neither does, so inHousehold (src/docs.ts) would refuse every file as another household's"}`;
+      const ok = f.display_path.startsWith(prefix);
+      if (!ok) failed.push('a file reached by link has no /team-folders/<team>/ display_path');
+      return `${formOf(f, prefix)}. ${ok ? 'inHousehold, which reads display_path only, finds it' : "display_path does not, so inHousehold (src/docs.ts) would refuse every file as another household's"}`;
     });
 
   // 5. Moves.
@@ -680,9 +682,11 @@ async function checkDesign(): Promise<void> {
     const there = `${expected.split('/').slice(0, 3).join('/')}/`;
     const within = found.ms <= MOVE_WAIT_MS;
     say(`  found at "${expected}" after ${found.ms} ms (${within ? 'within' : 'LATER than'} MOVE_WAIT_MS ${MOVE_WAIT_MS}${within ? '' : ': a pass would leave it for the next look; raise MOVE_WAIT_MS in src/moves.ts'})`);
-    say(`  permanent_link ${found.file.permanent_link === file.permanent_link ? 'unchanged' : 'CHANGED'} by the move (${file.permanent_link} → ${found.file.permanent_link}); the app finds the file again by where it goes either way`);
+    const kept = found.file.permanent_link === file.permanent_link;
+    if (!kept) failed.push('a Drive move changed the permanent_link');
+    say(`  permanent_link ${kept ? 'unchanged' : 'CHANGED'} by the move (${file.permanent_link} → ${found.file.permanent_link})${kept ? '' : ': moveDoc (src/moves.ts) takes a file at the new path under another link for a taken name, so every move would fail as taken'}`);
     say(`  ${formOf(found.file, there)}`);
-    if (!found.file.path.startsWith(there) && !found.file.display_path.startsWith(there)) failed.push('a moved file has no /team-folders/<team>/ path');
+    if (!found.file.display_path.startsWith(there)) failed.push('a moved file has no /team-folders/<team>/ display_path');
     return found.file;
   };
 
@@ -713,10 +717,9 @@ async function checkDesign(): Promise<void> {
       (a) => {
         if ('refused' in a) {
           const known = DRIVE_NAME_TAKEN.has(a.refused.code);
-          if (!known) failed.push(`DRIVE_NAME_TAKEN is not ${a.refused.code} for a move`);
-          return `refused at once with code ${a.refused.code}; DRIVE_NAME_TAKEN holds ${[...DRIVE_NAME_TAKEN].join(', ')}: ${known ? 'the app maps it to "taken"' : 'NOT in it, so set it there (src/drive.ts)'}`;
+          return `refused at once with code ${a.refused.code}, where the real NAS (2026-11-03) accepted it; DRIVE_NAME_TAKEN holds ${[...DRIVE_NAME_TAKEN].join(', ')}: ${known ? 'the app maps it to "taken"' : 'NOT in it, so a refusal is said in the NAS\'s words'}`;
         }
-        return 'ACCEPTED: Drive took a move onto a taken name, so it may refuse (or skip) later, as a task result; the app maps only an immediate refusal to "taken"';
+        return 'accepted, as the real NAS does (2026-11-03): moveDoc (src/moves.ts) finds the name taken by the other link at the new path';
       });
     if (takenAnswer && 'answered' in takenAnswer) {
       await new Promise((resolve) => setTimeout(resolve, MOVE_WAIT_MS));

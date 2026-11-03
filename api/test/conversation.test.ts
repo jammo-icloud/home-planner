@@ -368,7 +368,7 @@ describe('answers in Drive', () => {
   test('a refused write keeps the whole answer in the log', async () => {
     const c = await asking(await nas.signIn('alice'));
     const warn = mock.method(console, 'warn', () => {});
-    nas.fail((m, p) => m === 'PUT' && p.endsWith('/files/upload'), 1003);
+    nas.fail((m, p) => m === 'PUT' && p.endsWith('/files/upload'), 1000);
     try {
       const r = await askInThread(c, 'Can we afford it?', null);
       assert.equal(r.answer!.text, FULL);
@@ -470,7 +470,7 @@ describe("Claude reads the day's documents", () => {
     const c = { ...(await ctx()), sid, household: HOUSEHOLD };
     await chooseFolderIn(c.store, { team: 'Planner', folder: HOUSEHOLD });
     const events = await dayWithDocs(c, { briefing: STUB, answer: STUB });
-    nas.fail(() => true, 1003);
+    nas.fail(() => true, 1000);
     try {
       const bodies = await readDayDocs(c, events, null, TODAY);
       assert.equal(bodies.size, 0);

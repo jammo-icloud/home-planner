@@ -104,8 +104,12 @@ export async function readFile(sid: string, path: string, f?: DsmFetch): Promise
   return new TextDecoder().decode(bytes);
 }
 
-/** The code Drive answers for a path that names nothing. The check (Task 4) shows it; the fake answers it. */
-export const DRIVE_NO_SUCH_FILE: ReadonlySet<number> = new Set([1002]);
+/**
+ * The code Drive answers for a path that names nothing: 1003, confirmed on the
+ * real NAS on 2026-11-03 (`files` GET on a path that does not exist, and on a
+ * Team Folder path whose case differs from the folder's). The fake answers it.
+ */
+export const DRIVE_NO_SUCH_FILE: ReadonlySet<number> = new Set([1003]);
 
 export const isNoSuchFile = (err: unknown): boolean =>
   err instanceof SynologyError && DRIVE_NO_SUCH_FILE.has(err.code);
@@ -230,8 +234,14 @@ export async function moveFile(sid: string, file: string, toParent: string, f?: 
   return String(data.async_task_id ?? '');
 }
 
-/** Drive's answer for a name already taken, as the fake gives it; probe 5 names the real one. */
-export const DRIVE_NAME_TAKEN: ReadonlySet<number> = new Set([1003]);
+/**
+ * Drive's answer for a name already taken where a folder is made (`POST files`
+ * type=folder): 1022, confirmed on the real NAS on 2026-11-03 (probe 4 of the
+ * check). It is not 1003, which is "no such file" (DRIVE_NO_SUCH_FILE). A
+ * `files/move` onto a taken name is NOT refused: Drive accepts it and leaves
+ * both files as they were, so moves.ts finds a taken name by looking.
+ */
+export const DRIVE_NAME_TAKEN: ReadonlySet<number> = new Set([1022]);
 
 export const isNameTaken = (err: unknown): boolean =>
   err instanceof SynologyError && DRIVE_NAME_TAKEN.has(err.code);

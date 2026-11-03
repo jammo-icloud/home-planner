@@ -56,11 +56,10 @@ export interface FakeDsm {
   /**
    * How Drive's asynchronous move behaves, read afresh on every move so a test
    * can change it between moves. `delayMs`: how long after answering its task
-   * id the file is at its new path. `changeLink`: the moved file gets a new
-   * `permanent_link` (its old one then names nothing); else it keeps its own.
-   * `refuse`: file names whose move is refused at once with 1001.
+   * id the file is at its new path. The moved file keeps its `permanent_link`,
+   * as on the real NAS. `refuse`: file names whose move is refused at once with 1001.
    */
-  readonly moves: { delayMs: number; changeLink: boolean; refuse: Set<string> };
+  readonly moves: { delayMs: number; refuse: Set<string> };
   close(): Promise<void>;
 }
 
@@ -91,10 +90,10 @@ const NO_SUCH_CAL = 9009;
 const PARAMETER_ERROR = 9009;
 const FS_NOT_FOUND = 408;
 const FS_EXISTS = 414;
-/** Drive: no such file or folder, or a path that is not in a Team Folder (src/drive.ts, DRIVE_NO_SUCH_FILE). */
-const DRIVE_NOT_FOUND = 1002;
-/** Drive: a name already taken where a folder is made or a file moved (src/drive.ts, DRIVE_NAME_TAKEN). */
-const DRIVE_NAME_TAKEN = 1003;
+/** Drive: no such file or folder, or a path that is not in a Team Folder; confirmed on the real NAS (src/drive.ts, DRIVE_NO_SUCH_FILE). */
+const DRIVE_NOT_FOUND = 1003;
+/** Drive: a name already taken where a folder is made; confirmed on the real NAS (src/drive.ts, DRIVE_NAME_TAKEN). A move onto one is accepted, not refused. */
+const DRIVE_NAME_TAKEN = 1022;
 /** Drive: a move told to fail (`moves.refuse`); this fake's choice. */
 const DRIVE_MOVE_REFUSED = 1001;
 
@@ -253,7 +252,7 @@ export async function start(opts: {
   }
   const log =opts.log ?? ((line: string) => console.log(`[fake-dsm] ${line}`));
   const readOnly = new Map(Object.entries(opts.readOnly ?? {}).map(([k, v]) => [k.toLowerCase(), new Set(v)]));
-  const moves: FakeDsm['moves'] = { delayMs: 0, changeLink: false, refuse: new Set() };
+  const moves: FakeDsm['moves'] = { delayMs: 0, refuse: new Set() };
   /** Moves told to wait, so closing the fake does not leave them to fire into a deleted directory. */
   const pendingMoves = new Set<NodeJS.Timeout>();
 
@@ -655,7 +654,7 @@ export async function start(opts: {
   // ── Synology Drive, on the same root ──────────────────────────────────────
   // Drive's own REST door under DRIVE_BASE, the sid in the `id` cookie only.
   // `/team-folders/<name>/<rel>` is `<root>/<name>/<rel>`, the bytes File
-  // Station sees, for a name in `teamFolders`; anything else is 1002. What
+  // Station sees, for a name in `teamFolders`; anything else is 1003. What
   // Drive knows of a file beyond its bytes is kept here, keyed by its path on
   // disk, and brought up to date whenever the file is asked about.
 
@@ -696,7 +695,7 @@ export async function start(opts: {
    * What Drive knows of the file or folder at `full`, brought up to date: a
    * link and version 1 on first sight, and a new change_id when a file's bytes
    * no longer hash to what was last seen, or when it is back after being gone.
-   * 1002 when nothing is there, by path or by link alike.
+   * 1003 when nothing is there, by path or by link alike.
    */
   const sighted = async (full: string): Promise<{ meta: DriveMeta; isDir: boolean; mtime: number }> => {
     const info = await statOf(full);
@@ -739,10 +738,13 @@ export async function start(opts: {
         change = Math.max(change, m.change_id);
       }
     }
-    const path = drivePath(full);
+    // As the real NAS answers (2026-11-03): `display_path` is the whole
+    // `/team-folders/<team>/…`, `path` is relative to the Team Folder.
+    const display = drivePath(full);
+    const path = display.replace(/^\/team-folders\/[^/]+/, '') || '/';
     return {
       file_id: String(meta.file_id), permanent_link: meta.permanent_link, name: basename(full),
-      path, display_path: path, type: isDir ? 'dir' : 'file', hash: meta.hash, version_id: meta.version,
+      path, display_path: display, type: isDir ? 'dir' : 'file', hash: meta.hash, version_id: meta.version,
       change_id: change, max_id: change, modified_time: mtime, removed: false,
     };
   };
@@ -809,7 +811,9 @@ export async function start(opts: {
     },
 
     // One file to a new parent, never over a name that is taken. It answers its
-    // task id at once; the file is at its new path after `moves.delayMs`.
+    // task id at once; the file is at its new path after `moves.delayMs`. A move
+    // onto a taken name is accepted like any other and then does nothing, both
+    // files left as they were, as the real NAS does (2026-11-03).
     'POST files/move': async (req, _url, who) => {
       const body = await jsonOf(req);
       const { files, to_parent_folder: toParent } = body;
@@ -823,10 +827,9 @@ export async function start(opts: {
       mayWrite(who, from);
       mayWrite(who, to);
       if (moves.refuse.has(basename(from))) throw new Refuse(DRIVE_MOVE_REFUSED);
-      if (await statOf(to)) throw new Refuse(DRIVE_NAME_TAKEN);
       await sighted(from);
       const task = `task-${nextTask++}`;
-      const { changeLink, delayMs } = moves;
+      const { delayMs } = moves;
       const settle = async (): Promise<void> => {
         if (!(await statOf(from)) || await statOf(to)) { log(`${who}'s move of ${drivePath(from)} found things changed, and did nothing`); return; }
         await rename(from, to);
@@ -835,10 +838,6 @@ export async function start(opts: {
         const left = { ...meta, permanent_link: randomUUID(), gone: true, change_id: ++lastChange };
         metas.set(from, left);
         links.set(left.permanent_link, from);
-        if (changeLink) {
-          links.delete(meta.permanent_link);
-          meta.permanent_link = randomUUID();
-        }
         links.set(meta.permanent_link, to);
         meta.change_id = ++lastChange;
         metas.set(to, meta);

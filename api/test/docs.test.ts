@@ -171,7 +171,7 @@ describe('writing and reading documents', () => {
   test('a refusal from Drive is null, not an error', async () => {
     const warn = mock.method(console, 'warn', () => {});
     const sid = await nas.signIn('alice');
-    nas.fail((m, p) => m === 'PUT' && p.endsWith('/files/upload'), 1003);
+    nas.fail((m, p) => m === 'PUT' && p.endsWith('/files/upload'), 1000);
     try {
       assert.equal(await writeDoc({ sid, household: 'h1', store: home }, ['today', 'y.md'], 'y', nas.via), null);
       const said = String(warn.mock.calls[0]?.arguments[0]);
@@ -227,7 +227,7 @@ describe('writing and reading documents', () => {
       assert.equal(ended.on, false);
       assert.match(ended.why!, /^Sign in again/);
       nas.ok();
-      nas.fail(isTeamFolders, 1003);
+      nas.fail(isTeamFolders, 1000);
       const down = await documentsStatus({ sid: await nas.signIn('carol'), household: 'h1', store: home }, nas.via);
       assert.match(down.why!, /^Synology Drive did not answer/);
     } finally {

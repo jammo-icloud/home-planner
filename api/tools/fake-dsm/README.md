@@ -95,13 +95,13 @@ It serves the Team Folders named in `start({ teamFolders })` — `['Planner']`
 when left out, each made under the root at start — and
 `/team-folders/Planner/x.md` is the same file on disk as File Station's
 `/Planner/x.md`, so a file written by one is read by the other. A path outside
-those Team Folders, a missing file and a missing folder are all **1002**.
+those Team Folders, a missing file and a missing folder are all **1003**, as on the real NAS.
 
 | Route | Answers |
 |---|---|
-| `GET files?path=` | a file's or folder's metadata |
+| `GET files?path=` | a file's or folder's metadata: `display_path` is `/team-folders/<team>/…`, `path` is relative to the Team Folder, as on the real NAS (2026-11-03) |
 | `POST files/list?path=` | the folder's children, as `items`; the JSON body is optional, and `{ filter: { type: ['dir'] } }` leaves the files out |
-| `POST files?path=&type=folder&conflict_action=stop` | one folder under a parent that is there (1002 without it, 1003 when the name is taken); body `{}` |
+| `POST files?path=&type=folder&conflict_action=stop` | one folder under a parent that is there (1003 without it, 1022 when the name is taken, as on the real NAS); body `{}` |
 | `POST files/move` | JSON `{ files: [path], to_parent_folder, conflict_action: 'stop' }`, one file; answers `{ async_task_id }` at once and moves after `moves.delayMs` (below) |
 | `PUT files/upload` | multipart `path`, `conflict_action`, the file last; only `conflict_action=version` is taken, and the folder must already be there |
 | `POST files/download` | JSON `{ files: [path] }`, one file: its bytes, or the JSON refusal |
@@ -118,7 +118,7 @@ behind Drive's back (over SMB, or by File Station) changes it; and
 change is noticed, and when a file seen before is first found gone from disk.
 A folder's `change_id` and `max_id` are the largest under it, deletions
 included, so a file deleted behind Drive's back moves its folder's cursor the
-next time the folder is asked about. A gone file is **1002** by path and by
+next time the folder is asked about. A gone file is **1003** by path and by
 link alike (never `removed: true`); written again at the same path, it keeps
 its link and gains a version.
 
@@ -131,11 +131,10 @@ accounts are unaffected. In tests, `fakeNas({ readOnly })` passes it on.
 **Moves.** A Drive move answers its task id at once, as the real one does, and
 the file is at its new path `moves.delayMs` later (0 by default: before the
 answer). The handle's `moves` is read afresh on every move, so a test changes
-it between them: `nas.moves.delayMs = 200`; `nas.moves.changeLink = true`, and
-the moved file gets a new `permanent_link` (the old one then names nothing),
-where otherwise it keeps its own, with its version and hash; `nas.moves.refuse.add('a.md')`,
-and a move of a file by that name is **1001** at once. A name already taken at
-the destination is **1003**, also at once, and nothing is overwritten. Both
+it between them: `nas.moves.delayMs = 200`; the moved file keeps its `permanent_link`, version and hash, as on the real NAS; `nas.moves.refuse.add('a.md')`,
+and a move of a file by that name is **1001** at once. A move onto a name already
+taken at the destination is accepted like any other (its task id at once) and
+then does nothing: both files stay as they were, as on the real NAS (2026-11-03). A move that lands moves both
 folders' cursors move. File Station's move (`CopyMove`) is the other way to
 the same end, and is done at once.
 
@@ -155,8 +154,8 @@ guess. It shows the app and the fake agree, not that DSM does;
 | 120 | a parameter it could not read, or no such contact; on Drive, also an upload without `conflict_action=version`, a folder where a file is meant, or a download of more than one file | yes |
 | 408 / 414 | File Station: no such file or folder / file already exists | yes |
 | 1001 | Drive: a move of a file named in `moves.refuse` | this fake's choice |
-| 1002 | Drive: no such file or folder, or a path outside the Team Folders | the client's assumption (src/drive.ts) |
-| 1003 | Drive: a folder or a moved file whose name is already taken | the client's assumption (`DRIVE_NAME_TAKEN`, src/drive.ts; the check's probe 5 names the real one) |
+| 1003 | Drive: no such file or folder, or a path outside the Team Folders | yes: the real NAS answered it for a path that does not exist, and for a Team Folder path in the wrong case (2026-11-03; `DRIVE_NO_SUCH_FILE`, src/drive.ts) |
+| 1022 | Drive: a folder made where that name is already taken | yes: the real NAS refused a second `POST files` type=folder with it (2026-11-03; `DRIVE_NAME_TAKEN`, src/drive.ts) |
 | 9006 | event `set` with a stale `dav_etag` | the client's assumption |
 | 9009 | `SYNO.Cal.Cal list` without `cal_type` and `is_evt`; also no such calendar or event, or not one this account may use | yes for a `list` with no parameters (the real NAS, 2026-11-03; the guide calls it "Parameter error"); which of the two parameters the NAS needs is not confirmed, so the fake wants both; the rest is this fake's choice |
 

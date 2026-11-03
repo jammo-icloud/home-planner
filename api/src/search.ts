@@ -164,8 +164,10 @@ async function fromDrive(ctx: ToolContext, words: string, events: readonly Event
   const hits: SearchHit[] = [];
   for (const item of items) {
     // Another household's, whatever Drive was asked: dropped before anything is made of it.
-    if (!item.path.startsWith(prefix)) continue;
-    const hit = driveHit(ctx.store.state, index, item, item.path.slice(prefix.length));
+    // `display_path` is the whole /team-folders/<team>/… path; Drive's `path` is
+    // relative to the Team Folder (the real NAS, 2026-11-03), so it is never compared.
+    if (!item.display_path.startsWith(prefix)) continue;
+    const hit = driveHit(ctx.store.state, index, item, item.display_path.slice(prefix.length));
     if (hit) hits.push(hit);
   }
   return hits;
