@@ -274,6 +274,25 @@ const calendarInfo = (r: RawCalendar): CalendarInfo => ({
 });
 
 /**
+ * What `listCalendars` sends with `SYNO.Cal.Cal` `list`. The real NAS refused a
+ * `list` with no parameters with 9009 (2026-11-03). Synology's Calendar WebAPI
+ * guide (2024-06) marks `cal_type` ("event", "todo" or "all") required for
+ * `list` from version 5, and its request examples also carry `is_evt: true`,
+ * so both are sent until the NAS says which one it wants. The check prints them.
+ */
+export const CALENDAR_LIST_PARAMS = { cal_type: 'event', is_evt: true } as const;
+
+/** A list reply as the guide shows it, `{ list: [...] }`, or a bare array or another wrapper. */
+export const listRows = <T>(data: unknown, ...keys: string[]): T[] => {
+  if (Array.isArray(data)) return data as T[];
+  for (const key of keys) {
+    const rows = (data as Record<string, unknown> | null | undefined)?.[key];
+    if (Array.isArray(rows)) return rows as T[];
+  }
+  return [];
+};
+
+/**
  * Event calendars only; the task lists that share the API are not ours.
  *
  * The ids are as *this* account sees them. A calendar shared with someone may
@@ -283,12 +302,10 @@ const calendarInfo = (r: RawCalendar): CalendarInfo => ({
  * README has a step that compares the two views on the real NAS.
  */
 export async function listCalendars(sid: string, f?: DsmFetch): Promise<CalendarInfo[]> {
-  const data = await dsm<RawCalendar[] | { cal_list: RawCalendar[] }>(
-    { api: 'SYNO.Cal.Cal', version: CAL_VERSION, method: 'list', sid }, f);
-  // The check shows it: the guide shows a bare array, but a wrapper object
-  // `{ cal_list }` is accepted too, in case DSM wraps it.
-  const rows = Array.isArray(data) ? data : data?.cal_list ?? [];
-  return rows.filter((r) => r.cal_type === 'event').map(calendarInfo);
+  const data = await dsm<unknown>(
+    { api: 'SYNO.Cal.Cal', version: CAL_VERSION, method: 'list', sid, params: { ...CALENDAR_LIST_PARAMS } }, f);
+  // The guide wraps it as `{ list }`; a bare array or `{ cal_list }` is read too.
+  return listRows<RawCalendar>(data, 'list', 'cal_list').filter((r) => r.cal_type === 'event').map(calendarInfo);
 }
 
 export async function createCalendar(
@@ -506,12 +523,13 @@ export async function listEvents(
   f?: DsmFetch,
 ): Promise<CalEvent[]> {
   // The check shows it: if `cal_id_list` is rejected, this is the one
-  // parameter to change.
-  const rows = await dsm<Partial<CalEvent>[]>({
+  // parameter to change. The guide wraps the reply as `{ list }`; a bare
+  // array is read too.
+  const data = await dsm<unknown>({
     api: 'SYNO.Cal.Event', version: EVENT_VERSION, method: 'list', sid,
     params: { cal_id_list: o.calendars.map((c) => c.cal_id), start: o.start, end: o.end },
   }, f);
-  return rows.map((r) => calEvent(r, { cal_id: '', original_cal_id: '' }));
+  return listRows<Partial<CalEvent>>(data, 'list').map((r) => calEvent(r, { cal_id: '', original_cal_id: '' }));
 }
 
 export async function deleteEvent(sid: string, ref: EventRef, f?: DsmFetch): Promise<void> {

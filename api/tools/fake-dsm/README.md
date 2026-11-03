@@ -72,9 +72,9 @@ All in memory and gone when it stops, apart from the files.
 | API | Methods | Notes |
 |---|---|---|
 | `SYNO.API.Info` | query | the APIs below and their versions |
-| `SYNO.Cal.Cal` | list, create, set, delete | each account starts with "My Calendar" (its default) and a task list "My Tasks"; `list` shows your own and those shared with you; `delete` is the owner's, and takes the calendar's events with it |
+| `SYNO.Cal.Cal` | list, create, set, delete | `list` wants `cal_type` (`event`, `todo` or `all`) and `is_evt`, and refuses 9009 without them, and answers `{ list: [...] }` as the guide shows it; each account starts with "My Calendar" (its default) and a task list "My Tasks"; `list` shows your own and those shared with you; `delete` is the owner's, and takes the calendar's events with it |
 | `SYNO.Cal.Sharing` | get, set | owner only; `set` replaces the whole list, groups included (kept as sent); `get` answers `{ cal_share_setting: { DSM_USER, DSM_GROUP } }` |
-| `SYNO.Cal.Event` | create, get, list, set, delete | `list` takes `cal_id_list`, `start`, `end` (epoch seconds) and returns events overlapping it; every `set` gives a new `dav_etag`, and a `set` with a stale one is refused; each event says who last changed it in `last_modify_user` (the client's guess at DSM's name for it) |
+| `SYNO.Cal.Event` | create, get, list, set, delete | `list` takes `cal_id_list`, `start`, `end` (epoch seconds) and answers `{ list: [...] }` (the guide's wrapper) of the events overlapping it; every `set` gives a new `dav_etag`, and a `set` with a stale one is refused; each event says who last changed it in `last_modify_user` (the client's guess at DSM's name for it) |
 | `SYNO.Contacts.Addressbook` | list | one address book, id 1, shared by every account |
 | `SYNO.Contacts.Contact` | list, get, create, set | rows carry `tel` and `email` as lists of `{ value }` |
 | `SYNO.FileStation.CreateFolder` | create | |
@@ -158,7 +158,7 @@ guess. It shows the app and the fake agree, not that DSM does;
 | 1002 | Drive: no such file or folder, or a path outside the Team Folders | the client's assumption (src/drive.ts) |
 | 1003 | Drive: a folder or a moved file whose name is already taken | the client's assumption (`DRIVE_NAME_TAKEN`, src/drive.ts; the check's probe 5 names the real one) |
 | 9006 | event `set` with a stale `dav_etag` | the client's assumption |
-| 9009 | no such calendar or event, or not one this account may use | this fake's choice |
+| 9009 | `SYNO.Cal.Cal list` without `cal_type` and `is_evt`; also no such calendar or event, or not one this account may use | yes for a `list` with no parameters (the real NAS, 2026-11-03; the guide calls it "Parameter error"); which of the two parameters the NAS needs is not confirmed, so the fake wants both; the rest is this fake's choice |
 
 ## Moving an event as a phone would
 

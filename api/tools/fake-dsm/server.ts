@@ -87,6 +87,8 @@ const BAD_PARAM = 120;
 const ETAG_MISMATCH = 9006;
 /** No such calendar or event, or not one this account may touch. */
 const NO_SUCH_CAL = 9009;
+/** Calendar's "Parameter error"; the real NAS gave it for `SYNO.Cal.Cal list` with no parameters. */
+const PARAMETER_ERROR = 9009;
 const FS_NOT_FOUND = 408;
 const FS_EXISTS = 414;
 /** Drive: no such file or folder, or a path that is not in a Team Folder (src/drive.ts, DRIVE_NO_SUCH_FILE). */
@@ -350,7 +352,19 @@ export async function start(opts: {
 
   const handlers: Record<string, Record<string, (p: URLSearchParams, who: string) => unknown>> = {
     'SYNO.Cal.Cal': {
-      list: (_p, who) => [...calendars.values()].filter((c) => privilegeOf(c, who)).map((c) => rawCalendar(c, who)),
+      // The real NAS answered a `list` with no parameters 9009 (2026-11-03).
+      // The guide marks `cal_type` required and its examples send `is_evt`;
+      // which one the NAS wants is not known, so this asks for both. The
+      // reply is wrapped as the guide shows it, `{ list }`.
+      list: (p, who) => {
+        const type = p.get('cal_type');
+        if (!p.has('is_evt') || (type !== 'event' && type !== 'todo' && type !== 'all')) throw new Refuse(PARAMETER_ERROR);
+        return {
+          list: [...calendars.values()]
+            .filter((c) => privilegeOf(c, who) && (type === 'all' || c.type === type))
+            .map((c) => rawCalendar(c, who)),
+        };
+      },
       create: (p, who) => {
         const displayname = need(p, 'cal_displayname');
         const cal: Calendar = {
@@ -425,10 +439,13 @@ export async function start(opts: {
           const real = typeof id === 'string' ? meant(id, who) : null;
           return real !== null && calendars.has(real) && privilegeOf(calendars.get(real)!, who) !== null ? [real] : [];
         }));
-        return [...events.values()]
-          .filter((e) => visible.has(e.cal_id) && e.dtstart < to && e.dtend > from)
-          .sort((a, b) => a.dtstart - b.dtstart)
-          .map((e) => rawEvent(e, who));
+        // Wrapped as the guide shows it, `{ list }`.
+        return {
+          list: [...events.values()]
+            .filter((e) => visible.has(e.cal_id) && e.dtstart < to && e.dtend > from)
+            .sort((a, b) => a.dtstart - b.dtstart)
+            .map((e) => rawEvent(e, who)),
+        };
       },
       set: (p, who) => {
         const e = eventFor(p, who, true);

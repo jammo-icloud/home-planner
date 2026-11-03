@@ -62,6 +62,14 @@ describe('the fake DSM signs in', () => {
 });
 
 describe('calendars and sharing', () => {
+  test('a calendar list with no parameters is refused 9009, as the real NAS refused it', async () => {
+    await assert.rejects(() => syno.dsm({ api: 'SYNO.Cal.Cal', version: 5, method: 'list', sid: alice }),
+      (e: unknown) => e instanceof syno.SynologyError && e.code === 9009);
+    const data = await syno.dsm<{ list: unknown[] }>({
+      api: 'SYNO.Cal.Cal', version: 5, method: 'list', sid: alice, params: { ...syno.CALENDAR_LIST_PARAMS } });
+    assert.ok(Array.isArray(data.list));
+  });
+
   test('each account has its own calendar; a task list is not an event calendar', async () => {
     const mine = await syno.listCalendars(alice);
     assert.deepEqual(mine.map((c) => [c.cal_id, c.isDefault, c.privilege]), [['/alice/home/', true, 'RW']]);

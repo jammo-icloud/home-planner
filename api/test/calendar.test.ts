@@ -381,8 +381,8 @@ describe('due dates and blocks become events', () => {
       return new Response(JSON.stringify({ success: false, error: { code: 9017 } }), { headers: { 'content-type': 'application/json' } });
     }
     if (calendarsReply && params.get('api') === 'SYNO.Cal.Cal' && params.get('method') === 'list') {
-      const body = await res.json() as { success: boolean; data: Record<string, unknown>[] };
-      return new Response(JSON.stringify({ ...body, data: calendarsReply(body.data) }), { headers: { 'content-type': 'application/json' } });
+      const body = await res.json() as { success: boolean; data: { list: Record<string, unknown>[] } };
+      return new Response(JSON.stringify({ ...body, data: { list: calendarsReply(body.data.list) } }), { headers: { 'content-type': 'application/json' } });
     }
     return res;
   }) as DsmFetch;

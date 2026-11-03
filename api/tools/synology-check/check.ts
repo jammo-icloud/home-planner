@@ -47,9 +47,9 @@ import {
 } from '../../src/drive.ts';
 import type { DriveFile } from '../../src/drive.ts';
 import {
-  CAL_VERSION, COPY_MOVE_VERSION, EVENT_VERSION, FILE_STATION_VERSION, NAS_MOVE_WAIT_MS, SHARING_VERSION,
+  CALENDAR_LIST_PARAMS, CAL_VERSION, COPY_MOVE_VERSION, EVENT_VERSION, FILE_STATION_VERSION, NAS_MOVE_WAIT_MS, SHARING_VERSION,
   SynologyError, contactsVersionNow, createFolder, dsm, downloadFile, fetchFor, getEvent, jsonBody, listAddressbooks,
-  listCalendars, listContacts, listEvents, listFolder, reach, sharingOf, verdict,
+  listCalendars, listContacts, listEvents, listFolder, listRows, reach, sharingOf, verdict,
 } from '../../src/synology.ts';
 import { MOVE_WAIT_MS } from '../../src/moves.ts';
 
@@ -828,8 +828,12 @@ try {
   }
 
   // 2. Calendars.
-  await probe(`SYNO.Cal.Cal list (v${CAL_VERSION})`,
-    () => dsm({ api: 'SYNO.Cal.Cal', version: CAL_VERSION, method: 'list', sid }),
+  // The real NAS refused a `list` with no parameters 9009; the guide marks
+  // `cal_type` required and its examples send `is_evt`. Say what was sent.
+  const calListParams = Object.entries(CALENDAR_LIST_PARAMS).map(([k, v]) => `${k}=${String(v)}`).join(', ');
+  await probe(`SYNO.Cal.Cal list (v${CAL_VERSION}), with ${calListParams} `
+    + `(is_evt ${'is_evt' in CALENDAR_LIST_PARAMS ? 'sent' : 'NOT sent'}; 9009 here means "Parameter error")`,
+    () => dsm({ api: 'SYNO.Cal.Cal', version: CAL_VERSION, method: 'list', sid, params: { ...CALENDAR_LIST_PARAMS } }),
     async () => {
       const cals = await listCalendars(sid);
       return `${cals.length} event calendar(s)${cals.length ? `: ${cals.map((c) => c.displayname).join(', ')}` : ''}`;
@@ -875,7 +879,7 @@ try {
       () => dsm({ api: 'SYNO.Cal.Event', version: EVENT_VERSION, method: 'list', sid, params: { cal_id_list: [first.cal_id], start, end } }),
       async () => `${(await listEvents(sid, { calendars: [first], start, end })).length} event(s)`);
 
-    const one = Array.isArray(events) ? events[0] as { evt_id?: unknown } | undefined : undefined;
+    const one = listRows<{ evt_id?: unknown }>(events, 'list')[0];
     if (typeof one?.evt_id === 'number') {
       const evt_id = one.evt_id;
       await probe(`SYNO.Cal.Event get (v${EVENT_VERSION}), the first event above, with the params the client sends`,

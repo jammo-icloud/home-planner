@@ -115,6 +115,15 @@ describe('calendars', () => {
     ] } });
     assert.deepEqual((await listCalendars('S', d.fn)).map((c) => c.privilege), ['RO']);
   });
+  test('list reads the guide\'s { list } wrapper and sends cal_type and is_evt', async () => {
+    const d = fakeDsm({ success: true, data: { list: [
+      { cal_id: '/a/h/', original_cal_id: '/a/h/', cal_displayname: 'H', cal_color: '#fff', cal_privilege: 'RW', cal_type: 'event', default_calendar: true },
+      { cal_id: '/a/t/', original_cal_id: '/a/t/', cal_displayname: 'Inbox', cal_color: '#fff', cal_privilege: 'RW', cal_type: 'todo', default_calendar: true },
+    ] } });
+    assert.deepEqual((await listCalendars('S', d.fn)).map((c) => c.displayname), ['H']);
+    const b = decodeURIComponent(d.calls[0]!.body);
+    assert.match(b, /cal_type=event/); assert.match(b, /is_evt=true/);
+  });
 });
 
 describe('events', () => {
@@ -148,6 +157,11 @@ describe('events', () => {
     assert.equal(out.length, 1);
     const b = decodeURIComponent(d.calls[0]!.body);
     assert.match(b, /start=1/); assert.match(b, /end=2/); assert.match(b, /cal_id_list=\["\/a\/h\/"\]/);
+  });
+  test('list reads the guide\'s { list } wrapper', async () => {
+    const d = fakeDsm({ success: true, data: { list: [reply, reply] } });
+    const out = await listEvents('S', { calendars: [{ cal_id: '/a/h/', original_cal_id: '/a/h/' }], start: 1, end: 2 }, d.fn);
+    assert.equal(out.length, 2);
   });
   test('set sends the whole event with the changes applied', async () => {
     const d = fakeDsm({ success: true, data: reply });
