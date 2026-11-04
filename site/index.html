@@ -1095,6 +1095,24 @@
   div.rows .check input[type=checkbox]{margin-top:0}
   div.rows .check input[type=checkbox]:disabled{opacity:.6}
   .check .what{display:block;font-size:var(--fs-small);color:var(--ink-soft)}
+  /* Set up your iPhone: the code at 164 px beside its words, which wrap under it on a phone. */
+  #phone-sec > div > p{margin:var(--sp-3) 0 0}
+  #phone-sec .check input[type=checkbox]:disabled{opacity:.6}
+  #phone-sec .check:has(input:disabled){cursor:default}
+  .phone-code{display:flex;flex-wrap:wrap;gap:var(--sp-4);align-items:flex-start;margin:var(--sp-3) 0;min-height:var(--tap)}
+  .phone-code img{flex:none;display:block;width:164px;height:164px;border-radius:var(--r-control)}
+  .phone-code .words{flex:1 1 220px;min-width:0;display:grid;gap:var(--sp-2);font-size:var(--fs-ui);color:var(--ink-soft)}
+  .phone-code .words p,.phone-code > p{margin:0}
+  .phone-code .err{flex:1 1 100%;padding:var(--sp-3) var(--sp-4);border-radius:var(--r-control)}
+  /* where the code would be, until it can be made: an empty frame, not a card waiting on a person */
+  .phone-none{flex:1 1 100%;display:grid;gap:var(--sp-2);justify-items:start;margin:var(--sp-2) 0;padding:var(--sp-4);
+    border:var(--stroke-heavy) dashed var(--line-strong);border-radius:var(--r-control);font-size:var(--fs-ui);color:var(--ink-soft)}
+  .phone-none p{margin:0}
+  .phone-none b{color:var(--ink);font-weight:var(--fw-semibold)}
+  #phone-sec details{margin-top:var(--sp-3)}
+  #phone-sec summary{cursor:pointer;padding:10px 0;font-weight:var(--fw-medium);color:var(--ink)}
+  #phone-sec details .steps{margin-top:var(--sp-2)}
+  #phone-sec code{overflow-wrap:anywhere}
   div.rows .add{display:flex;align-items:center;gap:var(--sp-2);min-height:48px;padding:0 var(--sp-4);font:inherit;
     font-size:var(--fs-ui);font-weight:var(--fw-medium);color:var(--accent-ink);background:none;border:0;width:100%;cursor:pointer}
   div.rows .add:hover{background:var(--accent-tint)}
@@ -1262,6 +1280,7 @@
           <div id="me-main">
             <p class="quiet-line" id="who"></p>
             <button type="button" class="menu-item" role="menuitem" id="me-settings">Settings</button>
+            <button type="button" class="menu-item" role="menuitem" id="me-phone">Set up your iPhone</button>
             <button type="button" class="menu-item" role="menuitem" id="switch-hh" data-keep-open aria-haspopup="menu" hidden>Switch household <span aria-hidden="true">›</span></button>
             <button type="button" class="menu-item" role="menuitem" id="me-new-hh" hidden>Create a new household</button>
             <div class="menu-sep" role="separator"></div>
@@ -1293,6 +1312,15 @@
         <button class="btn" id="cat-archive" type="button">Stop using one</button>
         <button class="btn" id="cat-starter" type="button" hidden>Add the starter set</button>
       </div>
+    </section>
+    <!-- Set up your iPhone: a one-time QR code for a profile, a download for a
+         Mac, and the steps to type it instead. Drawn by openPhoneSheet. -->
+    <section id="phone-sec" class="sheet" hidden aria-labelledby="phone-h">
+      <div class="sheet-head">
+        <h2 id="phone-h">Set up your iPhone</h2>
+        <button class="btn" id="phone-close" type="button">Done</button>
+      </div>
+      <div id="phone-body"></div>
     </section>
     <div id="app-err" class="err" hidden></div>
     <div id="loading" class="quiet">Reading the log&hellip;</div>
@@ -7181,40 +7209,191 @@ function conflictsForm() {
 }
 
 /**
- * How to have the Household calendar on an iPhone and a Mac: Synology Calendar
- * is a CalDAV server, so Apple Calendar can add the NAS account. The address
- * is DSM_PUBLIC_URL; when it is unset the owner is the one to ask.
- *
- * VERIFY ON THE REAL NAS before these words are final: whether Apple Calendar
- * wants the bare origin below (found through /.well-known/caldav) or the
- * account URL that Synology Calendar shows under its CalDAV settings.
+ * Your iPhone and Mac: whether this device made a code or downloaded the
+ * profile, from what it kept in localStorage. A convenience, not a record:
+ * another browser, or a cleared one, says not yet.
  */
 function phoneRow() {
+  const at = phoneSetAt();
+  const when = at ? new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : null;
   return settingRow({
-    key: 'phone', title: 'Your iPhone and Mac', list: true,
-    status: settingsData.dsmPublicUrl ? 'Apple Calendar can add the Household calendar.' : 'Not set up on this NAS yet.',
-    actions: [{ label: 'Show how', opens: true }],
-    form: phoneCalForm,
+    key: 'phone', title: 'Your iPhone and Mac',
+    status: [when ? `Set up on this device on ${when}` : 'Not set up on this device yet',
+      'One scan puts the Household calendar and Home Planner on an iPhone.'],
+    actions: [{ label: 'Set up ›', act: openPhoneSheet }],
   });
 }
 
-function phoneCalForm() {
-  const intro = node('p', 'hint',
-    'The Household calendar is a calendar on the NAS, so Apple Calendar can have it like any other: make events, move them, set alerts or ask Siri there.');
-  const url = settingsData.dsmPublicUrl;
-  const address = node('div', 'readonly');
-  const words = node('span');
-  if (url) words.append(node('b', '', 'Server address.'), ' ', node('code', '', url));
-  else words.append(node('b', '', 'Server address not set.'), ' An administrator sets the NAS’s address under Settings › This NAS › Where phones reach the NAS.');
-  address.append(icon('cal', 'i'), words);
-  const steps = node('ol', 'steps');
-  const step = (...parts) => { const li = node('li'); li.append(...parts); steps.appendChild(li); };
-  step(node('b', '', 'On an iPhone: '), 'Settings → Calendar → Accounts → Add Account → Other → Add CalDAV Account.');
-  step(node('b', '', 'Server: '), url ? node('code', '', url) : 'the address above', '. User name and password are the ones you sign in to the NAS with.');
-  step(node('b', '', 'On a Mac: '), 'Calendar → Settings → Accounts → + → Other CalDAV Account, with the same server, user name and password.');
-  step('The Household calendar, and any calendar shared with you on the NAS, appear there. An event made there shows here within a refresh.');
-  return [intro, address, steps,
-    node('p', 'hint', 'Away from home this works only if the NAS itself can be reached from outside the house; otherwise your phone syncs at home or over the VPN.')];
+// ── Set up your iPhone ─────────────────────────────────────────────────────
+//
+// A sheet at the top of <main>, from the person menu or the row above. The two
+// boxes decide what the profile holds, and each change asks for a new code:
+// the server keeps one live code per member, so only the latest answer is
+// drawn. The calendar needs the NAS's address; the Home Screen icon does not,
+// so with the address unset the sheet still offers a code for the icon alone.
+
+const PHONE_AT = 'phone-setup-at';
+/** When this device last made a code or downloaded the profile, as an ISO date, or null. */
+function phoneSetAt() {
+  try {
+    const at = localStorage.getItem(PHONE_AT);
+    return at && !Number.isNaN(Date.parse(at)) ? at : null;
+  } catch { return null; }
+}
+function markPhoneSetUp() {
+  try { localStorage.setItem(PHONE_AT, new Date().toISOString()); } catch { /* private window */ }
+}
+/** Counts the codes asked for; an answer to any but the last is dropped. */
+let phoneAsked = 0;
+/** Replaces a drawn code with "expired" when its ten minutes are up. */
+let phoneTimer = 0;
+/** The open sheet's boxes, code area and Mac link, or null while it is closed. */
+let phoneSheet = null;
+
+async function openPhoneSheet() {
+  // Read again on each open: an administrator may have just set the address.
+  const fresh = await api('/api/settings').catch((ex) => { if (!settingsData) showProblem(ex); return null; });
+  const ps = fresh ?? settingsData;
+  if (!ps) return;
+  if (fresh && settingsData) settingsData = { ...settingsData, dsmPublicUrl: fresh.dsmPublicUrl, phoneSetup: fresh.phoneSetup };
+  drawPhoneSheet(ps);
+  $('phone-sec').hidden = false;
+  // At the top of <main>, under the sticky bar, like Categories.
+  window.scrollTo({ top: 0 });
+  $('phone-h').setAttribute('tabindex', '-1');
+  $('phone-h').focus({ preventScroll: true });
+  void phoneCode();
+}
+
+/** Closed by its Done, by Set the address, and (without drawing Settings again) by a household switch. */
+function closePhoneSheet(redraw = true) {
+  clearTimeout(phoneTimer);
+  phoneAsked++;
+  phoneSheet = null;
+  $('phone-sec').hidden = true;
+  $('phone-body').textContent = '';
+  if (redraw && view === 'settings') renderSettings();
+}
+$('phone-close').addEventListener('click', () => closePhoneSheet());
+$('me-phone').addEventListener('click', () => void openPhoneSheet());
+
+/** One box: a real checkbox in its label, the name in bold, then what it adds. */
+function phoneBox(name, rest, what, checked, disabled) {
+  const l = node('label', 'check');
+  const i = node('input');
+  i.type = 'checkbox';
+  i.checked = checked;
+  i.disabled = disabled;
+  const t = node('span');
+  t.append(node('b', '', name), rest, node('span', 'what', what));
+  l.append(i, t);
+  return [l, i];
+}
+
+/** Where the code would be while the NAS's address is unset; `full` adds who sets it. */
+function phoneUnset(ps, full) {
+  const d = node('div', 'phone-none');
+  d.appendChild(node('p')).appendChild(node('b', '', "No code until the NAS's address is set"));
+  if (!full) return d;
+  d.appendChild(node('p', '', 'A DSM administrator sets it once under Settings › This NAS › Where phones reach the NAS.'));
+  if (amAdmin) {
+    d.appendChild(textBtn('Set the address ›', 'btn small', 'phone-set-address', () => {
+      closePhoneSheet();
+      void openSettings('nas', 'calendar');
+    }));
+  } else {
+    d.appendChild(node('p', '', `Ask ${ps.phoneSetup?.nasAdmin ?? 'an administrator'} to set it.`));
+  }
+  return d;
+}
+
+function drawPhoneSheet(ps) {
+  const body = $('phone-body');
+  body.textContent = '';
+  const caldav = ps.phoneSetup?.caldav ?? null;
+  const addressSet = !!ps.dsmPublicUrl && !!caldav;
+  body.appendChild(node('p', '',
+    'One scan puts the Household calendar in Apple Calendar, with alerts and Siri, and Home Planner on the Home Screen. A change made to an event on the phone comes back here as a card to approve.'));
+  const [lc, cal] = phoneBox('Household calendar', ' in Apple Calendar',
+    `A CalDAV account for ${myName} at your NAS. The phone asks for your NAS password once.`, addressSet, !addressSet);
+  const [lh, home] = phoneBox('Home Planner', ' on the Home Screen',
+    "Opens full screen at the household's address, like Add to Home Screen", true, false);
+  body.appendChild(lc);
+  if (!addressSet) body.appendChild(phoneUnset(ps, true));
+  body.appendChild(lh);
+  const area = node('div', 'phone-code');
+  area.setAttribute('aria-live', 'polite');
+  const mac = node('a', 'btn', 'Download the profile for a Mac');
+  mac.setAttribute('download', '');
+  mac.addEventListener('click', markPhoneSetUp);
+  const acts = node('div', 'actions');
+  acts.appendChild(mac);
+  body.append(area, acts);
+  if (addressSet) {
+    const more = node('details');
+    more.appendChild(node('summary', '', 'Type it instead'));
+    const steps = node('ol', 'steps');
+    const step = (...parts) => { const li = node('li'); li.append(...parts); steps.appendChild(li); };
+    step(node('b', '', 'On an iPhone: '), 'Settings → Calendar → Accounts → Add Account → Other → Add CalDAV Account.');
+    step(node('b', '', 'On a Mac: '), 'Calendar → Settings → Accounts → + → Other CalDAV Account.');
+    step(node('b', '', 'Server: '), node('code', '', caldav));
+    step(node('b', '', 'User name: '), node('code', '', myName), '. Password: your NAS password.');
+    more.append(steps, node('p', 'hint', "Synology Calendar shows the same address under a calendar's menu, CalDAV Account."));
+    body.appendChild(more);
+  }
+  body.appendChild(node('p', 'hint',
+    'Away from home the calendar syncs only if the NAS can be reached from outside the house; otherwise the phone syncs at home or over the VPN. Members who skip this lose nothing in Home Planner.'));
+  phoneSheet = { cal, home, area, mac, addressSet, ps };
+  cal.addEventListener('change', () => void phoneCode());
+  home.addEventListener('change', () => void phoneCode());
+}
+
+/** Ask for a code for what is ticked and draw it, or say why there is none. */
+async function phoneCode() {
+  const sheet = phoneSheet;
+  if (!sheet) return;
+  const { cal, home, area, mac, addressSet, ps } = sheet;
+  clearTimeout(phoneTimer);
+  const ask = ++phoneAsked;
+  const c = cal.checked && !cal.disabled;
+  const h = home.checked;
+  mac.hidden = !c && !h;
+  mac.href = `/api/phone-setup/profile?calendar=${c ? 1 : 0}&home=${h ? 1 : 0}&origin=${encodeURIComponent(location.origin)}`;
+  area.textContent = '';
+  if (!c && !h) {
+    area.appendChild(addressSet ? node('p', '', 'Tick at least one to make a code.') : phoneUnset(ps, false));
+    return;
+  }
+  area.appendChild(node('p', 'hint', 'Making a code…'));
+  let out;
+  try {
+    out = await api('/api/phone-setup/code', { calendar: c, home: h, origin: location.origin });
+  } catch (ex) {
+    if (ask !== phoneAsked) return;
+    area.textContent = '';
+    // The server's own words: over plain http from another machine, why no code can be made.
+    area.appendChild(node('p', 'err', ex.message));
+    return;
+  }
+  if (ask !== phoneAsked) return;
+  markPhoneSetUp();
+  area.textContent = '';
+  // The QR comes as SVG text; as an image's source it is drawn, never run.
+  const img = node('img');
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(out.qr)}`;
+  img.width = 164;
+  img.height = 164;
+  img.alt = 'A QR code for your iPhone’s camera';
+  const words = node('div', 'words');
+  words.append(
+    node('p', '', "Scan with the iPhone's camera. It opens a page on your NAS that hands Safari a configuration profile. Then: Settings → Profile Downloaded → Install."),
+    node('p', 'hint', "This code works for 10 minutes and only for you. The profile is unsigned, so iOS says 'Not Verified'; that is expected."));
+  area.append(img, words);
+  phoneTimer = setTimeout(() => {
+    if (ask !== phoneAsked) return;
+    area.textContent = '';
+    area.append(node('p', '', 'This code has expired.'), textBtn('Make a new code', 'btn small', 'phone-new', () => void phoneCode()));
+  }, Math.max(0, Date.parse(out.expiresAt) - Date.now()));
 }
 
 function areasRow() {
@@ -9516,6 +9695,8 @@ async function enterApp() {
   householdLabel = who.household?.label ?? null;
   docHousehold = `${who.sandbox ? 'sandbox' : 'nas'}:${who.who}:${who.household?.id ?? ''}`;
   searchReset();
+  // A code is the household's it was made in: the sheet does not stay open across a switch.
+  closePhoneSheet(false);
   // Today's date at once, from this device; the briefing replaces it with the
   // household's own date when it arrives, which differs only around midnight.
   todayText = fmtDate(new Date().toLocaleDateString('en-CA'));
