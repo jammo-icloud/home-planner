@@ -312,7 +312,7 @@ and Drive all answer.
 
 ### What the configuration design guessed
 
-The Connectors and Settings pages rest on a handful of calls whose names,
+Settings, with its This NAS group, rests on a handful of calls whose names,
 shapes or answers only the real NAS can confirm. This section of the output
 starts at `── What the configuration design guessed ──`. Each probe prints the
 raw reply (a refusal is printed as data, not as a failure, where it is the

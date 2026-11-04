@@ -102,7 +102,7 @@ never what is in them.
 ## How it is configured
 
 Almost nothing has to live in `.env`. Configuration is done in the app, by two
-kinds of people, on two pages.
+kinds of people, in two places.
 
 **The household's owner, in Settings.** A *Setup* checklist asks, in order:
 where documents live (the Drive folder), the household's time zone, the
@@ -110,10 +110,9 @@ Household calendar, whether the household takes bookings, and the model that
 suggests envelopes. Each choice is an event in the household's log, with the
 owner's name and the date on it.
 
-**A DSM administrator, on Connectors.** Any account in DSM's administrators
-group sees a Connectors page under the person icon. It holds what belongs to
-the whole NAS: the Claude API key, the NAS's public address for calendars on
-phones, outgoing mail, the booking page's address, who may sign in, and the
+**A DSM administrator, under Settings › This NAS.** Any account in DSM's administrators
+group sees a This NAS group in Settings. It holds what belongs to
+the whole NAS: the Claude API key, the address where phones reach the NAS, outgoing mail, the booking page's address, who may sign in, and the
 Census and EIA keys. Each row says whether it is on, off or broken and where its
 value comes from. These are kept in `connectors.json` in the data folder, never in a
 household's log, and no secret is ever sent back to the browser.
@@ -127,10 +126,13 @@ such as the DSM port and how many proxies are in front, stay in `.env`.
 Without a Claude key the app still runs: the briefing is a plain summary of
 the same figures, and receipts are sorted by rule and by hand.
 
+Members set up an iPhone or a Mac from Set up your iPhone: one scan of a QR code
+installs the Household calendar and Home Planner on the Home Screen.
+
 Settings ends your own section with the version running, the commit it was
 built from and when, so you can see which build is live.
 
-[DEPLOY.md](DEPLOY.md) has the details: every variable and Connectors row, the
+[DEPLOY.md](DEPLOY.md) has the details: every variable and This NAS row, the
 Drive, Calendar, booking and TLS setup, and what each failure in the log means.
 
 ## Running it
@@ -146,7 +148,7 @@ Container Manager → Project → Create on that folder, uploading
 repository on GitHub and runs it on the NAS's loopback at port 8090. DSM's
 reverse proxy serves it over https on 443, at an address such as
 `https://planner.example.com`. Sign in with a DSM account, then an
-administrator opens Connectors and each owner opens Settings.
+administrator opens Settings, under This NAS, and each owner opens Settings.
 [DEPLOY.md](DEPLOY.md#on-the-nas-behind-https) has every click, from the
 certificate and the router to upgrading.
 

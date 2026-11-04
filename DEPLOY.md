@@ -15,7 +15,7 @@ instead: see [On the NAS, behind https](#on-the-nas-behind-https).
 Open `http://nas-ip:8090` and sign in with a DSM account. What belongs to the
 whole NAS (its public address, who may sign in, mail, the Claude key and the
 pricing keys) is set by an administrator, any account in DSM's administrators
-group, on the Connectors page under the person icon: see [Connectors](#connectors).
+group, in Settings, under This NAS: see [Settings › This NAS](#settings--this-nas).
 What belongs to a household (where its documents live, its time zone, its
 calendar, booking and the envelope model) is set by that household's owner, in
 Settings. Nothing in `.env` is needed to start. Without the Claude key the app
@@ -62,7 +62,7 @@ ones most likely to matter:
 | File Station's move of a card's file (probe 6) shows `skipstatus` `"all"` the second time | Nothing: that is the real NAS's answer for a taken name with overwrite off, and the app says it as a taken name. The check confirms a File Station move through File Station's own list, not Drive, which indexes File Station's changes late. |
 | A moved file is found later than 3000 ms (probe 5) | Raise `MOVE_WAIT_MS` in `moves.ts`. Until then a slow move is left for the next pass, and nothing is lost. |
 
-The check also asks seven things that Connectors and Settings rest on: how DSM
+The check also asks seven things that Settings, with its This NAS group, rests on: how DSM
 names its administrators and accounts, what a Team Folder says a member may
 do, how folders are listed and made, and how a file is moved (probes 1 to 7 in
 the README, under `── What the configuration design guessed ──`). Some of them
@@ -101,7 +101,7 @@ docker compose logs budget-api --tail 20
 
 | What the log says | What to do |
 |---|---|
-| `refused "x": not in ALLOWED_USERS` | The list is the one saved on Connectors (Who may sign in), or `ALLOWED_USERS` in `.env` while none is saved; the log calls it `ALLOWED_USERS` either way. It must hold **DSM account names**, which may not be your first names (Control Panel → User & Group). An administrator who can still sign in changes it on Connectors, or clears it so any DSM account may sign in. If no one can, see [An allowlist that locks everyone out](#an-allowlist-that-locks-everyone-out). |
+| `refused "x": not in ALLOWED_USERS` | The list is the one saved under Settings › This NAS (Who may sign in), or `ALLOWED_USERS` in `.env` while none is saved; the log calls it `ALLOWED_USERS` either way. It must hold **DSM account names**, which may not be your first names (Control Panel → User & Group). An administrator who can still sign in changes it under Settings › This NAS, or clears it so any DSM account may sign in. If no one can, see [An allowlist that locks everyone out](#an-allowlist-that-locks-everyone-out). |
 | `DSM refused "x": that username or password is not right` | DSM itself rejected it. Try the same credentials on DSM directly. |
 | `cannot reach the NAS … (SELF_SIGNED…)` | `DSM_URL` is on HTTPS with a certificate the container does not trust. Point it at `http://host.docker.internal:5000`. |
 | `cannot reach the NAS … (ECONNREFUSED)` | `DSM_URL` or the `extra_hosts` mapping is wrong. |
@@ -109,7 +109,7 @@ docker compose logs budget-api --tail 20
 | Sign-in works but the household list is **empty** | Nothing you are a member of. If this is a fresh upgrade from a single-log install, check the boot log for `adopted … as household` — if it is missing, `LOG_PATH` is not pointing at your old log. If it is there but you were not added, `ADMIN_USER` was unset at first boot. |
 | `is owned by "x" and ADMIN_USER is unset` | The adopted log was claimed by a name that may not exist on this NAS, and no admin was configured to fall back on. Set `ADMIN_USER`, delete the directory it created under `HOUSEHOLDS_DIR`, and restart so adoption runs again. |
 | Households vanish on every redeploy | `HOUSEHOLDS_DIR` is not on the volume. It must be under `/data`. |
-| An administrator has no Connectors under the person icon, and the log says `could not ask DSM whether x is an administrator: code N` | DSM answered the question about its administrators group in a way the app does not read. Run the check as an administrator (probe 1; see [Checking the NAS's API shapes](#checking-the-nass-api-shapes)); until then set `ADMIN_USER` to that account. |
+| An administrator has no This NAS group in Settings, and the log says `could not ask DSM whether x is an administrator: code N` | DSM answered the question about its administrators group in a way the app does not read. Run the check as an administrator (probe 1; see [Checking the NAS's API shapes](#checking-the-nass-api-shapes)); until then set `ADMIN_USER` to that account. |
 
 Claude being unavailable never stops the app. The log says why:
 
@@ -117,7 +117,7 @@ Claude being unavailable never stops the app. The log says why:
 |---|---|
 | `briefing written without Claude: …` | The day's briefing is the plain summary. The next look tries Claude again and, if it answers, its briefing replaces the plain one for the rest of the day. |
 | An import says *Claude could not suggest envelopes* | Haiku was unreachable or out of credit. Everything still imports; rules still sort; the rest are sorted by hand. |
-| The Claude row on Connectors says *The key has expired or been revoked* | The key was reset or revoked. Paste the new one on Connectors: it counts from the next request, with no rebuild and no restart. |
+| The Claude row under Settings › This NAS says *The key has expired or been revoked* | The key was reset or revoked. Paste the new one under Settings › This NAS: it counts from the next request, with no rebuild and no restart. |
 | A question shows *Claude didn't answer this one* | The question is recorded; the answer is not. Ask again once the key or credit is sorted. |
 
 ## Who owns the budget
@@ -128,7 +128,7 @@ There is one log per household, in its own directory under `HOUSEHOLDS_DIR`.
 **Any DSM account on the NAS may sign in**, and gets a household of its own the
 first time they make one. Isolation is per household, not per server — so a new
 account signing in sees an empty app, never anybody else's money. An
-administrator can narrow that to a named list on Connectors (Who may sign in),
+administrator can narrow that to a named list under Settings › This NAS (Who may sign in),
 or with `ALLOWED_USERS` in `.env` until one is saved; leaving it empty is the
 intended setup here.
 
@@ -153,13 +153,13 @@ Three gates, deliberately separate:
 
 | | Set where | Decides |
 |---|---|---|
-| who may sign in | Connectors, by an administrator (`ALLOWED_USERS` in `.env` until one is saved) | who may sign in at all — empty means any DSM account |
+| who may sign in | Settings › This NAS, by an administrator (`ALLOWED_USERS` in `.env` until one is saved) | who may sign in at all — empty means any DSM account |
 | membership | the log, by the owner | who may use a given budget |
-| the administrator | DSM's administrators group (`ADMIN_USER` in `.env` overrides it) | who may list households and use Connectors — never read the households |
+| the administrator | DSM's administrators group (`ADMIN_USER` in `.env` overrides it) | who may list households and use This NAS — never read the households |
 
 Changing who has access needs no redeploy, and leaves a record of who granted it
 and why — sharing requires a reason the same way moving money does. The same is
-true of the sign-in list: saving it on Connectors counts from the next sign-in.
+true of the sign-in list: saving it under Settings › This NAS counts from the next sign-in.
 
 ### The administrator
 
@@ -174,14 +174,14 @@ log says which rule is in force: `admin: DSM's administrators group` or
 
 An administrator can do two things. They can see **that households exist**
 (owner, size on disk, last activity, and which folder each keeps its documents
-in) at `GET /api/admin/households`, and they can use Connectors. Neither is a
+in) at `GET /api/admin/households`, and they can use This NAS. Neither is a
 way into a household. There is no route by which an admin reads another
 household's categories, receipts or balances, and being an admin does not make
 you a member.
 
 Whether someone is an administrator is decided once, at sign-in, and kept with
 their DSM session in memory only. A sign-in carried over a restart has no DSM
-session, so it is not an administrator's until they **sign in again**: Connectors
+session, so it is not an administrator's until they **sign in again**: Settings › This NAS
 is closed to them until then.
 
 One exception, and it is a migration rather than a power: on the very first boot
@@ -211,7 +211,7 @@ It is still worth leaving unset in production.
 
 Every variable below is the deployment's value, read when it is used. The ones
 marked *a default* are used only until an administrator saves a value on
-[Connectors](#connectors), or a household's owner saves one in Settings; the
+[Settings › This NAS](#settings--this-nas), or a household's owner saves one in Settings; the
 screens call such a value *from the deployment* while it is the one in use. A
 saved value counts from the next request, with no restart and no rebuild.
 
@@ -220,25 +220,25 @@ saved value counts from the next request, with no restart and no rebuild.
 | `PORT` | `8090` | |
 | `DSM_URL` | `http://host.docker.internal:5000` | Needs `extra_hosts: host.docker.internal:host-gateway`. Compose builds it from `DSM_PORT`. |
 | `DSM_PORT` | `5000` | DSM's HTTP port. Leave unset on the NAS. On a laptop, the port `api/tools/fake-dsm` listens on (`5555`; a Mac holds 5000 for AirPlay). Stays in `.env`. |
-| `DSM_PUBLIC_URL` | unset | *A default.* Set it on Connectors (Calendar on phones). DSM's address as a phone reaches it from outside the container, such as `https://nas.example.com:5001` (the origin only; a path is dropped). Settings tells members to add the NAS's calendar to their iPhone and Mac at this address, and the Calendar's *Open in Synology Calendar* link goes to it. Unset hides the link and tells members to ask the owner. Not guessed from `DSM_URL`, which is usually an address only the container can reach. See [Calendar on the NAS](#calendar-on-the-nas). |
+| `DSM_PUBLIC_URL` | unset | *A default.* Set it under Settings › This NAS (Where phones reach the NAS). DSM's address as a phone reaches it from outside the container, such as `https://nas.example.com:5001` (the origin only; a path is dropped). Settings tells members to add the NAS's calendar to their iPhone and Mac at this address, and the Calendar's *Open in Synology Calendar* link goes to it. Unset hides the link and tells members to ask the owner. Not guessed from `DSM_URL`, which is usually an address only the container can reach. See [Calendar on the NAS](#calendar-on-the-nas). |
 | `PLANNER_ROOT` | unset | Only for an install from before folders were chosen in Settings: the share its files were kept in, such as `/Planner`. A household whose log already names files under it has that folder carried over, once; and it is the first Team Folder the picker suggests. It is never where a new household's documents or files go. See *Documents in Synology Drive*. |
 | `LOG_PATH` | `/data/events.jsonl` | The volume. Only the old single log is read from here, once, to be adopted as a household. |
 | `HOUSEHOLDS_DIR` | `/data/households` | One directory per household. **Must be under `/data`** — anywhere else is inside the image and is lost on redeploy. |
-| `CONNECTORS_PATH` | `/data/connectors.json` | What the administrators save on Connectors: the mail password and the keys are in it. On the volume, beside `sessions.json` and outside `HOUSEHOLDS_DIR`. Run outside the image, the default is `data/connectors.json`. See [Connectors](#connectors). |
-| `ALLOWED_USERS` | unset | *A default.* Set it on Connectors (Who may sign in). Unset or empty means any DSM account may sign in, each getting its own household. |
+| `CONNECTORS_PATH` | `/data/connectors.json` | What the administrators save under Settings › This NAS: the mail password and the keys are in it. On the volume, beside `sessions.json` and outside `HOUSEHOLDS_DIR`. Run outside the image, the default is `data/connectors.json`. See [Settings › This NAS](#settings--this-nas). |
+| `ALLOWED_USERS` | unset | *A default.* Set it under Settings › This NAS (Who may sign in). Unset or empty means any DSM account may sign in, each getting its own household. |
 | `ADMIN_USER` | unset | Optional: the administrators group decides, unless this names one account. Then only that account is an administrator. See *The administrator*. |
 | `COOKIE_INSECURE` | unset | Set to `1` for plain HTTP on the LAN. **Unset it once TLS is in front**, so the session cookie is `Secure`. |
 | `TZ` | `UTC` | *A default.* Each household's owner chooses its zone in Settings. Until they do, this is the zone: an **IANA name** such as `America/Denver` (never `MST` or `-07:00`). It decides which day "today" is, so a wrong value shifts receipts across month boundaries, and is the zone of every calendar event the app makes. The compose files set it for you (`UTC`, or `America/Denver` in `docker.yml`), so Settings says *from the deployment* even when `.env` leaves it empty. See [Calendar on the NAS](#calendar-on-the-nas). |
-| `ANTHROPIC_API_KEY` | — | *A default.* Set it on Connectors (Claude). Absent means briefings still generate, without Claude; notes work; "Ask Claude" says it is not set up; imports are sorted by rule and by hand. |
+| `ANTHROPIC_API_KEY` | — | *A default.* Set it under Settings › This NAS (Claude). Absent means briefings still generate, without Claude; notes work; "Ask Claude" says it is not set up; imports are sorted by rule and by hand. |
 | `CLAUDE_MODEL` | `claude-opus-5` | Writes the briefing and answers questions. |
 | `CLAUDE_MATCH_MODEL` | `claude-haiku-5-5` | *A default.* Each household's owner chooses the model in Settings. Leave empty for the default. Suggests envelopes for imported receipts no rule caught. Sent payee names and envelope names only. |
-| `CENSUS_API_KEY` | — | *A default.* Set it on Connectors (Pricing sources). Free. Without it, county rent and property-tax figures are unavailable. |
-| `EIA_API_KEY` | — | *A default.* Set it on Connectors (Pricing sources). Free. Without it, the average electricity bill is unavailable. |
+| `CENSUS_API_KEY` | — | *A default.* Set it under Settings › This NAS (Pricing sources). Free. Without it, county rent and property-tax figures are unavailable. |
+| `EIA_API_KEY` | — | *A default.* Set it under Settings › This NAS (Pricing sources). Free. Without it, the average electricity bill is unavailable. |
 | `SESSIONS_PATH` | `/data/sessions.json` | Who is signed in, as token hashes. On the volume so a redeploy keeps everyone signed in (to the budget, not to the NAS: see below). |
 | `DEV_USER` | — | The local bypass. Sandbox only, but leave it unset in production. |
-| `BOOK_URL` | unset | *A default.* Set it on Connectors (Booking). The booking page's public origin, e.g. `https://book.example.com`. No path. See Booking. |
+| `BOOK_URL` | unset | *A default.* Set it under Settings › This NAS (Booking address). The booking page's public origin, e.g. `https://book.example.com`. No path. See Booking. |
 | `BOOK_HOUSEHOLD` | unset | *A default,* and only a fallback: each household's owner turns booking on in Settings. See Booking. |
-| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | unset | *A default.* Set them on Connectors (Mail). Where booking's mail goes out. See Booking. |
+| `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`, `SMTP_PASS`, `SMTP_FROM` | unset | *A default.* Set them under Settings › This NAS (Mail). Where booking's mail goes out. See Booking. |
 | `SMTP_PLAIN_AUTH` | unset | *A default,* with the mail above. `1` lets the SMTP password go over a connection with no TLS. Only for a relay on the NAS itself. See Booking. |
 | `TRUST_PROXY` | unset | How many reverse proxies are in front: `1` for one (whether it appends to `X-Forwarded-For` or replaces it), `2` for two. The per-IP limits (booking's sign-in emails and codes, members' passwords) then read the address that many entries from the right of `X-Forwarded-For`, which a client cannot forge. Unset means the connection's own address. Stays in `.env`. See Booking. |
 | `FAKE_DSM_ACCOUNTS` | unset | Laptop only: the test accounts `api/tools/fake-dsm` accepts, as `name:password[:otp[:admin]]`, comma separated; `alice:correct-horse::admin` is an administrator. Test values, never real DSM passwords. Stays in `.env`. |
@@ -257,7 +257,7 @@ What does not survive a redeploy or restart is the DSM session behind each
 sign-in, which is kept in memory only. The budget itself keeps working, but
 Calendar, Contacts and Files answer "sign in again to use this" until the
 member signs out and signs in again; that is expected after every redeploy,
-not a fault. The same goes for being an administrator: Connectors is closed to
+not a fault. The same goes for being an administrator: This NAS is closed to
 an administrator whose sign-in was carried over, until they sign in again.
 
 Because a restart no longer signs anyone out, this is how to:
@@ -266,11 +266,11 @@ Because a restart no longer signs anyone out, this is how to:
 docker compose stop budget-api && rm api/data/sessions.json && docker compose start budget-api
 ```
 
-## Connectors
+## Settings › This NAS
 
-Connectors holds what belongs to the whole NAS rather than to any household. It
-is a page under the person icon, and only an administrator sees it (the routes
-under `/api/connectors` answer anyone else 403). It has seven rows. Each is on,
+This NAS is the group in Settings that holds what belongs to the whole NAS
+rather than to any household. Only an administrator sees it (the routes under
+`/api/connectors` answer anyone else 403). It has seven rows. Each is on,
 off or broken, says in one line how it stands, and says where its value comes
 from.
 
@@ -278,9 +278,9 @@ from.
 |---|---|---|
 | Claude | the API key | `ANTHROPIC_API_KEY` |
 | Synology Drive | nothing: whether Drive answers your session, and how many households have chosen a folder (the folder is each owner's choice, in Settings) | — |
-| Calendar on phones | DSM's address as a phone reaches it | `DSM_PUBLIC_URL` |
+| Where phones reach the NAS | DSM's address as a phone reaches it | `DSM_PUBLIC_URL` |
 | Mail | host, port, user, password, the address mail comes from, and whether the password may go with no TLS | `SMTP_*`, `SMTP_PLAIN_AUTH` |
-| Booking | the booking page's address (the switch is each household's own, in Settings) | `BOOK_URL` |
+| Booking address | the booking page's address (the switch is each household's own, in Settings) | `BOOK_URL` |
 | Who may sign in | DSM account names, picked from the list DSM gives an administrator or typed | `ALLOWED_USERS` |
 | Pricing sources | the Census and EIA keys | `CENSUS_API_KEY`, `EIA_API_KEY` |
 
@@ -340,7 +340,7 @@ Nothing else in the file needs to change.
 
 ### The Claude key
 
-*Claude* on Connectors is where the key lives. A key that is reset or revoked is
+*Claude* under Settings › This NAS is where the key lives. A key that is reset or revoked is
 pasted there: it counts from the next request, with no rebuild and no restart.
 The key is trimmed when saved, so a newline from a password manager does no
 harm; a key with a space or a line break **inside** is refused in words, since
@@ -363,10 +363,10 @@ by booking, until a test passes or the mail is saved again.
 ### What the administrator is reminded of
 
 An administrator's Today carries one quiet card, *Set up the NAS*, naming the
-rows among Claude, Calendar on phones, Mail and Pricing sources that have
+rows among Claude, Where phones reach the NAS, Mail and Pricing sources that have
 nothing saved and nothing in `.env`, or that are broken. It is a reminder, never
 a decision, and goes once they are set up. A row saved off is off on purpose
-and never counts, and Synology Drive, Booking and Who may sign in never do.
+and never counts, and Synology Drive, Booking address and Who may sign in never do.
 
 ## Calendar on the NAS
 
@@ -409,16 +409,43 @@ anyone signed in to the NAS puts it there, or the card's *Put it on the
 calendar* does it at once.
 
 **Calendars on a phone and a Mac.** Synology Calendar is a CalDAV server, so a
-member who adds their NAS account to Apple Calendar (Settings → Calendar →
-Accounts → Add Account → Other → Add CalDAV Account) gets the Household
-calendar there like any other: create, move, invite, alerts, Siri. An
-administrator sets DSM's address on Connectors (Calendar on phones; the
-`DSM_PUBLIC_URL` default) so Settings can say what server address to give. This works
-away from home only if DSM itself is reachable from outside (the planner alone
-on 443 is not enough); otherwise phones sync at home or over VPN. **Verify on
-the NAS** which address Apple Calendar wants (the bare origin, found through
-`/.well-known/caldav`, or the account URL Synology Calendar shows under its
-CalDAV settings) and correct the words in Settings if it is the second.
+member who adds their NAS account to Apple Calendar gets the Household calendar
+there like any other: create, move, invite, alerts, Siri. An administrator sets
+DSM's address under Settings › This NAS (Where phones reach the NAS; the
+`DSM_PUBLIC_URL` default) so the app can say where the NAS is. Until it is set,
+the phone setup offers only the Home Screen icon. This works away from home only
+if DSM itself is reachable from outside (the planner alone on 443 is not
+enough); otherwise phones sync at home or over VPN.
+
+**Setting up a phone is one scan.** Each member opens **Set up your iPhone**
+from the person menu: a sheet with a QR code and two choices, the Household
+calendar and Home Planner on the Home Screen. The code is a link,
+`<planner origin>/setup/<code>`, that works **once, for ten minutes**. A
+member has one live code: asking for another replaces it. Codes are kept in
+memory, so a restart of the app spends them all; the sheet makes a new one. The
+phone opens the link, Safari is handed a configuration profile, and the phone
+installs it from Settings → Profile Downloaded. The `/setup/` path needs no
+session, because the phone has none; the code is the credential.
+
+**What the profile carries.** A CalDAV account for the member, on DSM's public
+address (`DSM_PUBLIC_URL`) with the principal `/caldav/<account>/`, and a web
+clip of the planner's origin, which puts Home Planner on the Home Screen
+full screen. It has no password: the phone asks for the member's NAS password
+when the profile is installed. The profile is **unsigned**, so iOS says *Not
+Verified*; that is expected. Installing it again replaces the first.
+
+**The address rule.** The Home Screen icon opens the address the sheet was
+opened at, so for a phone the planner must be opened over **https**; plain
+`http` is accepted only on localhost. A code is refused at any other `http`
+address. A Mac downloads the same profile from the sheet instead of scanning.
+
+**Typing it instead.** The sheet's *Type it instead* gives the steps for
+Settings → Calendar → Accounts → Add Account → Other → Add CalDAV Account, with
+the server address `<DSM_PUBLIC_URL>/caldav/<account>/` and the member's NAS
+account name. **Verify on the NAS** the first time that Apple Calendar accepts
+that address, and which one it wants if it does not (the bare origin, found
+through `/.well-known/caldav`, or the account URL Synology Calendar shows under
+a calendar's menu, CalDAV Account).
 
 **The time zone must be an IANA zone name**, such as `America/Denver`. Each
 household's owner chooses it in Settings; until they do it is `TZ`, from the
@@ -590,7 +617,7 @@ first:
 ```
 
 Then `admin:` says which rule makes an administrator, and `Claude:` says where
-the key comes from (`key saved on Connectors`, `key from the deployment`, or
+the key comes from (`key saved on This NAS`, `key from the deployment`, or
 `off`), never the key.
 
 **A household restored where its documents are not has headlines and not the
@@ -642,9 +669,9 @@ public address.
 
 It is **on only when all of these hold**:
 
-- the booking page's address is set (Connectors, Booking; `BOOK_URL` is the
+- the booking page's address is set (Settings › This NAS, Booking address; `BOOK_URL` is the
   default) and is usable;
-- mail is set (Connectors, Mail; `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
+- mail is set (Settings › This NAS, Mail; `SMTP_HOST`, `SMTP_PORT`, `SMTP_USER`,
   `SMTP_PASS` and `SMTP_FROM` are the default) and is usable, and its last test,
   if there is one, did not fail;
 - the household's **owner turns Booking on in Settings**, and the household has
@@ -653,7 +680,7 @@ It is **on only when all of these hold**:
 Settings tells the owner which is missing, or which is set to something that
 cannot work (a booking address with a path or on `http://`, a port that is not
 a number, a from address that is not an address), naming who can fix it:
-`ADMIN_USER` if it is set, else the last administrator to save on Connectors, else
+`ADMIN_USER` if it is set, else the last administrator to save under Settings › This NAS, else
 the NAS's administrator. The boot log says the same in the same words. A guest is told
 nothing. While it is off, a request already waiting on Today can still be
 declined (the guest is mailed the reason, if the mail settings are usable;
@@ -702,7 +729,9 @@ otherwise the decline is refused and says so), never approved.
   plain auth.
 
 Expose **only `/book`** (and what is beneath it) to the internet, with TLS, at
-the reverse proxy in front of `:8090`; how is the proxy's business. Every other
+the reverse proxy in front of `:8090`; a phone also has to reach `/setup/`
+(the one-time link of Set up your iPhone, which needs no session) at the address
+it was set up from; how is the proxy's business. Every other
 route still needs a member's session, so the app is safe if more is exposed by
 mistake, but there is no reason to offer it. DSM's own reverse proxy cannot
 narrow by path; see TLS for what that means.
@@ -751,9 +780,9 @@ the repository on GitHub (`https://github.com/jammo-icloud/home-planner.git#main
 with the repository root as the context, so the image carries `site/` as well
 as `api/`), the port is bound to the NAS's loopback only, `COOKIE_INSECURE` is
 not set, and the defaults are the household's time zone (`TZ=America/Denver`)
-and `TRUST_PROXY=1`, and they are defaults like the rest: a value saved on
-Connectors or in Settings wins over them. `BOOK_URL` is empty unless `.env`
-sets it or an administrator saves it on Connectors. Every variable in
+and `TRUST_PROXY=1`, and they are defaults like the rest: a value saved under
+Settings › This NAS or in Settings wins over them. `BOOK_URL` is empty unless `.env`
+sets it or an administrator saves it under Settings › This NAS. Every variable in
 `docker.yml` has a default, so it needs no `.env`.
 
 Nothing is cloned onto the NAS and nothing is typed into a shell: only the
@@ -772,8 +801,8 @@ public, so the build needs no credentials.
    `docker` shared folder, for example `docker/home-planner`, and inside it a
    folder named `data`. Container Manager checks a project's bind-mount
    folders when the project is created and refuses if one is missing, so
-   `data` must exist first. The household logs, sessions and the Connectors
-   file live there; it is the folder to back up. The container makes it its
+   `data` must exist first. The household logs, sessions and the NAS-wide settings
+   file (`connectors.json`) live there; it is the folder to back up. The container makes it its
    own user's when it starts, so it needs no permission changes.
 3. **The compose file.** Download `docker.yml` from the repository:
    `https://raw.githubusercontent.com/jammo-icloud/home-planner/main/docker.yml`.
@@ -790,7 +819,7 @@ public, so the build needs no credentials.
    fetches the repository from GitHub, builds the image and starts the
    container on the NAS's loopback at port 8090, which nothing can reach yet.
 5. **`.env` is optional.** Everything that used to need it is set in the app:
-   an administrator on Connectors, each household's owner in Settings. If a
+   an administrator under Settings › This NAS, each household's owner in Settings. If a
    variable is wanted anyway (see Environment), create a file named `.env`
    beside `docker-compose.yml` in File Station, then restart the project:
    Project → Action → Restart, or Stop and then Start.
@@ -807,7 +836,7 @@ public, so the build needs no credentials.
    from the LAN. If DSM's firewall is on (Control Panel → Security →
    Firewall), allow 443.
 9. **The first sign-in.** Open `https://planner.example.com` and sign in with a
-   DSM account. An administrator then opens Connectors, under the person icon,
+   DSM account. An administrator then opens Settings, under This NAS,
    and each household's owner opens Settings. On first real use, run the check
    above (Checking the NAS's API shapes) once as each member, from a laptop
    checkout, and walk the table under Calendar on the NAS.
@@ -848,14 +877,15 @@ DSM's reverse proxy matches a host and a port, not a path. A rule that sends
 the sign-in page and every route under `/api` are on the internet too. What
 that means:
 
-- every route but `/book`, the sign-in page and `/api/health` still needs a
+- every route but `/book`, `/setup/`, the sign-in page and `/api/health` still needs a
   member's session, exactly as on the LAN;
 - `POST /api/auth/login` checks the password against DSM, so it is limited per
   client address: ten wrong passwords a minute and a hundred an hour, then
   even the right one is answered 429 until the minute (or hour) is out. Set
   `TRUST_PROXY` (Booking) or every wrong password anywhere counts against the
   proxy's one address, and the household's own sign-ins with it;
-- `/book` is the only route for people without an account;
+- `/book` is the only route for people without an account, and `/setup/<code>`
+  answers a phone holding a live one-time code and no one else;
 - every member sign-in reaches DSM from the container's own address, so
   DSM's Auto Block (Control Panel → Security → Protection) sees all the
   internet's guesses as one client and, under sustained guessing, could block
@@ -865,7 +895,8 @@ that means:
 
 If the household would rather the internet saw only `/book`, put a proxy that
 can route by path in front instead (Caddy, nginx): send `/book` and `/book/*`
-to `:8090` and nothing else.
+(and `/setup/*`, if phones are to be set up away from home) to `:8090` and
+nothing else.
 
 `/api/health` is the one route before the auth check, so the container
 healthcheck needs no credential and a broken proxy cannot disguise a broken
@@ -887,8 +918,8 @@ reads public measured data for the place:
 | US Census ACS 5-year | free key | rent and property tax, by county, ~2 years behind |
 
 Both keys are free: `eia.gov/opendata/register.php` and
-`api.census.gov/data/key_signup.html`. An administrator pastes them on
-Connectors (Pricing sources). Without them only rent is available, and only
+`api.census.gov/data/key_signup.html`. An administrator pastes them under
+Settings › This NAS (Pricing sources). Without them only rent is available, and only
 where Zillow covers the ZIP.
 
 **Both parsers were checked against live replies on 2026-10-28.** EIA's shape and
