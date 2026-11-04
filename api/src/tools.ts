@@ -23,7 +23,8 @@ import { removedTxn } from './activity.ts';
 import { byMonthly, everyMonthly, everyWords, goalFor, savingsCheck, shortDay, sinkingPlan } from './sinking.ts';
 import { incomeFor, project, sourcesFor } from './income.ts';
 import { lookUp, placeForZip } from './local.ts';
-import { missingStarter } from './starter.ts';
+import { groupKind, groupOrder, missingStarter } from './starter.ts';
+import type { MissingStarter } from './starter.ts';
 import { board, card } from './plans.ts';
 import { SEARCH_KINDS, searchHousehold, searchKind, searchWords } from './search.ts';
 import { raiseAskCards } from './plan-edits.ts';
@@ -2187,6 +2188,32 @@ const seedFromLocation: Tool = {
   },
 };
 
+/**
+ * The lines that say what a starter set adds. `fed` is true when envelopes made in the same
+ * proposal cover the categories, so the warning that they belong to no envelope would be wrong.
+ */
+function starterEffects(missing: MissingStarter, fed: boolean): string[] {
+  const effects: string[] = [];
+  for (const kind of ['House', 'People', 'Future'] as const) {
+    const here = missing.categories.filter((c) => c.kind === kind);
+    if (here.length) effects.push(`${kind}: ${here.map((c) => c.label).join(', ')}`);
+  }
+  if (missing.categories.length && !fed) {
+    effects.push('Categories belong to no envelope yet — spending in them shows as outside every envelope until one covers it');
+  }
+  for (const r of missing.rules) {
+    effects.push(`Rule "${r.match}" files a receipt as ${r.category === TRANSFER ? 'a transfer' : 'income'} — ${r.why}`);
+  }
+  if (missing.rules.length) {
+    effects.push('Rules sort receipts imported from now on; receipts already here are not changed');
+  }
+  if (missing.skippedCategories.length) {
+    effects.push(`Already here, so skipped: ${missing.skippedCategories.join(', ')}`);
+  }
+  for (const r of missing.skippedRules) effects.push(`Not added: ${r}`);
+  return effects;
+}
+
 const addStarterSet: Tool = {
   name: 'add_starter_set',
   description:
@@ -2205,24 +2232,7 @@ const addStarterSet: Tool = {
       ...missing.categories.map((c) => ({ op: 'category.define' as const, category: c.id, label: c.label, kind: c.kind })),
       ...missing.rules.map((r) => ({ op: 'rule.add' as const, rule: r.id, match: r.match, category: r.category })),
     ];
-    const effects: string[] = [];
-    for (const kind of ['House', 'People', 'Future'] as const) {
-      const here = missing.categories.filter((c) => c.kind === kind);
-      if (here.length) effects.push(`${kind}: ${here.map((c) => c.label).join(', ')}`);
-    }
-    if (missing.categories.length) {
-      effects.push('Categories belong to no envelope yet — spending in them shows as outside every envelope until one covers it');
-    }
-    for (const r of missing.rules) {
-      effects.push(`Rule "${r.match}" files a receipt as ${r.category === TRANSFER ? 'a transfer' : 'income'} — ${r.why}`);
-    }
-    if (missing.rules.length) {
-      effects.push('Rules sort receipts imported from now on; receipts already here are not changed');
-    }
-    if (missing.skippedCategories.length) {
-      effects.push(`Already here, so skipped: ${missing.skippedCategories.join(', ')}`);
-    }
-    for (const r of missing.skippedRules) effects.push(`Not added: ${r}`);
+    const effects = starterEffects(missing, false);
 
     const n = missing.categories.length;
     const m = missing.rules.length;
@@ -2232,6 +2242,163 @@ const addStarterSet: Tool = {
       summary: `Add ${n} categor${n === 1 ? 'y' : 'ies'} and ${m} rule${m === 1 ? '' : 's'}`,
       effects, events,
     }, new Date(`${ctx.today}T00:00:00Z`).toISOString());
+  },
+};
+
+const makeStarterEnvelopes: Tool = {
+  name: 'make_starter_envelopes',
+  description:
+    'Propose the envelopes a new budget starts with, in one step: the rows a person ticked in the ' +
+    'budget walkthrough. Each row is a label, a group and, for a starter row, the category that ' +
+    'feeds it; a row with no category is one of their own and gets a category made from its name ' +
+    '(or reuses one with that name). The starter categories and rules this household lacks are ' +
+    'added in the same proposal. Every envelope opens with no figure yet, as Action required, ' +
+    'so nothing is funded until someone gives it a number.',
+  kind: 'write',
+  input: {
+    type: 'object',
+    properties: {
+      budget: { type: 'string' },
+      envelopes: {
+        type: 'array',
+        description: 'The rows to make, in the order to show them.',
+        items: {
+          type: 'object',
+          properties: {
+            label: { type: 'string', description: 'What the envelope is called. A starter row may be renamed.' },
+            group: { type: 'string', description: 'Which group it sits in, e.g. Home or Food.' },
+            category: { type: 'string', description: 'The starter category id that feeds it. Leave out for a row of their own.' },
+          },
+          required: ['label', 'group'],
+        },
+      },
+    },
+    required: ['budget', 'envelopes'],
+  },
+  run(args, ctx) {
+    const state = ctx.store.state;
+    const budget = str(args['budget'], 'budget');
+    const b = state.budgets.get(budget);
+    if (!b) throw new ToolError(`no budget ${budget}`, 404);
+    const raw = args['envelopes'];
+    if (!Array.isArray(raw) || raw.length === 0) throw new ToolError('make at least one envelope');
+
+    const missing = missingStarter(state);
+    // Categories this same proposal defines count as present, so a row can feed a starter
+    // category the household does not have yet, or reuse one by its name.
+    const defined = new Map<string, string>(); // id -> label, for what this proposal adds
+    for (const c of missing.categories) defined.set(c.id, c.label);
+    const known = (id: string): boolean => state.categories.has(id) || defined.has(id);
+    const labelOf = (id: string): string => state.categories.get(id)?.label ?? defined.get(id) ?? id;
+    const own: NewEvent[] = [];
+
+    const rows: { label: string; group: string; category: string }[] = [];
+    const fedBy = new Map<string, string>(); // category -> the label of the row it feeds
+    for (const item of raw) {
+      const r = (item ?? {}) as Record<string, unknown>;
+      const label = typeof r['label'] === 'string' ? r['label'].trim() : '';
+      if (!label) throw new ToolError('every envelope needs a name');
+      const group = typeof r['group'] === 'string' ? r['group'].trim() : '';
+      if (!group) throw new ToolError(`${label} needs a group`);
+
+      let category: string;
+      if (typeof r['category'] === 'string' && r['category']) {
+        category = r['category'];
+        if (!known(category)) throw new ToolError(`no category ${category} — a row of your own leaves category out`);
+      } else {
+        // A row of one's own takes a category that already says the same thing before it
+        // makes another: two categories called Pets would split one thing's receipts.
+        const id = slug(label);
+        if (!id) throw new ToolError('that name has no letters or numbers in it');
+        const wanted = label.toLowerCase();
+        const same = [...state.categories.keys(), ...defined.keys()]
+          .find((k) => k === id || labelOf(k).trim().toLowerCase() === wanted);
+        if (same) category = same;
+        else {
+          category = id;
+          defined.set(id, label);
+          own.push({ op: 'category.define', category: id, label, kind: groupKind(group) });
+        }
+      }
+
+      const earlier = fedBy.get(category);
+      if (earlier !== undefined) throw new ToolError(`${earlier} and ${label} would both be fed by ${category}`);
+      fedBy.set(category, label);
+      // One envelope per category, or a receipt lands in whichever was defined last.
+      for (const other of b.envelopes.values()) {
+        if (other.match.categories.includes(category)) throw new ToolError(`${category} already feeds ${other.label} in ${b.label}`);
+      }
+      // An envelope's id is its category's, and a define on an existing id would rewrite that envelope.
+      if (b.envelopes.has(category)) throw new ToolError(`${b.label} already has an envelope called ${category}`);
+      rows.push({ label, group, category });
+    }
+
+    const events: NewEvent[] = [
+      ...missing.categories.map((c) => ({ op: 'category.define' as const, category: c.id, label: c.label, kind: c.kind })),
+      ...missing.rules.map((r) => ({ op: 'rule.add' as const, rule: r.id, match: r.match, category: r.category })),
+      ...own,
+      ...rows.map((r, i): NewEvent => ({
+        op: 'envelope.define', budget, envelope: r.category, label: r.label, group: r.group,
+        match: { categories: [r.category] }, template: ZERO, rollover: true, needsFigure: true,
+        order: b.envelopes.size + i,
+      })),
+    ];
+
+    const effects = groupOrder(rows.map((r) => r.group))
+      .map((g) => `${g}: ${rows.filter((r) => r.group === g).map((r) => r.label).join(', ')}`);
+    effects.push('Every one starts as Action required until it has a figure');
+    if (missing.categories.length || missing.rules.length) effects.push(...starterEffects(missing, true));
+
+    return ctx.proposals.put({
+      tool: 'make_starter_envelopes', who: ctx.who,
+      summary: `Make ${rows.length} envelope${rows.length === 1 ? '' : 's'} in ${b.label}`,
+      effects, events,
+    }, ctx.today);
+  },
+};
+
+const setMonthIncome: Tool = {
+  name: 'set_month_income',
+  description:
+    "Propose setting what one month's income is, as a single figure, without touching the " +
+    'recorded income sources. Used when a person changes the income the budget walkthrough ' +
+    'shows. The month must be open and not closed. `month` is YYYY-MM and defaults to the ' +
+    'current month. Returns a proposal.',
+  kind: 'write',
+  input: {
+    type: 'object',
+    properties: {
+      budget: { type: 'string' },
+      month: { type: 'string', description: 'YYYY-MM. Defaults to this month.' },
+      amountCents: { type: 'number', description: 'What the month brings in, in cents.' },
+      why: { type: 'string', description: "Optional. Defaults to set this month's income." },
+    },
+    required: ['budget', 'amountCents'],
+  },
+  run(args, ctx) {
+    const state = ctx.store.state;
+    const budget = str(args['budget'], 'budget');
+    const b = state.budgets.get(budget);
+    if (!b) throw new ToolError(`no budget ${budget}`, 404);
+    const month = typeof args['month'] === 'string' && args['month'] ? args['month'] : monthOf(ctx.today);
+    const amount = money(args['amountCents'], 'amountCents');
+    if (amount < 0) throw new ToolError('an income is not less than nothing');
+    const plan = state.months.get(monthKey(budget, month));
+    if (!plan) throw new ToolError(`${month} is not open for ${b.label}`, 404);
+    if (plan.closed) throw new ToolError(`${month} is closed for ${b.label}, so its income stays as it was`);
+    const why = typeof args['why'] === 'string' && args['why'].trim() ? args['why'].trim() : "set this month's income";
+
+    // The month's own name, read as UTC so the zone of the server cannot move it a month.
+    const name = new Intl.DateTimeFormat('en-US', { timeZone: 'UTC', month: 'long' }).format(new Date(`${month}-01T00:00:00Z`));
+    return ctx.proposals.put({
+      tool: 'set_month_income', who: ctx.who,
+      summary: `Set ${name} income to ${fmtExact(amount)}`,
+      effects: [
+        `${name} income goes from ${fmtExact(plan.income)} to ${fmtExact(amount)}`,
+        'The recorded income sources are not changed; this is the figure for this month only',
+      ],
+      events: [{ op: 'income.set', budget, month, amount, why }],
+    }, ctx.today);
   },
 };
 
@@ -3124,6 +3291,7 @@ const searchTool: Tool = {
 
 export const TOOLS: readonly Tool[] = [
   getMonth, explainEnvelope, findDonors, listTransactions, compareBudgets, getActivity, addStarterSet,
+  makeStarterEnvelopes, setMonthIncome,
   moveMoney, setAssignment, categorizeTxn, openMonth, restoreTxn,
   createBudget, renameBudget, archiveBudget, defineEnvelope, setSinkingGoal, removeEnvelope,
   defineCategory, archiveCategory, closeMonth, discardMonth,
