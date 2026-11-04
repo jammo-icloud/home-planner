@@ -816,19 +816,22 @@ Booking exposes `/book` to friends at the same address; everything else
 behind it still needs a member's session. As under *The volume*: back up
 the project's `data` folder and the Team Folders.
 
-Upgrading is Container Manager → Project → Action → Build, which fetches the
-current `main` and rebuilds the image; then Start, if the project did not
-restart on its own. The log under `data` is the only state, so nothing is
-lost.
+Upgrading is three clicks in Container Manager, in this order:
 
-**Confirm on first run.** One thing no documentation settles: whether Build
-alone recreates the running container with the new image, or needs Start (or
-Stop and then Start) afterwards. A build that fails with a message about git
-means Git Server is not installed (step 1). The commit at the foot of your own
-settings in Settings, or `curl https://planner.example.com/api/health`, says
-which commit is running, so after a Build you can check it against the latest
-on GitHub: an older one means the container is still the previous image. With
-no commit shown, the NAS's Docker dropped `.git` from the build despite
+1. Project → `home-planner` → Action → Clean, which stops and removes the
+   container (the `data` folder is a bind mount and is untouched).
+2. Image → the `home-planner` image → Action → Delete. Build alone reuses the
+   image it has, so without this step the old code comes back up.
+3. Project → `home-planner` → Action → Build, which clones the current `main`
+   from GitHub, builds a fresh image and starts the container.
+
+The log under `data` is the only state, so nothing is lost. A build that fails
+with a message about git means Git Server is not installed (step 1 of the
+install). The commit at the foot of your own settings in Settings, or
+`curl https://planner.example.com/api/health`, says which commit is running,
+so after a Build you can check it against the latest on GitHub: an older one
+means the old image was reused, and step 2 was skipped. With no commit shown,
+the NAS's Docker dropped `.git` from the build despite
 `BUILDKIT_CONTEXT_KEEP_GIT_DIR` in `docker.yml`, and the build time is the
 thing to check instead.
 
