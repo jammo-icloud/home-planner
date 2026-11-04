@@ -163,6 +163,70 @@
   .env-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
   .figure-form{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:13px}
   .figure-form .f{flex:1 1 140px;min-width:0}
+
+  /* ── the budget walkthrough: the steps in a rail, the current one beside it ── */
+  #app:has(#walk:not([hidden])) .wrap{max-width:calc(220px + var(--sp-8) + var(--measure))}
+  .walk{margin-top:0}
+  .walk-h{font-size:var(--fs-headline);letter-spacing:-.02em;margin:0 0 var(--sp-5)}
+  .walk-grid{display:grid;gap:var(--sp-5);align-items:start}
+  .walk-rail{display:grid;gap:var(--sp-5)}
+  .walk-steps{list-style:none;margin:0;padding:0;display:grid;gap:2px}
+  .walk-steps li{display:flex}
+  .walk-pt{display:flex;align-items:center;gap:10px;width:100%;min-height:40px;padding:6px 10px;border-radius:8px;
+    font:inherit;font-size:var(--fs-ui);color:var(--ink-soft);background:none;border:0;text-align:left}
+  button.walk-pt{cursor:pointer}
+  button.walk-pt:hover{background:var(--accent-tint);color:var(--ink)}
+  .walk-pt[aria-current="step"]{color:var(--ink);font-weight:var(--fw-semibold);background:var(--surface-sunken)}
+  .walk-mark{flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;
+    border:1.5px solid var(--line-strong);font-size:var(--fs-micro);font-weight:var(--fw-semibold)}
+  .walk-pt.done .walk-mark{background:var(--good-tint);border-color:var(--good-line);color:var(--good)}
+  .walk-pt.current .walk-mark{background:var(--accent-fill);border-color:var(--accent-fill);color:var(--on-accent)}
+  .walk-mark svg.i{width:12px;height:12px}
+  .walk-state{margin-left:auto;font-size:var(--fs-micro);font-weight:var(--fw-regular);color:var(--ink-faint)}
+  .walk-what{margin:0;font-size:var(--fs-small);color:var(--ink-soft);line-height:1.5}
+  .walk-step{min-width:0}
+  .walk-step > div > * + *,.walk-step > form > * + *{margin-top:var(--sp-4)}
+  .walk-step > div > .card + .card{margin-top:var(--sp-3)}
+  .walk-step h2{font-size:var(--fs-title);font-weight:var(--fw-semibold);margin:0}
+  .walk-lead{margin:0;color:var(--ink-soft);font-size:var(--fs-body)}
+  .walk-foot{margin:0;color:var(--ink-soft);font-size:var(--fs-small)}
+  .walk-msg{color:var(--problem);font-size:var(--fs-small);margin:0}
+  .walk-msg:empty{display:none}
+  .walk-acts{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+  .walk-check{display:flex;align-items:center;gap:8px;font-size:var(--fs-ui);color:var(--ink)}
+  .walk-check input{width:18px;height:18px;margin:0}
+  .walk-seen{font-size:var(--fs-micro);color:var(--ink-soft);margin-bottom:10px;align-self:flex-end}
+  .walk .card{margin-bottom:0}
+  .walk-line{margin:0;font-size:var(--fs-body)}
+  .walk-group h3{margin:0 0 6px}
+  .walk-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--hair)}
+  .walk-row:first-of-type{border-top:none}
+  .walk-row input[type="checkbox"]{flex:none;width:18px;height:18px;margin:0}
+  .walk-row input[type="text"]{flex:1;min-width:0;font:inherit;font-size:var(--fs-input);padding:6px 8px;
+    border:1px solid transparent;border-radius:8px;background:transparent;color:var(--ink)}
+  .walk-row input[type="text"]:hover{border-color:var(--line)}
+  .walk-row input[type="text"]:focus{outline:none;border-color:var(--focus);background:var(--surface-raised)}
+  .walk-row select{flex:none;max-width:44%;font:inherit;font-size:var(--fs-input);padding:6px 8px;
+    border:1px solid var(--line);border-radius:8px;background:var(--surface-raised);color:var(--ink)}
+  .walk-row.off input[type="text"]{color:var(--ink-faint);text-decoration:line-through}
+  .walk-row.off .chip{opacity:.5}
+  .walk-own .walk-hint{font-size:var(--fs-small);color:var(--ink-soft);margin:6px 0 0}
+  .walk-own .walk-rows:empty{display:none}
+  .walk-own .walk-rows{margin-bottom:8px}
+  @container page (min-width: 768px){
+    .walk-grid{grid-template-columns:220px minmax(0,1fr);gap:var(--sp-8)}
+    /* Below the sticky top bar, as the rows scrolled to from the card are. */
+    .walk-rail{position:sticky;top:72px}
+  }
+  /* On a phone the rail is three pills above the step. */
+  @container page (max-width: 767px){
+    .walk-steps{display:flex;flex-wrap:wrap;gap:6px}
+    .walk-pt{min-height:36px;width:auto;padding:4px 12px 4px 6px;border-radius:999px;border:1px solid var(--line);
+      background:var(--surface-raised)}
+    .walk-pt[aria-current="step"]{border-color:var(--accent-line);background:var(--accent-tint)}
+    .walk-state{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+    .walk-row select{max-width:50%}
+  }
   .figure-form label{display:block;font-size:var(--fs-micro);font-weight:500;color:var(--ink-soft);margin-bottom:4px}
   .figure-form input{width:100%;font:inherit;font-size:var(--fs-input);padding:8px 10px;
     border:1px solid var(--line-strong);border-radius:9px;background:var(--surface-raised);color:var(--ink)}
@@ -1486,6 +1550,19 @@
       </section>
 
     </div>
+
+    <!-- A budget with no envelopes has nothing else to show, so the walkthrough is
+         the whole Budget screen: the three steps on the left, the current one on the right. -->
+    <section id="walk" class="walk" hidden aria-labelledby="walk-h">
+      <h1 class="walk-h" id="walk-h">Start the household's budget</h1>
+      <div class="walk-grid">
+        <aside class="walk-rail" aria-label="Steps">
+          <ol class="walk-steps" id="walk-steps"></ol>
+          <p class="walk-what">A budget is a set of envelopes. Each holds a month's money for one thing and the receipts it pays. Together they add up to the income, no more and no less.</p>
+        </aside>
+        <div class="walk-step" id="walk-step"></div>
+      </div>
+    </section>
 
     <div id="import" hidden>
       <label class="drop" id="drop" for="file">
@@ -3171,6 +3248,18 @@ const toCents = (text) => {
 };
 
 async function loadBudget() {
+  // A budget with no envelopes is the walkthrough, at the step it was left on.
+  const asked = chosenBudget();
+  const fr = await api(`/api/budget/first-run${asked ? `?budget=${encodeURIComponent(asked)}` : ''}`);
+  if (fr.budget && fr.budget !== asked) {
+    localStorage.setItem('budget', fr.budget);
+    $('budget-pick').value = fr.budget;
+    markChosenBudget();
+  }
+  if (fr.step || pricingFor === fr.budget) { drawWalk(fr); return; }
+  pricingFor = null;
+  $('walk').hidden = true;
+  $('budget').hidden = view !== 'budget';
   $('bands').textContent = '';
   // Every committed change comes back through here, so this is where a cached
   // category list goes stale — a category added a moment ago has to be in the
@@ -4094,16 +4183,23 @@ function showProblem(ex) {
   box.hidden = false;
   // Pink for what went wrong; a quiet panel for "here is what to do next".
   box.className = /no budgets yet|no open month|no months are open/i.test(ex.message) ? 'prompt' : 'err';
-  // A brand new household has no budget to open a month in. Offer to make one
-  // here: every screen that could is behind the Budget screen, which needs a
-  // month, which needs a budget — so without this a fresh install is unusable.
-  if (/no budgets yet/i.test(ex.message)) { offerFirstBudget(box, ex.message); return; }
+  // A brand new household has no budget. The Budget screen is where one is made,
+  // as the first step of its walkthrough.
+  if (/no budgets yet/i.test(ex.message)) {
+    box.append('This household has no budget yet. ', textBtn('Open Budget', 'btn', null, () => showView('budget')));
+    return;
+  }
   // Two wordings for the same state: the briefing says "no open month", the
   // month itself says "no months are open". Both get the way forward.
   if (!/no open month|no months are open/i.test(ex.message)) { box.textContent = ex.message; return; }
 
   const b = budgets.find((x) => x.id === chosenBudget());
   box.textContent = `${b?.label ?? 'This budget'} has no plan for this month yet. `;
+  // With no envelopes there is nothing to open it from: its walkthrough starts with the month.
+  if (b && !b.envelopes) {
+    if (view !== 'budget') box.appendChild(textBtn('Open Budget', 'btn', null, () => showView('budget')));
+    return;
+  }
   // No income field. The recorded sources know which months carry a third
   // paycheque and a person does not, so the figure is derived and shown in the
   // proposal — where it can be read before anything is committed.
@@ -4135,193 +4231,335 @@ function showProblem(ex) {
       });
       box.append(ul, go);
     } catch (inner) {
-      // The Income section lives on the Budget screen, which is itself
-      // unreachable until a month is open — so without this you would need an
-      // income to open a month and an open month to record an income.
-      if (/No income is recorded/i.test(inner.message)) { offerFirstIncome(box, inner.message); return; }
       box.textContent = inner.message;
     }
   });
   box.appendChild(open);
 }
 
-/** The very first thing: somewhere to put the money, and where that is. */
-function offerFirstBudget(box, message) {
-  box.textContent = '';
-  const p = document.createElement('p');
-  p.style.margin = '0 0 10px';
-  p.textContent = message;
-  box.appendChild(p);
+// ── the budget walkthrough ─────────────────────────────────────────────────
+//
+// A budget with no envelopes is this, not an empty screen: income, envelopes,
+// pricing. The server says which of the first two is unfinished, so a walk left
+// halfway picks up where it was. Pricing comes straight after the envelopes and
+// nothing records it, so that one step is kept here.
+let pricingFor = null;
+// The done Income step opened again from Envelopes: { value } while it is.
+let walkIncomeEdit = null;
+// The envelopes step as drawn, kept so ticks and names survive a redraw.
+let walkDraft = null;
+let walkFr = null;
 
-  const form = document.createElement('div');
-  form.className = 'edit';
-  const mk = (label, ph) => {
-    const f = document.createElement('div');
-    f.className = 'f';
-    const l = document.createElement('label');
-    l.textContent = label;
-    const i = document.createElement('input');
-    i.placeholder = ph;
-    f.append(l, i);
-    form.appendChild(f);
-    return i;
-  };
-  const name = mk('Name it', 'e.g. where you live now');
-  // Asked for now rather than later: a budget is a place, and the place is what
-  // makes local cost data findable when you come to price it.
-  const where = mk('Where is it for', 'e.g. Springfield, IL — optional');
-  const zip = mk('ZIP', 'optional, unlocks rent data');
-  box.appendChild(form);
+const WALK_STEPS = [['income', 'Income'], ['envelopes', 'Envelopes'], ['pricing', 'Pricing']];
+const WALK_STATE = { done: 'Done', current: 'Current', todo: 'To do' };
 
-  // Ticked: without it a new household has no categories to sort into, and a
-  // card's payment double-counts its whole balance until a rule says otherwise.
-  // Shown in the preview below before anything is written.
-  const starter = document.createElement('label');
-  starter.className = 'quiet';
-  starter.style.display = 'block';
-  starter.style.marginTop = '10px';
-  const tick = Object.assign(document.createElement('input'), { type: 'checkbox', checked: true });
-  starter.append(tick, ' Start with common categories and card-payment rules');
-  starter.hidden = true;
-  box.appendChild(starter);
-  void api('/api/categories').then((r) => { starter.hidden = !r.starterMissing; }).catch(() => {});
-
-  const row = document.createElement('div');
-  row.className = 'row';
-  row.style.marginTop = '10px';
-  const go = document.createElement('button');
-  go.className = 'btn primary';
-  go.textContent = 'Show what this would do';
-  go.addEventListener('click', async () => {
-    if (!name.value.trim()) { name.focus(); return; }
-    go.disabled = true;
-    try {
-      const { proposal } = await api('/api/tools/create_budget', { label: name.value.trim() });
-      const set = tick.checked && !starter.hidden
-        ? (await api('/api/tools/add_starter_set', {}).catch(() => null))?.proposal ?? null
-        : null;
-      const ul = document.createElement('ul');
-      ul.className = 'effects';
-      for (const e of [...proposal.effects, ...(set ? [`And the starter set — ${set.summary.toLowerCase()}:`, ...set.effects] : [])]) {
-        const li = document.createElement('li');
-        li.textContent = e;
-        ul.appendChild(li);
-      }
-      row.textContent = '';
-      starter.hidden = true;
-      const yes = document.createElement('button');
-      yes.className = 'btn primary';
-      yes.textContent = set ? `${proposal.summary}, with the starter set` : proposal.summary;
-      yes.addEventListener('click', async () => {
-        yes.disabled = true;
-        const done = await api('/api/commit', { proposalId: proposal.id });
-        if (set) await api('/api/commit', { proposalId: set.id });
-        const id = done.committed[0]?.op === 'budget.create'
-          ? name.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-') : '';
-        if (where.value.trim()) {
-          const loc = await api('/api/tools/set_budget_location', {
-            budget: id, label: where.value.trim(),
-            ...(zip.value.trim() ? { postal: zip.value.trim() } : {}),
-            why: 'set when the budget was created',
-          });
-          await api('/api/commit', { proposalId: loc.proposal.id });
-        }
-        localStorage.setItem('budget', id);
-        await loadBudgets();
-        await refresh();
+function drawWalk(fr) {
+  if (walkFr?.budget !== fr.budget) walkIncomeEdit = null;
+  walkFr = fr;
+  $('budget').hidden = true;
+  $('walk').hidden = view !== 'budget';
+  // Making the budget comes before income, and is part of getting income started.
+  const at = !fr.step ? 'pricing' : fr.step === 'budget' ? 'income' : fr.step;
+  const order = WALK_STEPS.map(([k]) => k);
+  const ol = $('walk-steps');
+  ol.textContent = '';
+  for (const [i, [key, label]] of WALK_STEPS.entries()) {
+    const state = order.indexOf(key) < order.indexOf(at) ? 'done' : key === at ? 'current' : 'todo';
+    // While on Envelopes, a done Income can be opened again to change the figure.
+    const editable = key === 'income' && at === 'envelopes';
+    const pt = node(editable ? 'button' : 'div', `walk-pt ${state}`);
+    if (editable) {
+      pt.type = 'button';
+      pt.addEventListener('click', async () => {
+        pt.disabled = true;
+        const value = await api('/api/tools/get_month', { budget: fr.budget })
+          .then((r) => r.result.incomeExact).catch(() => '');
+        walkIncomeEdit = { value };
+        drawWalk(walkFr);
+        $('walk-income')?.focus();
       });
-      row.appendChild(yes);
-      box.insertBefore(ul, row);
-    } catch (ex) {
-      go.textContent = ex.message;
-      go.disabled = false;
     }
-  });
-  row.appendChild(go);
-  box.appendChild(row);
+    if (walkIncomeEdit ? key === 'income' : state === 'current') pt.setAttribute('aria-current', 'step');
+    const mark = node('span', 'walk-mark');
+    mark.setAttribute('aria-hidden', 'true');
+    if (state === 'done') mark.appendChild(icon('check')); else mark.textContent = String(i + 1);
+    pt.append(mark, node('span', 'walk-name', label), node('span', 'walk-state', WALK_STATE[state]));
+    const li = node('li');
+    li.appendChild(pt);
+    ol.appendChild(li);
+  }
+  const step = $('walk-step');
+  // Detached, not dropped: the envelopes step comes back as it was left.
+  step.textContent = '';
+  if (fr.step === 'budget') step.appendChild(walkBudgetStep());
+  else if (at === 'income' || walkIncomeEdit) step.appendChild(walkIncomeStep(fr));
+  else if (at === 'envelopes') step.appendChild(walkEnvelopesStep(fr));
+  else step.appendChild(walkPricingStep(fr));
 }
 
-/** The way out of the loop: record the first income from here. */
-function offerFirstIncome(box, message) {
-  box.textContent = '';
-  const p = document.createElement('p');
-  p.style.margin = '0 0 10px';
-  p.textContent = message;
-  box.appendChild(p);
+/** A labelled field in the page's `.edit` style. */
+function walkField(parent, id, label, placeholder = '') {
+  const f = node('div', 'f');
+  const l = node('label', '', label);
+  l.htmlFor = id;
+  const i = node('input');
+  i.id = id;
+  i.placeholder = placeholder;
+  f.append(l, i);
+  parent.appendChild(f);
+  return i;
+}
 
-  const form = document.createElement('div');
-  form.className = 'edit';
-  const fields = [
-    ['label', 'What is it', 'e.g. salary'],
-    ['earner', 'Whose', 'who earns it'],
-    ['amount', 'Each payday', 'not a monthly figure'],
-    ['anchor', 'A real payday', 'YYYY-MM-DD'],
-  ].map(([name, label, ph]) => {
-    const f = document.createElement('div');
-    f.className = 'f';
-    const l = document.createElement('label');
-    l.textContent = label;
-    const i = document.createElement('input');
-    i.placeholder = ph;
-    f.append(l, i);
-    form.appendChild(f);
-    return [name, i];
-  });
-  const freqWrap = document.createElement('div');
-  freqWrap.className = 'f';
-  const fl = document.createElement('label');
-  fl.textContent = 'How often';
-  const freq = document.createElement('select');
-  for (const [value, label] of Object.entries(FREQ_LABELS)) {
-    const o = document.createElement('option');
-    o.value = value;
-    o.textContent = label;
-    freq.appendChild(o);
-  }
-  freqWrap.append(fl, freq);
-  form.appendChild(freqWrap);
-  box.appendChild(form);
+/** The line a step's refusal is written in, read out when it changes. */
+function walkMsg() {
+  const msg = node('p', 'walk-msg');
+  msg.setAttribute('aria-live', 'polite');
+  return msg;
+}
 
-  const row = document.createElement('div');
-  row.className = 'row';
-  row.style.marginTop = '10px';
-  const go = document.createElement('button');
-  go.className = 'btn primary';
-  go.textContent = 'Show what this would do';
-  go.addEventListener('click', async () => {
-    const v = Object.fromEntries(fields.map(([n, i]) => [n, i.value.trim()]));
-    if (!v.label || !v.amount || !v.anchor) return;
+/** Before income, when the household has no budget: its name and where it is. */
+function walkBudgetStep() {
+  const form = node('form', 'card');
+  form.noValidate = true;
+  const h = node('h2', '', 'Name the budget');
+  const fields = node('div', 'edit');
+  const name = walkField(fields, 'walk-name', 'Name it', 'e.g. where you live now');
+  // Asked for now: a budget is a place, and the place is what step 3 prices.
+  const town = walkField(fields, 'walk-town', 'Where is it for', 'e.g. Springfield, IL — optional');
+  const zip = walkField(fields, 'walk-zip', 'ZIP', 'optional, unlocks rent data');
+  zip.inputMode = 'numeric';
+  zip.autocomplete = 'postal-code';
+  const acts = node('div', 'walk-acts');
+  const go = node('button', 'btn primary', 'Make the budget');
+  go.type = 'submit';
+  acts.appendChild(go);
+  const msg = walkMsg();
+  form.append(h, fields, acts, msg);
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const label = name.value.trim();
+    if (!label) { msg.textContent = 'Give it a name.'; name.focus(); return; }
     go.disabled = true;
+    msg.textContent = '';
+    let made;
     try {
-      const { proposal } = await api('/api/tools/define_income_source', {
-        budget: chosenBudget(), label: v.label, earner: v.earner.toLowerCase() || undefined,
-        amountCents: toCents(v.amount), frequency: freq.value, anchor: v.anchor,
-      });
-      const ul = document.createElement('ul');
-      ul.className = 'effects';
-      for (const e of proposal.effects) {
-        const li = document.createElement('li');
-        li.textContent = e;
-        ul.appendChild(li);
-      }
-      row.textContent = '';
-      const yes = document.createElement('button');
-      yes.className = 'btn primary';
-      yes.textContent = proposal.summary;
-      yes.addEventListener('click', async () => {
-        yes.disabled = true;
-        await api('/api/commit', { proposalId: proposal.id });
-        await refresh();
-      });
-      row.appendChild(yes);
-      box.insertBefore(ul, row);
-    } catch (ex) {
-      go.textContent = ex.message;
-      go.disabled = false;
+      made = await approveNow('create_budget', { label });
+    } catch (ex) { msg.textContent = ex.message; go.disabled = false; return; }
+    const id = made.touches.budget;
+    localStorage.setItem('budget', id);
+    // The budget is made either way. A place that is refused is said on the next step, which can still go on.
+    let refused = null;
+    const where = town.value.trim();
+    const postal = zip.value.trim();
+    if (where || postal) {
+      await approveNow('set_budget_location', {
+        budget: id, label: where || postal, ...(postal ? { postal } : {}), why: 'set when the budget was made',
+      }).catch((ex) => { refused = ex; });
     }
+    await loadBudgets();
+    await loadBudget();
+    if (refused) showProblem(refused);
   });
-  row.appendChild(go);
-  box.appendChild(row);
+  return form;
+}
+
+/** Step 1: this month's income, as one figure. Also the done step, opened again from Envelopes. */
+function walkIncomeStep(fr) {
+  const editing = walkIncomeEdit !== null;
+  const form = node('form', 'card');
+  form.noValidate = true;
+  const fields = node('div', 'edit');
+  const amount = walkField(fields, 'walk-income', `${monthLong(fr.month)} income`, '0.00');
+  amount.inputMode = 'decimal';
+  const given = editing ? walkIncomeEdit.value : fr.income.suggestion?.exact ?? '';
+  amount.value = String(given).replace(/[$,]/g, '');
+  if (!editing && fr.income.suggestion?.from === 'imports') fields.appendChild(node('span', 'walk-seen', 'seen in imports'));
+  form.append(node('h2', '', 'Income'), fields);
+
+  // Only while nothing says what comes in: once a source does, it is edited where sources are.
+  let same = null;
+  if (!fr.income.hasSource) {
+    const l = node('label', 'walk-check');
+    same = Object.assign(node('input'), { type: 'checkbox', id: 'walk-same' });
+    l.append(same, 'the same every month');
+    form.appendChild(l);
+  }
+
+  const acts = node('div', 'walk-acts');
+  const save = node('button', 'btn primary', 'Save');
+  save.type = 'submit';
+  const other = textBtn(editing ? 'Cancel' : 'Skip', 'btn', null, async () => {
+    if (editing) { walkIncomeEdit = null; drawWalk(walkFr); return; }
+    // Skipped is still a month: it opens at nothing, and the card says so.
+    await run(() => approveNow('open_month', { budget: fr.budget, month: fr.month, incomeCents: 0 }));
+  });
+  acts.append(save, other);
+  const msg = walkMsg();
+  form.append(acts, msg);
+
+  async function run(write) {
+    save.disabled = true;
+    other.disabled = true;
+    msg.textContent = '';
+    try {
+      await write();
+    } catch (ex) {
+      msg.textContent = ex.message;
+      save.disabled = false;
+      other.disabled = false;
+      return;
+    }
+    walkIncomeEdit = null;
+    await loadBudgets();
+    await loadBudget();
+  }
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    if (save.disabled) return;
+    if (!amount.value.trim()) {
+      msg.textContent = editing ? "Type this month's income." : "Type this month's income, or Skip.";
+      amount.focus();
+      return;
+    }
+    const cents = toCents(amount.value);
+    if (!Number.isFinite(cents) || cents < 0) { msg.textContent = 'That is not an amount.'; amount.focus(); return; }
+    await run(async () => {
+      // A zero is a month's figure, not an income to repeat.
+      if (same?.checked && cents > 0) {
+        await approveNow('define_income_source', {
+          budget: fr.budget, label: 'Monthly income', ...(myName ? { earner: myName } : {}),
+          frequency: 'monthly', anchor: `${fr.month}-01`, amountCents: cents,
+        });
+      }
+      if (fr.monthOpen) await approveNow('set_month_income', { budget: fr.budget, month: fr.month, amountCents: cents });
+      else await approveNow('open_month', { budget: fr.budget, month: fr.month, incomeCents: cents });
+    });
+  });
+  return form;
+}
+
+/** Step 2: the starter envelopes, ticked, in their six groups. */
+function walkEnvelopesStep(fr) {
+  if (walkDraft?.budget === fr.budget) return walkDraft.el;
+  const el = node('div', 'walk-env');
+  el.append(node('h2', '', 'Envelopes'),
+    node('p', 'walk-lead', 'Start with these envelopes. Most households need most of these. Untick what you do not, rename anything, and add your own at the end. Every one starts as Action required until it has a figure.'));
+  const rows = [];
+  let n = 0;
+  const go = node('button', 'btn primary');
+  go.type = 'button';
+  const ticked = () => rows.filter((r) => r.box.checked && r.name.value.trim());
+  const count = () => {
+    const k = ticked().length;
+    go.textContent = k === 1 ? 'Make this 1 envelope' : `Make these ${k} envelopes`;
+    go.disabled = k === 0;
+  };
+
+  /** One row: ticked, its name typed over in place, and what it starts as. A null group is one's own, with a picker. */
+  const row = (parent, label, group, category, priced) => {
+    const id = `walk-env-${n++}`;
+    const r = node('div', 'walk-row');
+    const box = Object.assign(node('input'), { type: 'checkbox', checked: true, id: `${id}-on` });
+    const name = Object.assign(node('input'), { type: 'text', value: label, id });
+    name.setAttribute('aria-label', 'Envelope name');
+    // The checkbox is named by whatever the envelope is called now, renamed or not.
+    box.setAttribute('aria-labelledby', id);
+    box.addEventListener('change', () => { r.classList.toggle('off', !box.checked); count(); });
+    name.addEventListener('input', count);
+    r.append(box, name);
+    let pick = null;
+    if (group === null) {
+      pick = node('select');
+      pick.setAttribute('aria-label', 'Group');
+      for (const g of fr.groups) pick.appendChild(Object.assign(node('option', '', g.name), { value: g.name }));
+      pick.value = fr.groups.at(-1)?.name ?? '';
+      r.appendChild(pick);
+    } else {
+      r.appendChild(priced ? node('span', 'chip source', 'priced in step 3') : node('span', 'chip figure', 'Action required'));
+    }
+    parent.appendChild(r);
+    rows.push({ box, name, group: () => (pick ? pick.value : group), category });
+    return name;
+  };
+
+  for (const [gi, g] of fr.groups.entries()) {
+    const card = node('section', 'card walk-group');
+    const h = node('h3', '', g.name);
+    h.id = `walk-g-${gi}`;
+    card.setAttribute('aria-labelledby', h.id);
+    card.appendChild(h);
+    for (const e of g.envelopes) row(card, e.label, g.name, e.id, e.priced);
+    el.appendChild(card);
+  }
+
+  // One's own: a name and its group. No category is sent, so the tool makes one from the name.
+  const own = node('div', 'card walk-own');
+  const ownRows = node('div', 'walk-rows');
+  const add = textBtn('Add one of your own', 'btn', null, () => { row(ownRows, '', null, null, false).focus(); count(); });
+  own.append(ownRows, add, node('p', 'walk-hint', 'e.g. Childcare, Pets, Tuition, HOA'));
+  el.appendChild(own);
+
+  const acts = node('div', 'walk-acts');
+  acts.appendChild(go);
+  const msg = walkMsg();
+  el.append(acts, msg,
+    node('p', 'walk-foot', "Public data for the household's location prices rent, property tax and electricity. Each figure comes with its source and lands as that envelope's monthly plan. Everything else stays Action required until you type a number, and the budget says how much is still unassigned."));
+
+  go.addEventListener('click', async () => {
+    go.disabled = true;
+    msg.textContent = '';
+    const envelopes = ticked().map((r) => ({
+      label: r.name.value.trim(), group: r.group(), ...(r.category ? { category: r.category } : {}),
+    }));
+    try {
+      await approveNow('make_starter_envelopes', { budget: fr.budget, envelopes });
+    } catch (ex) { msg.textContent = ex.message; count(); return; }
+    walkDraft = null;
+    pricingFor = fr.budget;
+    await loadBudgets();
+    await loadBudget();
+    window.scrollTo({ top: 0 });
+  });
+  count();
+  walkDraft = { budget: fr.budget, el };
+  return el;
+}
+
+/** Step 3: what the place costs, through the same proposal the menu's lookup shows. */
+function walkPricingStep(fr) {
+  const el = node('div');
+  const card = node('div', 'card');
+  const h = node('h3', '', 'Looking up what this place costs…');
+  card.appendChild(h);
+  el.append(node('h2', '', 'Pricing'), card);
+  const finish = async () => {
+    pricingFor = null;
+    $('manage-panel').textContent = '';
+    await loadBudgets();
+    await loadBudget();
+  };
+  // Nothing found, nothing to price, or nowhere to look: said in one line, and the walk can still end.
+  const refused = (words) => {
+    card.textContent = '';
+    const row = node('div', 'row');
+    row.append(
+      textBtn('Set the location', 'btn', null, () => $('bud-where').click()),
+      textBtn('Finish', 'btn primary', null, async (ev) => { ev.currentTarget.disabled = true; await finish(); }));
+    card.append(node('p', 'walk-line', words), row);
+  };
+  if (!fr.location) { refused('No location yet, so nothing can be looked up.'); return el; }
+  api('/api/tools/seed_from_location', { budget: fr.budget }).then(({ proposal }) => {
+    h.textContent = proposal.summary;
+    const row = node('div', 'row');
+    // Attached first: showManageProposal puts the effects before this row.
+    card.appendChild(row);
+    showManageProposal(card, row, proposal, async () => {
+      await api('/api/commit', { proposalId: proposal.id });
+      pricingFor = null;
+    }, null, () => { void finish(); });
+  }).catch((ex) => refused(ex.message));
+  return el;
 }
 
 // ── managing budgets and envelopes ─────────────────────────────────────────
@@ -4412,7 +4650,8 @@ function panel(title, fields, onSubmit) {
 }
 
 function showManageProposal(card, row, proposal,
-  commit = () => api('/api/commit', { proposalId: proposal.id }), done = null) {
+  commit = () => api('/api/commit', { proposalId: proposal.id }), done = null,
+  notNow = () => { $('manage-panel').textContent = ''; }) {
   const ul = document.createElement('ul');
   ul.className = 'effects';
   for (const e of proposal.effects) {
@@ -4443,7 +4682,7 @@ function showManageProposal(card, row, proposal,
   const no = document.createElement('button');
   no.className = 'btn';
   no.textContent = 'Not now';
-  no.addEventListener('click', () => { $('manage-panel').textContent = ''; });
+  no.addEventListener('click', notNow);
   row.append(yes, no);
 }
 
@@ -9739,7 +9978,8 @@ async function showView(next) {
   }
   $('today-date').textContent = pageWords();
   $('briefing').hidden = view !== 'today';
-  $('budget').hidden = view !== 'budget';
+  // On Budget, loadBudget shows either the envelopes or the walkthrough, whichever this budget is at.
+  if (view !== 'budget') { $('budget').hidden = true; $('walk').hidden = true; }
   $('import').hidden = view !== 'import';
   $('compare').hidden = view !== 'compare';
   $('plan').hidden = view !== 'plan';
