@@ -133,6 +133,26 @@
   .env-left.over{color:var(--problem)}
   /* An envelope with no figure yet: warm behind it, and the chip where its figure would be. */
   .env.needs-figure{background:var(--figure-row)}
+  /* An envelope gone under: red behind it and round it, the chip says by how much,
+     and the cover card sits under it. */
+  .env.short,.list > .env.short{background:var(--short-row);border:1px solid var(--short-row-line)}
+  .list > .env.short + .env{border-top:none}
+  .chip.short{color:var(--short-chip-ink);background:var(--short-chip);border-color:transparent;flex:none}
+  .cover{margin-top:11px;padding:12px 13px;border-radius:var(--r-control);background:var(--surface-raised);
+    border:1px solid var(--short-row-line)}
+  .cover h3{font-size:var(--fs-ui);font-weight:600;margin:0 0 4px}
+  .cover-body{font-size:var(--fs-small);color:var(--ink-soft);margin:0}
+  .cover-group{margin-top:12px}
+  .cover h4{font-size:var(--fs-micro);font-weight:600;color:var(--ink-soft);margin:0 0 6px}
+  .cover-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--hair)}
+  .cover-row:first-of-type{border-top:none}
+  .cover-who{flex:1;min-width:0;display:flex;flex-direction:column;gap:1px}
+  .cover-name{font-size:var(--fs-small);font-weight:500;overflow-wrap:anywhere}
+  .cover-spare{font-size:var(--fs-micro);color:var(--ink-soft)}
+  .cover-row .btn{flex:none}
+  .cover-note{font-size:var(--fs-micro);color:var(--ink-faint);margin:6px 0 0}
+  .cover .msg{color:var(--problem);font-size:var(--fs-small);margin:8px 0 0}
+  .cover .msg:empty{display:none}
   /* Scrolled to from the card: its name lands below the sticky bar, not under it. */
   .env{scroll-margin-top:72px}
   .chip.figure{color:var(--figure-chip-ink);background:var(--figure-chip);border-color:transparent;flex:none}
@@ -465,7 +485,7 @@
     border-right:1.5px solid var(--ink-faint);border-bottom:1.5px solid var(--ink-faint);
     transform:rotate(45deg);transition:transform .15s}
   .env-head[aria-expanded="true"]::after{transform:rotate(225deg);margin:3px 2px 0 0}
-  .env-head .env-left,.env-head .chip.figure{margin-left:auto}
+  .env-head .env-left,.env-head .chip.figure,.env-head .chip.short{margin-left:auto}
 
   /* ── what changed, and what to do next ─────────────────────────────── */
   .prompt{background:var(--surface-raised);border:1px solid var(--line);border-left:3px solid var(--accent);
@@ -2291,7 +2311,7 @@ async function loadThread(opts = {}) {
     $('budget-label').textContent = budgets.find((x) => x.id === chosenBudget())?.label ?? '';
     if (rails) {
       renderYours(rails);
-      renderSetupNotes(rails.setup ?? []);
+      renderSetupNotes(rails.setup ?? [], rails.budget ?? []);
     }
     renderThread();
     $('briefing').hidden = view !== 'today';
@@ -2316,7 +2336,7 @@ async function loadThread(opts = {}) {
  * household's first, then the NAS's, each with at most one way to fix it,
  * Settings at a row. Gone on the load after it is done.
  */
-function renderSetupNotes(notes) {
+function renderSetupNotes(notes, budgetNotes = []) {
   const box = $('setup-notes');
   box.textContent = '';
   for (const n of notes) {
@@ -2329,7 +2349,17 @@ function renderSetupNotes(notes) {
     }
     box.appendChild(p);
   }
-  box.hidden = notes.length === 0;
+  // Then the budget's own: envelopes still needing a figure, and those short,
+  // each opening the row it is about.
+  for (const n of budgetNotes) {
+    const p = node('div', 'setup-note');
+    p.dataset.kind = n.kind;
+    p.append(icon('alert', 'i'), node('span', '', n.text));
+    const a = n.action;
+    if (a) p.appendChild(textBtn(a.label, 'btn small', null, () => void openBudgetAt(a.budget, a.envelope, a.cover === true)));
+    box.appendChild(p);
+  }
+  box.hidden = notes.length + budgetNotes.length === 0;
 }
 
 function renderThread() {
@@ -3163,7 +3193,8 @@ async function loadBudget() {
   $('toassign').className = `toassign ${card.tone}`;
   $('ta-v').textContent = card.headline;
   $('ta-line').textContent = card.line;
-  $('ta-next').hidden = !card.next;
+  // A closed month gives no envelope a figure, so there is no next one to go to.
+  $('ta-next').hidden = !card.next || result.closed === true;
   $('ta-green').textContent = card.green;
   $('t-income').textContent = result.income;
   const here = budgets.find((x) => x.id === chosenBudget());
@@ -3248,7 +3279,7 @@ function savingsBand(list, check) {
 
 function envelopeRow(e) {
   const row = document.createElement('div');
-  row.className = e.needsFigure ? 'env needs-figure' : 'env';
+  row.className = e.needsFigure ? 'env needs-figure' : e.short ? 'env short' : 'env';
   // So the card, and Today, can find the row an envelope is drawn in.
   row.dataset.envelope = e.id;
 
@@ -3259,8 +3290,10 @@ function envelopeRow(e) {
   name.textContent = e.label;
   // With no figure there is nothing for "left" to be measured from, so the
   // chip says what is missing instead of showing $0.
+  // Short says by how much, in the red chip, where what is left would be.
   const left = e.needsFigure
     ? node('span', 'chip figure', 'Action required')
+    : e.short ? node('span', 'chip short', `Short ${coverMoney(e.short.amount)}`)
     : node('div', `env-left ${e.overspent ? 'over' : ''}`, e.left);
   head.append(name, left);
 
@@ -3274,7 +3307,9 @@ function envelopeRow(e) {
   const funded = document.createElement('span');
   // Both numbers whenever the month has been adjusted. The plan of record is
   // immutable precisely so "was $975" stays answerable in December.
-  funded.innerHTML = e.adjustedBy
+  // A month that opened with no plan for it has nothing to have been, so a
+  // first figure reads as funded alone, not "was $0".
+  funded.innerHTML = e.adjustedBy && toCents(e.plannedExact) !== 0
     ? `${e.funded} funded <span class="was">was ${e.planned}</span>`
     : `${e.funded} funded`;
   const spent = document.createElement('span');
@@ -3348,10 +3383,95 @@ function envelopeRow(e) {
     if (e.hint?.price) acts.appendChild(textBtn('Price it from local data', 'btn small', null, () => $('bud-seed').click()));
   }
 
-  // A row with no figure has no bar: nothing funded is nothing to measure against.
-  row.append(head, ...(sub.childNodes.length ? [sub] : []), meta, ...(e.needsFigure ? [] : [bar]),
+  // A row with no figure has no bar and no funded and spent: nothing funded is
+  // nothing to measure against, and the hint says what is missing instead.
+  // A short one has its cover card under it, while the month is open.
+  row.append(head, ...(sub.childNodes.length ? [sub] : []), ...(e.needsFigure ? [] : [meta, bar]),
+    ...(e.short && !month.closed ? [coverCard(e)] : []),
     ...(acts.childNodes.length ? [acts] : []), body);
   return row;
+}
+
+/** A cover amount: whole dollars when it is whole, as "$42", and to the cent when it is not. */
+const coverMoney = (c) => exactDollars(c).replace(/\.00$/, '');
+
+/**
+ * The cover card under a short envelope: the receipt that took it under, then
+ * the envelopes that can spare the whole shortfall, and while income is not
+ * all assigned, that too. Each is one tap, approved at once; the first tap
+ * takes every button in the card out, and the screen is read again after.
+ */
+function coverCard(e) {
+  const s = e.short;
+  const need = coverMoney(s.amount);
+  const card = node('div', 'cover');
+  card.setAttribute('role', 'group');
+  const title = node('h3', '', `Cover the ${need}`);
+  title.id = `cover-${e.id}`;
+  card.setAttribute('aria-labelledby', title.id);
+  // Without a receipt (a move took its money) there is no receipt to name.
+  const why = 'An envelope never pays what it does not hold, so this one is marked Action required until the shortfall is covered.';
+  const body = s.receipt
+    ? `The receipt from ${s.receipt.payee} for ${s.receipt.exact} is in ${e.label}, which had ${s.hadLeftExact} left. ${why}`
+    : why;
+  card.append(title, node('p', 'cover-body', body));
+
+  const msg = node('p', 'msg');
+  msg.setAttribute('role', 'status');
+  const buttons = [];
+  const act = (label, tool, args) => {
+    const b = textBtn(label, 'btn small', null, async () => {
+      for (const x of buttons) x.disabled = true;
+      msg.textContent = '';
+      try {
+        await approveNow(tool, { budget: month.budget, month: month.month, ...args });
+        await loadBudget();
+      } catch (ex) {
+        // Covered already, by another tap or another member: the screen is out
+        // of date, so it is read again and says why nothing moved.
+        if (ex.status === 409) { await loadBudget().catch(() => {}); showProblem(ex); return; }
+        msg.textContent = ex.message;
+        for (const x of buttons) x.disabled = false;
+      }
+    });
+    buttons.push(b);
+    return b;
+  };
+
+  const take = node('div', 'cover-group');
+  take.appendChild(node('h4', '', 'Take it from another envelope'));
+  if (s.donors.length) {
+    for (const d of s.donors) {
+      const r = node('div', 'cover-row');
+      // The name over what it can spare, so the button keeps to the right at any width.
+      const who = node('div', 'cover-who');
+      who.append(node('span', 'cover-name', d.label), node('span', 'cover-spare', `${coverMoney(d.spare)} spare`));
+      r.append(who,
+        act(`Move ${need}`, 'move_money', {
+          from: d.envelope, to: e.id, amountCents: s.amount,
+          why: `covered the shortfall in ${e.label}`, onlyWhileShort: true,
+        }));
+      take.appendChild(r);
+    }
+    take.appendChild(node('p', 'cover-note',
+      `Listed with the most to spare first. Envelopes with less than ${need} left are not offered.`));
+  } else {
+    take.appendChild(node('p', 'cover-note', `No envelope has ${need} to spare.`));
+  }
+  card.appendChild(take);
+
+  if (s.assign) {
+    const give = node('div', 'cover-group');
+    give.append(node('h4', '', 'Or, while income is not all assigned'),
+      act(`Assign ${coverMoney(s.assign)} to ${e.label}`, 'set_assignment', {
+        envelope: e.id, toCents: toCents(e.fundedExact) + s.assign,
+        why: 'covered the shortfall from unassigned income',
+      }),
+      node('p', 'cover-note', 'This choice disappears once the budget reaches zero.'));
+    card.appendChild(give);
+  }
+  card.appendChild(msg);
+  return card;
 }
 
 /** Shows an envelope's row open, building its editor and receipts the first time. */
@@ -3377,6 +3497,8 @@ const approveNow = (tool, args) => api(`/api/tools/${tool}?approve=1`, args);
  * plan and moves nothing else; a typed 0 is a figure too.
  */
 function openFigureForm(row, e) {
+  // A closed month is history: it gives no envelope a figure, so there is no form.
+  if (month.closed) return null;
   const body = openEnvBody(row, e);
   let form = body.querySelector(':scope > .figure-form');
   if (!form) {
@@ -3420,17 +3542,40 @@ function openFigureForm(row, e) {
   return form;
 }
 
-// The card's way down the list: the first envelope still with no figure, open at its form.
-$('ta-next').addEventListener('click', () => {
-  const next = month?.card?.next;
-  const row = next && $('bands').querySelector(`[data-envelope="${CSS.escape(next)}"]`);
+/**
+ * Brings an envelope's row to the top of the Budget screen: with `cover`, at
+ * its cover card's first button; otherwise, while it needs a figure, at its
+ * figure form.
+ */
+function goToRow(envelope, cover) {
+  const row = envelope && $('bands').querySelector(`[data-envelope="${CSS.escape(envelope)}"]`);
   if (!row) return;
   row.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  const e = month.envelopes.find((x) => x.id === next);
+  const e = month.envelopes.find((x) => x.id === envelope);
   // The row is on its way to the top; focus must not jump it somewhere else.
   row.querySelector('.env-head').focus({ preventScroll: true });
-  openFigureForm(row, e).querySelector('input').focus({ preventScroll: true });
-});
+  const first = cover ? row.querySelector(':scope > .cover button:not([disabled])')
+    : e?.needsFigure ? openFigureForm(row, e)?.querySelector('input') : null;
+  first?.focus({ preventScroll: true });
+}
+
+// The card's way down the list: the first envelope still with no figure, open at its form.
+$('ta-next').addEventListener('click', () => { goToRow(month?.card?.next, false); });
+
+/**
+ * From a notice on Today: the budget it is about chosen, the Budget screen
+ * shown, and the envelope's row brought up at its cover card or its figure form.
+ */
+async function openBudgetAt(budget, envelope, cover) {
+  if (budget && budget !== chosenBudget()) {
+    localStorage.setItem('budget', budget);
+    $('budget-pick').value = budget;
+    markChosenBudget();
+    month = null;
+  }
+  await showView('budget');
+  if (month) goToRow(envelope, cover);
+}
 
 function buildEditor(body, e) {
   const form = document.createElement('div');
