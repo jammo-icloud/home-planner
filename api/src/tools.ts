@@ -48,7 +48,7 @@ import {
   DRIFT_CHOICES, emailKey, isEmail, isGuest, isSpend, monthOf, monthKey, MONTHS_SHORT, partsOf, slug, SPLIT, TRANSFER, INCOME, zoneOf,
 } from './types.ts';
 import type {
-  Actor, Assignment, BudgetLocation, Day, DriftChoice, Envelope, Event, Month, Plan, PlanState, SinkingEstimate, SinkingGoal, SplitPart, State, Txn,
+  Actor, Assignment, BudgetId, BudgetLocation, Day, DriftChoice, Envelope, Event, Match, Month, Plan, PlanState, SinkingEstimate, SinkingGoal, SplitPart, State, Txn,
 } from './types.ts';
 import type { Store, NewEvent } from './store.ts';
 
@@ -307,6 +307,28 @@ const getMonth: Tool = {
 };
 
 /** A sinking envelope's goal for get_month, as exact dollars: an editor round-trips them. */
+/**
+ * An envelope.define that rewrites `env` with `change`, carrying every field it does not
+ * name (needsFigure, source and sinking among them). `figure` means a number was given:
+ * the template becomes it, the flag goes, and the source becomes `figure.source` (none when absent).
+ */
+export function redefine(budget: BudgetId, env: Envelope, change: {
+  label?: string; group?: string; match?: Match; rollover?: boolean; sinking?: SinkingGoal | null;
+  figure?: { template: Cents; source?: string };
+} = {}): NewEvent {
+  const sinking = change.sinking === undefined ? env.sinking : change.sinking;
+  const source = change.figure ? change.figure.source : env.source;
+  return {
+    op: 'envelope.define', budget, envelope: env.id,
+    label: change.label ?? env.label, group: change.group ?? env.group,
+    match: change.match ?? env.match, rollover: change.rollover ?? env.rollover,
+    template: change.figure?.template ?? env.template, order: env.order,
+    ...(sinking !== undefined ? { sinking } : {}),
+    ...(env.needsFigure && !change.figure ? { needsFigure: true as const } : {}),
+    ...(source !== undefined ? { source } : {}),
+  };
+}
+
 function sinkingView(state: State, budget: string, env: Envelope, month: Month, saved: Cents) {
   const g = goalFor(state, budget, env, month);
   if (!g) return null;
@@ -1266,11 +1288,7 @@ const createBudget: Tool = {
       const source = state.budgets.get(from);
       if (!source) throw new ToolError(`no budget ${from}`, 404);
       for (const env of source.envelopes.values()) {
-        events.push({
-          op: 'envelope.define', budget: id, envelope: env.id, label: env.label,
-          group: env.group, match: env.match, template: env.template,
-          rollover: env.rollover, order: env.order,
-        });
+        events.push(redefine(id, env));
       }
       effects.push(`${source.envelopes.size} envelopes copied from ${source.label}, `
         + 'which you can then price differently');
@@ -1489,10 +1507,7 @@ const setSinkingGoal: Tool = {
 
     const events: NewEvent[] = [];
     if (JSON.stringify(goal ?? null) !== JSON.stringify(env.sinking ?? null)) {
-      events.push({
-        op: 'envelope.define', budget, envelope: env.id, label: env.label, group: env.group,
-        match: env.match, template: env.template, rollover: env.rollover, order: env.order, sinking: goal,
-      });
+      events.push(redefine(budget, env, { sinking: goal }));
     }
     const after = new Map(env.match.categories.map((c) => [c, state.categories.get(c)?.sinking ?? null]));
     for (const a of asked) {

@@ -219,6 +219,29 @@ describe('a split survives a restore', () => {
   });
 });
 
+describe('an envelope with no figure yet survives a restore', () => {
+  test('the flag and the source come back with the budget', async () => {
+    const hh = new Households(await dir());
+    const { store: from } = await hh.create('alice', 'Rivera');
+    await from.append('alice', [
+      { op: 'category.define', category: 'rent', label: 'Rent' },
+      { op: 'budget.create', budget: 'home', label: 'Home' },
+      { op: 'envelope.define', budget: 'home', envelope: 'rent', label: 'Rent', group: 'House',
+        match: { categories: ['rent'] }, template: parseDollars('1500.00'), order: 0,
+        needsFigure: true, source: 'Rent index, Placitas, 2026-06' },
+    ]);
+    const backup = parseBackup(await readFile(from.path, 'utf8'));
+
+    const { store } = await hh.create('bob', 'Fresh');
+    const plan = planRestore(store.state, backup, ['facts', 'budgets']);
+    assert.deepEqual(plan.collisions, []);
+    await store.adopt(eventsToApply(plan));
+    const env = store.state.budgets.get('home')!.envelopes.get('rent')!;
+    assert.equal(env.needsFigure, true);
+    assert.equal(env.source, 'Rent index, Placitas, 2026-06');
+  });
+});
+
 describe('an edited split survives a restore', () => {
   /** A receipt divided in two, divided again in three, and optionally sorted whole at the end. */
   const chainBackup = async (wholeAtEnd: boolean) => {

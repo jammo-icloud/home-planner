@@ -153,6 +153,13 @@ export interface Envelope {
    * Absent for an ordinary envelope.
    */
   readonly sinking?: SinkingGoal;
+  /**
+   * No figure has been given yet: the template is a placeholder the household has
+   * not looked at. Cleared by a later define that does not carry it. Absent otherwise.
+   */
+  readonly needsFigure?: true;
+  /** Where the figure came from when public data gave it, one line of up to 200 characters. Absent when a person chose it. */
+  readonly source?: string;
 }
 
 /**
@@ -321,6 +328,13 @@ export type Event = Meta &
         order?: number;
         /** Saved in Savings, toward this goal; null makes it an ordinary envelope again, absent leaves it as it was. */
         sinking?: SinkingGoal | null;
+        /**
+         * The envelope has no figure yet, and where the figure it has came from. A later
+         * define that omits them clears each: only a figure or pricing writes one without
+         * them on purpose, every other rewrite carries them (see `redefine` in tools.ts).
+         */
+        needsFigure?: true;
+        source?: string;
       }
     /**
      * A category's estimate, set or cleared on its own. `category.define`

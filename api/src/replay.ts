@@ -308,6 +308,14 @@ export function validate(e: Event): void {
   if (e.op === 'envelope.define' && e.match.categories.length === 0 && !e.match.payee) {
     throw new ReplayError('an envelope must match at least one category', e);
   }
+  if (e.op === 'envelope.define') {
+    if (e.needsFigure !== undefined && e.needsFigure !== true) {
+      throw new ReplayError("an envelope's needsFigure is true or absent", e);
+    }
+    if (e.source !== undefined && (typeof e.source !== 'string' || e.source.length < 1 || e.source.length > 200)) {
+      throw new ReplayError("an envelope's source is a line of up to 200 characters", e);
+    }
+  }
   validateSinking(e);
   validateSettings(e);
   validatePlan(e);
@@ -1060,6 +1068,9 @@ function fold(d: Draft, e: Event): void {
         rollover: e.rollover ?? prev?.rollover ?? true,
         template: e.template,
         order: e.order ?? prev?.order ?? b.envelopes.size,
+        // From this event only: a define that leaves them out is how a figure clears them.
+        ...(e.needsFigure ? { needsFigure: true as const } : {}),
+        ...(e.source !== undefined ? { source: e.source } : {}),
       };
       // Absent leaves it as it was; null makes it ordinary again. A sinking
       // envelope always rolls over: money kept for later that vanished at the

@@ -136,6 +136,60 @@ describe('archiving rather than deleting', () => {
   });
 });
 
+describe('an envelope with no figure yet', () => {
+  const SOURCE = 'Zillow Observed Rent Index, ZIP 12345, 2026-06';
+  const pets = (extra: Record<string, unknown> = {}) => ({
+    op: 'envelope.define', budget: 'harbor', envelope: 'pets', label: 'Pets', group: 'People',
+    match: { categories: ['pets'] }, template: parseDollars('80.00'), order: 2, ...extra,
+  }) as never;
+  const withPets = async (extra: Record<string, unknown> = {}) => {
+    const f = await fixture();
+    await f.store.append('system', { op: 'category.define', category: 'pets', label: 'Pets' });
+    await f.store.append('system', pets(extra));
+    return f;
+  };
+
+  test('the flag and the source are kept from the define that carries them', async () => {
+    const { store } = await withPets({ needsFigure: true, source: SOURCE });
+    const env = store.state.budgets.get('harbor')!.envelopes.get('pets')!;
+    assert.equal(env.needsFigure, true);
+    assert.equal(env.source, SOURCE);
+  });
+
+  test('a later define without them clears both', async () => {
+    const { store } = await withPets({ needsFigure: true, source: SOURCE });
+    await store.append('system', pets());
+    const env = store.state.budgets.get('harbor')!.envelopes.get('pets')!;
+    assert.ok(!('needsFigure' in env));
+    assert.ok(!('source' in env));
+  });
+
+  test('a flag that is not true, or a source that is empty or too long, is refused', async () => {
+    const { store } = await fixture();
+    await store.append('system', { op: 'category.define', category: 'pets', label: 'Pets' });
+    await assert.rejects(() => store.append('system', pets({ needsFigure: false })), (e: unknown) =>
+      e instanceof ReplayError && /needsFigure/.test(e.message));
+    await assert.rejects(() => store.append('system', pets({ source: '' })), (e: unknown) =>
+      e instanceof ReplayError && /source/.test(e.message));
+    await assert.rejects(() => store.append('system', pets({ source: 'x'.repeat(201) })), (e: unknown) =>
+      e instanceof ReplayError && /source/.test(e.message));
+  });
+
+  test('copying a budget and saving it in Savings carry the flag and the source', async () => {
+    const { store, ctx } = await withPets({ needsFigure: true, source: SOURCE });
+    await commit((await run('create_budget', { label: 'Ridge', copyFrom: 'harbor' }, ctx)).id, ctx);
+    const copy = store.state.budgets.get('ridge')!.envelopes.get('pets')!;
+    assert.equal(copy.needsFigure, true);
+    assert.equal(copy.source, SOURCE);
+
+    await commit((await run('set_sinking_goal', { budget: 'ridge', envelope: 'pets', goal: 'every' }, ctx)).id, ctx);
+    const saved = store.state.budgets.get('ridge')!.envelopes.get('pets')!;
+    assert.deepEqual(saved.sinking, { kind: 'every' });
+    assert.equal(saved.needsFigure, true);
+    assert.equal(saved.source, SOURCE);
+  });
+});
+
 describe('changing the shape of an envelope', () => {
   test('two envelopes cannot both claim a category', async () => {
     // A receipt would land in whichever was defined last, silently, and the
