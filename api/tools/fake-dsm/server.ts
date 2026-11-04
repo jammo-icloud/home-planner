@@ -369,6 +369,9 @@ export async function start(opts: {
   const rawEvent = (e: CalEvent, who: string) => ({ ...e, cal_id: seenAs(e.cal_id, who), original_cal_id: e.cal_id });
 
   /** The event, if this account may see it; a `cal_id`, when sent, must be its calendar as they know it. */
+  /** A string parameter as Calendar reads it: the JSON literal "" is the empty string. */
+  const jsonEmpty = (v: string | null): string => (v === null || v === '""') ? '' : v;
+
   const eventFor = (p: URLSearchParams, who: string, write = false): CalEvent => {
     const e = events.get(num(p, 'evt_id'));
     if (!e) throw new Refuse(NO_SUCH_CAL);
@@ -452,13 +455,16 @@ export async function start(opts: {
     },
 
     'SYNO.Cal.Event': {
+      // An empty string is the JSON literal "": color= sent plainly empty is
+      // refused 9009, as the real NAS did (2026-11-03), and color="" is empty.
       create: (p, who) => {
+        for (const k of ['color', 'description']) if (p.get(k) === '') throw new Refuse(PARAMETER_ERROR);
         const cal = calendarFor(need(p, 'cal_id'), who, true);
         const e: CalEvent = {
           evt_id: nextEvt++, cal_id: cal.cal_id, ical_uid: `${hex(8)}@fake-dsm`, dav_etag: hex(6),
-          summary: p.get('summary') ?? '', description: p.get('description') ?? '',
+          summary: p.get('summary') ?? '', description: jsonEmpty(p.get('description')),
           is_all_day: bool(p, 'is_all_day'), dtstart: num(p, 'dtstart'), dtend: num(p, 'dtend'),
-          tz_id: p.get('tz_id') ?? '', color: p.get('color') ?? '', last_modify_user: who,
+          tz_id: p.get('tz_id') ?? '', color: jsonEmpty(p.get('color')), last_modify_user: who,
         };
         events.set(e.evt_id, e);
         return rawEvent(e, who);
@@ -483,10 +489,11 @@ export async function start(opts: {
         };
       },
       set: (p, who) => {
+        for (const k of ['color', 'description']) if (p.get(k) === '') throw new Refuse(PARAMETER_ERROR);
         const e = eventFor(p, who, true);
         if (need(p, 'dav_etag') !== e.dav_etag) throw new Refuse(ETAG_MISMATCH);
         if (p.has('summary')) e.summary = p.get('summary')!;
-        if (p.has('description')) e.description = p.get('description')!;
+        if (p.has('description')) e.description = jsonEmpty(p.get('description'));
         if (p.has('is_all_day')) e.is_all_day = bool(p, 'is_all_day');
         if (p.has('dtstart')) e.dtstart = num(p, 'dtstart');
         if (p.has('dtend')) e.dtend = num(p, 'dtend');
@@ -495,8 +502,14 @@ export async function start(opts: {
         e.last_modify_user = who;
         return rawEvent(e, who);
       },
+      // The guide's delete takes evt_id alone, and the real NAS refused one that
+      // also carried cal_id and original_cal_id with 9009 (2026-11-03).
       delete: (p, who) => {
-        events.delete(eventFor(p, who, true).evt_id);
+        if (p.has('cal_id') || p.has('original_cal_id')) throw new Refuse(PARAMETER_ERROR);
+        const e = events.get(num(p, 'evt_id'));
+        const cal = e ? calendars.get(e.cal_id) : undefined;
+        if (!e || !cal || privilegeOf(cal, who) !== 'RW') throw new Refuse(NO_SUCH_CAL);
+        events.delete(e.evt_id);
         return {};
       },
     },

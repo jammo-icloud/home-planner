@@ -629,7 +629,9 @@ describe('due dates and blocks become events', () => {
     // Cleared: taken off the calendar by his id, and unlinked.
     const off = await syncDue(bob, gate(c), null);
     assert.deepEqual(off.map((e) => e.op), ['plan.calendar.unlink']);
-    assert.equal(made('delete')[0]!.params.get('cal_id'), '/bob/shared-household/');
+    // The delete carries evt_id alone, as the guide says and the NAS insists; no calendar id either way.
+    assert.equal(made('delete')[0]!.params.get('evt_id'), String(link.evt_id));
+    assert.equal(made('delete')[0]!.params.get('cal_id'), null);
     await assert.rejects(onNas(c, link.evt_id));
   });
 

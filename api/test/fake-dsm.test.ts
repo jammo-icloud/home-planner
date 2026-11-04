@@ -144,6 +144,23 @@ describe('events, and nothing changes without its etag', () => {
     await assert.rejects(() => syno.getEvent(alice, moved), SynologyError);
   });
 
+  test('an event with color or description sent plainly empty is refused 9009, as the real NAS refused it; the JSON literal "" is empty', async () => {
+    const fields = { ...ref, summary: 'x', description: 'd', is_all_day: true, dtstart: at, dtend: at + 86400, tz_id: 'UTC',
+      is_repeat_evt: false, notify_setting: [], participant: [] };
+    for (const empty of [{ color: '' }, { color: '""', description: '' }]) {
+      await assert.rejects(() => syno.dsm({ api: 'SYNO.Cal.Event', version: 5, method: 'create', sid: alice, params: { ...fields, ...empty } }),
+        (e: unknown) => e instanceof SynologyError && e.code === 9009);
+    }
+    const made = await syno.dsm<{ evt_id: number; color: string }>(
+      { api: 'SYNO.Cal.Event', version: 5, method: 'create', sid: alice, params: { ...fields, color: '""' } });
+    assert.equal(made.color, '');
+    // Delete takes evt_id alone; with the calendar ids beside it the real NAS refused 9009.
+    await assert.rejects(() => syno.dsm({ api: 'SYNO.Cal.Event', version: 5, method: 'delete', sid: alice,
+      params: { evt_id: made.evt_id, cal_id: ref.cal_id, original_cal_id: ref.original_cal_id } }),
+      (e: unknown) => e instanceof SynologyError && e.code === 9009);
+    await syno.dsm({ api: 'SYNO.Cal.Event', version: 5, method: 'delete', sid: alice, params: { evt_id: made.evt_id } });
+  });
+
   test('bob cannot add to alice\'s own calendar', async () => {
     await assert.rejects(() => syno.createEvent(bob, {
       ...ref, summary: 'x', description: '', is_all_day: true, dtstart: at, dtend: at + 86400, tz_id: 'UTC',

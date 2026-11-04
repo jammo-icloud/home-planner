@@ -1,9 +1,9 @@
 /**
- * Which encoding SYNO.Cal.Event create accepts. The app's event create was
- * refused 9009 on the real NAS (2026-11-03) with the parameters the guide
- * lists; the suspect is `color` sent empty, which the guide says to do for the
- * calendar's own colour but which DSM may read as missing, as it did an empty
- * calendar description.
+ * Which encoding SYNO.Cal.Event create accepts. Settled on the real NAS on
+ * 2026-11-03: `color=` sent plainly empty is refused 9009, `color=""` (the JSON
+ * literal) is accepted and comes back as ""; and `delete` with `cal_id` and
+ * `original_cal_id` beside `evt_id` is refused 9009, so it is tried with
+ * `evt_id` alone first. Kept so the same question can be asked of another NAS.
  */
 import { EVENT_VERSION, dsm } from '../../../src/synology.ts';
 import { attempt, code, deleteCalendar, makeCalendar, probeName, type Params } from './shared.ts';
@@ -42,11 +42,17 @@ export async function run(sid: string): Promise<void> {
       console.log(`    reply: evt_id ${typeof made.evt_id}, dav_etag ${typeof made.dav_etag}, color ${JSON.stringify(made.color ?? null)}`);
       if (typeof made.evt_id === 'number') {
         try {
-          await dsm({ api: 'SYNO.Cal.Event', version: EVENT_VERSION, method: 'delete', sid,
-            params: { evt_id: made.evt_id, cal_id: cal.cal_id, original_cal_id: cal.original_cal_id } });
-          console.log('    delete with evt_id, cal_id, original_cal_id: accepted');
+          await dsm({ api: 'SYNO.Cal.Event', version: EVENT_VERSION, method: 'delete', sid, params: { evt_id: made.evt_id } });
+          console.log('    delete with evt_id alone (the guide, and what the app sends): accepted');
         } catch (err) {
-          console.log(`    delete: ${code(err)}; the event goes with the calendar`);
+          console.log(`    delete with evt_id alone: ${code(err)}`);
+          try {
+            await dsm({ api: 'SYNO.Cal.Event', version: EVENT_VERSION, method: 'delete', sid,
+              params: { evt_id: made.evt_id, cal_id: cal.cal_id, original_cal_id: cal.original_cal_id } });
+            console.log('    delete with evt_id, cal_id, original_cal_id: accepted');
+          } catch (again) {
+            console.log(`    delete with the three ids: ${code(again)}; the event goes with the calendar`);
+          }
         }
       }
       return;

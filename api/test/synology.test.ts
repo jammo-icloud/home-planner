@@ -203,7 +203,9 @@ describe('events', () => {
     const b = decodeURIComponent(d.calls[0]!.body);
     assert.match(b, /method=set/); assert.match(b, /evt_id=42/); assert.match(b, /summary=Dentist(&|$)/);
     assert.match(b, /dtstart=5/); assert.match(b, /dtend=9/); assert.match(b, /is_repeat_evt=false/);
-    assert.match(b, /notify_setting=\[\]/); assert.match(b, /participant=\[\]/); assert.match(b, /color=(&|$)/);
+    assert.match(b, /notify_setting=\[\]/); assert.match(b, /participant=\[\]/);
+    // An empty colour is the JSON literal "": sent plainly empty the real NAS refused it with 9009.
+    assert.match(b, /color=(""|%22%22)/);
   });
   test('a stale etag brings back the event as it stands now', async () => {
     const replies: unknown[] = [{ success: false, error: { code: 9006 } }, { success: true, data: { ...reply, dav_etag: 'E9', summary: 'Edited on the NAS' } }];
@@ -239,6 +241,7 @@ describe('events', () => {
     const x = fakeDsm({ success: true });
     await deleteEvent('S', { cal_id: '/a/h/', original_cal_id: '/a/h/', evt_id: 42 }, x.fn);
     assert.match(x.calls[0]!.body, /method=delete/); assert.match(x.calls[0]!.body, /evt_id=42/);
+    assert.doesNotMatch(x.calls[0]!.body, /cal_id/, 'delete takes evt_id alone; the NAS refused the ids with 9009');
   });
   const sequence = (replies: unknown[]) => {
     const calls: string[] = [];

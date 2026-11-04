@@ -503,17 +503,25 @@ export class EtagMismatch extends SynologyError {
 }
 
 /**
+ * An empty string as DSM's Calendar takes it: the JSON literal `""`. A field
+ * sent plainly empty (`color=`) is read as missing and refused 9009, while
+ * `color=""` is accepted and comes back as "" (real NAS, 2026-11-03). Plain
+ * non-empty strings are fine, so only the empty case is spelled this way.
+ */
+const emptyAsJson = (s: string): string => s === '' ? '""' : s;
+
+/**
  * `SYNO.Cal.Event` set/create want these four whether or not they are used.
  * Sent explicitly rather than left to DSM's defaults: the guide marks them
  * required, and `color` is always empty so the event takes its calendar's.
  */
-const EVENT_REQUIRED = { is_repeat_evt: false, color: '', notify_setting: [], participant: [] };
+const EVENT_REQUIRED = { is_repeat_evt: false, color: emptyAsJson(''), notify_setting: [], participant: [] };
 
 const eventFields = (e: NewCalEvent) => ({
   cal_id: e.cal_id,
   original_cal_id: e.original_cal_id,
   summary: e.summary,
-  description: e.description,
+  description: emptyAsJson(e.description),
   is_all_day: e.is_all_day,
   dtstart: e.dtstart,
   dtend: e.dtend,
@@ -571,10 +579,15 @@ export async function listEvents(
   return listRows<Partial<CalEvent>>(data, 'list').map((r) => calEvent(r, { cal_id: '', original_cal_id: '' }));
 }
 
+/**
+ * The guide's `delete` takes `evt_id` alone, and the real NAS refused the same
+ * call with `cal_id` and `original_cal_id` added with 9009 (2026-11-03), so
+ * only the id is sent; the ref's calendar is for the caller's bookkeeping.
+ */
 export async function deleteEvent(sid: string, ref: EventRef, f?: DsmFetch): Promise<void> {
   await dsm<unknown>({
     api: 'SYNO.Cal.Event', version: EVENT_VERSION, method: 'delete', sid,
-    params: { evt_id: ref.evt_id, cal_id: ref.cal_id, original_cal_id: ref.original_cal_id },
+    params: { evt_id: ref.evt_id },
   }, f);
 }
 
