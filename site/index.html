@@ -104,16 +104,20 @@
   .toassign{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--r-card);
     padding:16px;box-shadow:var(--e-1);display:flex;justify-content:space-between;
     align-items:center;gap:16px;flex-wrap:wrap}
-  /* Zero-based means the number that matters is the one left over. Colour it
-     by whether the month actually balances, not by whether it is large. */
-  .toassign.balanced{border-color:var(--good-line);background:var(--good-tint)}
-  .toassign.short{border-color:var(--problem-line);background:var(--problem-tint)}
-  .toassign .k{font-size:var(--fs-micro);font-weight:500;color:var(--ink-soft);margin-top:2px}
-  .ta-label{font-size:var(--fs-ui);font-weight:500;margin-top:2px}
-  /* The one large number on the screen, and only that one. */
+  /* Zero-based means the number that matters is the one left over. The card is
+     warm while money or an envelope still waits for a figure, red when the plan
+     is over the income, and green only once both are settled: the server says which. */
+  .toassign.warm{border-color:var(--warm-card-line);background:var(--warm-card)}
+  .toassign.over{border-color:var(--problem-line);background:var(--problem-tint)}
+  .toassign.done{border-color:var(--good-line);background:var(--good-tint)}
+  .ta-main{flex:1 1 280px;min-width:0}
+  /* The one large figure on the screen, and only that one, said in words. */
   #ta-v{font-size:var(--fs-display);font-weight:600;letter-spacing:-.03em;line-height:1.1}
-  .toassign .v.neg{color:var(--problem)}
-  .toassign .v.zero{color:var(--good)}
+  .toassign.over #ta-v{color:var(--problem)}
+  .toassign.done #ta-v{color:var(--good)}
+  .ta-line{font-size:var(--fs-ui);margin:6px 0 0;max-width:62ch}
+  .ta-next{margin-top:10px}
+  .ta-green{font-size:var(--fs-micro);color:var(--ink-soft);margin:10px 0 0}
   .totals{display:flex;gap:18px;flex-wrap:wrap;text-align:right}
   .tot{display:flex;flex-direction:column;align-items:flex-end;gap:1px}
   .totals .k{font-size:var(--fs-micro);color:var(--ink-faint);font-weight:500}
@@ -127,6 +131,24 @@
   .env-name{font-size:var(--fs-ui);font-weight:500}
   .env-left{font-size:var(--fs-body);font-weight:600;white-space:nowrap}
   .env-left.over{color:var(--problem)}
+  /* An envelope with no figure yet: warm behind it, and the chip where its figure would be. */
+  .env.needs-figure{background:var(--figure-row)}
+  /* Scrolled to from the card: its name lands below the sticky bar, not under it. */
+  .env{scroll-margin-top:72px}
+  .chip.figure{color:var(--figure-chip-ink);background:var(--figure-chip);border-color:transparent;flex:none}
+  .chip.source{color:var(--source-chip-ink);background:var(--source-chip);border-color:transparent;
+    white-space:normal;height:auto;min-height:22px;padding:4px 7px;line-height:1.3;overflow-wrap:anywhere}
+  .env-sub{margin-top:5px}
+  .env-hint{font-size:var(--fs-small);color:var(--ink-soft);margin:4px 0 0}
+  .env-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
+  .figure-form{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:13px}
+  .figure-form .f{flex:1 1 140px;min-width:0}
+  .figure-form label{display:block;font-size:var(--fs-micro);font-weight:500;color:var(--ink-soft);margin-bottom:4px}
+  .figure-form input{width:100%;font:inherit;font-size:var(--fs-input);padding:8px 10px;
+    border:1px solid var(--line-strong);border-radius:9px;background:var(--surface-raised);color:var(--ink)}
+  .figure-form input:focus{outline:none;border-color:var(--focus)}
+  .figure-form .msg{flex-basis:100%;color:var(--problem);font-size:var(--fs-small)}
+  .figure-form .msg:empty{display:none}
   .env-meta{font-size:var(--fs-micro);color:var(--ink-soft);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
   /* The plan of record never changes, so when this month has been adjusted both
      numbers are shown — "was $975" is the whole reason the plan is immutable. */
@@ -443,7 +465,7 @@
     border-right:1.5px solid var(--ink-faint);border-bottom:1.5px solid var(--ink-faint);
     transform:rotate(45deg);transition:transform .15s}
   .env-head[aria-expanded="true"]::after{transform:rotate(225deg);margin:3px 2px 0 0}
-  .env-head .env-left{margin-left:auto}
+  .env-head .env-left,.env-head .chip.figure{margin-left:auto}
 
   /* ── what changed, and what to do next ─────────────────────────────── */
   .prompt{background:var(--surface-raised);border:1px solid var(--line);border-left:3px solid var(--accent);
@@ -1399,16 +1421,17 @@
 
     <div id="budget" hidden>
       <div class="toassign" id="toassign">
-        <div>
+        <div class="ta-main">
           <div class="v" id="ta-v"></div>
-          <div class="ta-label">left to assign</div>
-          <div class="k" id="ta-note"></div>
+          <p class="ta-line" id="ta-line"></p>
+          <button type="button" class="btn ta-next" id="ta-next" hidden>Go to the next one</button>
+          <p class="ta-green" id="ta-green"></p>
         </div>
         <div class="totals">
           <button type="button" class="tot inc-toggle" id="inc-toggle" aria-expanded="false" aria-controls="income-sec">
             <span class="k">Income</span><span class="v" id="t-income"></span>
           </button>
-          <div class="tot"><span class="k">Funded</span><span class="v" id="t-funded"></span></div>
+          <div class="tot"><span class="k">Planned</span><span class="v" id="t-funded"></span></div>
           <div class="tot"><span class="k">Spent</span><span class="v" id="t-spent"></span></div>
         </div>
       </div>
@@ -3135,14 +3158,13 @@ async function loadBudget() {
     chosenBudget() ? { budget: chosenBudget() } : {});
   month = result;
 
-  const short = toCents(result.toAssignExact) !== 0;
-  const box = $('toassign');
-  box.className = `toassign ${short ? 'short' : 'balanced'}`;
-  $('ta-v').textContent = result.toAssign;
-  $('ta-v').className = `v ${toCents(result.toAssignExact) < 0 ? 'neg' : short ? '' : 'zero'}`;
-  $('ta-note').textContent = short
-    ? (toCents(result.toAssignExact) < 0 ? 'Assigned more than has come in' : 'Not yet given a job')
-    : 'Every dollar has a job';
+  // The card's words and colour are the server's, so Today and this screen never disagree.
+  const { card } = result;
+  $('toassign').className = `toassign ${card.tone}`;
+  $('ta-v').textContent = card.headline;
+  $('ta-line').textContent = card.line;
+  $('ta-next').hidden = !card.next;
+  $('ta-green').textContent = card.green;
   $('t-income').textContent = result.income;
   const here = budgets.find((x) => x.id === chosenBudget());
   const loc = here?.location;
@@ -3173,11 +3195,13 @@ async function loadBudget() {
   $('outside-note').textContent = `${result.spentOutsideThisBudget} was spent in categories no envelope here covers, `
     + 'so Spent leaves it out.';
 
-  // Grouped by band, in the order the envelopes were defined — the same shape
-  // as the plan they already know. Those saved in Savings are a band of their
+  // Grouped by band, and within a band in the order the envelopes were defined —
+  // the same shape as the plan they already know. Those saved in Savings are a band of their
   // own, last, whatever group they were made in: the check against the
   // account is about them together, and sits under them.
-  const bands = new Map();
+  // The bands come in the server's order, the walkthrough's six first, so a
+  // budget made from it reads in the order it was made.
+  const bands = new Map(result.groups.map((g) => [g, []]));
   const saved = [];
   for (const e of result.envelopes) {
     if (e.sinking) { saved.push(e); continue; }
@@ -3185,6 +3209,7 @@ async function loadBudget() {
     bands.get(e.group).push(e);
   }
   for (const [name, list] of bands) {
+    if (!list.length) continue;
     const band = document.createElement('div');
     band.className = 'band';
     const h = document.createElement('h2');
@@ -3223,17 +3248,26 @@ function savingsBand(list, check) {
 
 function envelopeRow(e) {
   const row = document.createElement('div');
-  row.className = 'env';
+  row.className = e.needsFigure ? 'env needs-figure' : 'env';
+  // So the card, and Today, can find the row an envelope is drawn in.
+  row.dataset.envelope = e.id;
 
   const head = document.createElement('div');
   head.className = 'env-head';
   const name = document.createElement('div');
   name.className = 'env-name';
   name.textContent = e.label;
-  const left = document.createElement('div');
-  left.className = `env-left ${e.overspent ? 'over' : ''}`;
-  left.textContent = e.left;
+  // With no figure there is nothing for "left" to be measured from, so the
+  // chip says what is missing instead of showing $0.
+  const left = e.needsFigure
+    ? node('span', 'chip figure', 'Action required')
+    : node('div', `env-left ${e.overspent ? 'over' : ''}`, e.left);
   head.append(name, left);
+
+  // Under the name: where the figure came from, or what could help give one.
+  const sub = node('div', 'env-sub');
+  if (e.source) sub.appendChild(node('span', 'chip source', e.source));
+  if (e.needsFigure && e.hint) sub.appendChild(node('p', 'env-hint', e.hint.text));
 
   const meta = document.createElement('div');
   meta.className = 'env-meta';
@@ -3283,23 +3317,120 @@ function envelopeRow(e) {
   head.setAttribute('role', 'button');
   head.setAttribute('aria-expanded', 'false');
   const toggle = () => {
-    if (body.hidden && !body.dataset.built) {
-      // A closed month is history. Its receipts still read; its money does not move.
-      if (!month.closed) buildEditor(body, e);
-      void showReceipts(body, e);
-      body.dataset.built = '1';
-    }
-    body.hidden = !body.hidden;
-    head.setAttribute('aria-expanded', String(!body.hidden));
+    if (body.hidden) openEnvBody(row, e);
+    else { body.hidden = true; head.setAttribute('aria-expanded', 'false'); }
   };
   head.addEventListener('click', toggle);
   head.addEventListener('keydown', (ev) => {
     if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); }
   });
 
-  row.append(head, meta, bar, body);
+  // An envelope with no figure carries its way to one on the row itself, so
+  // giving each a figure is a tap per row rather than an editor per row.
+  // A closed month is history, and its envelopes are not given figures from it.
+  const acts = node('div', 'env-acts');
+  if (e.needsFigure && !month.closed) {
+    acts.appendChild(textBtn('Set', 'btn small', null, () => openFigureForm(row, e)));
+    const use = e.hint?.use;
+    if (use) {
+      const b = textBtn(use.label, 'btn small', null, async () => {
+        b.disabled = true;
+        try {
+          await approveNow('set_envelope_figure', {
+            budget: month.budget, envelope: e.id, amountCents: use.cents, month: month.month,
+          });
+          await loadBudget();
+        } catch (ex) { b.disabled = false; showProblem(ex); }
+      });
+      acts.appendChild(b);
+    }
+    // Pricing reads the budget's place, so it is the budget menu's own action, run from here.
+    if (e.hint?.price) acts.appendChild(textBtn('Price it from local data', 'btn small', null, () => $('bud-seed').click()));
+  }
+
+  // A row with no figure has no bar: nothing funded is nothing to measure against.
+  row.append(head, ...(sub.childNodes.length ? [sub] : []), meta, ...(e.needsFigure ? [] : [bar]),
+    ...(acts.childNodes.length ? [acts] : []), body);
   return row;
 }
+
+/** Shows an envelope's row open, building its editor and receipts the first time. */
+function openEnvBody(row, e) {
+  const body = row.querySelector(':scope > .env-body');
+  if (!body.dataset.built) {
+    // A closed month is history. Its receipts still read; its money does not move.
+    if (!month.closed) buildEditor(body, e);
+    void showReceipts(body, e);
+    body.dataset.built = '1';
+  }
+  body.hidden = false;
+  row.querySelector(':scope > .env-head').setAttribute('aria-expanded', 'true');
+  return body;
+}
+
+/** Run one of the tools the server approves in one request; answers { proposal, summary, committed, touches, lastEventId }. */
+const approveNow = (tool, args) => api(`/api/tools/${tool}?approve=1`, args);
+
+/**
+ * The figure form, at the top of the row's open body: one amount, for this month
+ * and every month after. Saved at once, since a figure is the envelope's own
+ * plan and moves nothing else; a typed 0 is a figure too.
+ */
+function openFigureForm(row, e) {
+  const body = openEnvBody(row, e);
+  let form = body.querySelector(':scope > .figure-form');
+  if (!form) {
+    form = node('form', 'figure-form');
+    const f = node('div', 'f');
+    const id = `figure-${e.id}`;
+    const l = node('label', '', 'From this month on');
+    l.htmlFor = id;
+    const amount = node('input');
+    amount.id = id;
+    amount.name = 'amount';
+    amount.inputMode = 'decimal';
+    amount.autocomplete = 'off';
+    amount.placeholder = '0.00';
+    f.append(l, amount);
+    const save = node('button', 'btn primary', 'Save');
+    save.type = 'submit';
+    const msg = node('span', 'msg');
+    msg.setAttribute('role', 'status');
+    form.append(f, save, msg);
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      msg.textContent = '';
+      // Empty is not a figure; 0 is.
+      const cents = amount.value.trim() === '' ? NaN : toCents(amount.value);
+      if (!Number.isFinite(cents)) { msg.textContent = 'Type a figure a month, 0 included.'; amount.focus(); return; }
+      save.disabled = true;
+      try {
+        await approveNow('set_envelope_figure', {
+          budget: month.budget, envelope: e.id, amountCents: cents, month: month.month,
+        });
+        await loadBudget();
+      } catch (ex) {
+        msg.textContent = ex.message;
+        save.disabled = false;
+      }
+    });
+    body.prepend(form);
+  }
+  form.querySelector('input').focus();
+  return form;
+}
+
+// The card's way down the list: the first envelope still with no figure, open at its form.
+$('ta-next').addEventListener('click', () => {
+  const next = month?.card?.next;
+  const row = next && $('bands').querySelector(`[data-envelope="${CSS.escape(next)}"]`);
+  if (!row) return;
+  row.scrollIntoView({ block: 'start', behavior: 'smooth' });
+  const e = month.envelopes.find((x) => x.id === next);
+  // The row is on its way to the top; focus must not jump it somewhere else.
+  row.querySelector('.env-head').focus({ preventScroll: true });
+  openFigureForm(row, e).querySelector('input').focus({ preventScroll: true });
+});
 
 function buildEditor(body, e) {
   const form = document.createElement('div');
@@ -4174,21 +4305,30 @@ function showManageProposal(card, row, proposal,
 const catOptions = async () => (await categoryList()).map((c) => ({ value: c.id, label: c.label }));
 
 $('env-new').addEventListener('click', async () => {
+  // The walkthrough's six groups in its order, then any others this budget has.
+  const starter = await api('/api/budget/first-run').then((r) => r.groups.map((g) => g.name)).catch(() => []);
+  const groups = [...new Set([...starter, ...(month?.groups ?? [])])];
   panel('Add an envelope', [
     { name: 'label', label: 'Name', placeholder: 'e.g. Vehicles' },
-    { name: 'group', label: 'Band', options: ['House', 'People', 'Future'].map((g) => ({ value: g, label: g })) },
-    { name: 'template', label: 'Funded each month', placeholder: '0.00' },
+    { name: 'group', label: 'Band', options: groups.map((g) => ({ value: g, label: g })) },
+    { name: 'template', label: 'Funded each month (leave empty to decide later)', placeholder: '0.00' },
     { name: 'categories', label: 'Fed by (choose one or more)', options: await catOptions(), multiple: true, wide: true },
-  ], (i) => ({
-    tool: 'define_envelope',
-    args: {
-      budget: month.budget,
-      envelope: i.label.value.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 16),
-      label: i.label.value, group: i.group.value,
-      categories: [...i.categories.selectedOptions].map((o) => o.value),
-      templateCents: toCents(i.template.value || '0'),
-    },
-  }));
+  ], (i) => {
+    // Left empty, it goes without a figure and starts as Action required; a typed 0 is a figure.
+    const typed = i.template.value.trim();
+    const templateCents = typed === '' ? undefined : toCents(typed);
+    if (Number.isNaN(templateCents)) throw new Error('the figure each month is a number of dollars, or empty');
+    return {
+      tool: 'define_envelope',
+      args: {
+        budget: month.budget,
+        envelope: i.label.value.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 16),
+        label: i.label.value, group: i.group.value,
+        categories: [...i.categories.selectedOptions].map((o) => o.value),
+        ...(templateCents === undefined ? {} : { templateCents }),
+      },
+    };
+  });
 });
 
 // Income opens from its own figure: it belongs to the plan it pays for.

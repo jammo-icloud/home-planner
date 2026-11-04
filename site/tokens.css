@@ -143,6 +143,21 @@
   --problem-tint: #FCECEF;
   --problem-line: #EBA3B3;
 
+  /* The budget's own tints, from its boards. Action required is a warm
+     chip on a warm row, the card warms while money waits for a job, short is
+     red, and where a figure came from is a grey chip. */
+  --figure-chip: #FDF1E3;
+  --figure-chip-ink: #8A4B08;
+  --figure-row: #FFFBF5;
+  --warm-card: #FFF8EF;
+  --warm-card-line: #D9A066;
+  --short-chip: #FBE7E6;
+  --short-chip-ink: #A12622;
+  --short-row: #FFF6F5;
+  --short-row-line: #E8B4B1;
+  --source-chip: #EEF0F3;
+  --source-chip-ink: #4B5563;
+
   /* Claude. Everything Claude wrote sits on --claude-paper inside a
      --claude-line rule, under a by-line in --claude-ink with the mark. The
      paper is the weakest of those four channels on purpose: the mark and the
@@ -222,6 +237,12 @@
     --good: #5ED39E;          --good-tint: #0F2A20;     --good-line: #2C6B4F;
     --caution: #F4B25E;       --caution-tint: #2D2110;  --caution-line: #7A5321;
     --problem: #FF8EA5;       --problem-tint: #33141C;  --problem-line: #7A2F40;
+    /* The budget's tints take the roles they stand for, which are tuned for near-black. */
+    --figure-chip: var(--caution-tint);  --figure-chip-ink: var(--caution);  --figure-row: var(--caution-tint);
+    --warm-card: var(--caution-tint);    --warm-card-line: var(--caution-line);
+    --short-chip: var(--problem-tint);   --short-chip-ink: var(--problem);
+    --short-row: var(--problem-tint);    --short-row-line: var(--problem-line);
+    --source-chip: var(--hair);          --source-chip-ink: var(--ink-soft);
 
     --claude-ink: #E1BE68;    --claude-mark: #D9B254;
     --claude-paper: #1F1C13;  --claude-line: #574A26;
@@ -251,6 +272,11 @@
   --good: #5ED39E;          --good-tint: #0F2A20;     --good-line: #2C6B4F;
   --caution: #F4B25E;       --caution-tint: #2D2110;  --caution-line: #7A5321;
   --problem: #FF8EA5;       --problem-tint: #33141C;  --problem-line: #7A2F40;
+  --figure-chip: var(--caution-tint);  --figure-chip-ink: var(--caution);  --figure-row: var(--caution-tint);
+  --warm-card: var(--caution-tint);    --warm-card-line: var(--caution-line);
+  --short-chip: var(--problem-tint);   --short-chip-ink: var(--problem);
+  --short-row: var(--problem-tint);    --short-row-line: var(--problem-line);
+  --source-chip: var(--hair);          --source-chip-ink: var(--ink-soft);
 
   --claude-ink: #E1BE68;    --claude-mark: #D9B254;
   --claude-paper: #1F1C13;  --claude-line: #574A26;
