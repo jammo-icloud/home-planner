@@ -63,7 +63,9 @@ export function hintFor(state: State, budget: Budget, env: Envelope, month: Mont
   if (where) {
     const spent = lastMonthSpent(state, env.match.categories, month);
     if (spent <= 0) return null;
-    return { text: `Last month's imports show ${fmt(spent)} ${where}`, use: { cents: spent, label: `Use ${fmt(spent)}` } };
+    // Whole dollars, as fmt rounds, so the figure taken is the one the text shows.
+    const whole = cents(Math.round(spent / 100) * 100);
+    return { text: `Last month's imports show ${fmt(whole)} ${where}`, use: { cents: whole, label: `Use ${fmt(whole)}` } };
   }
   const fixed = FIXED[env.id];
   if (fixed) return { text: fixed };
@@ -119,7 +121,7 @@ export function cardFor(view: MonthView): Card {
     const lead = noIncome ? 'No income is set for this month yet.' : `Income is ${fmt(view.income)}.`;
     if (priced > 0) {
       const plural = priced === 1 ? 'envelope plans' : 'envelopes plan';
-      const need = flagged.length === 1 ? 'needs a figure; give it one' : `need a figure; give each one`;
+      const need = flagged.length === 1 ? 'needs a figure; give it one' : 'need a figure; give each one';
       line = `${lead} The ${priced} priced ${plural} ${fmt(view.funded)}. The other ${flagged.length} ${need} and this reaches zero.`;
     } else if (flagged.length === 1) {
       line = `${lead} The envelope has no figure yet; give it one and this reaches zero.`;

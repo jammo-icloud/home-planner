@@ -106,7 +106,7 @@ describe('reads answer questions in one call', () => {
     assert.equal(by('rent').source, 'Public data for Harbor');
     assert.equal(by('rent').hint, null);
     assert.equal(r.card.tone, 'warm');
-    assert.match(r.card.headline, /still to assign$/);
+    assert.equal(r.card.headline, '$7,775 still to assign');
     assert.equal(r.card.next, 'upkeep');
     assert.deepEqual(r.groups, ['Home', 'Food', 'House', 'People']);
   });

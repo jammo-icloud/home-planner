@@ -47,7 +47,7 @@ describe('hints', () => {
       // Not last month, so not counted.
       txn('g3', '2026-09-30', -99900, 'groceries'),
     ]);
-    assert.deepEqual(hint(s, 'groceries'), { text: "Last month's imports show $612 at grocers", use: { cents: 61240, label: 'Use $612' } });
+    assert.deepEqual(hint(s, 'groceries'), { text: "Last month's imports show $612 at grocers", use: { cents: 61200, label: 'Use $612' } });
     assert.equal(hint(s, 'dining')!.text, "Last month's imports show $90 at restaurants");
     assert.equal(hint(s, 'transport')!.text, "Last month's imports show $150 on fuel and transport");
     assert.equal(lastMonthSpent(s.state, ['groceries'], '2026-11'), 61240);
@@ -154,7 +154,21 @@ describe('the card', () => {
   });
 
   test('with no income the line says so', () => {
-    assert.match(cardFor(view({ income: 0, funded: 0, priced: 0, flagged: 20 })).line, /^No income is set for this month yet\. None of the 20/);
-    assert.match(cardFor(view({ income: 0, funded: 0, priced: 2, flagged: 0 })).line, /^No income is set for this month yet\. Every envelope has a figure\./);
+    assert.equal(cardFor(view({ income: 0, funded: 0, priced: 0, flagged: 20 })).line,
+      'No income is set for this month yet. None of the 20 envelopes has a figure yet; give each one and this reaches zero.');
+    assert.equal(cardFor(view({ income: 0, funded: 0, priced: 2, flagged: 0 })).line,
+      'No income is set for this month yet. Every envelope has a figure. They add up to the income.');
+  });
+
+  test('next is the flagged envelope with the lowest order, wherever it is listed', () => {
+    const v = {
+      income: 640000, funded: 0, toAssign: 640000,
+      envelopes: [
+        { envelope: { id: 'late', label: 'Late', order: 5, needsFigure: true } },
+        { envelope: { id: 'priced', label: 'Priced', order: 0 } },
+        { envelope: { id: 'early', label: 'Early', order: 2, needsFigure: true } },
+      ],
+    } as unknown as MonthView;
+    assert.equal(cardFor(v).next, 'early');
   });
 });
