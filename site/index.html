@@ -474,30 +474,28 @@
     white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .search-hit .hint{margin:2px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
   #search-notes p{margin:0;padding:6px 10px}
-  /* The four screens and More, in the top bar at every width. On the desk
-     each tab is its label and the chosen one is underlined by the accent, a
-     shape, so Graphite reads too; More is a menu. */
+  /* The four screens, in the top bar at every width. On the desk each tab is
+     its label and the chosen one is underlined by the accent, a shape, so
+     Graphite reads too. */
   .tabs-top{display:flex;align-self:stretch;gap:var(--sp-1)}
-  .tabs-top > .menu{display:flex}
-  .tabs-top > button,.tabs-top > .menu > button{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;
+  .tabs-top > button{position:relative;display:flex;align-items:center;justify-content:center;gap:6px;
     padding:0 var(--sp-3);font:inherit;font-size:var(--fs-ui);font-weight:var(--fw-medium);color:var(--ink-soft);text-decoration:none;
     background:none;border:0;cursor:pointer}
-  .tabs-top > button:hover,.tabs-top > .menu > button:hover,.tabs-top > .menu > button[aria-expanded="true"]{color:var(--ink)}
+  .tabs-top > button:hover{color:var(--ink)}
   .tabs-top [aria-current="page"]{color:var(--ink);font-weight:var(--fw-semibold)}
   .tabs-top [aria-current="page"]::after{content:'';position:absolute;left:var(--sp-3);right:var(--sp-3);bottom:-1px;
     height:2px;border-radius:2px;background:var(--accent)}
-  .tabs-top .menu-list{top:calc(100% + 4px)}
   .tabs-top svg.lu{display:none}
   /* Desk: the tabs first, the household and you at the right. */
   @container page (min-width: 760px){
     .top-inner > .search{margin-left:auto}
     .pill.member .name{display:block}
   }
-  /* Phone: each tab as its icon (its label kept for a screen reader), More
-     as a hamburger, and you, with the household and the day under your disc.
-     Each target is at least 40 wide and the bar's height. */
+  /* Phone: each tab as its icon (its label kept for a screen reader), and you,
+     with the household and the day under your disc. Each target is at least 40
+     wide and the bar's height. */
   @container page (max-width: 759px){
-    /* two rows: the screens, the hamburger and you; then the search box, the
+    /* two rows: the screens and you; then the search box, the
        width of the page */
     .top-inner{gap:var(--sp-2);row-gap:0;flex-wrap:wrap}
     .top-inner > .search{order:2;flex:1 1 100%;min-width:0;padding-bottom:var(--sp-2)}
@@ -505,10 +503,9 @@
        what the tabs leave, and the household and the day ellipsize in it */
     .top-inner > .menu.me{flex:1 1 0;justify-content:flex-end}
     .tabs-top{gap:0;margin-left:-10px}
-    .tabs-top > button,.tabs-top > .menu > button{min-width:40px;padding:0 10px}
+    .tabs-top > button{min-width:40px;padding:0 10px}
     .tabs-top [aria-current="page"]::after{left:8px;right:8px}
     .tabs-top svg.lu{display:block}
-    .tabs-top .chev{display:none}
     .tabs-top .lbl{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
   }
   .hp svg.i{width:16px;height:16px;flex:none;fill:none;stroke:currentColor;stroke-width:1.6;
@@ -1356,14 +1353,8 @@
   <header class="top">
     <div class="wrap top-inner">
       <!-- The screens in the top bar: labels on the desk, icons on a phone. The
-           tab buttons are made from TABS in front of More, which is a menu of
-           the links that leave the app, and Settings; a hamburger on a phone. -->
-      <nav class="tabs-top" id="tabs-top" aria-label="Screens">
-        <div class="menu">
-          <button type="button" id="more-menu-btn" aria-label="More" aria-haspopup="menu" aria-expanded="false" aria-controls="more-menu"><span class="lbl">More</span><svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
-          <div class="menu-list" id="more-menu" role="menu" aria-labelledby="more-menu-btn" hidden></div>
-        </div>
-      </nav>
+           tab buttons are made from TABS. -->
+      <nav class="tabs-top" id="tabs-top" aria-label="Screens"></nav>
       <!-- One search over the household: plans, the briefings, Claude's answers,
            the files on cards and the thread. Its hits hang under it; the arrows
            move through them with the focus kept in the box. -->
@@ -1389,6 +1380,7 @@
             <p class="quiet-line" id="who"></p>
             <button type="button" class="menu-item" role="menuitem" id="me-settings">Settings</button>
             <button type="button" class="menu-item" role="menuitem" id="me-phone">Set up your iPhone</button>
+            <div id="me-apps" hidden></div>
             <button type="button" class="menu-item" role="menuitem" id="switch-hh" data-keep-open aria-haspopup="menu" hidden>Switch household <span aria-hidden="true">›</span></button>
             <button type="button" class="menu-item" role="menuitem" id="me-new-hh" hidden>Create a new household</button>
             <div class="menu-sep" role="separator"></div>
@@ -1676,8 +1668,8 @@ const $ = (id) => document.getElementById(id);
 
 // ── menus ──────────────────────────────────────────────────────────────────
 //
-// Four: More's links and the household's things in the top bar, you at its
-// end, and a budget's settings under its name at the top of Budget. Real menus,
+// Three: the household's things in the top bar, you at its end (with the
+// household's links in your menu), and a budget's settings under its name at the top of Budget. Real menus,
 // so a keyboard works: Escape closes and returns focus, the arrows move, Tab
 // leaves, and picking anything closes it.
 const menus = [];
@@ -1745,7 +1737,6 @@ document.addEventListener('click', (ev) => { if (!ev.target.closest('.menu')) cl
 setupMenu('budget-menu-btn', 'budget-menu');
 // Yours opens on its first pane, whichever was showing when it closed.
 setupMenu('me-menu-btn', 'me-menu', () => { $('me-main').hidden = false; $('me-switch').hidden = true; });
-setupMenu('more-menu-btn', 'more-menu');
 
 // ── search ──────────────────────────────────────────────────────────────────
 //
@@ -4210,6 +4201,7 @@ function showProblem(ex) {
   open.textContent = 'Open it from the template';
   open.addEventListener('click', async () => {
     open.disabled = true;
+    said.textContent = '';
     try {
       const { proposal } = await api('/api/tools/open_month', {
         budget: chosenBudget(), month: budgetMeta.thisMonth,
@@ -4241,6 +4233,11 @@ function showProblem(ex) {
   const said = node('span', 'quiet');
   said.setAttribute('aria-live', 'polite');
   box.append(open, ' ', said);
+  // With envelopes but no income source the server refuses the template; the
+  // Budget screen holds the income step that makes it possible.
+  if (view !== 'budget') {
+    box.append(' ', textBtn('Open Budget', 'btn', null, () => void openBudgetAt(b?.id, null, false)));
+  }
 }
 
 // ── the budget walkthrough ─────────────────────────────────────────────────
@@ -5988,7 +5985,7 @@ function icon(name, cls = 'i sm') {
   s.innerHTML = ICONS[name];
   return s;
 }
-// The top bar's tabs and More on a phone: icons from Lucide (lucide.dev, ISC licence), copied as they are.
+// The top bar's tabs on a phone: icons from Lucide (lucide.dev, ISC licence), copied as they are.
 const LUCIDE = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
   'square-kanban': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/>',
@@ -7298,7 +7295,7 @@ async function saveSettings(path, body, after, focus, method) {
     settingsOpen = null;
   }
   if (after) await after();
-  renderMore();
+  renderHouseholdApps();
   if (view === 'settings') renderSettings();
   return true;
 }
@@ -8004,7 +8001,7 @@ function areasForm() {
 
 function linksRow() {
   return settingRow({
-    key: 'links', title: 'Links under More', list: true,
+    key: 'links', title: 'Links in your menu', list: true,
     status: settingsData.links.map((l) => l.label).join(' · ') || 'Not set',
     actions: [{ label: 'Edit', opens: true }],
     form: linksForm,
@@ -9109,11 +9106,10 @@ function connTest(r, busy) {
   return box;
 }
 
-// ── More: the links that leave Home Planner ────────────────────────────────
+// ── Household apps: the links that leave Home Planner ──────────────────────
 //
-// The household's other apps, from Settings, and Settings itself: a menu under
-// More in the top bar, which is a hamburger on a phone. Each link opens in the
-// same tab.
+// The household's other apps, from Settings: a group in the person menu. Each
+// link opens in the same tab.
 const hostOf = (url) => {
   try { const u = new URL(url); return u.host + (u.pathname === '/' ? '' : u.pathname); } catch { return url; }
 };
@@ -9126,21 +9122,15 @@ function linkItem(l) {
   a.append(t, icon('leave', 'i sm leaves'));
   return a;
 }
-function renderMore() {
+/** The household's links, as a group in the person menu; with none there is no group. */
+function renderHouseholdApps() {
   const links = settingsData?.links ?? [];
-  const menu = $('more-menu');
-  menu.textContent = '';
-  menu.appendChild(node('div', 'group eyebrow', 'These leave Home Planner'));
-  if (!links.length) menu.appendChild(node('p', 'quiet-line', 'No links yet.'));
-  for (const l of links) menu.appendChild(linkItem(l));
-  const sep = node('div', 'menu-sep');
-  sep.setAttribute('role', 'separator');
-  const change = textBtn(links.length ? 'Change these links in Settings' : 'Add a link in Settings', 'menu-item soft', null,
-    () => void openSettings('household', 'links'));
-  change.setAttribute('role', 'menuitem');
-  const settings = textBtn('Settings', 'menu-item', null, () => void openSettings());
-  settings.setAttribute('role', 'menuitem');
-  menu.append(sep, change, settings);
+  const box = $('me-apps');
+  box.textContent = '';
+  box.hidden = !links.length;
+  if (!links.length) return;
+  box.appendChild(node('div', 'group eyebrow', 'Household apps'));
+  for (const l of links) box.appendChild(linkItem(l));
 }
 
 // ── the calendar ───────────────────────────────────────────────────────────
@@ -9968,9 +9958,8 @@ function tabButton(label, glyph) {
 for (const t of TABS) {
   const b = tabButton(t.label, t.glyph);
   b.dataset.view = t.view;
-  $('tabs-top').insertBefore(b, $('tabs-top').querySelector('.menu'));
+  $('tabs-top').appendChild(b);
 }
-$('more-menu-btn').prepend(lucide('menu'));
 function markTabs() {
   for (const b of document.querySelectorAll('#tabs-top [data-view]')) {
     if (b.dataset.view === tabOf(view)) b.setAttribute('aria-current', 'page');
@@ -10262,9 +10251,9 @@ async function enterApp() {
   myHouseholdId = who.household?.id ?? null;
   myHouseholds = (await api('/api/households').catch(() => null))?.households ?? [];
   renderMyHouseholds();
-  // The settings, once per load: More's links, whether cards keep files, and
+  // The settings, once per load: the menu's links, whether cards keep files, and
   // your look, which the log decides and the cache only paints first.
-  // Unread, More's links and the look fall back to what this device has, and
+  // Unread, the menu's links and the look fall back to what this device has, and
   // the error box says so once, after Today has drawn.
   let settingsProblem = null;
   settingsData = await api('/api/settings').catch((ex) => { settingsProblem = ex; return null; });
@@ -10274,7 +10263,7 @@ async function enterApp() {
     keepFilesFrom(settingsData);
     syncLook();
   }
-  renderMore();
+  renderHouseholdApps();
   document.title = who.household?.label ?? 'Today';
   claudeOn = who.claude === true;
   myName = who.who;
@@ -10284,7 +10273,7 @@ async function enterApp() {
   $('app').hidden = false;
   await loadThread();
   if (settingsProblem) {
-    showProblem(new Error(`Settings could not be read (${settingsProblem.message}): the links under More and your look are this device's until the page is loaded again.`));
+    showProblem(new Error(`Settings could not be read (${settingsProblem.message}): the links in your menu and your look are this device's until the page is loaded again.`));
   }
 }
 
