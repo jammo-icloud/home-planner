@@ -113,9 +113,9 @@ type Privilege = 'RO' | 'RW';
 
 /**
  * What the guide's `SYNO.Cal.Cal` `create` and `set` require beside the type,
- * name, description and color. The real NAS (2026-11-03) refused a `create`
- * that lacked `notify_evt_by_browser` and `notify_evt_by_mail` with 9009, so a
- * create or set short of any of these is refused the same way here.
+ * name, description and color. The real NAS (2026-11-03) accepted a `create`
+ * with exactly these as plain words and refused one short of a required field
+ * with 9009, so a create or set short of any of them is refused the same way here.
  */
 const CALENDAR_FLAGS = [
   'is_hidden_in_cal', 'is_hidden_in_list', 'notify_alarm_by_browser', 'notify_alarm_by_mail',
@@ -338,7 +338,9 @@ export async function start(opts: {
 
   /** The guide's whole calendar as `create` and `set` take it: every flag present, as a boolean word, or 9009. */
   const calendarFields = (p: URLSearchParams): Pick<Calendar, 'description' | 'color' | 'flags'> => {
-    for (const k of ['cal_displayname', 'cal_description', 'cal_color'] as const) if (!p.has(k)) throw new Refuse(PARAMETER_ERROR);
+    // The real NAS refused a create whose cal_description was sent empty with
+    // 9009 and took it with a word in it (2026-11-03): empty counts as missing.
+    for (const k of ['cal_displayname', 'cal_description', 'cal_color'] as const) if (!p.get(k)) throw new Refuse(PARAMETER_ERROR);
     const flags = { ...OFF };
     for (const k of CALENDAR_FLAGS) {
       const v = p.get(k);
@@ -416,7 +418,7 @@ export async function start(opts: {
       },
       // Its owner's to delete, with its events: as deleting it in Synology Calendar does.
       // The app deletes no calendar; the check deletes the one it makes with this. The
-      // guide's `Method Delete` takes `cal_id` alone; not yet confirmed on the real NAS.
+      // guide's `Method Delete` takes `cal_id` alone, as the real NAS confirmed (2026-11-03).
       delete: (p, who) => {
         const cal = ownCalendar(need(p, 'cal_id'), who);
         calendars.delete(cal.cal_id);

@@ -255,9 +255,9 @@ export interface CalendarInfo extends CalendarRef {
 /**
  * The eight booleans Synology's Calendar WebAPI guide (2024-06) marks required
  * on `SYNO.Cal.Cal` `create` and `set`, beside the type, name, description and
- * color. The real NAS refused a `create` without `notify_evt_by_browser` and
- * `notify_evt_by_mail` with 9009, Parameter error (2026-11-03); an earlier
- * version sent two `*_by_push` names the guide does not have instead.
+ * color. The real NAS accepted a `create` with exactly these, as plain words,
+ * on 2026-11-03; an earlier version sent two `*_by_push` names the guide does
+ * not have and lacked the two `notify_evt_*`.
  */
 const CALENDAR_FLAGS = [
   'is_hidden_in_cal', 'is_hidden_in_list',
@@ -278,6 +278,15 @@ interface RawCalendar extends Partial<Record<CalendarFlag, boolean>> {
   cal_type: 'event' | 'todo';
   default_calendar: boolean;
 }
+
+/**
+ * What `create` and `set` send for a calendar with no description. The real NAS
+ * refused a `create` whose `cal_description` was sent empty with 9009, Parameter
+ * error, and took the same request with a word in it (2026-11-03): a required
+ * field sent empty counts as missing. So an empty description is never sent.
+ */
+export const CALENDAR_DESCRIPTION = 'Made by Home Planner.';
+const described = (text: string | undefined): string => text?.trim() ? text : CALENDAR_DESCRIPTION;
 
 /** Every flag of a calendar as DSM listed it, false where it said nothing. */
 const flagsOf = (r: Partial<Record<CalendarFlag, boolean>>): Record<CalendarFlag, boolean> =>
@@ -343,11 +352,11 @@ export async function createCalendar(
     params: {
       cal_type: 'event',
       cal_displayname: o.displayname,
-      cal_description: o.description ?? '',
+      cal_description: described(o.description),
       cal_color: o.color,
       // The guide marks all eight flags required, so all eight are sent, off:
-      // the app's calendar sends no reminders or notices of its own. The real
-      // NAS refused the set without the two notify_evt_* names with 9009.
+      // the app's calendar sends no reminders or notices of its own. Plain
+      // strings and these words are what the real NAS accepted (2026-11-03).
       ...flagsOf({}),
     },
   }, f);
@@ -373,7 +382,7 @@ export async function renameCalendar(sid: string, cal: CalendarRef, name: string
       cal_id: current.cal_id,
       original_cal_id: current.original_cal_id,
       cal_displayname: name,
-      cal_description: current.cal_description ?? '',
+      cal_description: described(current.cal_description),
       cal_color: current.cal_color,
       ...flagsOf(current),
     },

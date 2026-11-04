@@ -74,8 +74,9 @@ describe('calendars', () => {
     const c = await createCalendar('S', { displayname: 'Household', color: '#112233' }, d.fn);
     assert.equal(c.cal_id, '/alice/abc/');
     const b = decodeURIComponent(d.calls[0]!.body);
-    // The guide's twelve, and none of the two *_by_push names the real NAS refused with 9009.
-    for (const k of ['cal_type=event', 'cal_displayname=Household', 'cal_description=', 'cal_color=#112233',
+    // The guide's twelve, and none of the two *_by_push names the real NAS refused with 9009. The
+    // description is never sent empty: the real NAS read an empty required field as missing.
+    for (const k of ['cal_type=event', 'cal_displayname=Household', 'cal_description=Made+by+Home+Planner.', 'cal_color=#112233',
                      'is_hidden_in_cal=false', 'is_hidden_in_list=false',
                      'notify_alarm_by_browser=false', 'notify_alarm_by_mail=false',
                      'notify_evt_by_browser=false', 'notify_evt_by_mail=false',
@@ -97,6 +98,13 @@ describe('calendars', () => {
                      'cal_color=#112233', 'is_hidden_in_list=true', 'notify_alarm_by_browser=true', 'notify_evt_by_mail=true',
                      'notify_evt_by_browser=false', 'notify_import_cal_by_mail=false',
     ]) assert.match(b, new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  });
+  test('rename fills in a description when the listed calendar has none, since the NAS refuses an empty one', async () => {
+    const listed = { cal_id: '/alice/abc/', original_cal_id: '/alice/abc/', cal_displayname: 'Household', cal_description: '',
+      cal_color: '#112233', cal_privilege: 'RW', cal_type: 'event', default_calendar: false };
+    const d = fakeDsmSeq([{ success: true, data: { list: [listed] } }, { success: true, data: listed }]);
+    await renameCalendar('S', { cal_id: '/alice/abc/', original_cal_id: '/alice/abc/' }, 'Home', d.fn);
+    assert.match(decodeURIComponent(d.calls[1]!.body), /cal_description=Made\+by\+Home\+Planner\./);
   });
   test('rename refuses in words when the calendar is not in the list', async () => {
     const d = fakeDsm({ success: true, data: { list: [] } });
