@@ -535,8 +535,8 @@ export async function start(opts: {
   };
   const exists = async (path: string): Promise<boolean> => stat(path).then(() => true, () => false);
 
-  /** The task ids `CopyMove` start has handed out. */
-  const fileStationTasks = new Set<string>();
+  /** The task ids `CopyMove` start has handed out, and whether each skipped its file for a taken name. */
+  const fileStationTasks = new Map<string, { skipped: boolean }>();
   const fileStation: Record<string, Record<string, (p: URLSearchParams) => Promise<unknown>>> = {
     'SYNO.FileStation.CreateFolder': {
       create: async (p) => {
@@ -568,8 +568,8 @@ export async function start(opts: {
     },
     // A move only: the source removed, nothing overwritten, which is all the app asks for.
     // It is done before `start` answers, so `status` always says finished. A name
-    // already taken at the destination is as Upload has it: overwrite=false skips
-    // the file and the task still finishes, and left out, it is refused with 414.
+    // already taken at the destination: overwrite=false skips the file, the task
+    // still finishes with skipstatus "all" (the real NAS); left out, it is 414.
     'SYNO.FileStation.CopyMove': {
       start: async (p) => {
         if (!bool(p, 'remove_src') || bool(p, 'overwrite')) throw new Refuse(BAD_PARAM);
@@ -584,19 +584,26 @@ export async function start(opts: {
         const taskid = `FileStation_${hex(6)}`;
         if (await exists(to)) {
           if (p.get('overwrite') === null) throw new Refuse(FS_EXISTS);
-          fileStationTasks.add(taskid);
+          fileStationTasks.set(taskid, { skipped: true });
           log(`skipped ${sources[0]!}: ${need(p, 'dest_folder_path')} has a file by that name`);
           return { taskid };
         }
         await rename(from, to);
-        fileStationTasks.add(taskid);
+        fileStationTasks.set(taskid, { skipped: false });
         log(`moved ${sources[0]!} to ${need(p, 'dest_folder_path')} with File Station`);
         return { taskid };
       },
+      // As the real NAS answered (2026-11-03): `found_file_num` and `total` 0 and
+      // `path` empty even for a move that happened; `skipstatus.status` "all"
+      // when the name was taken and nothing moved, else "none".
       status: async (p) => {
         const taskid = need(p, 'taskid');
-        if (!fileStationTasks.has(taskid)) throw new Refuse(BAD_PARAM);
-        return { finished: true, progress: 1, taskid };
+        const task = fileStationTasks.get(taskid);
+        if (!task) throw new Refuse(BAD_PARAM);
+        return {
+          finished: true, found_file_num: 0, total: 0, path: '', progress: 1, taskid,
+          skipstatus: { status: task.skipped ? 'all' : 'none' },
+        };
       },
     },
   };

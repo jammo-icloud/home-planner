@@ -56,6 +56,7 @@ ones most likely to matter:
 | A missing path is answered with something other than **1003** (`Drive files get` on `.planner-check-missing`) | 1003 is confirmed on the real NAS for no such file; another code goes in `DRIVE_NO_SUCH_FILE` in `drive.ts`. |
 | A folder made where the name is taken is answered with something other than **1022** (probe 4) | 1022 is confirmed on the real NAS (2026-11-03). Another code goes in `DRIVE_NAME_TAKEN` in `drive.ts`. |
 | A Drive move onto a taken name (probe 5) is accepted and changes nothing | Nothing: that is what the real NAS does. The app finds the name taken by looking at the new path after the move (`moveDoc` in `moves.ts`): another file's `permanent_link` there means taken. |
+| File Station's move of a card's file (probe 6) shows `skipstatus` `"all"` the second time | Nothing: that is the real NAS's answer for a taken name with overwrite off, and the app says it as a taken name. The check confirms a File Station move through File Station's own list, not Drive, which indexes File Station's changes late. |
 | A moved file is found later than 3000 ms (probe 5) | Raise `MOVE_WAIT_MS` in `moves.ts`. Until then a slow move is left for the next pass, and nothing is lost. |
 
 The check also asks seven things that Connectors and Settings rest on: how DSM

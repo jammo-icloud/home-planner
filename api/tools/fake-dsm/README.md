@@ -81,7 +81,7 @@ All in memory and gone when it stops, apart from the files.
 | `SYNO.FileStation.List` | list, list_share | `list` with `additional.size`; `list_share` names the top-level folders under the root |
 | `SYNO.FileStation.Upload` | upload | multipart; refuses an existing file unless `overwrite=true` |
 | `SYNO.FileStation.Download` | download | a GET; the bytes, or DSM's JSON refusal |
-| `SYNO.FileStation.CopyMove` | start, status | a move only (`remove_src=true`, never `overwrite=true`), of one path, into an existing folder; done before `start` answers `{ taskid }`, so `status` says `{ finished: true }`; 408 for a missing source or destination folder; a name already taken is as Upload has it: `overwrite=false` skips the file (the source stays) and still finishes, left out it is 414 |
+| `SYNO.FileStation.CopyMove` | start, status | a move only (`remove_src=true`, never `overwrite=true`), of one path, into an existing folder; done before `start` answers `{ taskid }`, so `status` says `finished: true`, in the real NAS's shape (2026-11-03): `{ finished, found_file_num: 0, total: 0, path: "", progress, taskid, skipstatus: { status } }`; 408 for a missing source or destination folder; a name already taken, with `overwrite=false`, skips the file (the source stays), still finishes, and says `skipstatus.status: "all"` (else `"none"`), as the real NAS does; with `overwrite` left out it is 414 |
 
 File Station paths live under a directory of their own; `..` cannot climb
 out of it.

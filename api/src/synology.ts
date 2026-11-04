@@ -938,6 +938,8 @@ export async function listFolder(
 /** How long `moveOnNas` waits for File Station to finish before it says it has not (false). */
 export const NAS_MOVE_WAIT_MS = 5000;
 const NAS_MOVE_POLL_MS = 200;
+/** File Station's "a file by that name is there already", which `moveOnNas` also gives a skipped move. */
+const NAS_NAME_TAKEN = 414;
 
 /**
  * File Station's move of one file or folder into `destFolder`: `SYNO.FileStation.CopyMove`
@@ -946,6 +948,13 @@ const NAS_MOVE_POLL_MS = 200;
  * complete on the NAS. 408 (no such source) and 414 (the name is taken) are
  * SynologyErrors as File Station says them. `path` is sent as a JSON list and
  * `dest_folder_path` as a plain string, a guess confirmed at first real use.
+ *
+ * With overwrite false the real NAS (2026-11-03) does not refuse a taken name:
+ * the task finishes with `skipstatus.status: "all"`, nothing moved, and that is
+ * said here as 414. A `finished: true` with `skipstatus.status: "none"` is not
+ * proof of a move either (its `found_file_num` and `total` were 0 for a move
+ * that happened), so the caller confirms through File Station's own lists, never
+ * through Drive, which indexes File Station's changes late.
  */
 export async function moveOnNas(sid: string, path: string, destFolder: string, f?: DsmFetch): Promise<boolean> {
   const api = 'SYNO.FileStation.CopyMove';
@@ -957,10 +966,15 @@ export async function moveOnNas(sid: string, path: string, destFolder: string, f
   }, f);
   const until = Date.now() + NAS_MOVE_WAIT_MS;
   for (;;) {
-    const status = await dsm<{ finished?: boolean }>({
+    const status = await dsm<{ finished?: boolean; skipstatus?: { status?: string } }>({
       api, version: COPY_MOVE_VERSION, method: 'status', sid, params: { taskid },
     }, f);
-    if (status?.finished === true) return true;
+    if (status?.finished === true) {
+      if (status.skipstatus?.status === 'all') {
+        throw new SynologyError(`File Station skipped ${path}: ${destFolder} has a file by that name`, api, NAS_NAME_TAKEN, 409);
+      }
+      return true;
+    }
     if (Date.now() >= until) return false;
     await new Promise((resolve) => setTimeout(resolve, NAS_MOVE_POLL_MS));
   }

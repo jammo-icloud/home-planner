@@ -436,9 +436,17 @@ describe('Synology Drive: folders and moves', () => {
       await assert.rejects(() => syno.moveOnNas(a, '/Planner/h1/gate/quote.pdf', '/Planner/h2/gate', nas.via),
         (e: unknown) => e instanceof SynologyError && e.code === 408);
       // The name is taken at the destination: with overwrite=false, as the app asks, the file is
-      // skipped and the task still finishes; nothing is overwritten and the source stays.
+      // skipped and the task still finishes with skipstatus "all" (the real NAS), which moveOnNas
+      // says as 414; nothing is overwritten and the source stays.
       await syno.uploadFile(a, { folder: '/Planner/h1/gate', name: 'quote.pdf', bytes: new Uint8Array([1]) }, nas.via);
-      assert.equal(await syno.moveOnNas(a, '/Planner/h1/gate/quote.pdf', '/Planner/h2/gate', nas.via), true);
+      await assert.rejects(() => syno.moveOnNas(a, '/Planner/h1/gate/quote.pdf', '/Planner/h2/gate', nas.via),
+        (e: unknown) => e instanceof SynologyError && e.code === 414);
+      const { taskid } = await syno.dsm<{ taskid: string }>({
+        api: 'SYNO.FileStation.CopyMove', version: syno.COPY_MOVE_VERSION, method: 'start', sid: a,
+        params: { path: ['/Planner/h1/gate/quote.pdf'], dest_folder_path: '/Planner/h2/gate', overwrite: false, remove_src: true },
+      }, nas.via);
+      assert.deepEqual(await syno.dsm({ api: 'SYNO.FileStation.CopyMove', version: syno.COPY_MOVE_VERSION, method: 'status', sid: a, params: { taskid } }, nas.via),
+        { finished: true, found_file_num: 0, total: 0, path: '', progress: 1, taskid, skipstatus: { status: 'all' } });
       assert.deepEqual((await syno.downloadFile(a, '/Planner/h2/gate/quote.pdf', nas.via)).bytes, bytes);
       assert.deepEqual(await syno.listFolder(a, '/Planner/h1/gate', nas.via), [{ name: 'quote.pdf', size: 1, isdir: false }]);
       // With overwrite left out: 414.

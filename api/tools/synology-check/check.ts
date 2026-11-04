@@ -95,6 +95,7 @@ const clientAsks = (): [api: string, version: number][] => [
   ['SYNO.Contacts.Contact', contactsVersion], ['SYNO.Contacts.Addressbook', contactsVersion],
   ['SYNO.FileStation.List', FILE_STATION_VERSION], ['SYNO.FileStation.CreateFolder', FILE_STATION_VERSION],
   ['SYNO.FileStation.Upload', FILE_STATION_VERSION], ['SYNO.FileStation.Download', FILE_STATION_VERSION],
+  ['SYNO.FileStation.CopyMove', COPY_MOVE_VERSION],
 ];
 
 const RAW_MAX = 4000;
@@ -733,43 +734,52 @@ async function checkDesign(): Promise<void> {
     say('\nProbe 5, a move onto a taken name: skipped, because its two files could not be written (said above).');
   }
 
-  // 6. File Station's CopyMove, and Drive's path for what it moved. Both replies of the move (start, then status) print whole.
+  // 6. File Station's CopyMove, confirmed through File Station's own list, as moveCard (src/moves.ts) does.
+  // Drive indexes File Station's changes late (the real NAS, 2026-11-03: not found 9 s later), so it is not asked.
   const nasName = `nas-${token}.md`;
   const readCopyMove = (a: Answer): string => {
     if ('refused' in a) return `refused (code ${a.refused.code})`;
     const { start, status, polls } = a.answered as { start: unknown; status: unknown; polls: number };
-    const finished = (status as { finished?: unknown } | null)?.finished;
-    return `start answered ${keysOf(start)}; status (asked ${polls} time(s)) answered ${keysOf(status)} with finished ${JSON.stringify(finished)}. `
-      + "Look in both replies for an error, errors or skipped field, which the app's moveOnNas discards";
+    const st = (status ?? {}) as { finished?: unknown; skipstatus?: { status?: unknown }; found_file_num?: unknown; total?: unknown };
+    return `start answered ${keysOf(start)}; status (asked ${polls} time(s)) answered ${keysOf(status)} with finished ${JSON.stringify(st.finished)}, `
+      + `skipstatus.status ${JSON.stringify(st.skipstatus?.status)}, found_file_num ${JSON.stringify(st.found_file_num)}, total ${JSON.stringify(st.total)}. `
+      + 'moveOnNas takes skipstatus "all" as a taken name (414); "none" is not proof of a move, so the lists below decide';
+  };
+  /** The file of that name in a File Station folder, or null; a folder that is not there has none. */
+  const inFolder = async (folder: string, name: string): Promise<{ size: number } | null> => {
+    try {
+      return (await listFolder(sid, folder)).find((x) => !x.isdir && x.name === name) ?? null;
+    } catch (err) {
+      if (err instanceof SynologyError && err.code === 408) return null;
+      throw err;
+    }
   };
   const nasFirst = await writing(`${dir}/${nasName}`, `# Planner check\n\nMoved by File Station. ${token}\n`);
   if (!nasFirst) {
     say('\nProbe 6: skipped, because its file could not be written (said above).');
   } else {
-    const startedNas = Date.now();
     await ask(`Probe 6, File Station CopyMove start and status, "${nasDir}/${nasName}" into "${nasDir}/made" (overwrite false, remove_src true)`,
       () => copyMove(`${nasDir}/${nasName}`, `${nasDir}/made`), readCopyMove);
-    const viaDrive = await appearsAt(`${made}/${nasName}`, startedNas, waitMax);
-    say(viaDrive
-      ? `  Drive's getFile finds it at "${made}/${nasName}" after ${viaDrive.ms} ms: a Team Folder's name is its share's, so nasPathOf and drivePathOf name one place`
-      : `  Drive does NOT find it at "${made}/${nasName}" within ${waitMax} ms: the Team Folder's name may not be its share's, or Drive has not noticed; see moveOnNas and nasPathOf (src/folders.ts)`);
-    if (!viaDrive) failed.push('a File Station move was not found by its Drive path');
+    const atDest = await inFolder(`${nasDir}/made`, nasName);
+    const atSource = await inFolder(nasDir, nasName);
+    const moved = !!atDest && !atSource;
+    if (!moved) failed.push('File Station did not show the moved file in its new folder and gone from the old one');
+    say(`  File Station's list: the file is ${atDest ? `in "${nasDir}/made" (${atDest.size} bytes)` : `NOT in "${nasDir}/made"`} and ${atSource ? `STILL in "${nasDir}"` : `gone from "${nasDir}"`}`
+      + `${moved ? ', so it moved; this is how moveCard (src/moves.ts) confirms a card\'s file' : ''}`);
 
     const second = await writing(`${dir}/${nasName}`, `# Planner check\n\nA second file of that name. ${token}\n`);
     if (second) {
-      const before = viaDrive?.file.hash ?? '';
       await ask(`Probe 6, File Station CopyMove start and status, "${nasDir}/${nasName}" into "${nasDir}/made" again, where that name is taken (overwrite false)`,
         () => copyMove(`${nasDir}/${nasName}`, `${nasDir}/made`),
         (a) => ('refused' in a
-          ? `refused with code ${a.refused.code} (moveOnNas's own comment names 414 for a taken name)`
+          ? `refused with code ${a.refused.code}, where the real NAS (2026-11-03) finished with skipstatus "all"; moveOnNas says a refusal as File Station gives it`
           : readCopyMove(a)));
-      const after = await lookup(`${made}/${nasName}`);
-      const stillThere = await lookup(`${dir}/${nasName}`);
-      if (before && after && after.hash !== before) failed.push('File Station overwrote a file on a taken name');
-      const untouched = !!after && after.hash === before;
-      say(`  by the files themselves: the file already in made is ${untouched ? 'unchanged' : 'CHANGED, gone or unreadable'} and the source is ${stillThere ? 'still in its folder' : 'GONE from its folder or unreadable'}`
-        + `${untouched && stillThere ? ', so File Station skipped it (whatever the replies above say about it)' : ''}`);
-      say('  (the app no longer relies on this answer: moveCard in src/moves.ts reads the lists. The deploy notes should say which it was.)');
+      const after = await inFolder(`${nasDir}/made`, nasName);
+      const stillThere = await inFolder(nasDir, nasName);
+      const untouched = !!after && !!atDest && after.size === atDest.size;
+      if (atDest && after && after.size !== atDest.size) failed.push('File Station overwrote a file on a taken name');
+      say(`  File Station's list: the file already in made is ${untouched ? 'unchanged in size' : 'CHANGED, gone or unreadable'} and the source is ${stillThere ? 'still in its folder' : 'GONE from its folder'}`
+        + `${untouched && stillThere ? ', so File Station skipped it, which moveCard says as a taken name' : ''}`);
     }
   }
   say(`\nThe check left files under ${nasDir}${secondTeam ? ` and /${secondTeam}/.planner-check` : ''}; delete the .planner-check folder(s) in File Station.`);

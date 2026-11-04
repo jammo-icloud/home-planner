@@ -176,8 +176,10 @@ async function listed(sid: string, folder: string, name: string, f?: DsmFetch): 
  * A card's file, through File Station, out of `from`. It counts as moved only
  * when File Station's lists say so: gone from the folder being left, and in the
  * new one at its size. Never by its name in the new folder alone, which a
- * member's own file may have; and never by File Station's "finished" alone,
- * which it says of a file it skipped, nothing being overwritten. A move not
+ * member's own file may have; never by File Station's "finished" alone, which
+ * it says of a file it skipped (`skipstatus.status` "all", which `moveOnNas`
+ * gives as 414, a taken name); and never through Drive, which on the real NAS
+ * (2026-11-03) had not indexed a File Station move 9 seconds later. A move not
  * finished within NAS_MOVE_WAIT_MS is found by the next pass's look.
  */
 async function moveCard(
