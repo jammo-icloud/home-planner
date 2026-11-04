@@ -9,6 +9,7 @@ import { Store } from '../src/store.ts';
 import type { NewEvent } from '../src/store.ts';
 import { firstRun } from '../src/first-run.ts';
 import { STARTER_GROUPS } from '../src/starter.ts';
+import { APPROVE_IN_ONE, TOOLS } from '../src/tools.ts';
 
 const NOW = '2026-11-04T09:00:00Z';
 const TODAY = '2026-11-04';
@@ -83,4 +84,13 @@ describe('where the walkthrough is', () => {
     await s.append('alex', [pay(200000)]);
     assert.equal(firstRun(s.state, null, TODAY).income.hasSource, true);
   });
+});
+
+test('every tool the server approves in one request is a write tool', () => {
+  // The ?approve=1 path treats the result as a proposal, which only a write gives.
+  for (const name of APPROVE_IN_ONE) {
+    const tool = TOOLS.find(t => t.name === name);
+    assert.ok(tool, `${name} is a tool`);
+    assert.equal(tool.kind, 'write', name);
+  }
 });

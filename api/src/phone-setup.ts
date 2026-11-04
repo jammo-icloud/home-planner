@@ -3,19 +3,16 @@ import { createHash, randomBytes } from 'node:crypto';
 /** How long a setup link works. Short, because it is a bearer credential in a QR code. */
 export const SETUP_CODE_TTL_MS = 10 * 60_000;
 
-export interface SetupFlags { readonly calendar: boolean; readonly home: boolean }
-
 export interface SetupEntry {
   readonly member: string;
   readonly household: string;
-  readonly flags: SetupFlags;
   readonly origin: string;
   readonly dsmPublicUrl: string | null;
   readonly expiresAt: number;
 }
 
 export interface PhoneCodes {
-  issue(o: { member: string; household: string; flags: SetupFlags; origin: string; dsmPublicUrl: string | null }):
+  issue(o: { member: string; household: string; origin: string; dsmPublicUrl: string | null }):
     { code: string; url: string; expiresAt: number };
   /** The entry, if live, without spending it. */
   peek(code: string): SetupEntry | null;
@@ -58,7 +55,7 @@ export function createPhoneCodes(now: () => number = Date.now): PhoneCodes {
       const expiresAt = now() + SETUP_CODE_TTL_MS;
       const h = hash(code);
       byHash.set(h, {
-        member: o.member, household: o.household, flags: o.flags,
+        member: o.member, household: o.household,
         origin: o.origin, dsmPublicUrl: o.dsmPublicUrl, expiresAt,
       });
       byMember.set(o.member, h);
@@ -85,3 +82,19 @@ export function acceptedOrigin(raw: unknown): string | null {
     || u.hostname === '127.0.0.1' || u.hostname === '[::1]';
   return u.protocol === 'http:' && loopback ? u.origin : null;
 }
+
+/**
+ * The origin when it can be put on a Home Screen: http or https on any host,
+ * nothing after the host. Looser than acceptedOrigin because this link carries
+ * no credential, only the page's own address.
+ */
+export function homeOrigin(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  let u: URL;
+  try { u = new URL(raw); } catch { return null; }
+  if (u.username || u.password || u.pathname !== '/' || u.search || u.hash) return null;
+  return u.protocol === 'https:' || u.protocol === 'http:' ? u.origin : null;
+}
+
+/** The address a phone scans to open the page with Safari's add-to-Home-Screen banner. */
+export const homeLink = (origin: string): string => `${origin}/?add=home`;

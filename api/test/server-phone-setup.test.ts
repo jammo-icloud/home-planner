@@ -34,7 +34,6 @@ const { saveConnector } = await import('../src/connectors.ts');
 const { createPhoneCodes } = await import('../src/phone-setup.ts');
 
 const origin = 'https://planner.example.com';
-const PNG_SIGNATURE = Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
 const ADDRESS_WORDS = "the NAS's address is not set: a DSM administrator sets it under Settings › This NAS › Where phones reach the NAS";
 
 let clock = Date.parse('2026-11-04T12:00:00Z');
@@ -64,8 +63,8 @@ async function signIn(username: string, password: string): Promise<string> {
 }
 
 /** A code for alex, asked for the way the sheet asks. */
-async function issue(flags: { calendar: boolean; home: boolean } = { calendar: true, home: true }) {
-  const r = await call(alex, 'POST', '/api/phone-setup/code', { ...flags, origin });
+async function issue() {
+  const r = await call(alex, 'POST', '/api/phone-setup/code', { origin });
   assert.equal(r.status, 200, JSON.stringify(r.json));
   return r.json as { code: string; url: string; expiresAt: string; qr: string };
 }
@@ -120,9 +119,6 @@ describe('a phone is set up from a one-time link', () => {
     assert.equal(caldav['CalDAVPort'], 5001);
     assert.equal(caldav['CalDAVUsername'], 'alex');
     assert.equal(caldav['CalDAVPrincipalURL'], '/caldav/alex/');
-    const clip = payload(plist, 'com.apple.webClip.managed');
-    assert.equal(clip['URL'], origin);
-    assert.ok((clip['Icon'] as Buffer).subarray(0, 8).equals(PNG_SIGNATURE));
 
     const second = await open(`/setup/${code}`);
     assert.equal(second.status, 404);
@@ -161,33 +157,44 @@ describe('a phone is set up from a one-time link', () => {
     assert.ok(!r.text.includes('Larkspur'));
   });
 
-  test('only the payloads asked for', async () => {
-    const calendar = await issue({ calendar: true, home: false });
-    assert.deepEqual(types(parsePlist((await open(`/setup/${calendar.code}`)).text) as Plist), ['com.apple.caldav.account']);
-    const home = await issue({ calendar: false, home: true });
-    assert.deepEqual(types(parsePlist((await open(`/setup/${home.code}`)).text) as Plist), ['com.apple.webClip.managed']);
+  test('a code\'s profile and the Mac download hold the calendar only, whatever home says', async () => {
+    const r = await call(alex, 'POST', '/api/phone-setup/code', { home: true, origin });
+    assert.equal(r.status, 200);
+    assert.deepEqual(types(parsePlist((await open(`/setup/${r.json.code}`)).text) as Plist), ['com.apple.caldav.account']);
+    const res = await fetch(`${base}/api/phone-setup/profile?home=1&origin=${encodeURIComponent(origin)}`, { headers: { cookie: alex } });
+    assert.deepEqual(types(parsePlist(await res.text()) as Plist), ['com.apple.caldav.account']);
+  });
+
+  test('the Home Screen QR is the page\'s address with the marker, and spends no code', async () => {
+    const { code } = await issue();
+    const r = await call(alex, 'GET', '/api/phone-setup/home?origin=http%3A%2F%2Fplanner.example.com%3A8088');
+    assert.equal(r.status, 200);
+    assert.equal(r.json.url, 'http://planner.example.com:8088/?add=home');
+    assert.ok(r.json.qr.startsWith('<svg'), r.json.qr.slice(0, 40));
+    assert.equal((await open(`/setup/${code}`)).status, 200);
+  });
+
+  test('a refused origin gets no Home Screen QR', async () => {
+    for (const o of ['https://planner.example.com/app', 'ftp://planner.example.com', '']) {
+      assert.equal((await call(alex, 'GET', `/api/phone-setup/home?origin=${encodeURIComponent(o)}`)).status, 400, o);
+    }
+    assert.equal((await call(alex, 'GET', '/api/phone-setup/home')).status, 400);
   });
 
   test('a bad origin is refused 400 and makes no code', async () => {
-    const r = await call(alex, 'POST', '/api/phone-setup/code', { calendar: true, home: true, origin: 'http://planner.example.com:8088' });
+    const r = await call(alex, 'POST', '/api/phone-setup/code', { origin: 'http://planner.example.com:8088' });
     assert.equal(r.status, 400);
     assert.equal(r.json.error, 'a phone can be set up only from a page opened over https (or over http on this computer)');
     assert.ok(!('code' in r.json));
   });
 
-  test('both off is refused 400', async () => {
-    const r = await call(alex, 'POST', '/api/phone-setup/code', { calendar: false, home: false, origin });
-    assert.equal(r.status, 400);
-    assert.equal(r.json.error, 'choose the Household calendar, Home Planner, or both');
-  });
-
-  test('the calendar needs the NAS\'s address; the Home Screen alone does not', async () => {
+  test('with no address there is no code, and the Home Screen QR still works', async () => {
     await saveConnector('publicUrl', { off: true }, 'alex');
     try {
-      const both = await call(alex, 'POST', '/api/phone-setup/code', { calendar: true, home: true, origin });
-      assert.equal(both.status, 400);
-      assert.equal(both.json.error, ADDRESS_WORDS);
-      const home = await call(alex, 'POST', '/api/phone-setup/code', { calendar: false, home: true, origin });
+      const r = await call(alex, 'POST', '/api/phone-setup/code', { origin });
+      assert.equal(r.status, 400);
+      assert.equal(r.json.error, ADDRESS_WORDS);
+      const home = await call(alex, 'GET', `/api/phone-setup/home?origin=${encodeURIComponent(origin)}`);
       assert.equal(home.status, 200);
     } finally {
       await saveConnector('publicUrl', { clear: true }, 'alex');
@@ -214,26 +221,27 @@ describe('a phone is set up from a one-time link', () => {
   });
 
   test('no session, no code and no profile', async () => {
-    assert.equal((await call('', 'POST', '/api/phone-setup/code', { calendar: true, home: true, origin })).status, 401);
-    assert.equal((await call('', 'GET', `/api/phone-setup/profile?calendar=1&home=1&origin=${encodeURIComponent(origin)}`)).status, 401);
+    assert.equal((await call('', 'POST', '/api/phone-setup/code', { origin })).status, 401);
+    assert.equal((await call('', 'GET', '/api/phone-setup/profile')).status, 401);
+  });
+
+  test('no session, no Home Screen QR', async () => {
+    assert.equal((await call('', 'GET', `/api/phone-setup/home?origin=${encodeURIComponent(origin)}`)).status, 401);
   });
 
   test('a code needs an open household', async () => {
-    const r = await call(bob, 'POST', '/api/phone-setup/code', { calendar: true, home: true, origin });
+    const r = await call(bob, 'POST', '/api/phone-setup/code', { origin });
     assert.equal(r.status, 409);
   });
 
-  test('the Mac download is the same profile for the signed-in member', async () => {
-    const res = await fetch(`${base}/api/phone-setup/profile?calendar=1&home=1&origin=${encodeURIComponent(origin)}`, { headers: { cookie: alex } });
+  test('the Mac download is the calendar profile for the signed-in member', async () => {
+    const res = await fetch(`${base}/api/phone-setup/profile`, { headers: { cookie: alex } });
     assert.equal(res.status, 200);
     assertProfileHeaders(res.headers);
     const plist = parsePlist(await res.text()) as Plist;
-    assert.deepEqual(types(plist), ['com.apple.caldav.account', 'com.apple.webClip.managed']);
+    assert.deepEqual(types(plist), ['com.apple.caldav.account']);
     assert.equal(payload(plist, 'com.apple.caldav.account')['CalDAVUsername'], 'alex');
     assert.equal(plist.PayloadOrganization, 'Larkspur House');
-
-    assert.equal((await call(alex, 'GET', '/api/phone-setup/profile?calendar=0&home=0')).status, 400);
-    assert.equal((await call(alex, 'GET', '/api/phone-setup/profile?calendar=0&home=1&origin=http%3A%2F%2Fplanner.example.com')).status, 400);
   });
 
   test('settings say where phones reach the NAS and whom to ask', async () => {

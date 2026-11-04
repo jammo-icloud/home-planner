@@ -1,13 +1,13 @@
 /**
  * The configuration profile a phone installs to set itself up: the household
- * calendar as a CalDAV account on the NAS, the planner as a full-screen icon on
- * the Home Screen, or both. It is a property list that iOS reads, written here
+ * calendar as a CalDAV account on the NAS. The Home Screen icon is not in it:
+ * that has its own QR, the page's address. It is a property list that iOS reads, written here
  * by hand so nothing is needed beyond Node.
  *
  * Nothing in it is secret. The CalDAV payload names the account but carries no
  * password, so the phone asks for it when the profile is installed.
  *
- * The UUIDs are derived from the member and what is asked for, not random, so
+ * The UUIDs are derived from the member, not random, so
  * fetching the profile twice gives the same one and iOS replaces the install
  * rather than adding a second.
  */
@@ -17,10 +17,6 @@ export interface ProfileInput {
   member: string;               // the DSM account
   household: string;            // the household's label
   dsmPublicUrl: string | null;  // an origin, as dsmPublicUrl() answers it
-  origin: string | null;        // the planner's origin, for the web clip
-  calendar: boolean;
-  home: boolean;
-  iconPng: Buffer | null;
 }
 
 export const PROFILE_CONTENT_TYPE = 'application/x-apple-aspen-config';
@@ -69,55 +65,32 @@ function plistValue(v: PlistValue, pad: string): string {
 const idPart = (member: string): string => member.toLowerCase().replace(/[^a-z0-9-]/g, '-');
 
 export function buildProfile(o: ProfileInput): string {
-  if (!o.calendar && !o.home) throw new Error('a profile needs at least one of the calendar and the Home Screen icon');
+  if (!o.dsmPublicUrl) throw new Error('the calendar needs the NAS public address, and none is set');
   const id = `name.homeplanner.setup.${idPart(o.member)}`;
-  const content: PlistValue[] = [];
-
-  if (o.calendar) {
-    if (!o.dsmPublicUrl) throw new Error('the calendar needs the NAS public address, and none is set');
-    const url = new URL(o.dsmPublicUrl);
-    const ssl = url.protocol === 'https:';
-    content.push({
-      PayloadType: 'com.apple.caldav.account',
-      PayloadVersion: 1,
-      PayloadIdentifier: `${id}.caldav`,
-      PayloadUUID: profileUuid(`${o.member}\0caldav`),
-      PayloadDisplayName: 'Household calendar',
-      CalDAVAccountDescription: 'Household calendar (NAS)',
-      CalDAVHostName: url.hostname,
-      // An address with no port means the scheme's own.
-      CalDAVPort: url.port ? Number(url.port) : ssl ? 443 : 80,
-      CalDAVUseSSL: ssl,
-      CalDAVUsername: o.member,
-      CalDAVPrincipalURL: caldavPath(o.member),
-    });
-  }
-
-  if (o.home) {
-    if (!o.origin) throw new Error('the Home Screen icon needs the planner origin, and none is kept');
-    const clip: { [key: string]: PlistValue } = {
-      PayloadType: 'com.apple.webClip.managed',
-      PayloadVersion: 1,
-      PayloadIdentifier: `${id}.webclip`,
-      PayloadUUID: profileUuid(`${o.member}\0webclip`),
-      PayloadDisplayName: 'Home Planner',
-      Label: 'Home Planner',
-      URL: o.origin,
-      FullScreen: true,
-      IsRemovable: true,
-      Precomposed: true,
-    };
-    if (o.iconPng) clip['Icon'] = o.iconPng;
-    content.push(clip);
-  }
+  const url = new URL(o.dsmPublicUrl);
+  const ssl = url.protocol === 'https:';
+  const content: PlistValue[] = [{
+    PayloadType: 'com.apple.caldav.account',
+    PayloadVersion: 1,
+    PayloadIdentifier: `${id}.caldav`,
+    PayloadUUID: profileUuid(`${o.member}\0caldav`),
+    PayloadDisplayName: 'Household calendar',
+    CalDAVAccountDescription: 'Household calendar (NAS)',
+    CalDAVHostName: url.hostname,
+    // An address with no port means the scheme's own.
+    CalDAVPort: url.port ? Number(url.port) : ssl ? 443 : 80,
+    CalDAVUseSSL: ssl,
+    CalDAVUsername: o.member,
+    CalDAVPrincipalURL: caldavPath(o.member),
+  }];
 
   const profile: PlistValue = {
     PayloadType: 'Configuration',
     PayloadVersion: 1,
     PayloadIdentifier: id,
-    PayloadUUID: profileUuid(`${o.member}\0${o.calendar ? 1 : 0}${o.home ? 1 : 0}`),
+    PayloadUUID: profileUuid(`${o.member}\0calendar`),
     PayloadDisplayName: 'Home Planner',
-    PayloadDescription: 'The Household calendar in Apple Calendar, and Home Planner on your Home Screen.',
+    PayloadDescription: 'The Household calendar in Apple Calendar.',
     PayloadOrganization: o.household,
     PayloadRemovalDisallowed: false,
     PayloadContent: content,

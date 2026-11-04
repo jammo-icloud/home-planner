@@ -113,11 +113,12 @@
  *   DELETE /api/guests/:email       { why }: take them off it, and end their sessions; their stays stand
  *   POST /api/guests/arrival        { text }: how a guest gets in, sent in each confirmation ('' for none; at most 1000)
  *                                   (these three and the two above: 404 in any household but the one friends book with)
- *   POST /api/phone-setup/code      { calendar, home, origin }: a one-time link for a phone to set itself up, ten minutes,
+ *   POST /api/phone-setup/code      { origin }: a one-time link for a phone to set up its calendar, ten minutes,
  *                                   one per member; { code, url, expiresAt, qr } with the QR as SVG. origin is the page's
- *                                   own, https (or http on this computer); 400 for nothing chosen, or the calendar while
- *                                   the NAS's address is not set
- *   GET  /api/phone-setup/profile?calendar=1&home=1&origin=  the same profile for the signed-in member, as a file, for a Mac
+ *                                   own, https (or http on this computer); 400 while the NAS's address is not set
+ *   GET  /api/phone-setup/profile   the same calendar profile for the signed-in member, as a file, for a Mac
+ *   GET  /api/phone-setup/home?origin=  { url, qr }: the page's address with ?add=home, as a QR for the Home Screen;
+ *                                   touches no code; 400 for an origin that cannot be put on a Home Screen
  *   GET  /api/whoami                who you are, and whose household this is
  *   GET  /api/health                for the container healthcheck, with the version and commit running
  *
@@ -240,8 +241,8 @@ import { sendMail } from './mail.ts';
 import { Limiter } from './limiter.ts';
 import { softwareVersion } from './version.ts';
 import { buildProfile, caldavPath, PROFILE_CONTENT_TYPE, PROFILE_FILENAME } from './profile.ts';
-import { acceptedOrigin, createPhoneCodes } from './phone-setup.ts';
-import type { PhoneCodes, SetupFlags } from './phone-setup.ts';
+import { acceptedOrigin, createPhoneCodes, homeLink, homeOrigin } from './phone-setup.ts';
+import type { PhoneCodes } from './phone-setup.ts';
 import QRCode from 'qrcode';
 
 const PORT = Number(process.env['PORT'] ?? 8090);
@@ -551,23 +552,22 @@ const CODE_EXPIRED = guestPage('This code has expired',
   '<p>Open Home Planner on your computer and make a new one from Set up your iPhone.</p>');
 
 const NOT_HTTPS = 'a phone can be set up only from a page opened over https (or over http on this computer)';
-const NOTHING_CHOSEN = 'choose the Household calendar, Home Planner, or both';
+const NOT_HOME_ORIGIN = "the Home Screen link needs the page's own address, over http or https, with nothing after the host";
 const NO_ADDRESS = "the NAS's address is not set: a DSM administrator sets it under Settings › This NAS › Where phones reach the NAS";
 
 /**
  * What a phone's setup asks for, checked once for the code and the Mac's
- * download alike. The origin is the page's own and is needed only for the Home
- * Screen icon, which opens it; the NAS's address is read now and kept with a
- * code, so the profile a phone gets matches what the sheet showed.
+ * download alike. The calendar is the profile's only payload now, so the NAS's
+ * address is always needed; it is read now and kept with a code, so the profile
+ * a phone gets matches what the sheet showed. The origin is the page's own and
+ * is needed only for the code's link.
  */
-function setupAsked(calendar: boolean, home: boolean, rawOrigin: unknown, originNeeded: boolean):
-  { flags: SetupFlags; origin: string | null; dsmPublicUrl: string | null } {
+function setupAsked(rawOrigin: unknown, originNeeded: boolean): { origin: string | null; dsmPublicUrl: string } {
   const origin = acceptedOrigin(rawOrigin);
   if (originNeeded && origin === null) throw new ToolError(NOT_HTTPS);
-  if (!calendar && !home) throw new ToolError(NOTHING_CHOSEN);
   const dsmPublicUrl = currentPublicUrl();
-  if (calendar && dsmPublicUrl === null) throw new ToolError(NO_ADDRESS);
-  return { flags: { calendar, home }, origin, dsmPublicUrl };
+  if (dsmPublicUrl === null) throw new ToolError(NO_ADDRESS);
+  return { origin, dsmPublicUrl };
 }
 
 /** A profile as a file to install. HEAD gets the headers alone, so a phone's look ahead spends nothing. */
@@ -1233,14 +1233,6 @@ export async function start(
   const send = opts.send ?? sendMail;
   /** Phones' one-time links: memory only, so a restart spends them all. A test hands in its own clock. */
   const phoneCodes = opts.phoneCodes ?? createPhoneCodes();
-  // The Home Screen icon's picture, read once. Without it the icon still works, drawn by iOS from the page.
-  let iconPng: Buffer | null = null;
-  try {
-    iconPng = await readFile(join(SITE_DIR, 'icon-180.png'));
-  } catch {
-    console.warn(`[budget] ${join(SITE_DIR, 'icon-180.png')} could not be read; a phone's Home Screen icon goes without its picture`);
-  }
-
   // An install that predates many-households has its whole budget in one log.
   // Adopt it rather than leaving it on disk with nothing able to open it.
   const adopted = await adoptSingleLog(households, LOG_PATH, ADMIN_USER || null);
@@ -1741,8 +1733,7 @@ export async function start(
       const code = path.slice('/setup/'.length);
       const entry = req.method === 'GET' ? phoneCodes.redeem(code) : req.method === 'HEAD' ? phoneCodes.peek(code) : null;
       if (!entry) return sendPage(res, 404, CODE_EXPIRED);
-      const profile = buildProfile({ ...entry.flags, member: entry.member, household: entry.household,
-        dsmPublicUrl: entry.dsmPublicUrl, origin: entry.origin, iconPng });
+      const profile = buildProfile({ member: entry.member, household: entry.household, dsmPublicUrl: entry.dsmPublicUrl });
       return sendProfile(res, profile, req.method === 'HEAD');
     }
 
@@ -2041,22 +2032,26 @@ export async function start(
 
     // ── setting up a phone, or a Mac ─────────────────────────────────────────
     if (path === '/api/phone-setup/code' && req.method === 'POST') {
-      const body = (await readBody(req)) as { calendar?: unknown; home?: unknown; origin?: unknown } | null;
-      const asked = setupAsked(body?.calendar === true, body?.home === true, body?.origin, true);
+      const body = (await readBody(req)) as { origin?: unknown } | null;
+      const asked = setupAsked(body?.origin, true);
       const made = phoneCodes.issue({
-        member: who, household: active.state.label, flags: asked.flags, origin: asked.origin!, dsmPublicUrl: asked.dsmPublicUrl,
+        member: who, household: active.state.label, origin: asked.origin!, dsmPublicUrl: asked.dsmPublicUrl,
       });
       const qr = await QRCode.toString(made.url, { type: 'svg', margin: 1 });
       return json(res, 200, { code: made.code, url: made.url, expiresAt: new Date(made.expiresAt).toISOString(), qr });
     }
 
     if (path === '/api/phone-setup/profile' && req.method === 'GET') {
-      const calendar = url.searchParams.get('calendar') === '1';
-      const home = url.searchParams.get('home') === '1';
-      const asked = setupAsked(calendar, home, url.searchParams.get('origin'), home);
-      return sendProfile(res, buildProfile({
-        member: who, household: active.state.label, dsmPublicUrl: asked.dsmPublicUrl, origin: asked.origin, calendar, home, iconPng,
-      }), false);
+      const asked = setupAsked(null, false);
+      return sendProfile(res, buildProfile({ member: who, household: active.state.label, dsmPublicUrl: asked.dsmPublicUrl }), false);
+    }
+
+    // The Home Screen's QR is only the page's address, so it needs no code and no NAS address.
+    if (path === '/api/phone-setup/home' && req.method === 'GET') {
+      const origin = homeOrigin(url.searchParams.get('origin'));
+      if (origin === null) throw new ToolError(NOT_HOME_ORIGIN);
+      const link = homeLink(origin);
+      return json(res, 200, { url: link, qr: await QRCode.toString(link, { type: 'svg', margin: 1 }) });
     }
 
     // The household's own zone, read per request: it decides which day "today" is,

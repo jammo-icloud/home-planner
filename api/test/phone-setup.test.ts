@@ -1,10 +1,10 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { acceptedOrigin, createPhoneCodes } from '../src/phone-setup.ts';
+import { acceptedOrigin, createPhoneCodes, homeLink, homeOrigin } from '../src/phone-setup.ts';
 import type { SetupEntry } from '../src/phone-setup.ts';
 
 const ask = {
-  member: 'alex', household: 'Larkspur House', flags: { calendar: true, home: true },
+  member: 'alex', household: 'Larkspur House',
   origin: 'https://planner.example.com', dsmPublicUrl: 'https://nas.example.com:5001',
 };
 
@@ -72,4 +72,18 @@ test('acceptedOrigin takes https anywhere and http only on loopback', () => {
     'http://planner.example.com:8088', 'https://planner.example.com/app',
     'https://u:p@planner.example.com', 'ftp://planner.example.com', '', null, 42,
   ]) assert.equal(acceptedOrigin(raw), null);
+});
+
+test('homeOrigin takes http on any host', () => {
+  for (const [raw, want] of [
+    ['http://planner.example.com:8088', 'http://planner.example.com:8088'],
+    ['https://planner.example.com', 'https://planner.example.com'],
+    ['http://localhost:5577', 'http://localhost:5577'],
+    ['https://planner.example.com/', 'https://planner.example.com'],
+  ] as const) assert.equal(homeOrigin(raw), want);
+  for (const raw of [
+    'https://planner.example.com/app', 'https://u:p@planner.example.com', 'https://planner.example.com/?x=1',
+    'ftp://planner.example.com', '', null, 42,
+  ]) assert.equal(homeOrigin(raw), null);
+  assert.equal(homeLink('https://planner.example.com'), 'https://planner.example.com/?add=home');
 });
