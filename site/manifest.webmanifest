@@ -1,6 +1,6 @@
 {
-  "name": "Household budget",
-  "short_name": "Budget",
+  "name": "Home Planner",
+  "short_name": "Home Planner",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

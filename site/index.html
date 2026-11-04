@@ -15,10 +15,11 @@
 <!-- Named explicitly, or Safari guesses at /apple-touch-icon.png and then at
      /<hostname>.png, and 404s on both. -->
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
-<link rel="apple-touch-icon" href="/icon.svg" />
+<!-- iOS does not use an SVG touch icon, so the Home Screen gets the PNG. -->
+<link rel="apple-touch-icon" href="/icon-180.png" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
-<meta name="apple-mobile-web-app-title" content="Budget" />
+<meta name="apple-mobile-web-app-title" content="Home Planner" />
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F9FE" />
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F131A" />
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" rel="stylesheet" />
@@ -632,6 +633,13 @@
     background:var(--surface-sunken);color:var(--ink-soft);font-size:var(--fs-small)}
   .setup-note > span{flex:1;min-width:12em}
   .setup-note .btn{flex:none}
+  /* The Home Screen banner, from the Home Screen QR's marker: first on Today until its Done. */
+  .home-banner{margin-bottom:12px;padding:var(--sp-4);border:var(--stroke-heavy) solid var(--accent-line);
+    border-radius:var(--r-card);background:var(--accent-tint);color:var(--ink);display:grid;gap:var(--sp-3);justify-items:start}
+  .home-banner h2{font-size:var(--fs-ui);font-weight:var(--fw-semibold)}
+  .home-banner ol{margin:0;padding:0;list-style:none;display:grid;gap:var(--sp-2);font-size:var(--fs-ui)}
+  .home-banner li{display:flex;gap:10px;align-items:flex-start}
+  .home-banner p{margin:0;font-size:var(--fs-small);color:var(--ink-soft)}
   .tday{font-size:var(--fs-small);font-weight:600;color:var(--ink-soft);margin:12px 0 0}
   .tnew{display:flex;align-items:center;gap:10px;font-size:var(--fs-micro);font-weight:600;color:var(--accent-ink)}
   .tnew::before,.tnew::after{content:'';flex:1;height:1px;background:var(--accent-line)}
@@ -1200,10 +1208,21 @@
   div.rows .check input[type=checkbox]{margin-top:0}
   div.rows .check input[type=checkbox]:disabled{opacity:.6}
   .check .what{display:block;font-size:var(--fs-small);color:var(--ink-soft)}
-  /* Set up your iPhone: the code at 164 px beside its words, which wrap under it on a phone. */
+  /* Set up your iPhone: two numbered sections, the first in an accent box; each code at 164 px
+     beside its words, which wrap under it on a phone. */
   #phone-sec > div > p{margin:var(--sp-3) 0 0}
-  #phone-sec .check input[type=checkbox]:disabled{opacity:.6}
-  #phone-sec .check:has(input:disabled){cursor:default}
+  .phone-part{margin-top:var(--sp-4);padding:0 var(--sp-4)}
+  .phone-part.first{padding:var(--sp-4);border:var(--stroke-heavy) solid var(--accent-line);border-radius:var(--r-card)}
+  .phone-part.first .phone-code{margin-bottom:0}
+  .phone-part > p{margin:var(--sp-3) 0 0;font-size:var(--fs-ui);color:var(--ink-soft)}
+  .phone-part h3{display:flex;align-items:center;gap:10px;font-size:var(--fs-ui);font-weight:var(--fw-semibold)}
+  .phone-n,.home-banner .n{flex:none;display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;
+    background:var(--accent-fill);color:var(--on-accent);font-size:var(--fs-micro);font-weight:var(--fw-semibold)}
+  .phone-warm{margin:var(--sp-3) 0 0;padding:var(--sp-3) var(--sp-4);border:1px solid var(--warm-card-line);
+    background:var(--warm-card);border-radius:var(--r-control);font-size:var(--fs-ui);color:var(--ink)}
+  .phone-add{flex:1 1 100%;display:flex;flex-wrap:wrap;gap:var(--sp-3) var(--sp-4);align-items:center}
+  .phone-add .btn{flex:none}
+  .phone-add p{flex:1 1 220px;min-width:0;margin:0;font-size:var(--fs-small);color:var(--ink-soft)}
   .phone-code{display:flex;flex-wrap:wrap;gap:var(--sp-4);align-items:flex-start;margin:var(--sp-3) 0;min-height:var(--tap)}
   .phone-code img{flex:none;display:block;width:164px;height:164px;border-radius:var(--r-control)}
   .phone-code .words{flex:1 1 220px;min-width:0;display:grid;gap:var(--sp-2);font-size:var(--fs-ui);color:var(--ink-soft)}
@@ -1413,8 +1432,9 @@
         <button class="btn" id="cat-starter" type="button" hidden>Add the starter set</button>
       </div>
     </section>
-    <!-- Set up your iPhone: a one-time QR code for a profile, a download for a
-         Mac, and the steps to type it instead. Drawn by openPhoneSheet. -->
+    <!-- Set up your iPhone: a QR code that opens Home Planner for the Home
+         Screen, and the calendar account as a one-time QR code for a profile,
+         a download for a Mac and the steps to type it. Drawn by openPhoneSheet. -->
     <section id="phone-sec" class="sheet" hidden aria-labelledby="phone-h">
       <div class="sheet-head">
         <h2 id="phone-h">Set up your iPhone</h2>
@@ -1430,6 +1450,16 @@
          change made directly. Newest at the bottom, beside the reply box. -->
     <div id="briefing" class="today" hidden>
       <div class="today-main">
+      <!-- Shown by homeBanner when the page was opened from the Home Screen QR. -->
+      <section class="home-banner" id="home-banner" aria-labelledby="home-banner-h" hidden>
+        <h2 id="home-banner-h">Put Home Planner on your Home Screen</h2>
+        <ol>
+          <li><span class="n" aria-hidden="true">1</span><span>Tap Share, the box with the arrow, at the bottom of Safari.</span></li>
+          <li><span class="n" aria-hidden="true">2</span><span>Choose Add to Home Screen, then Add.</span></li>
+        </ol>
+        <p>It opens full screen, like an app, signed in as you.</p>
+        <button class="btn" id="home-banner-done" type="button">Done</button>
+      </section>
       <!-- What is not set up yet: reminders worked out on each load from
            GET /api/today's setup, above the thread and never among it. -->
       <div class="setup-notes" id="setup-notes" hidden></div>
@@ -1666,12 +1696,38 @@
 <script type="module">
 const $ = (id) => document.getElementById(id);
 
+// The Home Screen QR opens /?add=home. The marker comes off the address bar at
+// once, so a bookmark never carries it, and is kept for this tab so that it
+// outlasts the sign-in page. Today shows the banner while it is kept.
+{
+  const q = new URLSearchParams(location.search);
+  if (q.get('add') === 'home') {
+    q.delete('add');
+    const rest = q.toString();
+    history.replaceState(history.state, '', `${location.pathname}${rest ? `?${rest}` : ''}${location.hash}`);
+    try { sessionStorage.setItem('hp.addHome', '1'); } catch { /* storage blocked */ }
+  }
+}
+/** Whether Today shows the Home Screen banner: asked for, not already on the Home Screen, not done on this device. */
+function wantsHomeBanner() {
+  if (navigator.standalone === true) return false;
+  try {
+    return sessionStorage.getItem('hp.addHome') === '1' && !localStorage.getItem('hp.homeBannerDone');
+  } catch { return false; }
+}
+function homeBanner() { $('home-banner').hidden = !wantsHomeBanner(); }
+$('home-banner-done').addEventListener('click', () => {
+  try { localStorage.setItem('hp.homeBannerDone', new Date().toISOString()); } catch { /* private window */ }
+  try { sessionStorage.removeItem('hp.addHome'); } catch { /* storage blocked */ }
+  $('home-banner').hidden = true;
+});
+
 // ── menus ──────────────────────────────────────────────────────────────────
 //
 // Three: the household's things in the top bar, you at its end (with the
-// household's links in your menu), and a budget's settings under its name at the top of Budget. Real menus,
-// so a keyboard works: Escape closes and returns focus, the arrows move, Tab
-// leaves, and picking anything closes it.
+// household's links in your menu), and a budget's settings under its name at
+// the top of Budget. Real menus, so a keyboard works: Escape closes and
+// returns focus, the arrows move, Tab leaves, and picking anything closes it.
 const menus = [];
 const closeMenus = () => { for (const close of menus) close(false); };
 /**
@@ -2392,8 +2448,9 @@ async function loadThread(opts = {}) {
     if (page.noBudgets) showProblem(new Error('This household has no budgets yet. Create the first one to begin.'));
     else if (page.noOpenMonth) showProblem(new Error('no open month'));
     // Newest is at the bottom. The reply box is sticky, so it always counts as
-    // in view; scroll the page itself.
-    if (!opts.before && view === 'today') window.scrollTo({ top: document.documentElement.scrollHeight });
+    // in view; scroll the page itself. With the Home Screen banner up, the page
+    // stays at its top, where the banner is.
+    if (!opts.before && view === 'today' && $('home-banner').hidden) window.scrollTo({ top: document.documentElement.scrollHeight });
   } catch (ex) {
     showProblem(ex);
   } finally {
@@ -5991,7 +6048,6 @@ const LUCIDE = {
   'square-kanban': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/>',
   calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
   wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
-  menu: '<line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/>',
 };
 function lucide(name) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -7768,11 +7824,12 @@ function phoneRow() {
 
 // ── Set up your iPhone ─────────────────────────────────────────────────────
 //
-// A sheet at the top of <main>, from the person menu or the row above. The two
-// boxes decide what the profile holds, and each change asks for a new code:
-// the server keeps one live code per member, so only the latest answer is
-// drawn. The calendar needs the NAS's address; the Home Screen icon does not,
-// so with the address unset the sheet still offers a code for the icon alone.
+// A sheet at the top of <main>, from the person menu or the row above, with
+// two separate things. Section 1 is a QR code of Home Planner's own address
+// with the banner's marker: drawn on open, never a code, never the NAS's
+// address. Section 2 is the calendar account: its button asks for a one-time
+// code, and the server keeps one live code per member, so only the latest
+// answer is drawn. Section 2 needs the NAS's address; section 1 does not.
 
 const PHONE_AT = 'phone-setup-at';
 /** When this device last made a code or downloaded the profile, as an ISO date, or null. */
@@ -7789,7 +7846,7 @@ function markPhoneSetUp() {
 let phoneAsked = 0;
 /** Replaces a drawn code with "expired" when its ten minutes are up. */
 let phoneTimer = 0;
-/** The open sheet's boxes, code area and Mac link, or null while it is closed. */
+/** The open sheet's two code areas, or null while it is closed. */
 let phoneSheet = null;
 
 async function openPhoneSheet() {
@@ -7804,7 +7861,7 @@ async function openPhoneSheet() {
   window.scrollTo({ top: 0 });
   $('phone-h').setAttribute('tabindex', '-1');
   $('phone-h').focus({ preventScroll: true });
-  void phoneCode();
+  void phoneHome();
 }
 
 /** Closed by its Done, by Set the address, and (without drawing Settings again) by a household switch. */
@@ -7818,19 +7875,6 @@ function closePhoneSheet(redraw = true) {
 }
 $('phone-close').addEventListener('click', () => closePhoneSheet());
 $('me-phone').addEventListener('click', () => void openPhoneSheet());
-
-/** One box: a real checkbox in its label, the name in bold, then what it adds. */
-function phoneBox(name, rest, what, checked, disabled) {
-  const l = node('label', 'check');
-  const i = node('input');
-  i.type = 'checkbox';
-  i.checked = checked;
-  i.disabled = disabled;
-  const t = node('span');
-  t.append(node('b', '', name), rest, node('span', 'what', what));
-  l.append(i, t);
-  return [l, i];
-}
 
 /** Where the code would be while the NAS's address is unset; `full` adds who sets it. */
 function phoneUnset(ps, full) {
@@ -7849,29 +7893,59 @@ function phoneUnset(ps, full) {
   return d;
 }
 
+/** One numbered section: its box and its title. */
+function phonePart(n, title, first) {
+  const part = node('div', first ? 'phone-part first' : 'phone-part');
+  const h = node('h3');
+  h.append(node('span', 'phone-n', String(n)), title);
+  part.appendChild(h);
+  return part;
+}
+
+/** A QR code from the server's SVG text; as an image's source it is drawn, never run. */
+function phoneQr(svg, alt) {
+  const img = node('img');
+  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+  img.width = 164;
+  img.height = 164;
+  img.alt = alt;
+  return img;
+}
+
 function drawPhoneSheet(ps) {
   const body = $('phone-body');
   body.textContent = '';
   const caldav = ps.phoneSetup?.caldav ?? null;
   const addressSet = !!ps.dsmPublicUrl && !!caldav;
-  body.appendChild(node('p', '',
-    'One scan puts the Household calendar in Apple Calendar, with alerts and Siri, and Home Planner on the Home Screen. A change made to an event on the phone comes back here as a card to approve.'));
-  const [lc, cal] = phoneBox('Household calendar', ' in Apple Calendar',
-    `A CalDAV account for ${myName} at your NAS. The phone asks for your NAS password once.`, addressSet, !addressSet);
-  const [lh, home] = phoneBox('Home Planner', ' on the Home Screen',
-    "Opens full screen at the household's address, like Add to Home Screen", true, false);
-  body.appendChild(lc);
-  if (!addressSet) body.appendChild(phoneUnset(ps, true));
-  body.appendChild(lh);
-  const area = node('div', 'phone-code');
-  area.setAttribute('aria-live', 'polite');
-  const mac = node('a', 'btn', 'Download the profile for a Mac');
-  mac.setAttribute('download', '');
-  mac.addEventListener('click', markPhoneSetUp);
-  const acts = node('div', 'actions');
-  acts.appendChild(mac);
-  body.append(area, acts);
-  if (addressSet) {
+  body.appendChild(node('p', '', 'Two separate things. Do either, or both.'));
+
+  const one = phonePart(1, 'Home Planner on your Home Screen', true);
+  const homeArea = node('div', 'phone-code');
+  homeArea.setAttribute('aria-live', 'polite');
+  one.appendChild(homeArea);
+  body.appendChild(one);
+
+  const two = phonePart(2, 'The Household calendar in Apple Calendar', false);
+  two.appendChild(node('p', '',
+    'This adds a calendar account to the phone, pointed at the NAS. The Household calendar then shows in Apple Calendar with alerts and Siri, and an event you change there comes back here as a card to approve.'));
+  let calArea = null;
+  if (!addressSet) {
+    two.appendChild(phoneUnset(ps, true));
+  } else {
+    const warm = node('p', 'phone-warm');
+    warm.append('It will ask for one password. That is your NAS password, the one you sign in to Home Planner with. Your user name, ',
+      node('b', '', myName), ', is already filled in.');
+    two.appendChild(warm);
+    calArea = node('div', 'phone-code');
+    calArea.setAttribute('aria-live', 'polite');
+    two.appendChild(calArea);
+    const mac = node('a', 'btn', 'Download the profile for a Mac');
+    mac.href = '/api/phone-setup/profile';
+    mac.setAttribute('download', '');
+    mac.addEventListener('click', markPhoneSetUp);
+    const acts = node('div', 'actions');
+    acts.appendChild(mac);
+    two.appendChild(acts);
     const more = node('details');
     more.appendChild(node('summary', '', 'Type it instead'));
     const steps = node('ol', 'steps');
@@ -7879,60 +7953,79 @@ function drawPhoneSheet(ps) {
     step(node('b', '', 'On an iPhone: '), 'Settings → Calendar → Accounts → Add Account → Other → Add CalDAV Account.');
     step(node('b', '', 'On a Mac: '), 'Calendar → Settings → Accounts → + → Other CalDAV Account.');
     step(node('b', '', 'Server: '), node('code', '', caldav));
-    step(node('b', '', 'User name: '), node('code', '', myName), '. Password: your NAS password.');
+    step(node('b', '', 'User name: '), node('code', '', myName));
+    step(node('b', '', 'Password: '), 'your NAS password.');
     more.append(steps, node('p', 'hint', "Synology Calendar shows the same address under a calendar's menu, CalDAV Account."));
-    body.appendChild(more);
+    two.appendChild(more);
   }
+  body.appendChild(two);
   body.appendChild(node('p', 'hint',
     'Away from home the calendar syncs only if the NAS can be reached from outside the house; otherwise the phone syncs at home or over the VPN. Members who skip this lose nothing in Home Planner.'));
-  phoneSheet = { cal, home, area, mac, addressSet, ps };
-  cal.addEventListener('change', () => void phoneCode());
-  home.addEventListener('change', () => void phoneCode());
+  phoneSheet = { homeArea, calArea };
+  if (calArea) phoneAddButton(calArea);
 }
 
-/** Ask for a code for what is ticked and draw it, or say why there is none. */
-async function phoneCode() {
+/** Section 2 before a code is asked for: the button, with what the profile will say beside it. */
+function phoneAddButton(area) {
+  area.textContent = '';
+  const row = node('div', 'phone-add');
+  row.append(textBtn('Add the calendar account', 'btn primary', 'phone-add', () => void phoneCode()),
+    node('p', '', 'Opens as a profile: Settings → Profile Downloaded → Install. It is unsigned, so iOS says "Not Verified".'));
+  area.appendChild(row);
+}
+
+/** Section 1's code: this page's own address, so it works before the NAS's address is set. */
+async function phoneHome() {
   const sheet = phoneSheet;
   if (!sheet) return;
-  const { cal, home, area, mac, addressSet, ps } = sheet;
-  clearTimeout(phoneTimer);
-  const ask = ++phoneAsked;
-  const c = cal.checked && !cal.disabled;
-  const h = home.checked;
-  mac.hidden = !c && !h;
-  mac.href = `/api/phone-setup/profile?calendar=${c ? 1 : 0}&home=${h ? 1 : 0}&origin=${encodeURIComponent(location.origin)}`;
+  const area = sheet.homeArea;
   area.textContent = '';
-  if (!c && !h) {
-    area.appendChild(addressSet ? node('p', '', 'Tick at least one to make a code.') : phoneUnset(ps, false));
-    return;
-  }
   area.appendChild(node('p', 'hint', 'Making a code…'));
   let out;
   try {
-    out = await api('/api/phone-setup/code', { calendar: c, home: h, origin: location.origin });
+    out = await api(`/api/phone-setup/home?origin=${encodeURIComponent(location.origin)}`);
+  } catch (ex) {
+    if (phoneSheet !== sheet) return;
+    area.textContent = '';
+    area.appendChild(node('p', 'err', ex.message));
+    return;
+  }
+  if (phoneSheet !== sheet) return;
+  area.textContent = '';
+  const words = node('div', 'words');
+  words.append(
+    node('p', '', 'Scan with the camera. Safari opens Home Planner with a banner that says what to tap: Share, then Add to Home Screen.'),
+    node('p', 'hint', "That is all it does. No profile, nothing to install, no password. The code is just the household's address."));
+  area.append(phoneQr(out.qr, 'A QR code of Home Planner’s address for your iPhone’s camera'), words);
+}
+
+/** Section 2's code: ask for one and draw it, or say why there is none. */
+async function phoneCode() {
+  const sheet = phoneSheet;
+  if (!sheet?.calArea) return;
+  const area = sheet.calArea;
+  clearTimeout(phoneTimer);
+  const ask = ++phoneAsked;
+  area.textContent = '';
+  area.appendChild(node('p', 'hint', 'Making a code…'));
+  let out;
+  try {
+    out = await api('/api/phone-setup/code', { origin: location.origin });
   } catch (ex) {
     if (ask !== phoneAsked) return;
     area.textContent = '';
     // The server's own words: over plain http from another machine, why no code can be made.
     area.appendChild(node('p', 'err', ex.message));
-    mac.hidden = true;
     return;
   }
   if (ask !== phoneAsked) return;
-  mac.hidden = false;
   markPhoneSetUp();
   area.textContent = '';
-  // The QR comes as SVG text; as an image's source it is drawn, never run.
-  const img = node('img');
-  img.src = `data:image/svg+xml;charset=utf-8,${encodeURIComponent(out.qr)}`;
-  img.width = 164;
-  img.height = 164;
-  img.alt = 'A QR code for your iPhone’s camera';
   const words = node('div', 'words');
   words.append(
-    node('p', '', "Scan with the iPhone's camera. It opens a page on your NAS that hands Safari a configuration profile. Then: Settings → Profile Downloaded → Install."),
-    node('p', 'hint', "This code works for 10 minutes and only for you. The profile is unsigned, so iOS says 'Not Verified'; that is expected."));
-  area.append(img, words);
+    node('p', '', 'Opens as a profile: Settings → Profile Downloaded → Install. It is unsigned, so iOS says "Not Verified".'),
+    node('p', 'hint', 'This code works for 10 minutes and only for you.'));
+  area.append(phoneQr(out.qr, 'A QR code of the calendar account for your iPhone’s camera'), words);
   phoneTimer = setTimeout(() => {
     if (ask !== phoneAsked) return;
     area.textContent = '';
@@ -10271,6 +10364,7 @@ async function enterApp() {
   inSandbox = who.sandbox === true;
   $('login').hidden = true;
   $('app').hidden = false;
+  homeBanner();
   await loadThread();
   if (settingsProblem) {
     showProblem(new Error(`Settings could not be read (${settingsProblem.message}): the links in your menu and your look are this device's until the page is loaded again.`));
