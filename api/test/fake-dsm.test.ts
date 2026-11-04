@@ -97,6 +97,20 @@ describe('calendars and sharing', () => {
     assert.deepEqual((await syno.sharingOf(alice, made.cal_id)).groups, groups);
   });
 
+  test('a calendar is deleted by its owner with cal_id alone, its events with it, as the check deletes its own', async () => {
+    const made = await syno.createCalendar(alice, { displayname: 'Planner check', color: '#5B8DEF' });
+    const at = Date.UTC(2026, 10, 3, 9) / 1000;
+    const evt = await syno.createEvent(alice, {
+      cal_id: made.cal_id, original_cal_id: made.original_cal_id,
+      summary: 'x', description: '', is_all_day: false, dtstart: at, dtend: at + 3600, tz_id: 'UTC',
+    });
+    await assert.rejects(() => syno.dsm({ api: 'SYNO.Cal.Cal', version: syno.CAL_VERSION, method: 'delete', sid: bob, params: { cal_id: made.cal_id } }),
+      (e: unknown) => e instanceof SynologyError && e.code === 9009);
+    await syno.dsm({ api: 'SYNO.Cal.Cal', version: syno.CAL_VERSION, method: 'delete', sid: alice, params: { cal_id: made.cal_id } });
+    assert.equal((await syno.listCalendars(alice)).some((c) => c.cal_id === made.cal_id), false);
+    await assert.rejects(() => syno.getEvent(alice, evt), (e: unknown) => e instanceof SynologyError && e.code === 9009);
+  });
+
   test('another account\'s calendar cannot be shared or read', async () => {
     await assert.rejects(() => syno.sharingOf(bob, '/alice/home/'),
       (e: unknown) => e instanceof SynologyError && e.code === 9009);
@@ -151,6 +165,16 @@ describe('contacts: one address book', () => {
     assert.equal((await syno.listContacts(alice, { addressbook_id: book.id })).length, 1);
     assert.deepEqual((await syno.searchContacts(alice, 'plumb')).map((c) => c.id), [made.id]);
     assert.deepEqual(await syno.searchContacts(alice, 'electric'), []);
+  });
+
+  test('a contact is deleted by id, as the check deletes its own; a second delete is refused', async () => {
+    const [book] = await syno.listAddressbooks(alice);
+    const made = await syno.createContact(alice, { addressbook_id: book!.id, full_name: 'Planner Check', emails: ['planner-check@example.com'] });
+    assert.deepEqual((await syno.searchContacts(alice, 'Planner Check')).map((c) => c.id), [made.id]);
+    const del = () => syno.dsm({ api: 'SYNO.Contacts.Contact', version: 1, method: 'delete', sid: alice, params: { id: made.id } });
+    await del();
+    assert.deepEqual(await syno.searchContacts(alice, 'Planner Check'), []);
+    await assert.rejects(del, (e: unknown) => e instanceof SynologyError && e.code === 120);
   });
 });
 

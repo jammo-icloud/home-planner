@@ -50,11 +50,12 @@ import {
 import type { DriveFile } from '../../src/drive.ts';
 import {
   CALENDAR_LIST_PARAMS, CAL_VERSION, COPY_MOVE_VERSION, EVENT_VERSION, EtagMismatch, FILE_STATION_VERSION, NAS_MOVE_WAIT_MS,
-  NOT_AN_ETAG_REFUSAL, SHARING_VERSION, SynologyError, contactsVersionNow, createCalendar, createEvent, createFolder,
-  deleteEvent, dsm, downloadFile, fetchFor, getEvent, jsonBody, listAddressbooks, listCalendars, listContacts, listEvents,
-  listFolder, listRows, reach, renameCalendar, setEvent, shareCalendar, sharingOf, uploadFile, verdict,
+  NOT_AN_ETAG_REFUSAL, SHARING_VERSION, SynologyError, contactsVersionNow, createCalendar, createContact, createEvent,
+  createFolder, deleteEvent, dsm, downloadFile, fetchFor, getEvent, jsonBody, listAddressbooks, listCalendars, listContacts,
+  listEvents, listFolder, listRows, reach, renameCalendar, searchContacts, setEvent, shareCalendar, sharingOf, uploadFile,
+  verdict,
 } from '../../src/synology.ts';
-import type { CalEvent, CalendarRef, DsmFetch } from '../../src/synology.ts';
+import type { Addressbook, CalEvent, CalendarRef, Contact, DsmFetch } from '../../src/synology.ts';
 import { MOVE_WAIT_MS } from '../../src/moves.ts';
 
 const user = process.env['CHECK_USER']?.trim() ?? '';
@@ -1144,6 +1145,103 @@ async function deleteCheckCalendar(cal: CalendarRef, name: string, sharedWith: s
   afterWrites.push(`${left}${sharedWith ? ` It is shared with ${sharedWith}.` : ''}`);
 }
 
+// ─── contacts writes, with CHECK_CONTACTS_WRITE=1 ────────────────────────────
+
+const CHECK_CONTACT = 'Planner Check';
+const CHECK_EMAIL = 'planner-check@example.com';
+
+/** Adds one contact, finds it, and tries to delete it again; nothing else in the address book is touched. */
+async function checkContactsWrite(): Promise<void> {
+  if (!contactsWrite) {
+    say(`\nContacts writes: skipped. Set CHECK_CONTACTS_WRITE=1 to add a contact "${CHECK_CONTACT}" (${CHECK_EMAIL}), find it, `
+      + 'and try to delete it again (CHECK_ADDRESSBOOK=<name> picks the address book; the first otherwise).');
+    return;
+  }
+  say(`\n── Contacts writes (CHECK_CONTACTS_WRITE): a contact of the check's own, "${CHECK_CONTACT}" ──`);
+  let books: Addressbook[] = [];
+  try {
+    books = await listAddressbooks(sid);
+  } catch (err) {
+    stepFailed('listing the address books', err);
+  }
+  const book = addressbookName ? books.find((b) => b.name === addressbookName) : books[0];
+  if (!book) {
+    if (addressbookName) failed.push(`no address book called ${addressbookName}`);
+    say(`\nContacts writes: skipped, because the client reads ${addressbookName ? `no address book called "${addressbookName}"` : 'no address book'}.`);
+    afterWrites.push('No contact was left: there was no address book to add one to.');
+    return;
+  }
+  say(`\nUsing the address book "${book.name}" (id ${book.id}).`);
+
+  // Those of that name already there (an earlier run's), so only the one made now is deleted.
+  const named = async (): Promise<Contact[]> => (await searchContacts(sid, CHECK_CONTACT)).filter((c) => c.full_name === CHECK_CONTACT);
+  const earlier = new Set((await named().catch(() => [])).map((c) => c.id));
+  if (earlier.size) say(`  ${earlier.size} contact(s) called "${CHECK_CONTACT}" are there already, from an earlier run; they are left as they are.`);
+
+  const made = (await viaClient(`SYNO.Contacts.Contact create (v${contactsVersion}), "${CHECK_CONTACT}" with ${CHECK_EMAIL}, in address book ${book.id}, as createContact sends it`,
+    (f) => createContact(sid, { addressbook_id: book.id, full_name: CHECK_CONTACT, emails: [CHECK_EMAIL] }, f),
+    (c) => {
+      if (c.full_name !== CHECK_CONTACT || !Number.isFinite(c.id)) failed.push('the created contact was not read back as made');
+      if (!c.emails.includes(CHECK_EMAIL)) failed.push('the created contact\'s email was not read back');
+      return `id ${c.id}, full_name ${JSON.stringify(c.full_name)}, emails ${JSON.stringify(c.emails)}, addressbook_id ${c.addressbook_id}`
+        + (c.emails.includes(CHECK_EMAIL) ? '' : '. The email is not read back: either create did not take `email` as a list of { value } '
+          + '(createContact), or the reply names it otherwise (contact(), src/synology.ts); the list rows below show how the NAS keeps it');
+    }))?.value;
+
+  // The rows of that name only, never the whole address book: its other contacts are not the check's to print.
+  let hits: Contact[] = [];
+  await probe(`SYNO.Contacts.Contact list (v${contactsVersion}), limit 1000, the rows called "${CHECK_CONTACT}" only; then searchContacts`,
+    async () => {
+      const data = await dsm<unknown>({ api: 'SYNO.Contacts.Contact', version: contactsVersion, method: 'list', sid, params: { limit: 1000 } });
+      const rows = listRows<{ full_name?: unknown }>(data, 'contact', 'contacts');
+      return { reply: keysOf(data), rows: rows.length, [CHECK_CONTACT]: rows.filter((r) => r.full_name === CHECK_CONTACT) };
+    },
+    async () => {
+      hits = await named();
+      const fresh = hits.filter((c) => !earlier.has(c.id));
+      if (!fresh.length) failed.push('the contact made is not found by searchContacts');
+      return fresh.length ? `searchContacts finds it: id ${fresh.map((c) => c.id).join(', ')}, emails ${JSON.stringify(fresh[0]!.emails)}`
+        : `searchContacts does NOT find it among ${hits.length} of that name`;
+    });
+
+  // The one made now: by the id create answered, else the one new row of that name.
+  const fresh = hits.filter((c) => !earlier.has(c.id));
+  const id = made && Number.isFinite(made.id) && !earlier.has(made.id) ? made.id : fresh.length === 1 ? fresh[0]!.id : null;
+  if (id === null) {
+    if (!made && !fresh.length) {
+      afterWrites.push('No contact was left: create was refused.');
+      return;
+    }
+    failed.push('the check\'s contact could not be told apart to delete');
+    const left = `The contact '${CHECK_CONTACT}' was left; delete it in Synology Contacts.`;
+    say(`\n  ${left}`);
+    afterWrites.push(left);
+    return;
+  }
+
+  // The check's own clean-up. Contacts is not documented and the app deletes no contact,
+  // so `delete` and its `id` are both guesses, `id` because `get` takes it.
+  let gone = false;
+  await ask(`SYNO.Contacts.Contact delete (v${contactsVersion}), id ${id} (the check's own clean-up; method and parameter are guesses)`,
+    () => dsm({ api: 'SYNO.Contacts.Contact', version: contactsVersion, method: 'delete', sid, params: { id } }),
+    async (a) => {
+      if ('refused' in a) {
+        return `refused (code ${a.refused.code}): 103 is no such method, 114 or 120 a parameter it wants otherwise (an \`id_list\`, perhaps); `
+          + 'nothing in the app depends on it';
+      }
+      gone = !(await named()).some((c) => c.id === id);
+      return gone ? 'answered, and searchContacts no longer finds it' : 'answered, but searchContacts STILL finds it';
+    });
+  if (gone) {
+    afterWrites.push(`The contact '${CHECK_CONTACT}' was deleted; no contact was left.`);
+    return;
+  }
+  failed.push('the check\'s contact was not deleted');
+  const left = `The contact '${CHECK_CONTACT}' was left; delete it in Synology Contacts.`;
+  say(`  ${left}`);
+  afterWrites.push(left);
+}
+
 if (!user || !pass) {
   stop('Set CHECK_USER and CHECK_PASS (and CHECK_OTP if the account asks for a code) to a DSM account, then run this again.');
 }
@@ -1270,6 +1368,13 @@ try {
     await checkCalendarWrite();
   } catch (err) {
     stepFailed('the calendar writes stopped before their end', err);
+  }
+
+  // 4c. Contacts writes, only when asked: one contact the check adds and tries to delete.
+  try {
+    await checkContactsWrite();
+  } catch (err) {
+    stepFailed('the contacts writes stopped before their end', err);
   }
 
   // 5. File Station. One read that needs no path, always: if it is answered

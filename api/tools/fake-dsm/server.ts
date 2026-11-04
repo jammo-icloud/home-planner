@@ -383,6 +383,8 @@ export async function start(opts: {
         return rawCalendar(cal, who);
       },
       // Its owner's to delete, with its events: as deleting it in Synology Calendar does.
+      // The app deletes no calendar; the check deletes the one it makes with this. The
+      // guide's `Method Delete` takes `cal_id` alone; not yet confirmed on the real NAS.
       delete: (p, who) => {
         const cal = ownCalendar(need(p, 'cal_id'), who);
         calendars.delete(cal.cal_id);
@@ -505,6 +507,12 @@ export async function start(opts: {
         if (p.has('email')) c.email = parsed(p, 'email');
         if (p.has('org')) c.org = p.get('org')!;
         return c;
+      },
+      // The app deletes no contact; the check deletes the one it makes with this.
+      // `delete` with `id`, as `get` takes it, is a guess: not yet confirmed on the real NAS.
+      delete: (p) => {
+        if (!contacts.delete(num(p, 'id'))) throw new Refuse(BAD_PARAM);
+        return {};
       },
     },
     // Who is an administrator, and which accounts exist. Only an administrator
