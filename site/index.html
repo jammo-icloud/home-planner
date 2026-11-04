@@ -215,6 +215,8 @@
   .walk-own .walk-rows{margin-bottom:8px}
   @container page (min-width: 768px){
     .walk-grid{grid-template-columns:220px minmax(0,1fr);gap:var(--sp-8)}
+    /* The income step on its own has no rail beside it. */
+    .walk.alone .walk-grid{grid-template-columns:minmax(0,var(--measure))}
     /* Below the sticky top bar, as the rows scrolled to from the card are. */
     .walk-rail{position:sticky;top:72px}
   }
@@ -4231,10 +4233,14 @@ function showProblem(ex) {
       });
       box.append(ul, go);
     } catch (inner) {
-      box.textContent = inner.message;
+      // Said beside the button, not in place of it: the box still has to offer a way on.
+      said.textContent = inner.message;
+      open.disabled = false;
     }
   });
-  box.appendChild(open);
+  const said = node('span', 'quiet');
+  said.setAttribute('aria-live', 'polite');
+  box.append(open, ' ', said);
 }
 
 // ── the budget walkthrough ─────────────────────────────────────────────────
@@ -4258,6 +4264,18 @@ function drawWalk(fr) {
   walkFr = fr;
   $('budget').hidden = true;
   $('walk').hidden = view !== 'budget';
+  // A budget that has envelopes but no month and no source to open one from: only the
+  // month's income is missing, so that step shows on its own, with no rail.
+  const alone = fr.step === 'income' && fr.hasEnvelopes;
+  $('walk').classList.toggle('alone', alone);
+  $('walk').querySelector('.walk-rail').hidden = alone;
+  const label = budgets.find((b) => b.id === fr.budget)?.label ?? 'this budget';
+  $('walk-h').textContent = alone ? `Open ${monthLong(fr.month)} for ${label}` : "Start the household's budget";
+  if (alone) {
+    walkIncomeEdit = null;
+    $('walk-step').replaceChildren(walkIncomeStep(fr));
+    return;
+  }
   // Making the budget comes before income, and is part of getting income started.
   const at = !fr.step ? 'pricing' : fr.step === 'budget' ? 'income' : fr.step;
   const order = WALK_STEPS.map(([k]) => k);
@@ -4374,7 +4392,9 @@ function walkIncomeStep(fr) {
   const given = editing ? walkIncomeEdit.value : fr.income.suggestion?.exact ?? '';
   amount.value = String(given).replace(/[$,]/g, '');
   if (!editing && fr.income.suggestion?.from === 'imports') fields.appendChild(node('span', 'walk-seen', 'seen in imports'));
-  form.append(node('h2', '', 'Income'), fields);
+  // On its own, the page's heading already says what this is.
+  if (!(fr.step === 'income' && fr.hasEnvelopes)) form.append(node('h2', '', 'Income'));
+  form.appendChild(fields);
 
   // Only while nothing says what comes in: once a source does, it is edited where sources are.
   let same = null;
@@ -4388,25 +4408,26 @@ function walkIncomeStep(fr) {
   const acts = node('div', 'walk-acts');
   const save = node('button', 'btn primary', 'Save');
   save.type = 'submit';
-  const other = textBtn(editing ? 'Cancel' : 'Skip', 'btn', null, async () => {
+  // Skip opens the month at nothing, so it is only offered while the month is not open.
+  const other = !editing && fr.monthOpen ? null : textBtn(editing ? 'Cancel' : 'Skip', 'btn', null, async () => {
     if (editing) { walkIncomeEdit = null; drawWalk(walkFr); return; }
     // Skipped is still a month: it opens at nothing, and the card says so.
     await run(() => approveNow('open_month', { budget: fr.budget, month: fr.month, incomeCents: 0 }));
   });
-  acts.append(save, other);
+  acts.append(...[save, other].filter(Boolean));
   const msg = walkMsg();
   form.append(acts, msg);
 
   async function run(write) {
     save.disabled = true;
-    other.disabled = true;
+    if (other) other.disabled = true;
     msg.textContent = '';
     try {
       await write();
     } catch (ex) {
       msg.textContent = ex.message;
       save.disabled = false;
-      other.disabled = false;
+      if (other) other.disabled = false;
       return;
     }
     walkIncomeEdit = null;

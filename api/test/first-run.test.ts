@@ -58,9 +58,30 @@ describe('where the walkthrough is', () => {
     assert.equal(r.income.suggestion, null);
   });
 
-  test('envelopes mean no walkthrough', async () => {
+  test('envelopes in an open month mean no walkthrough', async () => {
+    const s = await fresh([placitas, open, ...envelope]);
+    const r = firstRun(s.state, 'placitas', TODAY);
+    assert.equal(r.step, null);
+    assert.equal(r.hasEnvelopes, true);
+  });
+
+  test('a budget with envelopes, no source and no open month is the income step', async () => {
     const s = await fresh([placitas, ...envelope]);
+    const r = firstRun(s.state, 'placitas', TODAY);
+    assert.equal(r.step, 'income');
+    assert.equal(r.hasEnvelopes, true);
+    assert.equal(r.monthOpen, false);
+  });
+
+  test('a budget with envelopes and a source but no open month is left to the open prompt', async () => {
+    const s = await fresh([placitas, pay(640000), ...envelope]);
     assert.equal(firstRun(s.state, 'placitas', TODAY).step, null);
+  });
+
+  test('hasEnvelopes is false before any envelope is made', async () => {
+    const s = await fresh([placitas, open]);
+    assert.equal(firstRun(s.state, 'placitas', TODAY).hasEnvelopes, false);
+    assert.equal(firstRun((await fresh()).state, null, TODAY).hasEnvelopes, false);
   });
 
   test('an archived budget asked for falls to a live one', async () => {
