@@ -339,11 +339,9 @@
   .pill .chev{color:var(--ink-faint)}
   .pill.member{margin-left:0;margin-right:-6px;padding:4px 6px}
   .pill.member .name{font-size:var(--fs-ui);font-weight:var(--fw-medium)}
-  .top-inner > .menu.house{flex:0 1 auto}
   /* a flex box, so the pill (a button, which sizes to its text) shrinks to
-     the menu's share of a narrow bar and its name ellipsizes */
-  .top-inner > .menu.house{display:flex}
-  .top-inner > .menu.me{flex:none}
+     what a narrow bar leaves it and the household and the day ellipsize */
+  .top-inner > .menu.me{display:flex;flex:0 1 auto}
   .pill.member .name{display:none}
   /* The search box, and its hits hanging from its end edge like a menu. Typed
      into, so 16px at every width. */
@@ -385,21 +383,19 @@
   /* Desk: the tabs first, the household and you at the right. */
   @container page (min-width: 760px){
     .top-inner > .search{margin-left:auto}
-    .menu.house .txt{text-align:right}
     .pill.member .name{display:block}
   }
-  /* Phone: the household at the left, then each tab as its icon (its label
-     kept for a screen reader), More as a hamburger, and you. Each target is
-     at least 40 wide and the bar's height. */
+  /* Phone: each tab as its icon (its label kept for a screen reader), More
+     as a hamburger, and you, with the household and the day under your disc.
+     Each target is at least 40 wide and the bar's height. */
   @container page (max-width: 759px){
-    /* three rows: the screens, the hamburger and you; then the household and
-       the day on a row of their own; then the search box, the width of the page */
+    /* two rows: the screens, the hamburger and you; then the search box, the
+       width of the page */
     .top-inner{gap:var(--sp-2);row-gap:0;flex-wrap:wrap}
-    .top-inner > .menu.house{order:1;flex:1 1 100%;border-top:var(--stroke) solid var(--line)}
     .top-inner > .search{order:2;flex:1 1 100%;min-width:0;padding-bottom:var(--sp-2)}
-    .top-inner > .menu.house .pill{width:100%;min-height:44px;margin-left:0;padding-left:0;border-radius:0}
-    .top-inner > .menu.house .pill .txt{display:flex;align-items:baseline;gap:var(--sp-2);min-width:0}
-    .top-inner > .menu.me{margin-left:auto}
+    /* from nothing, so the bar never wraps it onto a row of its own: it takes
+       what the tabs leave, and the household and the day ellipsize in it */
+    .top-inner > .menu.me{flex:1 1 0;justify-content:flex-end}
     .tabs-top{gap:0;margin-left:-10px}
     .tabs-top > button,.tabs-top > .menu > button{min-width:40px;padding:0 10px}
     .tabs-top [aria-current="page"]::after{left:8px;right:8px}
@@ -427,7 +423,7 @@
     cursor:pointer;text-align:left}
   .menu-item:hover,.menu-item:focus-visible{background:var(--accent-tint);outline:none}
   .menu-item:disabled{color:var(--ink-faint);cursor:default;background:none}
-  .menu-item .sub{display:block;font-size:var(--fs-micro);color:var(--ink-faint)}
+  .menu-item .sub,.menu-item .meta{display:block;font-size:var(--fs-micro);color:var(--ink-faint)}
   .menu-item .leaves{margin-left:auto;color:var(--ink-faint)}
   .menu-item.soft{color:var(--ink-soft)}
   .menu-item.danger{color:var(--problem)}
@@ -1254,30 +1250,28 @@
           <div id="search-notes" aria-live="polite"></div>
         </div>
       </div>
-      <!-- The household's things under its name: Settings first. -->
-      <div class="menu house">
-        <button type="button" class="pill" id="hh-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="hh-menu">
-          <span class="txt"><span class="name" id="hh-name">Household</span><span class="sub" id="today-date"></span></span>
-          <svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
-        </button>
-        <div class="menu-list end" id="hh-menu" role="menu" aria-labelledby="hh-menu-btn" hidden>
-          <button type="button" class="menu-item" role="menuitem" id="hh-settings">Settings</button>
-          <div class="menu-sep" role="separator"></div>
-          <button type="button" class="menu-item" role="menuitem" id="hh-share">Share it with someone</button>
-          <button type="button" class="menu-item" role="menuitem" id="cat-manage">Categories</button>
-          <a class="menu-item" role="menuitem" id="hh-backup" href="/api/backup" download>Download a backup</a>
-          <button type="button" class="menu-item" role="menuitem" id="hh-take">Restore from a backup</button>
-        </div>
-      </div>
-      <!-- Yours: who is signed in, and the way out. -->
+      <!-- One menu, under you: who is signed in, the household and the day
+           under your name, Settings, the other households, and the way out. -->
       <div class="menu me">
         <button type="button" class="pill member" id="me-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="me-menu">
-          <span class="who mine lg" id="me-disc" aria-hidden="true"></span><span class="name" id="me-name"></span>
+          <span class="who mine lg" id="me-disc" aria-hidden="true"></span>
+          <span class="txt"><span class="name" id="me-name"></span><span class="sub"><span id="hh-name">Household</span> · <span id="today-date"></span></span></span>
+          <svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
         </button>
         <div class="menu-list end" id="me-menu" role="menu" aria-labelledby="me-menu-btn" hidden>
-          <p class="quiet-line" id="who"></p>
-          <button type="button" class="menu-item" role="menuitem" id="switch-hh">Switch household</button>
-          <button type="button" class="menu-item" role="menuitem" id="signout">Sign out</button>
+          <div id="me-main">
+            <p class="quiet-line" id="who"></p>
+            <button type="button" class="menu-item" role="menuitem" id="me-settings">Settings</button>
+            <button type="button" class="menu-item" role="menuitem" id="switch-hh" data-keep-open aria-haspopup="menu" hidden>Switch household <span aria-hidden="true">›</span></button>
+            <button type="button" class="menu-item" role="menuitem" id="me-new-hh" hidden>Create a new household</button>
+            <div class="menu-sep" role="separator"></div>
+            <button type="button" class="menu-item" role="menuitem" id="signout">Sign out</button>
+          </div>
+          <div id="me-switch" hidden>
+            <button type="button" class="menu-item" role="menuitem" id="me-back" data-keep-open><span aria-hidden="true">‹</span> Back</button>
+            <div id="me-hh-list" role="group" aria-label="Your households"></div>
+            <button type="button" class="menu-item" role="menuitem" id="me-new-hh-2">Create a new household</button>
+          </div>
         </div>
       </div>
     </div>
@@ -1555,7 +1549,8 @@ function keepOnScreen(list) {
   const dx = r.left < EDGE ? EDGE - r.left : r.right > max ? max - r.right : 0;
   if (dx) list.style.translate = `${Math.round(dx)}px 0`;
 }
-function setupMenu(btnId, listId) {
+/** onOpen, if given, sets the menu up as it opens, before the focus goes in. */
+function setupMenu(btnId, listId, onOpen) {
   const btn = $(btnId);
   const list = $(listId);
   const items = () => [...list.querySelectorAll('[role^="menuitem"]')]
@@ -1572,13 +1567,18 @@ function setupMenu(btnId, listId) {
   const open = () => {
     closeMenus();
     list.hidden = false;
+    onOpen?.();
     keepOnScreen(list);
     btn.setAttribute('aria-expanded', 'true');
     (items().find((x) => x.getAttribute('aria-checked') === 'true') ?? items()[0])?.focus();
   };
   btn.addEventListener('click', () => (list.hidden ? open() : close(false)));
   btn.addEventListener('keydown', (ev) => { if (ev.key === 'ArrowDown') { ev.preventDefault(); open(); } });
-  list.addEventListener('click', (ev) => { if (ev.target.closest('[role^="menuitem"]')) close(false); });
+  // An item marked data-keep-open moves within the menu rather than leaving it.
+  list.addEventListener('click', (ev) => {
+    const item = ev.target.closest('[role^="menuitem"]');
+    if (item && !item.hasAttribute('data-keep-open')) close(false);
+  });
   list.addEventListener('keydown', (ev) => {
     const all = items();
     const i = all.indexOf(document.activeElement);
@@ -1593,8 +1593,8 @@ function setupMenu(btnId, listId) {
 }
 document.addEventListener('click', (ev) => { if (!ev.target.closest('.menu')) closeMenus(); });
 setupMenu('budget-menu-btn', 'budget-menu');
-setupMenu('hh-menu-btn', 'hh-menu');
-setupMenu('me-menu-btn', 'me-menu');
+// Yours opens on its first pane, whichever was showing when it closed.
+setupMenu('me-menu-btn', 'me-menu', () => { $('me-main').hidden = false; $('me-switch').hidden = true; });
 setupMenu('more-menu-btn', 'more-menu');
 
 // ── search ──────────────────────────────────────────────────────────────────
@@ -1820,10 +1820,74 @@ $('signin-form').addEventListener('submit', async (e) => {
   }
 });
 
-$('switch-hh').addEventListener('click', async () => {
-  const state = await api('/api/auth/check');
-  showHouseholds(state);
+// ── your households, in your menu ─────────────────────────────────────────
+//
+// Switching is a sub-list in the same menu, so the other households are one
+// step away without leaving the screen; with only one there is nothing to
+// switch to, and the slot offers to start another instead.
+let myHouseholds = [];
+let myHouseholdId = null;
+
+function renderMyHouseholds() {
+  const several = myHouseholds.length >= 2;
+  $('switch-hh').hidden = !several;
+  $('me-new-hh').hidden = several;
+  const box = $('me-hh-list');
+  box.textContent = '';
+  for (const h of myHouseholds) {
+    const it = document.createElement('button');
+    it.type = 'button';
+    it.className = 'menu-item';
+    it.setAttribute('role', 'menuitemradio');
+    it.setAttribute('aria-checked', String(h.id === myHouseholdId));
+    const txt = document.createElement('span');
+    const name = document.createElement('span');
+    name.textContent = h.label;
+    const meta = document.createElement('span');
+    meta.className = 'meta';
+    meta.textContent = [...h.members, h.youOwn ? 'you own it' : `${h.owner} owns it`].join(' · ');
+    txt.append(name, meta);
+    it.appendChild(txt);
+    it.addEventListener('click', async () => {
+      if (h.id === myHouseholdId) return;
+      try {
+        await api('/api/households/select', { household: h.id });
+        await enterApp();
+      } catch (ex) { showProblem(ex); }
+    });
+    box.appendChild(it);
+  }
+}
+
+function showSwitch(on) {
+  $('me-main').hidden = on;
+  $('me-switch').hidden = !on;
+  (on ? $('me-hh-list').querySelector('[aria-checked="true"]') ?? $('me-back') : $('switch-hh')).focus();
+}
+$('switch-hh').addEventListener('click', () => showSwitch(true));
+$('switch-hh').addEventListener('keydown', (ev) => {
+  if (ev.key === 'ArrowRight') { ev.preventDefault(); showSwitch(true); }
 });
+$('me-back').addEventListener('click', () => showSwitch(false));
+// Back out of the sub-list, not out of the menu: stopped here, before the
+// menu's own Escape closes it.
+$('me-switch').addEventListener('keydown', (ev) => {
+  if (ev.key === 'Escape' || ev.key === 'ArrowLeft') {
+    ev.preventDefault();
+    ev.stopPropagation();
+    showSwitch(false);
+  }
+});
+// Starting one is the households screen's, with its Start panel open.
+async function startAnotherHousehold() {
+  try {
+    showHouseholds(await api('/api/auth/check'));
+    $('hh-new').click();
+  } catch (ex) { showProblem(ex); }
+}
+$('me-new-hh').addEventListener('click', () => void startAnotherHousehold());
+$('me-new-hh-2').addEventListener('click', () => void startAnotherHousehold());
+$('me-settings').addEventListener('click', () => void openSettings());
 
 // ── taking pieces out of a backup ──────────────────────────────────────────
 //
@@ -2030,7 +2094,6 @@ function takeFromBackup() {
     out.appendChild(row);
   }
 }
-$('hh-take').addEventListener('click', takeFromBackup);
 
 // Sharing is the owner's to do, and the reason goes in the log like any other
 // decision — the other person reads why they were added.
@@ -2057,7 +2120,6 @@ function inviteSomeone() {
     };
   });
 }
-$('hh-share').addEventListener('click', inviteSomeone);
 
 $('signout').addEventListener('click', async () => {
   await api('/api/auth/logout', {});
@@ -4143,7 +4205,6 @@ async function openCategories() {
   // At the top of <main>, under the sticky bar: the page goes to its top so none of it is covered.
   window.scrollTo({ top: 0 });
 }
-$('cat-manage').addEventListener('click', () => void openCategories());
 $('cat-close').addEventListener('click', () => {
   $('cat-sec').hidden = true;
   $('manage-panel').textContent = '';
@@ -6697,7 +6758,6 @@ async function openSettings(group, row) {
   if (sec) sec.scrollIntoView({ block: 'start' }); else window.scrollTo({ top: 0 });
 }
 const leaveSettings = () => showView(settingsFrom);
-$('hh-settings').addEventListener('click', () => void openSettings());
 
 const listOf = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} and ${names.at(-1)}`);
 const sameCal = (a, b) => !!a && !!b && (a.cal_id === b.cal_id || a.original_cal_id === b.original_cal_id);
@@ -9462,12 +9522,17 @@ async function enterApp() {
   $('today-date').textContent = pageWords();
   $('households').hidden = true;
   await loadBudgets();
-  $('who').textContent = who.sandbox ? `${who.who}, in the sandbox` : `Signed in as ${who.who}`;
+  $('who').textContent = who.sandbox ? `${who.who}, in the sandbox` : `Signed in as ${who.who} on the NAS`;
   $('me-disc').textContent = (who.who || '?').slice(0, 1).toUpperCase();
   $('me-name').textContent = who.who;
   $('me-menu-btn').setAttribute('aria-label', `${who.who}, signed in`);
   amAdmin = who.admin === true;
   $('hh-name').textContent = householdLabel ?? 'Household';
+  // Your other households, for the menu's sub-list. A list that cannot be
+  // read leaves the menu offering to start one, the same as having one.
+  myHouseholdId = who.household?.id ?? null;
+  myHouseholds = (await api('/api/households').catch(() => null))?.households ?? [];
+  renderMyHouseholds();
   // The settings, once per load: More's links, whether cards keep files, and
   // your look, which the log decides and the cache only paints first.
   // Unread, More's links and the look fall back to what this device has, and
