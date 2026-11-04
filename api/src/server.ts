@@ -188,8 +188,9 @@ import {
   AuthError, GuestSessions, OtpRequired, Sessions, checkWithDsm, clearedCookie, clearedGuestCookie, guestCookie,
   localBypassUser, readCookie, sessionCookie, AUTH_VERSION, COOKIE, GUEST_COOKIE,
 } from './auth.ts';
-import { CARD_ONLY, ToolError, commit, runTool, toolByName, toolSchemas, ProposalStore } from './tools.ts';
-import type { ToolContext } from './tools.ts';
+import { APPROVE_IN_ONE, CARD_ONLY, ToolError, touches, commit, runTool, toolByName, toolSchemas, ProposalStore } from './tools.ts';
+import type { Proposal, ToolContext } from './tools.ts';
+import { firstRun } from './first-run.ts';
 import { missingStarter } from './starter.ts';
 import {
   ARRIVAL_MAX, DEFAULT_AREAS, GUEST_PREFIX, householdDay, isDay, isEmail, MODES, SCHEMES, SPLIT, SYSTEM, isSpend, monthKey, monthOf, movesLeft, sameCalendar, zoneOf,
@@ -2555,6 +2556,10 @@ export async function start(
       });
     }
 
+    if (path === '/api/budget/first-run' && req.method === 'GET') {
+      return json(res, 200, firstRun(active.state, url.searchParams.get('budget') || null, ctx.today));
+    }
+
     if (path === '/api/categories' && req.method === 'GET') {
       return json(res, 200, {
         categories: [...active.state.categories.values()]
@@ -2921,6 +2926,12 @@ export async function start(
       // a guest's request is theirs to raise, and answered on its card too.
       if (tool.name === 'resolve_drift') throw new ToolError('a change on the calendar is not proposed here: answer it from its card');
       if (CARD_ONLY.has(tool.name)) throw new ToolError(`${tool.name} is not proposed here: answer it from its card`);
+      // Only a fixed set of tools is approved in the request that runs it. Checked before the
+      // tool runs, so a refused one does not so much as make a proposal.
+      const approve = url.searchParams.get('approve') === '1';
+      if (approve && !APPROVE_IN_ONE.has(tool.name)) {
+        throw new ToolError(`${tool.name} is not approved in one step; approve its proposal`);
+      }
       const args = (await readBody(req)) as Record<string, unknown>;
       // A tool that wants a budget and was not given one gets the default, so a
       // household with none says so once, in one voice, wherever you are.
@@ -2930,6 +2941,17 @@ export async function start(
       }
       // runTool records the args on a write's proposal, for its effect on approval.
       const result = await runTool(tool, args, ctx);
+      if (approve) {
+        // A run that threw never reaches here, and a refused commit throws too: either leaves the log as it was.
+        const proposal = result as Proposal;
+        const done = await commit(proposal.id, ctx);
+        return json(res, 200, {
+          proposal, summary: done.summary,
+          committed: done.committed.map((e) => ({ id: e.id, op: e.op, at: e.at, who: e.who })),
+          touches: touches(proposal.events),
+          lastEventId: active.state.lastEventId,
+        });
+      }
       // Writes come back as a proposal so the caller — UI or Claude — must
       // present it for approval. Nothing here has changed the log.
       return json(res, 200, tool.kind === 'write' ? { proposal: result } : { result });

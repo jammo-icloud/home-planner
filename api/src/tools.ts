@@ -3408,6 +3408,16 @@ export const toolByName = new Map([...TOOLS, resolveDrift, approveBooking, relea
 /** Raised by the app, or a guest, and answered on their cards: never run from the tools route. */
 export const CARD_ONLY: ReadonlySet<string> = new Set([resolveDrift.name, approveBooking.name, releaseStayTool.name, savingsShort.name]);
 
+/**
+ * The tools the walkthrough and the budget's one-tap actions approve in the same
+ * request, with ?approve=1. seed_from_location is not here: its proposal, with
+ * its sources and caveats, is shown before anyone approves it.
+ */
+export const APPROVE_IN_ONE: ReadonlySet<string> = new Set([
+  'create_budget', 'set_budget_location', 'open_month', 'set_month_income', 'define_income_source',
+  'make_starter_envelopes', 'set_envelope_figure', 'move_money', 'set_assignment',
+]);
+
 /** Whether Claude may call it: the ones in TOOLS. */
 export const forClaude = (t: Tool): boolean => TOOLS.includes(t);
 
