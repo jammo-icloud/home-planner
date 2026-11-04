@@ -40,7 +40,10 @@ CHECK_USER=<your-dsm-account> DSM_URL=http://<nas-ip>:5000 npm run synology:chec
   and type.
 - `PLANNER_ROOT=/Planner` names the Team Folder and folder to read, and adds
   the Synology Drive reads below. Without it the Drive section is skipped with a
-  sentence. The app itself chooses each household's folder in Settings; there
+  sentence. Drive paths are case-sensitive: write the Team Folder and folder
+  exactly as Drive shows them. The real NAS answers 1003 (no such file) for
+  `.../planner` where the folder is `Planner`.
+  The app itself chooses each household's folder in Settings; there
   `PLANNER_ROOT` is only where files are carried over from, once, and the
   picker's first suggestion.
 - `CHECK_ADMIN_USER` and `CHECK_ADMIN_PASS` (both, or neither) are a DSM
