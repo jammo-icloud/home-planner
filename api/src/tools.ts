@@ -2093,6 +2093,7 @@ const localCosts: Tool = {
       budget, location: b.location.label,
       found: found.estimates.map((e) => ({
         category: e.category,
+        label: e.label,
         monthly: fmt(e.monthly),
         monthlyCents: e.monthly,
         source: e.source,
@@ -2153,38 +2154,32 @@ const seedFromLocation: Tool = {
 
     const events: NewEvent[] = [];
     const effects: string[] = [];
+    const month = monthOf(ctx.today);
+    const plan = state.months.get(monthKey(budget, month));
+    const open = plan !== undefined && !plan.closed;
+    let applied = 0;
 
     for (const e of useful) {
-      // Evidence is useless if there is nowhere to put it, so make the category
-      // and the envelope where they do not exist yet.
-      const category = state.categories.get(e.category);
-      if (!category) {
-        events.push({ op: 'category.define', category: e.category, label: e.category, kind: 'House' });
-        effects.push(`A new category "${e.category}" — rename it to whatever you call it`);
-      }
-
+      // Pricing only fills envelopes that are there. It used to make a lowercase category and
+      // envelope for evidence with nowhere to go, which put names nobody chose into the budget.
       const existing = [...b.envelopes.values()]
         .find((env) => env.match.categories.includes(e.category));
+      if (!existing) {
+        effects.push(`Not applied: no envelope for ${e.label}`);
+        continue;
+      }
+      applied++;
 
-      if (existing) {
-        // Never a silent overwrite. Someone who has already priced this from
-        // their own bill should see their number and the measured one together.
-        effects.push(existing.template === e.monthly
-          ? `${existing.label}: already ${fmtExact(e.monthly)}, unchanged`
-          : `${existing.label}: ${fmtExact(existing.template)} would become ${fmtExact(e.monthly)}`);
-        events.push({
-          op: 'envelope.define', budget, envelope: existing.id, label: existing.label,
-          group: existing.group, match: existing.match, template: e.monthly,
-          rollover: existing.rollover, order: existing.order,
-        });
-      } else {
-        const id = e.category;
-        effects.push(`A new envelope "${e.category}" funded at ${fmtExact(e.monthly)}`);
-        events.push({
-          op: 'envelope.define', budget, envelope: id, label: e.category,
-          group: 'House', match: { categories: [e.category] }, template: e.monthly,
-          rollover: true, order: b.envelopes.size,
-        });
+      // Never a silent overwrite. Someone who has already priced this from
+      // their own bill should see their number and the measured one together.
+      effects.push(existing.template === e.monthly
+        ? `${existing.label}: already ${fmtExact(e.monthly)}, unchanged`
+        : `${existing.label}: ${fmtExact(existing.template)} would become ${fmtExact(e.monthly)}`);
+      events.push(redefine(budget, existing, {
+        figure: { template: e.monthly, source: `${e.source}, ${e.measuredOver}, ${e.asOf}` },
+      }));
+      if (open) {
+        events.push({ op: 'assign', budget, month, envelope: existing.id, to: e.monthly, why: 'priced from local data' });
       }
 
       // The provenance travels with the number. A figure whose origin is not on
@@ -2193,16 +2188,22 @@ const seedFromLocation: Tool = {
       effects.push(`   ${e.caveat}`);
     }
 
+    if (!applied) {
+      throw new ToolError(
+        `Nothing in ${b.label} is fed by what public data prices (${useful.map((e) => e.label).join(', ')}). `
+        + 'Make an envelope for one and price it again.', 409);
+    }
+
     // Say what this does not cover. Two envelopes out of a household's forty is
     // a starting point, and calling it anything more would be a lie.
-    const untouched = [...b.envelopes.values()].length - useful.length;
-    effects.push(`This is measured data for ${useful.length} envelope${useful.length === 1 ? '' : 's'}. `
+    const untouched = b.envelopes.size - applied;
+    effects.push(`This is measured data for ${applied} envelope${applied === 1 ? '' : 's'}. `
       + `${untouched > 0 ? `The other ${untouched} ` : 'Everything else '}has no public figure and is still yours to set.`);
     for (const m of found.missing) effects.push(`Not found: ${m}`);
 
     return ctx.proposals.put({
       tool: 'seed_from_location', who: ctx.who,
-      summary: `Set ${useful.length} envelope${useful.length === 1 ? '' : 's'} from ${b.location.label} data`,
+      summary: `Set ${applied} envelope${applied === 1 ? '' : 's'} from ${b.location.label} data`,
       effects, events,
     }, ctx.today);
   },

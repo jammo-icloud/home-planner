@@ -15,12 +15,15 @@
 
 import { parseDollars, cents } from './money.ts';
 import { splitCsvLine } from './parse.ts';
+import { STARTER_CATEGORIES } from './starter.ts';
 import type { Cents } from './money.ts';
 import type { BudgetLocation } from './types.ts';
 
 export interface Estimate {
   /** The category this is evidence about. */
   readonly category: string;
+  /** The name a person sees for that category, the starter set's own label. */
+  readonly label: string;
   readonly monthly: Cents;
   /** Named so nobody mistakes a county median for their own bill. */
   readonly source: string;
@@ -35,6 +38,11 @@ export interface LookupResult {
   readonly estimates: readonly Estimate[];
   /** Sources that were asked and had nothing for this place. */
   readonly missing: readonly string[];
+}
+
+/** The starter label for a category id, so every source names it the way an envelope does. */
+function labelOf(id: string): string {
+  return STARTER_CATEGORIES.find((c) => c.id === id)?.label ?? id;
 }
 
 export type Fetch = typeof globalThis.fetch;
@@ -83,6 +91,7 @@ export async function rentFromZillow(
     if (!latest) return null;
     return {
       category: 'rent',
+      label: labelOf('rent'),
       monthly: parseDollars(Number(latest).toFixed(2)),
       source: 'Zillow Observed Rent Index',
       measuredOver: `ZIP ${postal}`,
@@ -242,6 +251,7 @@ export async function censusCounty(
   if (rent && Number(rent) > 0) {
     out.push({
       category: 'rent',
+      label: labelOf('rent'),
       monthly: parseDollars(Number(rent).toFixed(2)),
       source: 'US Census ACS 5-year, table B25064',
       measuredOver: name ?? 'the county',
@@ -252,6 +262,7 @@ export async function censusCounty(
   if (tax && Number(tax) > 0) {
     out.push({
       category: 'tax',
+      label: labelOf('tax'),
       // Published annually; the budget holds monthly figures.
       monthly: cents(Math.round(parseDollars(Number(tax).toFixed(2)) / 12)),
       source: 'US Census ACS 5-year, table B25103',
@@ -320,6 +331,7 @@ export async function electricityFromEia(
   const price = Number(row['price']);
   return {
     category: 'elec',
+    label: labelOf('elec'),
     monthly: parseDollars(monthly.toFixed(2)),
     source: 'US EIA, electricity retail sales'
       + (Number.isFinite(price) ? ` (${price.toFixed(1)}¢/kWh residential)` : ''),
