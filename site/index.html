@@ -1876,7 +1876,10 @@ function takeFromBackup() {
   const out = document.createElement('div');
   card.appendChild(out);
   box.appendChild(card);
-  card.scrollIntoView({ block: 'nearest' });
+  // The card is the first thing in <main>: the page goes to its top, where the sticky bar
+  // covers none of it, and focus to its first control, since Restore… is pressed from the foot of Settings.
+  window.scrollTo({ top: 0 });
+  file.focus({ preventScroll: true });
 
   let content = null;
   const chosen = new Set(['facts', 'budgets', 'months', 'thread']);
@@ -4047,7 +4050,8 @@ function panel(title, fields, onSubmit) {
   row.append(go, cancel);
   card.appendChild(row);
   box.appendChild(card);
-  card.scrollIntoView({ block: 'nearest' });
+  // First in <main>: at the page's top the sticky bar covers none of it.
+  window.scrollTo({ top: 0 });
 }
 
 function showManageProposal(card, row, proposal,
@@ -4145,7 +4149,8 @@ async function renderCategories() {
 async function openCategories() {
   $('cat-sec').hidden = false;
   await renderCategories();
-  $('cat-sec').scrollIntoView({ block: 'nearest' });
+  // At the top of <main>, under the sticky bar: the page goes to its top so none of it is covered.
+  window.scrollTo({ top: 0 });
 }
 $('cat-manage').addEventListener('click', () => void openCategories());
 $('cat-close').addEventListener('click', () => {
@@ -7937,6 +7942,7 @@ function documentsRow() {
   const a = settingsData.attachments ?? { on: false };
   const status = [d.folder ? `${d.folder.team} › ${d.folder.folder} on Synology Drive · Cards keep files ${a.on ? 'on' : 'off'}` : 'No folder chosen'];
   if (d.left) status.push(node('p', 'hint', `Moving ${plural(d.left, 'document')} to it.`));
+  if (!a.on && a.why) status.push(node('p', 'hint', a.why));
   if (documentsStatus && !documentsStatus.on && documentsStatus.why) status.push(node('p', 'hint', documentsStatus.why));
   const owns = settingsData.setup.youOwn;
   return settingRow({
