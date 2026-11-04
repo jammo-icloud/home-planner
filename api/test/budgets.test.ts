@@ -59,6 +59,18 @@ describe('more than one budget over one ledger', () => {
       'and Harbor is untouched');
   });
 
+  test('a copied sinking envelope keeps its goal', async () => {
+    const { store, ctx } = await fixture();
+    await store.append('alice', [{
+      op: 'envelope.define', budget: 'harbor', envelope: 'util', label: 'Utilities', group: 'House',
+      match: { categories: ['elec'] }, template: parseDollars('300.00'), order: 1,
+      sinking: { kind: 'by', target: parseDollars('1200.00'), by: '2027-06' },
+    }]);
+    await commit((await run('create_budget', { label: 'Ridge', copyFrom: 'harbor' }, ctx)).id, ctx);
+    assert.deepEqual(store.state.budgets.get('ridge')!.envelopes.get('util')!.sinking,
+      { kind: 'by', target: parseDollars('1200.00'), by: '2027-06' });
+  });
+
   test('the same receipt lands in both budgets without being categorised twice', async () => {
     const { store, ctx } = await fixture();
     const p = await run('create_budget', { label: 'Ridge', copyFrom: 'harbor' }, ctx);

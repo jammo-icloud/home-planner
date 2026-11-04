@@ -307,7 +307,6 @@ const getMonth: Tool = {
   },
 };
 
-/** A sinking envelope's goal for get_month, as exact dollars: an editor round-trips them. */
 /**
  * An envelope.define that rewrites `env` with `change`, carrying every field it does not
  * name (needsFigure, source and sinking among them). `figure` means a number was given:
@@ -330,6 +329,7 @@ export function redefine(budget: BudgetId, env: Envelope, change: {
   };
 }
 
+/** A sinking envelope's goal for get_month, as exact dollars: an editor round-trips them. */
 function sinkingView(state: State, budget: string, env: Envelope, month: Month, saved: Cents) {
   const g = goalFor(state, budget, env, month);
   if (!g) return null;
@@ -988,7 +988,12 @@ const setAssignment: Tool = {
       who: ctx.who,
       summary: `Set ${e.envelope.label} to ${fmtExact(to)}`,
       effects,
-      events: [{ op: 'assign', budget, month, envelope, to, why }],
+      // A figure set by hand is a figure: the flag and the source go, and the template stays.
+      events: [
+        { op: 'assign', budget, month, envelope, to, why },
+        ...(e.envelope.needsFigure || e.envelope.source !== undefined
+          ? [redefine(budget, e.envelope, { figure: { template: e.envelope.template } })] : []),
+      ],
     }, new Date(`${ctx.today}T00:00:00Z`).toISOString());
   },
 };
@@ -1378,12 +1383,15 @@ const defineEnvelope: Tool = {
       budget: { type: 'string' },
       envelope: { type: 'string', description: 'The id. A new one creates; an existing one edits.' },
       label: { type: 'string' },
-      group: { type: 'string', description: 'House | People | Future' },
+      group: { type: 'string', description: 'The group it shows under, e.g. Home or Food' },
       categories: { type: 'array', items: { type: 'string' }, description: 'Which categories feed it.' },
-      templateCents: { type: 'number', description: 'What a new month opens it at.' },
+      templateCents: {
+        type: 'number',
+        description: 'What a new month opens it at. Leaving it out keeps the figure the envelope has; a new envelope then starts with no figure.',
+      },
       rollover: { type: 'boolean' },
     },
-    required: ['budget', 'envelope', 'label', 'categories', 'templateCents'],
+    required: ['budget', 'envelope', 'label', 'categories'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
@@ -1408,27 +1416,39 @@ const defineEnvelope: Tool = {
     }
 
     const existing = b.envelopes.get(id);
-    const template = money(args['templateCents'], 'templateCents');
+    const given = args['templateCents'] === undefined || args['templateCents'] === null
+      ? null : money(args['templateCents'], 'templateCents');
+    if (given !== null && given < 0) throw new ToolError('a figure is not less than nothing');
     const group = typeof args['group'] === 'string' && args['group'] ? args['group'] : existing?.group ?? 'People';
+    const rollover = typeof args['rollover'] === 'boolean' ? args['rollover'] : existing?.rollover ?? true;
+    const match = { categories };
+
+    // With a template the define is a figure (flag and source go); without one an existing
+    // envelope keeps all three, and a new one starts at nothing, flagged as having no figure.
+    const event: NewEvent = existing
+      ? redefine(budget, existing, { label, group, match, rollover, ...(given !== null ? { figure: { template: given } } : {}) })
+      : {
+        op: 'envelope.define', budget, envelope: id, label, group, match,
+        template: given ?? cents(0), rollover, order: b.envelopes.size,
+        ...(given === null ? { needsFigure: true as const } : {}),
+      };
+    const figureWords = given !== null ? `funded at ${fmtExact(given)} a month`
+      : existing ? (existing.needsFigure ? 'still with no figure' : `funded at ${fmtExact(existing.template)} a month`)
+      : 'with no figure yet';
 
     return ctx.proposals.put({
       tool: 'define_envelope', who: ctx.who,
       summary: existing ? `Update ${existing.label}` : `Add the ${label} envelope`,
       effects: [
         existing
-          ? `${existing.label} becomes "${label}", funded at ${fmtExact(template)} a month`
-          : `A new envelope "${label}" in ${group}, funded at ${fmtExact(template)} a month`,
+          ? `${existing.label} becomes "${label}", ${figureWords}`
+          : `A new envelope "${label}" in ${group}, ${figureWords}`,
         `Fed by ${categories.join(', ')}`,
         // The plan of record is a snapshot; changing the template cannot reach
         // back into a month that has already opened.
         'Months already open keep the plan they opened with',
       ],
-      events: [{
-        op: 'envelope.define', budget, envelope: id, label, group,
-        match: { categories }, template,
-        rollover: args['rollover'] !== false,
-        order: existing?.order ?? b.envelopes.size,
-      }],
+      events: [event],
     }, ctx.today);
   },
 };
@@ -2353,6 +2373,53 @@ const makeStarterEnvelopes: Tool = {
       tool: 'make_starter_envelopes', who: ctx.who,
       summary: `Make ${rows.length} envelope${rows.length === 1 ? '' : 's'} in ${b.label}`,
       effects, events,
+    }, ctx.today);
+  },
+};
+
+const setEnvelopeFigure: Tool = {
+  name: 'set_envelope_figure',
+  description:
+    "Propose giving an envelope its figure: what a month opens it at from now on, and this month's " +
+    'funding set to the same. A figure, zero included, is the only thing that clears an envelope\'s ' +
+    'Action required, and it drops any source the old figure had. `month` is YYYY-MM and defaults to ' +
+    'the current month; when it is not open or is closed only the template is written. Returns a proposal.',
+  kind: 'write',
+  input: {
+    type: 'object',
+    properties: {
+      budget: { type: 'string' },
+      envelope: { type: 'string' },
+      amountCents: { type: 'number', description: 'The figure a month, in cents. Zero is allowed.' },
+      month: { type: 'string', description: 'YYYY-MM. Defaults to this month.' },
+    },
+    required: ['budget', 'envelope', 'amountCents'],
+  },
+  run(args, ctx) {
+    const state = ctx.store.state;
+    const budget = str(args['budget'], 'budget');
+    const b = state.budgets.get(budget);
+    if (!b) throw new ToolError(`no budget ${budget}`, 404);
+    const id = str(args['envelope'], 'envelope');
+    const env = b.envelopes.get(id);
+    if (!env) throw new ToolError(`no envelope ${id}`, 404);
+    const amount = money(args['amountCents'], 'amountCents');
+    if (amount < 0) throw new ToolError('a figure is not less than nothing');
+    const month = typeof args['month'] === 'string' && args['month'] ? args['month'] : monthOf(ctx.today);
+    const plan = state.months.get(monthKey(budget, month));
+    const open = plan !== undefined && !plan.closed;
+
+    const events: NewEvent[] = [redefine(budget, env, { figure: { template: amount } })];
+    if (open) events.push({ op: 'assign', budget, month, envelope: id, to: amount, why: 'gave it a figure' });
+    return ctx.proposals.put({
+      tool: 'set_envelope_figure', who: ctx.who,
+      summary: `${env.label}: ${fmtExact(amount)} a month`,
+      effects: [
+        `From this month on: ${env.label} is planned at ${fmtExact(amount)} a month`,
+        open ? `${env.label} is funded at ${fmtExact(amount)} in ${month}`
+          : 'This month is not open or is closed, so only the months to come change',
+      ],
+      events,
     }, ctx.today);
   },
 };
@@ -3291,7 +3358,7 @@ const searchTool: Tool = {
 
 export const TOOLS: readonly Tool[] = [
   getMonth, explainEnvelope, findDonors, listTransactions, compareBudgets, getActivity, addStarterSet,
-  makeStarterEnvelopes, setMonthIncome,
+  makeStarterEnvelopes, setMonthIncome, setEnvelopeFigure,
   moveMoney, setAssignment, categorizeTxn, openMonth, restoreTxn,
   createBudget, renameBudget, archiveBudget, defineEnvelope, setSinkingGoal, removeEnvelope,
   defineCategory, archiveCategory, closeMonth, discardMonth,

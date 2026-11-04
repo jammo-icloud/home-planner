@@ -131,3 +131,93 @@ describe('set_month_income', () => {
     assert.throws(() => income(c, { amountCents: 1 }), /closed/);
   });
 });
+
+describe('giving an envelope a figure', () => {
+  const flagged = (extra: Record<string, unknown> = {}): NewEvent[] => [
+    { op: 'category.define', category: 'groceries', label: 'Groceries' },
+    { op: 'envelope.define', budget: 'placitas', envelope: 'groceries', label: 'Groceries', group: 'Food',
+      match: { categories: ['groceries'] }, template: cents(0), order: 0, needsFigure: true, ...extra } as NewEvent,
+    { op: 'month.open', budget: 'placitas', month: '2026-11', income: cents(640000) },
+  ];
+  const figure = (c: ToolContext, args: Record<string, unknown>) =>
+    toolByName.get('set_envelope_figure')!.run({ budget: 'placitas', envelope: 'groceries', ...args }, c) as Proposal;
+  const groceries = (c: ToolContext) => c.store.state.budgets.get('placitas')!.envelopes.get('groceries')!;
+  const funded = (c: ToolContext, month = '2026-11') =>
+    monthView(c.store.state, 'placitas', month)!.envelopes.find((e) => e.envelope.id === 'groceries')!.funded;
+
+  test("a figure writes the template and this month's assignment, and clears the flag", async () => {
+    const c = await fresh(flagged());
+    const p = figure(c, { amountCents: 61200 });
+    assert.deepEqual(p.events.map((e) => e.op), ['envelope.define', 'assign']);
+    assert.ok(p.effects[0]!.startsWith('From this month on'));
+    await commit(p.id, c);
+    assert.equal(groceries(c).template, 61200);
+    assert.equal(funded(c), 61200);
+    assert.equal('needsFigure' in groceries(c), false);
+  });
+
+  test('zero on purpose is a figure', async () => {
+    const c = await fresh(flagged());
+    await commit(figure(c, { amountCents: 0 }).id, c);
+    assert.equal('needsFigure' in groceries(c), false);
+  });
+
+  test("a priced envelope's source goes when a person changes the figure", async () => {
+    const c = await fresh(flagged({ source: 'a statement' }));
+    await commit(figure(c, { amountCents: 50000 }).id, c);
+    assert.equal(groceries(c).source, undefined);
+  });
+
+  test('in a month that is not open, only the template is written', async () => {
+    const c = await fresh(flagged());
+    const p = figure(c, { amountCents: 50000, month: '2026-12' });
+    assert.deepEqual(p.events.map((e) => e.op), ['envelope.define']);
+    assert.ok(p.effects.includes('This month is not open or is closed, so only the months to come change'));
+    await commit(p.id, c);
+    assert.equal(groceries(c).template, 50000);
+    assert.throws(() => figure(c, { amountCents: -1 }), /a figure is not less than nothing/);
+  });
+
+  test('define_envelope without a template keeps the template, the flag and the source; with one clears them', async () => {
+    const c = await fresh(flagged({ source: 'a statement' }));
+    const rename = (extra: Record<string, unknown>) => toolByName.get('define_envelope')!.run({
+      budget: 'placitas', envelope: 'groceries', label: 'Food at home', group: 'Food',
+      categories: ['groceries'], ...extra,
+    }, c) as Proposal;
+    await commit(rename({}).id, c);
+    assert.equal(groceries(c).label, 'Food at home');
+    assert.equal(groceries(c).needsFigure, true);
+    assert.equal(groceries(c).source, 'a statement');
+    assert.equal(groceries(c).template, 0);
+
+    await commit(rename({ templateCents: 50000 }).id, c);
+    assert.equal('needsFigure' in groceries(c), false);
+    assert.equal(groceries(c).source, undefined);
+    assert.equal(groceries(c).template, 50000);
+  });
+
+  test('a new envelope defined without a template starts with no figure', async () => {
+    const c = await fresh(flagged());
+    await c.store.append('alex', [{ op: 'category.define', category: 'pets', label: 'Pets' }]);
+    const p = toolByName.get('define_envelope')!.run({
+      budget: 'placitas', envelope: 'pets', label: 'Pets', group: 'Everyday', categories: ['pets'],
+    }, c) as Proposal;
+    await commit(p.id, c);
+    const e = c.store.state.budgets.get('placitas')!.envelopes.get('pets')!;
+    assert.equal(e.needsFigure, true);
+    assert.equal(e.template, 0);
+  });
+
+  test("setting this month's assignment by hand clears the flag and the source, and keeps the template", async () => {
+    const c = await fresh(flagged({ source: 'a statement' }));
+    const p = toolByName.get('set_assignment')!.run({
+      budget: 'placitas', envelope: 'groceries', toCents: 40000, why: 'by hand',
+    }, c) as Proposal;
+    assert.deepEqual(p.events.map((e) => e.op), ['assign', 'envelope.define']);
+    await commit(p.id, c);
+    assert.equal(funded(c), 40000);
+    assert.equal(groceries(c).template, 0);
+    assert.equal('needsFigure' in groceries(c), false);
+    assert.equal(groceries(c).source, undefined);
+  });
+});
