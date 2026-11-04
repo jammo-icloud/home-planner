@@ -39,6 +39,8 @@
  * `say`, which blanks them. See README.md for what to look for.
  */
 
+import { createHash } from 'node:crypto';
+
 import { ACCOUNTS_CALL, ADMIN_GROUP_CALL, isAdministrator, listAccounts } from '../../src/accounts.ts';
 import { AUTH_VERSION, OtpRequired, checkWithDsm, DSM_URL } from '../../src/auth.ts';
 import {
@@ -50,7 +52,7 @@ import {
   CALENDAR_LIST_PARAMS, CAL_VERSION, COPY_MOVE_VERSION, EVENT_VERSION, EtagMismatch, FILE_STATION_VERSION, NAS_MOVE_WAIT_MS,
   NOT_AN_ETAG_REFUSAL, SHARING_VERSION, SynologyError, contactsVersionNow, createCalendar, createEvent, createFolder,
   deleteEvent, dsm, downloadFile, fetchFor, getEvent, jsonBody, listAddressbooks, listCalendars, listContacts, listEvents,
-  listFolder, listRows, reach, renameCalendar, setEvent, shareCalendar, sharingOf, verdict,
+  listFolder, listRows, reach, renameCalendar, setEvent, shareCalendar, sharingOf, uploadFile, verdict,
 } from '../../src/synology.ts';
 import type { CalEvent, CalendarRef, DsmFetch } from '../../src/synology.ts';
 import { MOVE_WAIT_MS } from '../../src/moves.ts';
@@ -265,6 +267,8 @@ async function driveReads(
   const path = `${dir}/check.md`;
   const token = `plannercheck${Date.now().toString(36)}${Math.random().toString(36).slice(2, 8)}`;
   const text = (n: number): string => `# Planner check\n\nWrite ${n}. The token is ${token}.\n`;
+  afterWrites.push(`The folder ${root}/.planner-check and what the check wrote in it were left; delete the folder in File Station `
+    + '(Drive keeps the versions it made).');
 
   await probe(`File Station create folder "${root}/.planner-check" (the only folder the check makes)`,
     // Not through `noticing`: a 105 here is File Station's share permission, not the sid's session name.
@@ -364,6 +368,53 @@ async function driveReads(
       const moved = deepAfter !== deepBefore;
       return `cursor ${deepAfter}, ${moved ? 'moved from' : 'NOT moved from'} ${deepBefore}; `
         + 'if it did not, edits two levels down are seen only by the hourly full look (src/drift.ts PAGES_FULL_EVERY_MS)';
+    });
+
+  await fileStationRoundTrip(`${root}/.planner-check`);
+}
+
+const sha256 = (bytes: Uint8Array): string => createHash('sha256').update(bytes).digest('hex');
+
+/**
+ * File Station's own upload and download, as the app stores and serves a
+ * card's files: `fs-upload.md` into `.planner-check` (replacing an earlier
+ * run's), read back and compared byte for byte, and listed. Nothing else.
+ */
+async function fileStationRoundTrip(folder: string): Promise<void> {
+  const name = 'fs-upload.md';
+  const path = `${folder}/${name}`;
+  const bytes = new TextEncoder().encode(`# Planner check\n\nUploaded through File Station at ${new Date().toISOString()}.\n`);
+  const uploaded = await viaClient(
+    `SYNO.FileStation.Upload upload (v${FILE_STATION_VERSION}), "${path}", overwrite true, the sid as a _sid multipart part`,
+    (f) => uploadFile(sid, { folder, name, bytes, overwrite: true }, f),
+    () => `taken: ${bytes.length} bytes sent, sha256 ${sha256(bytes)}`);
+  if (!uploaded) {
+    say('  A 119 here, with a sid that works elsewhere, is DSM wanting the sid as a cookie on upload too (uploadFile, src/synology.ts).');
+    return;
+  }
+
+  let back: Uint8Array | null = null;
+  await probe(`SYNO.FileStation.Download download (v${FILE_STATION_VERSION}), "${path}", the sid in a cookie (the bytes are not printed)`,
+    async () => {
+      const got = await downloadFile(sid, path);
+      back = got.bytes;
+      return { bytes: got.bytes.length, contentType: got.contentType, sha256: sha256(got.bytes) };
+    },
+    async () => {
+      const same = sha256(back!) === sha256(bytes);
+      if (!same) failed.push('File Station gave back other bytes than it was sent');
+      return same ? 'the bytes read back are the bytes uploaded (sha256 equal)'
+        : 'the bytes read back DIFFER from the bytes uploaded: compare the multipart body uploadFile builds with what File Station keeps';
+    });
+
+  await viaClient(`SYNO.FileStation.List list (v${FILE_STATION_VERSION}), "${folder}"`,
+    (f) => listFolder(sid, folder, f),
+    (rows) => {
+      const row = rows.find((r) => r.name === name && !r.isdir);
+      if (!row || row.size !== bytes.length) failed.push(`${name} is not listed at its size`);
+      return row
+        ? `${name} is listed, ${row.size} bytes${row.size === bytes.length ? ', as uploaded' : `, NOT the ${bytes.length} uploaded`}`
+        : `${name} is NOT listed among ${rows.length} entries`;
     });
 }
 
@@ -755,6 +806,7 @@ async function checkDesign(): Promise<void> {
     const other = `/team-folders/${secondTeam}/.planner-check`;
     await probe(`File Station create folder "/${secondTeam}/.planner-check" (CHECK_SECOND_TEAM)`,
       async () => { await createFolder(sid, `/${secondTeam}`, '.planner-check'); return { folder: `/${secondTeam}/.planner-check` }; });
+    afterWrites.push(`The folder /${secondTeam}/.planner-check was left; delete it in File Station.`);
     const back = await lookup(path);
     if (back) {
       const over = await moveStep(`Probe 5, Drive files move "${path}" by link into the second Team Folder "${other}"`, back, other, `${other}/check.md`);
