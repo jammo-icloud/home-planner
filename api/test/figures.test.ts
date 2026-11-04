@@ -202,6 +202,18 @@ describe('the cover for a short envelope', () => {
     assert.deepEqual(c.donors.map((d) => d.envelope), ['a', 'b', 'c'], '1000 cannot spare 4200, so it is never offered');
   });
 
+  test('an envelope already short before the latest receipt says so', async () => {
+    const s = await fresh([
+      ...funded('groceries', 1000, 'Groceries'), open(100000),
+      txn('g0', '2026-11-01', -3000, 'groceries'), txn('g1', '2026-11-03', -2000, 'groceries'),
+    ]);
+    const c = coverOf(s)!;
+    assert.equal(c.hadLeft, -2000);
+    assert.equal(c.alreadyShort, true);
+    const t = await fresh([...funded('groceries', 4540, 'Groceries'), open(4540), txn('g1', '2026-11-03', -8740, 'groceries')]);
+    assert.equal(coverOf(t)!.alreadyShort, false);
+  });
+
   test('the unassigned option is what is unassigned, up to the shortfall, and absent at zero', async () => {
     const seed = (income: number) => [
       ...funded('groceries', 4540, 'Groceries'), open(income), txn('g1', '2026-11-03', -8740, 'groceries'),

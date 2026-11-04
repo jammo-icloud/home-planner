@@ -3551,7 +3551,7 @@ function coverCard(e) {
   // Without a receipt (a move took its money) there is no receipt to name.
   const why = 'An envelope never pays what it does not hold, so this one is marked Action required until the shortfall is covered.';
   const body = s.receipt
-    ? `The receipt from ${s.receipt.payee} for ${s.receipt.exact} is in ${e.label}, which had ${s.hadLeftExact} left. ${why}`
+    ? `The receipt from ${s.receipt.payee} for ${s.receipt.exact} is in ${e.label}, ${s.alreadyShort ? 'which was already short' : `which had ${s.hadLeftExact} left`}. ${why}`
     : why;
   card.append(title, node('p', 'cover-body', body));
 
@@ -7817,7 +7817,7 @@ function phoneRow() {
   return settingRow({
     key: 'phone', title: 'Your iPhone and Mac',
     status: [when ? `Set up on this device on ${when}` : 'Not set up on this device yet',
-      'One scan puts the Household calendar and Home Planner on an iPhone.'],
+      'A QR code for the Home Screen, and the Household calendar for Apple Calendar.'],
     actions: [{ label: 'Set up ›', act: openPhoneSheet }],
   });
 }

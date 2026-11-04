@@ -126,8 +126,8 @@ such as the DSM port and how many proxies are in front, stay in `.env`.
 Without a Claude key the app still runs: the briefing is a plain summary of
 the same figures, and receipts are sorted by rule and by hand.
 
-Members set up an iPhone or a Mac from Set up your iPhone: one scan of a QR code
-installs the Household calendar and Home Planner on the Home Screen.
+Members set up an iPhone from Set up your iPhone: a QR code that puts Home
+Planner on the Home Screen, and a calendar account for the Household calendar.
 
 Settings ends your own section with the version running, the commit it was
 built from and when, so you can see which build is live.

@@ -413,31 +413,42 @@ member who adds their NAS account to Apple Calendar gets the Household calendar
 there like any other: create, move, invite, alerts, Siri. An administrator sets
 DSM's address under Settings › This NAS (Where phones reach the NAS; the
 `DSM_PUBLIC_URL` default) so the app can say where the NAS is. Until it is set,
-the phone setup offers only the Home Screen icon. This works away from home only
+the phone setup offers only the Home Screen QR. This works away from home only
 if DSM itself is reachable from outside (the planner alone on 443 is not
 enough); otherwise phones sync at home or over VPN.
 
-**Setting up a phone is one scan.** Each member opens **Set up your iPhone**
-from the person menu: a sheet with a QR code and two choices, the Household
-calendar and Home Planner on the Home Screen. The code is a link,
-`<planner origin>/setup/<code>`, that works **once, for ten minutes**. A
-member has one live code: asking for another replaces it. Codes are kept in
-memory, so a restart of the app spends them all; the sheet makes a new one. The
-phone opens the link, Safari is handed a configuration profile, and the phone
+**Setting up a phone is two things.** Each member opens **Set up your iPhone**
+from the person menu, and the sheet has two sections.
+
+*The Home Screen* is a QR code of the planner's own address with `?add=home`
+on the end. It needs no profile and no code, and it works for any address the
+phone can reach, plain `http` on the home network included. The phone opens
+the page in Safari, which shows a banner saying to tap Share and then Add to
+Home Screen. The page's touch icon, `site/icon-180.png`, is what the Home Screen
+shows.
+
+*The calendar account* is a QR code holding a link,
+`<planner origin>/setup/<code>`, that works **once, for ten minutes**. A member
+has one live code: asking for another replaces it. Codes are kept in memory, so
+a restart of the app spends them all; the sheet makes a new one. The phone
+opens the link, Safari is handed a configuration profile, and the phone
 installs it from Settings → Profile Downloaded. The `/setup/` path needs no
 session, because the phone has none; the code is the credential.
 
-**What the profile carries.** A CalDAV account for the member, on DSM's public
-address (`DSM_PUBLIC_URL`) with the principal `/caldav/<account>/`, and a web
-clip of the planner's origin, which puts Home Planner on the Home Screen
-full screen. It has no password: the phone asks for the member's NAS password
-when the profile is installed. The profile is **unsigned**, so iOS says *Not
-Verified*; that is expected. Installing it again replaces the first.
+**What the profile carries.** The CalDAV account for the member, on DSM's
+public address (`DSM_PUBLIC_URL`) with the principal `/caldav/<account>/`, and
+nothing else: the web clip and its icon are not in it. It has no password: the
+phone asks for the member's NAS password when the profile is installed. The
+profile is **unsigned**, so iOS says *Not Verified*; that is expected.
+Installing it again replaces the first.
 
-**The address rule.** The Home Screen icon opens the address the sheet was
-opened at, so for a phone the planner must be opened over **https**; plain
-`http` is accepted only on localhost. A code is refused at any other `http`
-address. A Mac downloads the same profile from the sheet instead of scanning.
+**The address rule** concerns the calendar code only. A code is refused at any
+`http` address other than localhost, so for the calendar account the planner
+must be opened over **https**. The Home Screen QR has no such rule. A Mac
+downloads the same profile from the sheet instead of scanning.
+
+**Household apps.** The household's links sit in the person menu under
+*Household apps*; there is no More menu.
 
 **Typing it instead.** The sheet's *Type it instead* gives the steps for
 Settings → Calendar → Accounts → Add Account → Other → Add CalDAV Account, with
@@ -944,7 +955,9 @@ the place it refuses rather than inventing a figure.
 
 ## What is not ready
 
-**All four screens are built** — Today, Budget, Import and Compare. Activity is
+**All four screens are built** — Today, Budget, Import and Compare. A budget with
+no envelopes opens as a walkthrough of income, envelopes and pricing, and an
+envelope without a figure is marked Action required. Activity is
 part of Today's thread now. The old
 standalone planner is preserved at `/planner.html`, but it reads `budget.jsonl`
 off disk, which the API no longer serves, so it is a historical artefact.

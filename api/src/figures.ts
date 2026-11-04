@@ -148,6 +148,8 @@ export interface Cover {
   readonly receipt: { readonly payee: string; readonly amount: Cents } | null;
   /** What it had left before that receipt. */
   readonly hadLeft: Cents;
+  /** True when it was already short before that receipt (it had less than nothing left). */
+  readonly alreadyShort: boolean;
   /** Envelopes that can spare the whole shortfall, most first, at most three. */
   readonly donors: readonly { readonly envelope: EnvelopeId; readonly label: string; readonly spare: Cents }[];
   /** What unassigned income could cover: the shortfall, or less while less is unassigned; null at none. */
@@ -179,6 +181,7 @@ export function coverFor(state: State, view: MonthView, envelope: EnvelopeId, to
     amount,
     receipt: latest ? { payee: latest.payee, amount: latest.amount } : null,
     hadLeft,
+    alreadyShort: hadLeft < 0,
     donors: spare,
     assign: view.toAssign > 0 ? cents(Math.min(amount, view.toAssign)) : null,
   };

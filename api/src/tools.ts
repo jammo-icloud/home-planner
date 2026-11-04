@@ -2227,8 +2227,10 @@ const seedFromLocation: Tool = {
     // Say what this does not cover. Two envelopes out of a household's forty is
     // a starting point, and calling it anything more would be a lie.
     const untouched = b.envelopes.size - applied;
-    effects.push(`This is measured data for ${applied} envelope${applied === 1 ? '' : 's'}. `
-      + `${untouched > 0 ? `The other ${untouched} ` : 'Everything else '}has no public figure and is still yours to set.`);
+    const rest = untouched === 0 ? 'Everything else has no public figure and is still yours to set.'
+      : untouched === 1 ? 'The other 1 has no public figure and is still yours to set.'
+      : `The other ${untouched} have no public figure and are still yours to set.`;
+    effects.push(`This is measured data for ${applied} envelope${applied === 1 ? '' : 's'}. ${rest}`);
     for (const m of found.missing) effects.push(`Not found: ${m}`);
 
     return ctx.proposals.put({
