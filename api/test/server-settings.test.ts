@@ -201,6 +201,21 @@ describe('settings on the sandbox, with no DSM behind it', () => {
     assert.equal((await call('', 'GET', '/api/settings')).status, 401, 'members only');
   });
 
+  test('the settings count the categories in use, and say whether booking still needs its address', async () => {
+    const r = (await call(tester, 'GET', '/api/settings')).json;
+    const listed = (await call(tester, 'GET', '/api/categories')).json.categories;
+    assert.equal(typeof r.categoriesInUse, 'number');
+    assert.equal(r.categoriesInUse, listed.length, 'none is archived here');
+    assert.equal(r.booking.needsAddress, false, 'BOOK_URL is set');
+    await saveConnector('bookUrl', { off: true }, 'carol');
+    try {
+      assert.equal((await call(tester, 'GET', '/api/settings')).json.booking.needsAddress, true);
+    } finally {
+      await saveConnector('bookUrl', { clear: true }, 'carol');
+    }
+    assert.equal((await call(tester, 'GET', '/api/settings')).json.booking.needsAddress, false);
+  });
+
   test('booking is on only in the household friends book with', async () => {
     // Made after boot, BOOK_HOUSEHOLD is found when the settings are asked for.
     const made = await call(alice, 'POST', '/api/households', { label: 'Elsewhere' });

@@ -91,10 +91,10 @@ describe('Setup on Today', () => {
   test("the owner who is an admin sees the household's card, then the NAS's; a member the ask; the sandbox none", async () => {
     const mine = (await call(alice, 'GET', '/api/today')).json.setup;
     assert.deepEqual(mine.map((n: any) => n.kind), ['folder', 'connectors']);
-    assert.deepEqual(mine[0].action, { label: 'Choose a folder', open: 'settings', step: 'folder' });
-    // Nothing is saved on Connectors here and the deployment sets none of these.
-    assert.equal(mine[1].text, 'Set up the NAS: Claude, Calendar on phones, Mail and Pricing sources.');
-    assert.deepEqual(mine[1].action, { label: 'Open Connectors', open: 'connectors', row: 'claude' });
+    assert.deepEqual(mine[0].action, { label: 'Choose a folder', open: 'settings', group: 'household', row: 'documents' });
+    // Nothing is saved on This NAS here and the deployment sets none of these.
+    assert.equal(mine[1].text, 'Set up the NAS: Claude, Where phones reach the NAS, Mail and Pricing sources.');
+    assert.deepEqual(mine[1].action, { label: 'Open This NAS', open: 'settings', group: 'nas', row: 'claude' });
     assert.deepEqual((await call(bob, 'GET', '/api/today')).json.setup,
       [{ kind: 'folder', text: 'Documents are not in Drive yet. Ask alice to choose a folder.' }]);
     assert.deepEqual((await call(tester, 'GET', '/api/today')).json.setup, []);

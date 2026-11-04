@@ -2,7 +2,7 @@
 //
 // Booking as the owner's switch in Settings, for one household at a time:
 // alice's "home" and bob's "cabin" against the fake NAS, with the booking
-// page's address and the mail saved on Connectors and nothing in the
+// page's address and the mail saved on This NAS and nothing in the
 // deployment's environment. Like the other server suites this sets process.env
 // at module scope, before src/ loads, so it relies on node --test giving each
 // file its own process.

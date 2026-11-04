@@ -19,7 +19,7 @@ describe('the Claude key', () => {
   test('a base URL alone is not a key: Claude is off, and the briefing falls back', () => {
     assert.equal(claudeConfigured(), false);
   });
-  test('a key saved on Connectors is used by the next call, and a new one by the call after, without a restart', async () => {
+  test('a key saved on This NAS is used by the next call, and a new one by the call after, without a restart', async () => {
     await saveConnector('claude', { value: 'sk-one' }, 'carol');
     assert.equal(claudeConfigured(), true);
     await classify('claude-haiku-5-5', 'sys', 'x', SCHEMA);

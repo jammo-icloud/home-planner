@@ -294,14 +294,14 @@ const SESSIONS_PATH = process.env['SESSIONS_PATH'] ?? 'data/sessions.json';
 const CONNECTORS_PATH = process.env['CONNECTORS_PATH'] ?? 'data/connectors.json';
 // Note the default is deliberately NOT under the household volume.
 
-/** The Connectors routes that save a value, and the key each one saves. */
+/** The routes of This NAS that save a value, and the key each one saves. */
 const CONNECTOR_SAVES: Readonly<Record<string, SavedKey>> = {
   'public-url': 'publicUrl', 'sign-in': 'signIn', 'book-url': 'bookUrl', mail: 'mail', census: 'census', eia: 'eia', claude: 'claude',
 };
 
 const ONE_OF = 'send one of value, off or clear';
 
-/** A Connectors save's body: exactly one of `{ value }`, `{ off: true }` or `{ clear: true }`. The value is checked by its key. */
+/** A save on This NAS: its body: exactly one of `{ value }`, `{ off: true }` or `{ clear: true }`. The value is checked by its key. */
 function connectorChangeIn(body: Record<string, unknown>): { value: unknown } | { off: true } | { clear: true } {
   const given = (['value', 'off', 'clear'] as const).filter((k) => body[k] !== undefined);
   if (given.length !== 1) throw new ToolError(ONE_OF);
@@ -351,7 +351,7 @@ function mailValueIn(v: unknown, savedPass: string | null): MailValue {
 }
 
 /**
- * The change a Connectors route saves, checked for its key, or a 400 in
+ * The change a route of This NAS saves, checked for its key, or a 400 in
  * words. `who` is the admin saving, or null for the sandbox, which never
  * passes the sign-in list and so cannot be locked out by it.
  */
@@ -1154,7 +1154,9 @@ const settingsOf = (
    * switch it on, what holds it, and whether a lost calendar turned it off.
    * Members only, like the rest of this; a guest is never told why.
    */
-  booking: bookingView(state, booking, household),
+  booking: { ...bookingView(state, booking, household), needsAddress: typeof bookUrl(resolvedEnv()) !== 'string' },
+  /** How many categories are in use (not archived), for the Household group's row. */
+  categoriesInUse: [...state.categories.values()].filter((c) => c.archived !== true).length,
 });
 
 /**
@@ -1291,7 +1293,7 @@ export async function start(
   }
   console.log(`[budget] admin: ${ADMIN_USER ? `ADMIN_USER=${ADMIN_USER}` : "DSM's administrators group"}`);
   // Where the key comes from, never the key.
-  console.log(`[budget] Claude: ${claudeKey() === null ? 'off' : sourceOf('claude') === 'saved' ? 'key saved on Connectors' : 'key from the deployment'}`);
+  console.log(`[budget] Claude: ${claudeKey() === null ? 'off' : sourceOf('claude') === 'saved' ? 'key saved on This NAS' : 'key from the deployment'}`);
   const retired = 'SYNO_CONTACTS_VERSION';
   if ((process.env[retired] ?? '') !== '') console.warn(`[budget] ${retired} is no longer read: the Contacts version is asked of the NAS`);
   if (devStore) {
@@ -1319,7 +1321,7 @@ export async function start(
 
   /**
    * Booking as it is now, worked out from the logs, the saved settings and the
-   * deployment on every call: so a `guests.booking`, a Connectors save, a
+   * deployment on every call: so a `guests.booking`, a save on This NAS, a
    * restore and a household made after boot all count at once.
    */
   async function bookingNow(): Promise<BookingStatus> {
@@ -1333,7 +1335,7 @@ export async function start(
   }
 
   /**
-   * The Connectors page as it stands, worked out on every load and after
+   * This NAS as it stands, worked out on every load and after
    * every save: booking included, so a save that changes it counts at once.
    * Drive is asked with the admin's own session, when they have one.
    */
@@ -1865,7 +1867,7 @@ export async function start(
       });
     }
 
-    // ── Connectors: what the NAS connects to, the admin's alone ──────────────
+    // ── This NAS: what the NAS connects to, the admin's alone ──────────────
     //
     // Every answer but the accounts list is the page itself, worked out again.
     // No secret goes out: the view carries only whether each is set.
@@ -1892,7 +1894,7 @@ export async function start(
         try {
           await send(smtp, {
             to: to.trim(), subject: 'A test from Home Planner',
-            text: 'This is the test sent from Connectors. Mail from Home Planner reaches this address.',
+            text: 'This is the test sent from Settings › This NAS. Mail from Home Planner reaches this address.',
           }, 'Home Planner');
           result = { ok: true, words: 'sent' };
         } catch (err) {
@@ -2676,7 +2678,7 @@ export async function start(
         plans: plansRail(ctx, await active.since(null), tz),
         money: moneyRail(ctx, url.searchParams.get('budget') || null),
         // What is not set up yet, worked out on this load and written nowhere.
-        // Connectors' rows without asking Drive, whose row never counts here.
+        // This NAS's rows without asking Drive, whose row never counts here.
         setup: setupNotices({
           state: active.state, who, admin: isAdmin, sandbox: session.local, env: process.env,
           teamFolder: ctx.sid && home ? teamFolderKnown(ctx.sid, home.team) : null,

@@ -4,7 +4,7 @@
  * The one part of the app with a different audience: people with no account
  * on the NAS, reaching `/book` through the owner's reverse proxy. So it is off
  * until everything it needs is said — where the page is publicly and how to
- * send mail (Connectors, else the deployment), and which household friends
+ * send mail (This NAS, else the deployment), and which household friends
  * book with (its owner's switch in Settings, one household at a time) — and a
  * member is told which of those is missing. A guest is never told anything.
  */
@@ -83,7 +83,7 @@ function smtpConfig(env: NodeJS.ProcessEnv): SmtpConfig | { off: string } {
 }
 
 /**
- * Booking's page and mail, read from the environment (Connectors' values laid
+ * Booking's page and mail, read from the environment (This NAS's values laid
  * over the deployment's), or why it is off: the first variable missing,
  * `'<variable> is not usable'` for one set to something that cannot work, or
  * that BOOK_URL must be https. All six are required; there is no half-on.
@@ -195,7 +195,7 @@ export const CALENDAR_GONE = 'Booking is off: the household calendar is gone. Ch
 /**
  * Whether this household could turn booking on, and if not, why, naming who
  * can fix it: its owner for the calendar; for the page and mail, ADMIN_USER,
- * else the last admin to save on Connectors, else the NAS's administrator.
+ * else the last admin to save on This NAS, else the NAS's administrator.
  * A calendar the app found gone is no calendar (the log still names it until
  * one is chosen again). Mail whose last test failed is not working mail.
  */
@@ -207,10 +207,10 @@ export function bookingAvailability(state: State, o: { env: NodeJS.ProcessEnv; a
   }
   const fixer = o.adminUser || lastSavedBy() || "the NAS's administrator";
   if (typeof bookUrl(o.env) !== 'string') {
-    return { available: false, why: `Booking is off until ${fixer} sets the booking page's address on Connectors.` };
+    return { available: false, why: `Booking is off until ${fixer} sets the booking address under Settings › This NAS.` };
   }
   if ('off' in smtpConfig(o.env) || currentTest('mailTest')?.ok === false) {
-    return { available: false, why: `Booking is off until ${fixer} sets up mail on Connectors.` };
+    return { available: false, why: `Booking is off until ${fixer} sets up mail under Settings › This NAS.` };
   }
   return { available: true };
 }

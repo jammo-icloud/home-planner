@@ -98,7 +98,7 @@ async function live<T>(send: () => Promise<T>): Promise<T> {
   }
 }
 
-/** One minimal request to the deployment's envelope model, for Connectors' Test. Never throws; never says the key. */
+/** One minimal request to the deployment's envelope model, for This NAS's Test. Never throws; never says the key. */
 export async function testClaude(): Promise<{ ok: boolean; words: string }> {
   try {
     const api = claude();

@@ -1,5 +1,5 @@
 /**
- * What the Connectors page shows: one row for each thing the NAS connects to,
+ * What This NAS group of Settings shows: one row for each thing the NAS connects to,
  * each on, off or broken, with where its value comes from and one line saying
  * how it stands. Worked out on every load from the environment as it stands
  * (`resolvedEnv()`), what is saved in `connectors.json` and what the server
@@ -20,10 +20,10 @@ export type RowId = 'claude' | 'drive' | 'calendar' | 'mail' | 'booking' | 'sign
 
 export const ROW_ORDER: readonly RowId[] = ['claude', 'drive', 'calendar', 'mail', 'booking', 'sign-in', 'pricing'];
 
-/** Each row's name, as the Connectors page heads it and an admin's Today card names it. */
+/** Each row's name, as This NAS heads it and an admin's Today card names it. */
 export const ROW_NAME: Readonly<Record<RowId, string>> = {
-  claude: 'Claude', drive: 'Synology Drive', calendar: 'Calendar on phones', mail: 'Mail',
-  booking: 'Booking', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
+  claude: 'Claude', drive: 'Synology Drive', calendar: 'Where phones reach the NAS', mail: 'Mail',
+  booking: 'Booking address', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
 };
 
 export interface ConnectorRow {
@@ -167,7 +167,7 @@ export function connectorsView(o: {
 const ADMINS: ReadonlySet<RowId> = new Set<RowId>(['claude', 'calendar', 'mail', 'pricing']);
 
 /**
- * The rows an admin's Today names: of Claude, Calendar on phones, Mail and
+ * The rows an admin's Today names: of Claude, Where phones reach the NAS, Mail and
  * Pricing sources, those with nothing saved and nothing in `.env` (source
  * `default`), and any that is broken, whatever its source. A row saved off is
  * off on purpose and never counts. Synology Drive (reachability, for

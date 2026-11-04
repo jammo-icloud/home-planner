@@ -20,6 +20,7 @@ site/planner.html
 
 # ── noise ────────────────────────────────────────────────────────────────────
 api/node_modules/
+api/node_modules
 api/*.log
 __pycache__/
 .DS_Store

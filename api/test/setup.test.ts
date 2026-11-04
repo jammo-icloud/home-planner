@@ -8,7 +8,7 @@ import { needsAdmin } from '../src/connectors-view.ts';
 import type { ConnectorRow, RowId } from '../src/connectors-view.ts';
 import { PAGE_RETRY_MS } from '../src/pages.ts';
 import { replay } from '../src/replay.ts';
-import { setupNotices } from '../src/setup.ts';
+import { SETUP_ORDER, STEP_ROW, setupNotices } from '../src/setup.ts';
 import { SYSTEM } from '../src/types.ts';
 import type { Event, NewEventShape } from '../src/types.ts';
 
@@ -27,8 +27,8 @@ const CLAIMED: Line[] = [
 ];
 
 const NAMES: Record<RowId, string> = {
-  claude: 'Claude', drive: 'Synology Drive', calendar: 'Calendar on phones', mail: 'Mail',
-  booking: 'Booking', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
+  claude: 'Claude', drive: 'Synology Drive', calendar: 'Where phones reach the NAS', mail: 'Mail',
+  booking: 'Booking address', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
 };
 const rowName = (id: RowId): string => NAMES[id];
 
@@ -41,10 +41,13 @@ const DOC = { link: 'f3c1', file_id: '881', hash: 'abc', version_id: '1', path: 
 const ANSWER = { link: 'a9e2', file_id: '882', hash: 'def', version_id: '1', path: '/team-folders/Planner/h1/answers/2026-11-02-food.md' };
 
 describe("Today's setup notices", () => {
+  test('every setup step names a Settings row', () =>
+    assert.deepEqual(SETUP_ORDER.map((s) => STEP_ROW[s]), ['documents', 'zone', 'hcal', 'guests', 'model']));
+
   test('no folder: the owner is asked to choose, the member to ask the owner', () => {
     const [o] = setupNotices({ ...base, who: 'alice' });
     assert.deepEqual(o, { kind: 'folder', text: 'Your documents are not in Drive yet',
-      action: { label: 'Choose a folder', open: 'settings', step: 'folder' } });
+      action: { label: 'Choose a folder', open: 'settings', group: 'household', row: 'documents' } });
     assert.deepEqual(setupNotices({ ...base, who: 'bob' }),
       [{ kind: 'folder', text: 'Documents are not in Drive yet. Ask alice to choose a folder.' }]);
   });
@@ -54,7 +57,7 @@ describe("Today's setup notices", () => {
     assert.deepEqual(setupNotices({ ...base, state, teamFolder: false }), [{
       kind: 'not-team-folder',
       text: 'Your documents are not in Drive yet: Planner/home is not a Team Folder. Enable it in Synology Drive Admin Console, Team Folder, or choose another folder.',
-      action: { label: 'Choose another folder', open: 'settings', step: 'folder' },
+      action: { label: 'Choose another folder', open: 'settings', group: 'household', row: 'documents' },
     }]);
     assert.deepEqual(setupNotices({ ...base, state, who: 'bob', teamFolder: false }).map((n) => n.text),
       ['Documents are not in Drive yet. Ask alice to choose a folder.']);
@@ -67,9 +70,9 @@ describe("Today's setup notices", () => {
     const n = setupNotices({ ...base, who: 'alice', admin: true, adminRows: ['mail', 'claude'], rowName });
     assert.deepEqual(n.map((x) => x.kind), ['folder', 'connectors']);
     assert.equal(n[1]!.text, 'Set up the NAS: Mail and Claude.');
-    assert.deepEqual(n[1]!.action, { label: 'Open Connectors', open: 'connectors', row: 'mail' });
+    assert.deepEqual(n[1]!.action, { label: 'Open This NAS', open: 'settings', group: 'nas', row: 'mail' });
     assert.equal(setupNotices({ ...base, admin: true, adminRows: ['calendar', 'mail', 'pricing'] }).at(-1)!.text,
-      'Set up the NAS: Calendar on phones, Mail and Pricing sources.');
+      'Set up the NAS: Where phones reach the NAS, Mail and Pricing sources.');
     // Nobody but an admin is told, whatever the rows say.
     assert.deepEqual(setupNotices({ ...base, who: 'bob', adminRows: ['mail'] }).map((x) => x.kind), ['folder']);
     assert.deepEqual(setupNotices({ ...base, sandbox: true, admin: true, adminRows: ['mail'], rowName }), []);
@@ -122,7 +125,7 @@ describe("Today's setup notices", () => {
     assert.deepEqual(setupNotices({ ...base, state }), [{
       kind: 'booking-off',
       text: 'Booking is off: the household calendar is gone. Choose one, then turn booking on again, and 1 request waiting still stands.',
-      action: { label: 'Choose a calendar', open: 'settings', step: 'calendar' },
+      action: { label: 'Choose a calendar', open: 'settings', group: 'household', row: 'hcal' },
     }]);
     assert.deepEqual(setupNotices({ ...base, state, who: 'bob' }), [], 'the owner only');
     // Two waiting: the verb agrees.

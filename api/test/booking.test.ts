@@ -214,19 +214,19 @@ describe('one household at a time', () => {
         { available: false, why: 'Booking is off until alice chooses the Household calendar.' });
       await s.append('alice', { op: 'calendar.household', cal_id: '/alice/hh/', original_cal_id: '/alice/hh/', name: 'Household' });
       assert.deepEqual(bookingAvailability(s.state, { env, adminUser: null }), { available: true });
-      // Who can fix the NAS's side: ADMIN_USER, else the last to save on Connectors, else the NAS's administrator.
+      // Who can fix the NAS's side: ADMIN_USER, else the last to save on This NAS, else the NAS's administrator.
       const { BOOK_URL: _url, ...noPage } = env;
       assert.deepEqual(bookingAvailability(s.state, { env: noPage, adminUser: null }),
-        { available: false, why: "Booking is off until the NAS's administrator sets the booking page's address on Connectors." });
+        { available: false, why: "Booking is off until the NAS's administrator sets the booking address under Settings › This NAS." });
       assert.deepEqual(bookingAvailability(s.state, { env: { ...env, BOOK_URL: 'http://book.example.com' }, adminUser: 'root' }),
-        { available: false, why: "Booking is off until root sets the booking page's address on Connectors." });
+        { available: false, why: "Booking is off until root sets the booking address under Settings › This NAS." });
       await saveConnector('census', { value: 'k' }, 'carol');
       assert.deepEqual(bookingAvailability(s.state, { env: { ...env, SMTP_HOST: '' }, adminUser: null }),
-        { available: false, why: 'Booking is off until carol sets up mail on Connectors.' });
+        { available: false, why: 'Booking is off until carol sets up mail under Settings › This NAS.' });
       // Mail that the last test could not send through is not working mail.
       await recordTest('mailTest', { at: NOW, to: 'me@example.com', ok: false, words: 'refused' });
       assert.deepEqual(bookingAvailability(s.state, { env, adminUser: 'root' }),
-        { available: false, why: 'Booking is off until root sets up mail on Connectors.' });
+        { available: false, why: 'Booking is off until root sets up mail under Settings › This NAS.' });
       await recordTest('mailTest', { at: NOW, to: 'me@example.com', ok: true, words: 'sent' });
       assert.deepEqual(bookingAvailability(s.state, { env, adminUser: 'root' }), { available: true });
       // A calendar the app found gone is no calendar, said first, until one is chosen again.
@@ -247,7 +247,7 @@ describe('one household at a time', () => {
       await s.append('alice', { op: 'calendar.household', cal_id: '/alice/hh/', original_cal_id: '/alice/hh/', name: 'Household' });
       await recordTest('mailTest', { at: NOW, to: 'me@example.com', ok: false, words: 'refused' });
       assert.deepEqual(bookingAvailability(s.state, { env: { ...ENV }, adminUser: 'root' }),
-        { available: false, why: 'Booking is off until root sets up mail on Connectors.' });
+        { available: false, why: 'Booking is off until root sets up mail under Settings › This NAS.' });
       await saveConnector('mail', {
         value: { host: 'smtp.example.com', port: 465, user: 'robot', pass: 'new', from: 'house@example.com', plainAuth: false },
       }, 'carol', new Date(Date.parse(NOW) + 60_000));

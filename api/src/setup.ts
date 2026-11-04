@@ -19,6 +19,13 @@ import type { Actor, State } from './types.ts';
 export type SetupStep = 'folder' | 'zone' | 'calendar' | 'booking' | 'model';
 export const SETUP_ORDER: readonly SetupStep[] = ['folder', 'zone', 'calendar', 'booking', 'model'];
 
+/** The three groups Settings is made of. */
+export type SettingsGroup = 'you' | 'household' | 'nas';
+
+/** The Settings row each setup step is answered in, so a notice can open it. */
+export const STEP_ROW: Readonly<Record<SetupStep, string>> =
+  { folder: 'documents', zone: 'zone', calendar: 'hcal', booking: 'guests', model: 'model' };
+
 /** `source` is where the step's value comes from, in Settings' words; null where a step has no value of that kind. */
 export interface StepView { readonly id: SetupStep; readonly done: boolean; readonly source: Source | null }
 
@@ -58,9 +65,7 @@ export type NoticeKind = 'folder' | 'not-team-folder' | 'connectors' | 'moving' 
 export interface SetupNotice {
   readonly kind: NoticeKind;
   readonly text: string;
-  readonly action?:
-    | { readonly label: string; readonly open: 'settings'; readonly step: SetupStep }
-    | { readonly label: string; readonly open: 'connectors'; readonly row: RowId };
+  readonly action?: { readonly label: string; readonly open: 'settings'; readonly group: SettingsGroup; readonly row: string };
 }
 
 /** `a`, `a and b`, `a, b and c`. */
@@ -73,7 +78,7 @@ const listOf = (names: readonly string[]): string =>
  * carried over is not a Team Folder, as this session last heard from Drive),
  * a member to ask the owner; everyone sees a move under way and what failed
  * in it; the owner sees booking turned off for a lost calendar until one is
- * chosen; an admin, the Connectors rows that need them.
+ * chosen; an admin, the rows of This NAS that need them.
  */
 export function setupNotices(o: {
   state: State; who: Actor; admin: boolean; sandbox: boolean; env: NodeJS.ProcessEnv;
@@ -90,7 +95,7 @@ export function setupNotices(o: {
     notices.push(owns
       ? {
         kind: 'folder', text: 'Your documents are not in Drive yet',
-        action: { label: 'Choose a folder', open: 'settings', step: setupSteps(state, o.env).first ?? 'folder' },
+        action: { label: 'Choose a folder', open: 'settings', group: 'household', row: STEP_ROW[setupSteps(state, o.env).first ?? 'folder'] },
       }
       : { kind: 'folder', text: ask });
   } else if (o.teamFolder === false) {
@@ -99,7 +104,7 @@ export function setupNotices(o: {
         kind: 'not-team-folder',
         text: `Your documents are not in Drive yet: ${home.team}/${home.folder} is not a Team Folder. `
           + 'Enable it in Synology Drive Admin Console, Team Folder, or choose another folder.',
-        action: { label: 'Choose another folder', open: 'settings', step: 'folder' },
+        action: { label: 'Choose another folder', open: 'settings', group: 'household', row: STEP_ROW.folder },
       }
       : { kind: 'not-team-folder', text: ask });
   }
@@ -125,7 +130,7 @@ export function setupNotices(o: {
       kind: 'booking-off',
       // CALENDAR_GONE's own words, its full stop moved past what still stands.
       text: ahead ? `${CALENDAR_GONE.slice(0, -1)}, and ${ahead} still ${verb}.` : CALENDAR_GONE,
-      action: { label: 'Choose a calendar', open: 'settings', step: 'calendar' },
+      action: { label: 'Choose a calendar', open: 'settings', group: 'household', row: STEP_ROW.calendar },
     });
   }
 
@@ -133,7 +138,7 @@ export function setupNotices(o: {
     notices.push({
       kind: 'connectors',
       text: `Set up the NAS: ${listOf(o.adminRows.map(o.rowName))}.`,
-      action: { label: 'Open Connectors', open: 'connectors', row: o.adminRows[0]! },
+      action: { label: 'Open This NAS', open: 'settings', group: 'nas', row: o.adminRows[0]! },
     });
   }
   return notices;
