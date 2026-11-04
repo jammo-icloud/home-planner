@@ -171,35 +171,37 @@ constant.
 | `Event list` takes `cal_id_list` (a JSON list of ids), `start`, `end` as epoch seconds, and answers `{ list: [...] }` as the guide shows it (a bare array is read too) (`listEvents`) | Yes: the Event list block | If `cal_id_list` is refused (114 or 120), it is the one parameter to rename in `listEvents`. An empty `[]` for a week with events means the window or the ids were read differently, not that the call worked. |
 | `Event create` takes the fields of `eventFields`, with an empty string spelled as the JSON literal `""` (the real NAS refused `color=` sent plainly empty with 9009 and took `color=""`, 2026-11-03), and answers the event with `evt_id`, `dav_etag`, `ical_uid` (`createEvent`, `calEvent`) | Yes, with `CHECK_CALENDAR_WRITE`: `evt_id …, dav_etag …, dtstart … as sent` | Refused 114 or 120: a field of `eventFields` or `EVENT_REQUIRED` is named otherwise, or `tz_id` (this machine's zone, printed in the title) is not one DSM knows. `evt_id undefined`: create answers something other than the event; the remaining event steps are skipped and the calendar's delete takes the event with it. |
 | `Event get` answers `dav_etag` and `last_modify_user` (`getEvent`) | Yes, with `CHECK_CALENDAR_WRITE`, for the event the check made | No `dav_etag`: `setEvent` makes no call without one, so the app could change no event; find the field in the raw reply and read it in `calEvent`. No `last_modify_user`: the drift card cannot say who changed an event; find the field and read it in `calEvent`. |
-| `Event set` carrying the current `dav_etag` is taken and answers the event with a **new** `dav_etag` (`setEvent`) | Yes, with `CHECK_CALENDAR_WRITE`: `dav_etag …: a new one; … one hour later as asked` | `NONE` or `the SAME as before`: the app keeps the etag from `set`'s reply, so it would hold none (and refuse the next change) or a stale one; `setEvent` must `getEvent` after a set. Counted as a failure. |
-| A stale etag is refused with 9006 (database operation error), the code the comments assume; every refusal of `set` but those in `NOT_AN_ETAG_REFUSAL` (9007, 9009, 9017) is taken as one (`setEvent`) | Yes, with `CHECK_CALENDAR_WRITE`: the block titled `carrying the OLD dav_etag …: what does a stale etag answer?`. Its raw reply is a list: `set`'s refusal, with its `error.code`, then the `get` `setEvent` makes to see that the etag really moved | See below. |
+| `Event set` takes the whole event: the fields of `eventFields`, `evt_id`, the current `dav_etag`, and `notify_setting`, `participant`, `location_info` and `attachments` sent back exactly as `get` returned them (`setEvent`, `EVENT_CARRIED`; the real NAS refused a set without `location_info` in its full shape and `attachments` with 9009, 2026-11-03). It answers the event with a **new** `dav_etag` | Yes, with `CHECK_CALENDAR_WRITE`: `dav_etag …: a new one; … one hour later as asked` | `NONE` or `the SAME as before`: the app keeps the etag from `set`'s reply, so it would hold none (and refuse the next change) or a stale one; `setEvent` must `getEvent` after a set. Counted as a failure. |
+| A stale etag is refused with 9009, the same code as a parameter error (the real NAS, 2026-11-03); so every refusal of `set` but those in `NOT_AN_ETAG_REFUSAL` (9007, 9017) is settled by reading the event again: an etag that moved is a mismatch, the same etag is a plain refusal, and 9009 on an event that cannot be read is gone (`setEvent`) | Yes, with `CHECK_CALENDAR_WRITE`: the block titled `carrying the OLD dav_etag …: what does a stale etag answer?`. Its raw reply is a list: `set`'s refusal, with its `error.code`, then the `get` `setEvent` makes to see that the etag really moved | See below. |
 | `Event delete` takes `evt_id` alone (`deleteEvent`; the real NAS refused it with `cal_id` and `original_cal_id` added, 9009, 2026-11-03); a `get` of a deleted event is refused 9009, which the app takes as gone (`NO_SUCH_EVENT` in `src/calendar.ts`) | Yes, with `CHECK_CALENDAR_WRITE`: `listEvents no longer shows it`, then `refused with code 9009` | Still listed: the delete was not done; look at `deleteEvent`. Another code for the deleted event: set `NO_SUCH_EVENT` in `src/calendar.ts` to it, or the app takes an event deleted on a phone for a failure. Both counted as failures. |
 | `Cal.Cal delete` takes `cal_id` alone (the Calendar guide's `Method Delete`). The app deletes no calendar: this is only the check's clean-up | Yes, with `CHECK_CALENDAR_WRITE`: the last calendar block, `answered, and listCalendars no longer shows it` | Refused: the calendar is left, the run says so in its last lines, and you delete it in Synology Calendar. Nothing in the app depends on it. |
 
-**A stale etag.** DSM's code for it is not what the app compares. `setEvent`
-takes every refusal `set` gives as a stale etag, **except** the codes in
-`NOT_AN_ETAG_REFUSAL` (9007, 9009, 9017, in `src/synology.ts`), a dead session,
-or a NAS that did not answer. Before reporting a mismatch it fetches the event
-again to check that its etag really moved; if that fetch fails with anything but
-a dead session, the mismatch is reported anyway, just without showing what
-changed. 9006 is written in two places only: the comment on `setEvent`, and
-`ETAG_MISMATCH` in `tools/fake-dsm/server.ts`.
+**A stale etag.** The real NAS refuses it with 9009 (2026-11-03), the same
+code as any parameter error, so the code alone says nothing. `setEvent` takes
+every refusal `set` gives as a possible stale etag, **except** the codes in
+`NOT_AN_ETAG_REFUSAL` (9007, 9017, in `src/synology.ts`), a dead session, or a
+NAS that did not answer, and settles it by fetching the event again: an etag
+that moved is a mismatch, the same etag means the refusal stands as it was, and
+9009 on an event that can no longer be read means it is gone. If that fetch
+fails any other way, the mismatch is reported anyway, just without showing what
+changed. 9009 as the stale code is written in `STALE_ETAG_ASSUMED` here, the
+comment on `setEvent`, and `ETAG_MISMATCH` in `tools/fake-dsm/server.ts`.
 
 With `CHECK_CALENDAR_WRITE=1` the check makes that write: it reads the event,
 moves it with that etag, then writes it again with the etag it read first. The
 `the client reads` line of that block says which of these it is:
 
-- `refused with code 9006, the 9006 the client assumes …; the client reads it
-  as EtagMismatch`: nothing to change.
-- `refused with code 9007` (or 9009, or 9017) `… is in NOT_AN_ETAG_REFUSAL`:
-  that code is the stale-etag refusal after all, and the app would report a
-  stale etag as a plain refusal. Remove it from `NOT_AN_ETAG_REFUSAL` in
-  `src/synology.ts`, and change 9006 to it in `setEvent`'s comment and in
-  `ETAG_MISMATCH` in the fake DSM. Counted as a failure.
-- `refused with code <n>, NOT the 9006 … not in NOT_AN_ETAG_REFUSAL`: the app
-  already takes it as a stale etag; change 9006 to `<n>` in `setEvent`'s
-  comment and in `ETAG_MISMATCH`, so the fake answers as the NAS does. Counted
-  as a failure, since the assumption was wrong.
+- `refused with code 9009, as the real NAS did …; the client reads it as
+  EtagMismatch`: nothing to change.
+- `refused with code 9007` (or 9017) `… is in NOT_AN_ETAG_REFUSAL`: on this
+  NAS that code is the stale-etag refusal, and the app would report a stale
+  etag as a plain refusal. Remove it from `NOT_AN_ETAG_REFUSAL` in
+  `src/synology.ts`, and change 9009 to it in `STALE_ETAG_ASSUMED`,
+  `setEvent`'s comment and `ETAG_MISMATCH` in the fake DSM. Counted as a failure.
+- `refused with code <n>, NOT the 9009 … not in NOT_AN_ETAG_REFUSAL`: the app
+  already takes it as a stale etag; change 9009 to `<n>` in the same three
+  places, so the fake answers as this NAS does. Counted as a failure, since
+  the NAS differs from the one this was settled on.
 - `ACCEPTED`: the NAS does not compare `dav_etag` at all, and the app would
   overwrite an edit made on a phone. Report it before plans are written to a
   shared calendar. Counted as a failure.

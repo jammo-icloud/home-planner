@@ -921,8 +921,13 @@ async function checkDesign(): Promise<void> {
 
 // ─── calendar writes, with CHECK_CALENDAR_WRITE=1 ────────────────────────────
 
-/** The code the client's comments assume for a stale etag (setEvent, src/synology.ts; ETAG_MISMATCH in the fake DSM). */
-const STALE_ETAG_ASSUMED = 9006;
+/**
+ * What the real NAS answered a stale etag with (2026-11-03): 9009, the same as
+ * a parameter error, which is why setEvent (src/synology.ts) settles a refusal
+ * by reading the event again rather than by its code. ETAG_MISMATCH in the fake
+ * DSM answers the same.
+ */
+const STALE_ETAG_ASSUMED = 9009;
 /** The code the app takes as "this event is gone" (NO_SUCH_EVENT in src/calendar.ts), a guess until the delete below answers. */
 const NO_SUCH_EVENT_ASSUMED = 9009;
 const HOUR = 60 * 60;
@@ -1131,14 +1136,14 @@ async function staleEtag(old: CalEvent): Promise<void> {
         return `refused with no error code in the reply; ${client}`;
       }
       if (code === STALE_ETAG_ASSUMED) {
-        return `refused with code ${code}, the ${STALE_ETAG_ASSUMED} the client assumes (setEvent, src/synology.ts); ${client}`;
+        return `refused with code ${code}, as the real NAS did on 2026-11-03 (setEvent, src/synology.ts, settles it by re-reading the event); ${client}`;
       }
       failed.push(`a stale etag was refused with ${code}, not ${STALE_ETAG_ASSUMED}`);
-      const fix = `set ${STALE_ETAG_ASSUMED} to ${code} in setEvent's comment (src/synology.ts) and in ETAG_MISMATCH (tools/fake-dsm/server.ts)`;
+      const fix = `set ${STALE_ETAG_ASSUMED} to ${code} in STALE_ETAG_ASSUMED here, setEvent's comment (src/synology.ts) and ETAG_MISMATCH (tools/fake-dsm/server.ts)`;
       return NOT_AN_ETAG_REFUSAL.has(code)
-        ? `refused with code ${code}, NOT the ${STALE_ETAG_ASSUMED} the client assumes, and ${code} is in NOT_AN_ETAG_REFUSAL, so the app `
+        ? `refused with code ${code}, NOT the ${STALE_ETAG_ASSUMED} the real NAS answered before, and ${code} is in NOT_AN_ETAG_REFUSAL, so the app `
           + `reports a stale etag as a plain refusal, never as "changed on the NAS". Remove ${code} from NOT_AN_ETAG_REFUSAL in src/synology.ts, and ${fix}; ${client}`
-        : `refused with code ${code}, NOT the ${STALE_ETAG_ASSUMED} the client assumes. ${code} is not in NOT_AN_ETAG_REFUSAL `
+        : `refused with code ${code}, NOT the ${STALE_ETAG_ASSUMED} the real NAS answered before. ${code} is not in NOT_AN_ETAG_REFUSAL `
           + `(${[...NOT_AN_ETAG_REFUSAL].join(', ')}, src/synology.ts), so the app still takes it as a stale etag; ${fix}; ${client}`;
     });
 }

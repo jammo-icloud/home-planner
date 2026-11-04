@@ -474,6 +474,12 @@ export interface CalEvent extends CalendarRef {
    * guess, confirmed at first real use). Absent when it does not.
    */
   last_modify_user?: string;
+  /**
+   * The four fields `set` must send back as they were read: see EVENT_CARRIED.
+   * Present on an event read from DSM; absent on one built from the log, and
+   * then `setEvent` reads the event first to get them.
+   */
+  carried?: Readonly<Record<string, unknown>>;
 }
 
 export interface NewCalEvent extends CalendarRef {
@@ -529,8 +535,26 @@ const eventFields = (e: NewCalEvent) => ({
   ...EVENT_REQUIRED,
 });
 
+/**
+ * What `set` must carry beside the fields the app owns. The real NAS
+ * (2026-11-03) refused a `set` without `location_info` and `attachments` with
+ * 9009, refused an empty `location_info` too, and took the event's own, as
+ * `get` returns them; so they are read and sent back unchanged, and the
+ * notify and participant lists with them, so a reminder or a guest someone
+ * added in Synology Calendar survives the app's change.
+ */
+const EVENT_CARRIED = ['notify_setting', 'participant', 'location_info', 'attachments'] as const;
+
+const carriedOf = (r: Record<string, unknown>): Readonly<Record<string, unknown>> | undefined => {
+  const out: Record<string, unknown> = {};
+  for (const k of EVENT_CARRIED) if (r[k] !== undefined && r[k] !== null) out[k] = r[k];
+  return Object.keys(out).length ? out : undefined;
+};
+
 /** What DSM sent back, as a `CalEvent`; the refs fall back to the ones the call was made with. */
-const calEvent = (r: Partial<CalEvent>, ref: CalendarRef): CalEvent => ({
+const calEvent = (r: Partial<CalEvent>, ref: CalendarRef): CalEvent => {
+  const carried = carriedOf(r as Record<string, unknown>);
+  return {
   cal_id: r.cal_id ?? ref.cal_id,
   original_cal_id: r.original_cal_id ?? ref.original_cal_id,
   evt_id: r.evt_id as number,
@@ -545,7 +569,9 @@ const calEvent = (r: Partial<CalEvent>, ref: CalendarRef): CalEvent => ({
   color: r.color ?? '',
   ...(typeof r.last_modify_user === 'string' && r.last_modify_user.trim()
     ? { last_modify_user: r.last_modify_user.trim() } : {}),
-});
+  ...(carried ? { carried } : {}),
+  };
+};
 
 export async function createEvent(sid: string, e: NewCalEvent, f?: DsmFetch): Promise<CalEvent> {
   const raw = await dsm<Partial<CalEvent>>(
@@ -597,17 +623,24 @@ export async function deleteEvent(sid: string, ref: EventRef, f?: DsmFetch): Pro
  * CHECK_CALENDAR_WRITE pass makes a stale-etag write on the real NAS and says
  * whether its code is one of these; its README says what each outcome means.
  */
-export const NOT_AN_ETAG_REFUSAL: ReadonlySet<number> = new Set([9007, 9009, 9017]);
+export const NOT_AN_ETAG_REFUSAL: ReadonlySet<number> = new Set([9007, 9017]);
+
+/** DSM's "no such event", which a `get` of a deleted event answers; a `set` refused so is gone, not stale. */
+const NO_SUCH_EVENT_CODE = 9009;
 
 /**
  * Change an event, carrying the etag it was read with. Without one DSM would
- * silently overwrite whatever is there now, so no call is made at all.
+ * overwrite whatever is there now, so a missing etag is refused here.
  *
- * Which code DSM answers a stale etag with is not documented. Until the check
- * settles it (with CHECK_CALENDAR_WRITE=1, on a calendar it makes), 9006 (database
- * operation error) and any other code `set` fails with, bar the three above,
- * is taken to be the etag refusal. A session that ended, an account that is
- * not allowed, or a NAS that did not answer is never one.
+ * A stale etag is refused with 9009 on the real NAS (2026-11-03), the same
+ * code as any parameter error, so the code alone cannot say which it was. A
+ * refusal of `set` is therefore settled by reading the event again: an etag
+ * that moved is an `EtagMismatch` carrying the event as it stands now; the
+ * same etag means the failure was something else and the refusal stands as
+ * it was; and 9009 on an event that can no longer be read means it is gone.
+ * Codes in NOT_AN_ETAG_REFUSAL (permission, update in progress), a session
+ * that ended, an account that is not allowed, or a NAS that did not answer
+ * are never read as a mismatch.
  */
 export async function setEvent(
   sid: string,
@@ -619,10 +652,14 @@ export async function setEvent(
     throw new SynologyError('an event cannot be changed without its etag', 'SYNO.Cal.Event', 0, 400);
   }
   const next: CalEvent = { ...e, ...changes };
+  // The carried fields, read now when the event did not come from DSM. The
+  // etag sent is still the one the caller holds, so a change made in between
+  // is still caught; a read that fails leaves set to answer for itself.
+  const carried = e.carried ?? await getEvent(sid, e, f).then((got) => got.carried ?? {}, () => ({}));
   try {
     const raw = await dsm<Partial<CalEvent>>({
       api: 'SYNO.Cal.Event', version: EVENT_VERSION, method: 'set', sid,
-      params: { ...eventFields(next), evt_id: e.evt_id, dav_etag: e.dav_etag },
+      params: { ...eventFields(next), ...carried, evt_id: e.evt_id, dav_etag: e.dav_etag },
     }, f);
     return calEvent(raw, e);
   } catch (err) {
@@ -632,8 +669,10 @@ export async function setEvent(
     try {
       current = await getEvent(sid, e, f);
     } catch (again) {
-      // The mismatch stands without `current`: the caller just cannot show what changed.
       if (again instanceof SessionLost) throw again;
+      // Refused 9009 and now unreadable with 9009: the event is gone, not stale.
+      if (again instanceof SynologyError && again.code === NO_SUCH_EVENT_CODE && err.code === NO_SUCH_EVENT_CODE) throw err;
+      // Otherwise the mismatch stands without `current`: the caller just cannot show what changed.
     }
     // Same etag still on the NAS: the event did not move, so this failure was something else.
     if (current && current.dav_etag === e.dav_etag) throw err;

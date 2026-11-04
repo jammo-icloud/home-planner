@@ -162,7 +162,11 @@ describe('calendars', () => {
 
 describe('events', () => {
   const ev = { cal_id: '/a/h/', original_cal_id: '/a/h/', summary: 'Dentist', description: '', is_all_day: false, dtstart: 1762452000, dtend: 1762455600, tz_id: 'America/Denver' };
-  const reply = { evt_id: 42, ical_uid: 'u@cal.synology.com', dav_etag: 'E1', ...ev, color: '' };
+  const reply = {
+    // The four fields set must carry back, as the real NAS returns them.
+    notify_setting: [], participant: [], attachments: [], location_info: { address: '', gps: {}, map_type: '', name: '', place_id: '' }, evt_id: 42, ical_uid: 'u@cal.synology.com', dav_etag: 'E1', ...ev, color: '' };
+  // The same event as the client holds it after a read: the carried fields are on `carried`, so set needs no extra read.
+  const held = { ...reply, carried: { notify_setting: [], participant: [], attachments: [], location_info: reply.location_info } };
   test('create returns the ids the link needs', async () => {
     const d = fakeDsm({ success: true, data: reply });
     const c = await createEvent('S', ev, d.fn);
@@ -172,18 +176,18 @@ describe('events', () => {
   });
   test('set always carries the stored etag', async () => {
     const d = fakeDsm({ success: true, data: { ...reply, dav_etag: 'E2', summary: 'Dentist (moved)' } });
-    const out = await setEvent('S', { ...reply }, { summary: 'Dentist (moved)' }, d.fn);
+    const out = await setEvent('S', { ...held }, { summary: 'Dentist (moved)' }, d.fn);
     assert.match(decodeURIComponent(d.calls[0]!.body), /dav_etag=E1/);
     assert.equal(out.dav_etag, 'E2');
   });
   test('set refuses to run without an etag', async () => {
     const d = fakeDsm({ success: true, data: reply });
-    await assert.rejects(() => setEvent('S', { ...reply, dav_etag: '' }, { summary: 'x' }, d.fn), /etag/);
+    await assert.rejects(() => setEvent('S', { ...held, dav_etag: '' }, { summary: 'x' }, d.fn), /etag/);
     assert.equal(d.calls.length, 0);
   });
   test("DSM's refusal of a stale etag is EtagMismatch", async () => {
     const d = fakeDsm({ success: false, error: { code: 9006 } });
-    await assert.rejects(() => setEvent('S', { ...reply }, { summary: 'x' }, d.fn), EtagMismatch);
+    await assert.rejects(() => setEvent('S', { ...held }, { summary: 'x' }, d.fn), EtagMismatch);
   });
   test('list asks for every calendar in the window', async () => {
     const d = fakeDsm({ success: true, data: [reply] });
@@ -199,7 +203,7 @@ describe('events', () => {
   });
   test('set sends the whole event with the changes applied', async () => {
     const d = fakeDsm({ success: true, data: reply });
-    await setEvent('S', { ...reply }, { dtstart: 5, dtend: 9 }, d.fn);
+    await setEvent('S', { ...held }, { dtstart: 5, dtend: 9 }, d.fn);
     const b = decodeURIComponent(d.calls[0]!.body);
     assert.match(b, /method=set/); assert.match(b, /evt_id=42/); assert.match(b, /summary=Dentist(&|$)/);
     assert.match(b, /dtstart=5/); assert.match(b, /dtend=9/); assert.match(b, /is_repeat_evt=false/);
@@ -214,24 +218,42 @@ describe('events', () => {
       calls.push(decodeURIComponent(String(init?.body)));
       return { ok: true, status: 200, headers: new Headers({ 'content-type': 'application/json' }), json: async () => replies.shift() } as unknown as Response;
     }) as unknown as typeof globalThis.fetch;
-    await assert.rejects(() => setEvent('S', { ...reply }, { summary: 'x' }, fn),
+    await assert.rejects(() => setEvent('S', { ...held }, { summary: 'x' }, fn),
       (e: unknown) => e instanceof EtagMismatch && e.status === 409 && e.current?.dav_etag === 'E9' && e.current.summary === 'Edited on the NAS');
     assert.match(calls[1]!, /method=get/);
   });
-  test('any other set failure is an etag mismatch too, except 9007, 9009 and 9017', async () => {
-    await assert.rejects(() => setEvent('S', { ...reply }, { summary: 'x' }, fakeDsm({ success: false, error: { code: 9001 } }).fn), EtagMismatch);
-    for (const code of [9007, 9009, 9017]) {
-      await assert.rejects(() => setEvent('S', { ...reply }, { summary: 'x' }, fakeDsm({ success: false, error: { code } }).fn),
+  test('set sends back notify_setting, participant, location_info and attachments as the event was read', async () => {
+    const read = { ...reply, participant: [{ name: 'bob' }], location_info: { ...reply.location_info, name: 'Home' } };
+    const d = fakeDsm({ success: true, data: read });
+    const e = await getEvent('S', { cal_id: '/a/h/', original_cal_id: '/a/h/', evt_id: 42 }, d.fn);
+    await setEvent('S', e, { summary: 'y' }, d.fn);
+    assert.equal(d.calls.length, 2, 'no extra read: the event came from DSM');
+    const b = decodeURIComponent(d.calls[1]!.body);
+    assert.match(b, /participant=\[\{"name":"bob"\}\]/); assert.match(b, /attachments=\[\]/);
+    assert.match(b, /location_info=\{"address":"","gps":\{\},"map_type":"","name":"Home","place_id":""\}/);
+  });
+  test('an event built without those fields is read first, and the etag sent is still the one held', async () => {
+    const d = fakeDsm({ success: true, data: { ...reply, dav_etag: 'E5' } });
+    await setEvent('S', { ...reply, dav_etag: 'E1' }, { summary: 'y' }, d.fn);
+    assert.equal(d.calls.length, 2);
+    assert.match(decodeURIComponent(d.calls[0]!.body), /method=get/);
+    const b = decodeURIComponent(d.calls[1]!.body);
+    assert.match(b, /method=set/); assert.match(b, /dav_etag=E1/); assert.match(b, /location_info=\{/);
+  });
+  test('any other set failure is an etag mismatch too, except 9007 and 9017', async () => {
+    await assert.rejects(() => setEvent('S', { ...held }, { summary: 'x' }, fakeDsm({ success: false, error: { code: 9001 } }).fn), EtagMismatch);
+    for (const code of [9007, 9017]) {
+      await assert.rejects(() => setEvent('S', { ...held }, { summary: 'x' }, fakeDsm({ success: false, error: { code } }).fn),
         (e: unknown) => e instanceof SynologyError && !(e instanceof EtagMismatch) && e.code === code);
     }
   });
   test('a lost session or an unreachable NAS is never mistaken for an etag mismatch', async () => {
-    await assert.rejects(() => setEvent('S', { ...reply }, { summary: 'x' }, fakeDsm({ success: false, error: { code: 119 } }).fn), SessionLost);
+    await assert.rejects(() => setEvent('S', { ...held }, { summary: 'x' }, fakeDsm({ success: false, error: { code: 119 } }).fn), SessionLost);
     const refused = fakeDsm({ success: false, error: { code: 105 } });
-    await assert.rejects(() => setEvent('S', { ...reply }, { summary: 'x' }, refused.fn), NotAllowed);
+    await assert.rejects(() => setEvent('S', { ...held }, { summary: 'x' }, refused.fn), NotAllowed);
     assert.equal(refused.calls.length, 1, 'no second read to look for a moved etag');
     const down = (async () => { throw new TypeError('fetch failed'); }) as unknown as typeof globalThis.fetch;
-    await assert.rejects(() => setEvent('S', { ...reply }, { summary: 'x' }, down),
+    await assert.rejects(() => setEvent('S', { ...held }, { summary: 'x' }, down),
       (e: unknown) => e instanceof SynologyError && !(e instanceof EtagMismatch) && e.status === 502);
   });
   test('get and delete address the event by its ids', async () => {
@@ -253,13 +275,21 @@ describe('events', () => {
   };
   test('a failed set whose event still has the same etag is not a mismatch', async () => {
     const d = sequence([{ success: false, error: { code: 101 } }, { success: true, data: { ...reply } }]);
-    await assert.rejects(() => setEvent('S', { ...reply }, { summary: 'x' }, d.fn),
+    await assert.rejects(() => setEvent('S', { ...held }, { summary: 'x' }, d.fn),
       (e: unknown) => e instanceof SynologyError && !(e instanceof EtagMismatch) && e.code === 101);
     assert.match(d.calls[1]!, /method=get/);
   });
+  test('9009 is a mismatch when the etag moved, as the real NAS answers a stale etag, and gone when the event cannot be read', async () => {
+    const moved = sequence([{ success: false, error: { code: 9009 } }, { success: true, data: { ...reply, dav_etag: 'E9' } }]);
+    await assert.rejects(() => setEvent('S', { ...held }, { summary: 'x' }, moved.fn),
+      (e: unknown) => e instanceof EtagMismatch && e.code === 9009 && e.current?.dav_etag === 'E9');
+    const gone = sequence([{ success: false, error: { code: 9009 } }, { success: false, error: { code: 9009 } }]);
+    await assert.rejects(() => setEvent('S', { ...held }, { summary: 'x' }, gone.fn),
+      (e: unknown) => e instanceof SynologyError && !(e instanceof EtagMismatch) && e.code === 9009);
+  });
   test('a mismatch stands when the event cannot be fetched, with no current', async () => {
     const d = sequence([{ success: false, error: { code: 9006 } }, { success: false, error: { code: 9001 } }]);
-    await assert.rejects(() => setEvent('S', { ...reply }, { summary: 'x' }, d.fn),
+    await assert.rejects(() => setEvent('S', { ...held }, { summary: 'x' }, d.fn),
       (e: unknown) => e instanceof EtagMismatch && e.current === undefined && e.code === 9006);
   });
 });

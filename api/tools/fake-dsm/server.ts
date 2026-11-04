@@ -82,8 +82,12 @@ const NO_PERMISSION = 105;
 const MISSING_PARAM = 114;
 const SID_NOT_FOUND = 119;
 const BAD_PARAM = 120;
-/** The client's assumption for a stale etag (src/synology.ts, setEvent). */
-const ETAG_MISMATCH = 9006;
+/**
+ * What the real NAS answers a stale etag with (2026-11-03): 9009, the same
+ * code as a parameter error. The client tells them apart by reading the event
+ * again (src/synology.ts, setEvent).
+ */
+const ETAG_MISMATCH = 9009;
 /** No such calendar or event, or not one this account may touch. */
 const NO_SUCH_CAL = 9009;
 /** Calendar's "Parameter error"; the real NAS gave it for `SYNO.Cal.Cal list` with no parameters. */
@@ -140,6 +144,16 @@ interface Calendar {
   groups: unknown[];
 }
 
+/**
+ * What an event carries beside the fields the app owns. The real NAS returns
+ * these from create and get and refuses a `set` without `location_info` (in
+ * this shape; an empty object is refused too) and `attachments` with 9009
+ * (2026-11-03). The gps object's own shape was not recorded; the client echoes
+ * whatever it is given.
+ */
+const NO_LOCATION = { address: '', gps: {}, map_type: '', name: '', place_id: '' } as const;
+const LOCATION_KEYS = Object.keys(NO_LOCATION);
+
 interface CalEvent {
   evt_id: number;
   cal_id: string;
@@ -148,6 +162,10 @@ interface CalEvent {
   summary: string;
   description: string;
   is_all_day: boolean;
+  notify_setting: unknown[];
+  participant: unknown[];
+  location_info: Record<string, unknown>;
+  attachments: unknown[];
   dtstart: number;
   dtend: number;
   tz_id: string;
@@ -372,6 +390,20 @@ export async function start(opts: {
   /** A string parameter as Calendar reads it: the JSON literal "" is the empty string. */
   const jsonEmpty = (v: string | null): string => (v === null || v === '""') ? '' : v;
 
+  /** A JSON list parameter, [] when absent; anything else is a parameter error. */
+  const listParam = (p: URLSearchParams, key: string): unknown[] => {
+    if (!p.has(key)) return [];
+    const v = parsed(p, key);
+    if (!Array.isArray(v)) throw new Refuse(PARAMETER_ERROR);
+    return v;
+  };
+  /** `location_info` with every key the real NAS returns, or a parameter error, as the NAS refused `{}`. */
+  const locationParam = (p: URLSearchParams): Record<string, unknown> => {
+    const v = parsed(p, 'location_info');
+    if (!v || typeof v !== 'object' || Array.isArray(v) || LOCATION_KEYS.some((k) => !(k in (v as object)))) throw new Refuse(PARAMETER_ERROR);
+    return v as Record<string, unknown>;
+  };
+
   const eventFor = (p: URLSearchParams, who: string, write = false): CalEvent => {
     const e = events.get(num(p, 'evt_id'));
     if (!e) throw new Refuse(NO_SUCH_CAL);
@@ -465,6 +497,8 @@ export async function start(opts: {
           summary: p.get('summary') ?? '', description: jsonEmpty(p.get('description')),
           is_all_day: bool(p, 'is_all_day'), dtstart: num(p, 'dtstart'), dtend: num(p, 'dtend'),
           tz_id: p.get('tz_id') ?? '', color: jsonEmpty(p.get('color')), last_modify_user: who,
+          notify_setting: listParam(p, 'notify_setting'), participant: listParam(p, 'participant'),
+          location_info: p.has('location_info') ? locationParam(p) : { ...NO_LOCATION }, attachments: listParam(p, 'attachments'),
         };
         events.set(e.evt_id, e);
         return rawEvent(e, who);
@@ -488,10 +522,18 @@ export async function start(opts: {
             .map((e) => rawEvent(e, who)),
         };
       },
+      // `set` takes the whole event: without `attachments` and a `location_info`
+      // of the full shape the real NAS refused it with 9009 (2026-11-03).
       set: (p, who) => {
         for (const k of ['color', 'description']) if (p.get(k) === '') throw new Refuse(PARAMETER_ERROR);
+        if (!p.has('attachments') || !p.has('location_info')) throw new Refuse(PARAMETER_ERROR);
+        const location = locationParam(p);
+        const attachments = listParam(p, 'attachments');
         const e = eventFor(p, who, true);
         if (need(p, 'dav_etag') !== e.dav_etag) throw new Refuse(ETAG_MISMATCH);
+        e.location_info = location; e.attachments = attachments;
+        if (p.has('notify_setting')) e.notify_setting = listParam(p, 'notify_setting');
+        if (p.has('participant')) e.participant = listParam(p, 'participant');
         if (p.has('summary')) e.summary = p.get('summary')!;
         if (p.has('description')) e.description = jsonEmpty(p.get('description'));
         if (p.has('is_all_day')) e.is_all_day = bool(p, 'is_all_day');

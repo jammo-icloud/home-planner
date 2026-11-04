@@ -156,7 +156,7 @@ guess. It shows the app and the fake agree, not that DSM does;
 | 1001 | Drive: a move of a file named in `moves.refuse` | this fake's choice |
 | 1003 | Drive: no such file or folder, or a path outside the Team Folders | yes: the real NAS answered it for a path that does not exist, and for a Team Folder path in the wrong case (2026-11-03; `DRIVE_NO_SUCH_FILE`, src/drive.ts) |
 | 1022 | Drive: a folder made where that name is already taken | yes: the real NAS refused a second `POST files` type=folder with it (2026-11-03; `DRIVE_NAME_TAKEN`, src/drive.ts) |
-| 9006 | event `set` with a stale `dav_etag` | the client's assumption |
+| 9009 | event `set` with a stale `dav_etag`; also `set` without `attachments` or without `location_info` in its full shape, and `create` or `set` with `color` or `description` sent plainly empty | yes: the real NAS answered 9009 to each (2026-11-03) |
 | 9009 | `SYNO.Cal.Cal list` without `cal_type` and `is_evt`; also no such calendar or event, or not one this account may use | yes for a `list` with no parameters (the real NAS, 2026-11-03; the guide calls it "Parameter error"); which of the two parameters the NAS needs is not confirmed, so the fake wants both; the rest is this fake's choice |
 
 ## Moving an event as a phone would

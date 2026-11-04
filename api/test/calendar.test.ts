@@ -1423,7 +1423,7 @@ describe('due dates and blocks become events', () => {
     assert.equal(new Set(written.map((e) => e.at)).size, 1, 'one write');
     assert.equal(gate(c).links[0]!.dav_etag, ev.dav_etag);
 
-    // Bob changes it on his phone; renaming again meets a 9006 and is a drift, never retried.
+    // Bob changes it on his phone; renaming again meets a 9009 with a moved etag and is a drift, never retried.
     await bobChanges(c, link.evt_id, { summary: 'Gate (Dad)' });
     const out = await toolByName.get('update_plan')!.effect!({ plan: 'gate' }, c,
       [{ op: 'plan.set', plan: 'gate', title: 'Fix the gate at last' }]);
