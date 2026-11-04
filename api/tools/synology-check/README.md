@@ -26,9 +26,27 @@ email address, and at most a few events, so read them before pasting anywhere.
 
 ```bash
 cd api
-read -rs CHECK_PASS && export CHECK_PASS      # type the password; it is not echoed or kept in history
-CHECK_USER=<your-dsm-account> DSM_URL=http://<nas-ip>:5000 npm run synology:check
+cp tools/synology-check/.env.example tools/synology-check/.env && chmod 600 tools/synology-check/.env
+# fill in DSM_URL, CHECK_USER, CHECK_PASS and PLANNER_ROOT, then:
+npm run synology:check
 ```
+
+The check and the probes (below) read `tools/synology-check/.env` when it is
+there, so the account, the NAS and the flags you keep on can live in it
+instead of on every command line. It is covered by the repository's `.env`
+ignore rule and holds the password in clear, so keep it mode 0600. Anything
+on the command line still wins over the file. When DSM wants a one-time code
+for the account, the run asks for it on the terminal; `CHECK_OTP=<code>` is
+only for a run with no terminal.
+
+**Probes.** Beside the check, `tools/synology-check/probes/` holds small
+scripts that each try several ways of making one DSM call, stop at the first
+the NAS accepts, and delete what they made. They are for a 9009 or 120 the app
+meets on a write, where the guide's wording leaves the encoding open: `npm run
+synology:probe` lists them, `npm run synology:probe -- <name>` runs one, and
+each prints only codes and parameter names. `cal-create` settled that the NAS
+reads a required field sent empty as missing (2026-11-03); `event-create` asks
+the same of an event's `color`.
 
 Every write at once, which is the run that settles the write paths:
 
@@ -41,7 +59,6 @@ CHECK_USER=<your-dsm-account> DSM_URL=http://<nas-ip>:5000 PLANNER_ROOT=/<team-f
 - `DSM_URL` is where the **NAS** answers, from the machine you run this on. The
   default (`host.docker.internal`) only means something inside the container,
   and the image does not carry `tools/`, so run it from a checkout.
-- Add `CHECK_OTP=<code>` if the account asks for a one-time code.
 - The Contacts version is not set by hand: the check asks the NAS, as the app
   does (the lowest version the range holds, 1 if it holds that), and the
   version table shows the range.

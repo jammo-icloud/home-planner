@@ -64,7 +64,8 @@
 import { createHash } from 'node:crypto';
 
 import { ACCOUNTS_CALL, ADMIN_GROUP_CALL, isAdministrator, listAccounts } from '../../src/accounts.ts';
-import { AUTH_VERSION, OtpRequired, checkWithDsm, DSM_URL } from '../../src/auth.ts';
+import { AUTH_VERSION, DSM_URL } from '../../src/auth.ts';
+import { ENV_FILE, signIn } from './signin.ts';
 import {
   DRIVE_API, DRIVE_BASE, DRIVE_NAME_TAKEN, byLink, getFile, isNoSuchFile, listChanges, listFolders, listTeamFolders,
   readFile, search, teamFolderName, teamFolderPath, teamFolders, writeFile,
@@ -1265,16 +1266,15 @@ async function checkContactsWrite(): Promise<void> {
 }
 
 if (!user || !pass) {
-  stop('Set CHECK_USER and CHECK_PASS (and CHECK_OTP if the account asks for a code) to a DSM account, then run this again.');
+  stop(`Set CHECK_USER and CHECK_PASS to a DSM account, in ${ENV_FILE} (see .env.example beside it) or on the command line, then run this again.`);
 }
 
 say(`Checking ${DSM_URL} as ${user}.`);
 try {
-  ({ sid } = await checkWithDsm(user, pass, otp || undefined));
+  // A one-time code, when DSM wants one, is asked for on the terminal (signin.ts).
+  sid = await signIn(user, pass);
 } catch (err) {
-  stop(err instanceof OtpRequired
-    ? 'DSM wants a one-time code for this account: set CHECK_OTP to the current code and run this again.'
-    : `Could not sign in to ${DSM_URL}: ${(err as Error).message}.`);
+  stop(`Could not sign in to ${DSM_URL}: ${(err as Error).message}`);
 }
 say('Signed in.');
 
@@ -1284,7 +1284,7 @@ if (adminUser || adminPass) {
     say("Set both CHECK_ADMIN_USER and CHECK_ADMIN_PASS, or neither: the administrator's side of probes 1 and 2 is skipped.");
   } else {
     try {
-      ({ sid: adminSid } = await checkWithDsm(adminUser, adminPass, undefined));
+      adminSid = await signIn(adminUser, adminPass);
       say(`Signed in as ${adminUser}, the administrator.`);
     } catch (err) {
       failed.push('CHECK_ADMIN_USER sign-in');

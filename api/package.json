@@ -10,7 +10,8 @@
     "test": "node --test --experimental-strip-types test/*.test.ts",
     "typecheck": "tsc --noEmit",
     "fake-dsm": "node --env-file=../.env --experimental-strip-types tools/fake-dsm/server.ts",
-    "synology:check": "node --experimental-strip-types tools/synology-check/check.ts",
+    "synology:check": "node --env-file-if-exists=tools/synology-check/.env --experimental-strip-types tools/synology-check/check.ts",
+    "synology:probe": "node --env-file-if-exists=tools/synology-check/.env --experimental-strip-types tools/synology-check/probes/run.ts",
     "start": "node --experimental-strip-types src/server.ts"
   },
   "devDependencies": {
