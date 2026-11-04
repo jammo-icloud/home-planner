@@ -252,16 +252,36 @@ export interface CalendarInfo extends CalendarRef {
   isDefault: boolean;
 }
 
-/** A calendar as DSM spells it. */
-interface RawCalendar {
+/**
+ * The eight booleans Synology's Calendar WebAPI guide (2024-06) marks required
+ * on `SYNO.Cal.Cal` `create` and `set`, beside the type, name, description and
+ * color. The real NAS refused a `create` without `notify_evt_by_browser` and
+ * `notify_evt_by_mail` with 9009, Parameter error (2026-11-03); an earlier
+ * version sent two `*_by_push` names the guide does not have instead.
+ */
+const CALENDAR_FLAGS = [
+  'is_hidden_in_cal', 'is_hidden_in_list',
+  'notify_alarm_by_browser', 'notify_alarm_by_mail',
+  'notify_evt_by_browser', 'notify_evt_by_mail',
+  'notify_import_cal_by_browser', 'notify_import_cal_by_mail',
+] as const;
+type CalendarFlag = (typeof CALENDAR_FLAGS)[number];
+
+/** A calendar as DSM spells it. The flags are read back so `set` can send them unchanged. */
+interface RawCalendar extends Partial<Record<CalendarFlag, boolean>> {
   cal_id: string;
   original_cal_id: string;
   cal_displayname: string;
+  cal_description?: string;
   cal_color: string;
   cal_privilege: 'RO' | 'RW';
   cal_type: 'event' | 'todo';
   default_calendar: boolean;
 }
+
+/** Every flag of a calendar as DSM listed it, false where it said nothing. */
+const flagsOf = (r: Partial<Record<CalendarFlag, boolean>>): Record<CalendarFlag, boolean> =>
+  Object.fromEntries(CALENDAR_FLAGS.map((k) => [k, r[k] === true])) as Record<CalendarFlag, boolean>;
 
 const calendarInfo = (r: RawCalendar): CalendarInfo => ({
   cal_id: r.cal_id,
@@ -302,10 +322,15 @@ export const listRows = <T>(data: unknown, ...keys: string[]): T[] => {
  * README has a step that compares the two views on the real NAS.
  */
 export async function listCalendars(sid: string, f?: DsmFetch): Promise<CalendarInfo[]> {
+  return (await rawCalendars(sid, f)).filter((r) => r.cal_type === 'event').map(calendarInfo);
+}
+
+/** The calendars as DSM spells them, every type; `set` needs the fields `calendarInfo` leaves out. */
+async function rawCalendars(sid: string, f?: DsmFetch): Promise<RawCalendar[]> {
   const data = await dsm<unknown>(
     { api: 'SYNO.Cal.Cal', version: CAL_VERSION, method: 'list', sid, params: { ...CALENDAR_LIST_PARAMS } }, f);
   // The guide wraps it as `{ list }`; a bare array or `{ cal_list }` is read too.
-  return listRows<RawCalendar>(data, 'list', 'cal_list').filter((r) => r.cal_type === 'event').map(calendarInfo);
+  return listRows<RawCalendar>(data, 'list', 'cal_list');
 }
 
 export async function createCalendar(
@@ -320,35 +345,38 @@ export async function createCalendar(
       cal_displayname: o.displayname,
       cal_description: o.description ?? '',
       cal_color: o.color,
-      // The guide marks every one of these required, so every one is sent. Only
-      // notify_alarm_by_browser and notify_import_cal_by_mail are known names; the
-      // other four are inferred from them. All eight are confirmed by the
-      // check's CHECK_CALENDAR_WRITE pass, which makes a calendar of its own
-      // with them, or at first real use, when the app makes the Household calendar.
-      is_hidden_in_cal: false,
-      is_hidden_in_list: false,
-      notify_import_cal_by_browser: false,
-      notify_import_cal_by_mail: false,
-      notify_import_cal_by_push: false,
-      notify_alarm_by_browser: false,
-      notify_alarm_by_mail: false,
-      notify_alarm_by_push: false,
+      // The guide marks all eight flags required, so all eight are sent, off:
+      // the app's calendar sends no reminders or notices of its own. The real
+      // NAS refused the set without the two notify_evt_* names with 9009.
+      ...flagsOf({}),
     },
   }, f);
   return calendarInfo(raw);
 }
 
 /**
- * Give a calendar a new name: `SYNO.Cal.Cal` `set` with `cal_displayname`, the
- * name `create` takes. The check's CHECK_CALENDAR_WRITE pass renames the
- * calendar it made, as its owner; whether DSM lets anyone but the owner do it
- * is confirmed at first real use, the first time a member renames the
- * Household calendar.
+ * Give a calendar a new name. The guide's `SYNO.Cal.Cal` `set` takes the whole
+ * calendar, every field required, not the one that changes, so the calendar is
+ * read from the list first and sent back with only `cal_displayname` new. A
+ * calendar the list does not show cannot be renamed and is reported as such.
+ * The check's CHECK_CALENDAR_WRITE pass renames the calendar it made, as its
+ * owner; whether DSM lets anyone but the owner do it is confirmed at first real
+ * use, the first time a member renames the Household calendar.
  */
 export async function renameCalendar(sid: string, cal: CalendarRef, name: string, f?: DsmFetch): Promise<void> {
+  const listed = await rawCalendars(sid, f);
+  const current = listed.find((r) => r.cal_id === cal.cal_id) ?? listed.find((r) => r.original_cal_id === cal.original_cal_id);
+  if (!current) throw new SynologyError('the calendar to rename is not in your calendar list', 'SYNO.Cal.Cal', 0, 404);
   await dsm<unknown>({
     api: 'SYNO.Cal.Cal', version: CAL_VERSION, method: 'set', sid,
-    params: { cal_id: cal.cal_id, original_cal_id: cal.original_cal_id, cal_displayname: name },
+    params: {
+      cal_id: current.cal_id,
+      original_cal_id: current.original_cal_id,
+      cal_displayname: name,
+      cal_description: current.cal_description ?? '',
+      cal_color: current.cal_color,
+      ...flagsOf(current),
+    },
   }, f);
 }
 

@@ -6,7 +6,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import {
   dsm, requireSid, SessionLost, SynologyError, NotDsm, NeedsDsm, NotAllowed, SESSION_LOST_CODES,
-  listCalendars, createCalendar, shareCalendar, sharingOf,
+  listCalendars, createCalendar, renameCalendar, shareCalendar, sharingOf,
   createEvent, setEvent, getEvent, listEvents, deleteEvent, EtagMismatch,
   listAddressbooks, listContacts, getContact, createContact, searchContacts,
   createFolder, uploadFile, downloadFile, listFolder,
@@ -74,9 +74,35 @@ describe('calendars', () => {
     const c = await createCalendar('S', { displayname: 'Household', color: '#112233' }, d.fn);
     assert.equal(c.cal_id, '/alice/abc/');
     const b = decodeURIComponent(d.calls[0]!.body);
+    // The guide's twelve, and none of the two *_by_push names the real NAS refused with 9009.
     for (const k of ['cal_type=event', 'cal_displayname=Household', 'cal_description=', 'cal_color=#112233',
-                     'is_hidden_in_cal=false', 'is_hidden_in_list=false', 'notify_alarm_by_browser=',
-                     'notify_import_cal_by_mail=']) assert.match(b, new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+                     'is_hidden_in_cal=false', 'is_hidden_in_list=false',
+                     'notify_alarm_by_browser=false', 'notify_alarm_by_mail=false',
+                     'notify_evt_by_browser=false', 'notify_evt_by_mail=false',
+                     'notify_import_cal_by_browser=false', 'notify_import_cal_by_mail=false',
+    ]) assert.match(b, new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+    assert.doesNotMatch(b, /_by_push/);
+  });
+  test('rename reads the calendar back and sends the whole of it with the new name, as the guide\'s set requires', async () => {
+    const listed = { cal_id: '/alice/abc/', original_cal_id: '/alice/abc/', cal_displayname: 'Household', cal_description: 'ours',
+      cal_color: '#112233', cal_privilege: 'RW', cal_type: 'event', default_calendar: false,
+      is_hidden_in_cal: false, is_hidden_in_list: true, notify_alarm_by_browser: true, notify_alarm_by_mail: false,
+      notify_evt_by_browser: false, notify_evt_by_mail: true, notify_import_cal_by_browser: false, notify_import_cal_by_mail: false };
+    const d = fakeDsmSeq([{ success: true, data: { list: [listed] } }, { success: true, data: { ...listed, cal_displayname: 'Home' } }]);
+    await renameCalendar('S', { cal_id: '/alice/abc/', original_cal_id: '/alice/abc/' }, 'Home', d.fn);
+    assert.equal(d.calls.length, 2);
+    assert.match(decodeURIComponent(d.calls[0]!.body), /method=list/);
+    const b = decodeURIComponent(d.calls[1]!.body);
+    for (const k of ['method=set', 'cal_id=/alice/abc/', 'original_cal_id=/alice/abc/', 'cal_displayname=Home', 'cal_description=ours',
+                     'cal_color=#112233', 'is_hidden_in_list=true', 'notify_alarm_by_browser=true', 'notify_evt_by_mail=true',
+                     'notify_evt_by_browser=false', 'notify_import_cal_by_mail=false',
+    ]) assert.match(b, new RegExp(k.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')));
+  });
+  test('rename refuses in words when the calendar is not in the list', async () => {
+    const d = fakeDsm({ success: true, data: { list: [] } });
+    await assert.rejects(renameCalendar('S', { cal_id: '/alice/gone/', original_cal_id: '/alice/gone/' }, 'Home', d.fn),
+      (e: Error) => /not in your calendar list/.test(e.message));
+    assert.equal(d.calls.length, 1);
   });
   test('share posts the privilege object the 2.4 guide shows', async () => {
     const d = fakeDsm({ success: true });

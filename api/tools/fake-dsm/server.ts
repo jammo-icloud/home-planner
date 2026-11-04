@@ -111,6 +111,19 @@ class Refuse extends Error {
 
 type Privilege = 'RO' | 'RW';
 
+/**
+ * What the guide's `SYNO.Cal.Cal` `create` and `set` require beside the type,
+ * name, description and color. The real NAS (2026-11-03) refused a `create`
+ * that lacked `notify_evt_by_browser` and `notify_evt_by_mail` with 9009, so a
+ * create or set short of any of these is refused the same way here.
+ */
+const CALENDAR_FLAGS = [
+  'is_hidden_in_cal', 'is_hidden_in_list', 'notify_alarm_by_browser', 'notify_alarm_by_mail',
+  'notify_evt_by_browser', 'notify_evt_by_mail', 'notify_import_cal_by_browser', 'notify_import_cal_by_mail',
+] as const;
+type CalendarFlag = (typeof CALENDAR_FLAGS)[number];
+const OFF: Record<CalendarFlag, boolean> = Object.fromEntries(CALENDAR_FLAGS.map((k) => [k, false])) as Record<CalendarFlag, boolean>;
+
 interface Calendar {
   cal_id: string;
   owner: string;
@@ -119,6 +132,8 @@ interface Calendar {
   color: string;
   type: 'event' | 'todo';
   isDefault: boolean;
+  /** The eight booleans the guide's `create` and `set` require; the real NAS refused a `create` short of them with 9009. */
+  flags: Record<CalendarFlag, boolean>;
   /** Replaced whole by Sharing.set, as the client believes DSM does. */
   share: { ug_name: string; cal_privilege: Privilege }[];
   /** Kept as sent, and handed back by Sharing.get, so a client that drops them shows it. */
@@ -269,11 +284,11 @@ export async function start(opts: {
     if (calendars.has(`/${who}/home/`)) return;
     calendars.set(`/${who}/home/`, {
       cal_id: `/${who}/home/`, owner: who, displayname: 'My Calendar', description: '',
-      color: '#5B8DEF', type: 'event', isDefault: true, share: [], groups: [],
+      color: '#5B8DEF', type: 'event', isDefault: true, flags: { ...OFF }, share: [], groups: [],
     });
     calendars.set(`/${who}/home_todo/`, {
       cal_id: `/${who}/home_todo/`, owner: who, displayname: 'My Tasks', description: '',
-      color: '#5B8DEF', type: 'todo', isDefault: false, share: [], groups: [],
+      color: '#5B8DEF', type: 'todo', isDefault: false, flags: { ...OFF }, share: [], groups: [],
     });
   };
 
@@ -318,8 +333,20 @@ export async function start(opts: {
     cal_id: seenAs(cal.cal_id, who), original_cal_id: cal.cal_id,
     cal_displayname: cal.displayname, cal_description: cal.description, cal_color: cal.color,
     cal_privilege: privilegeOf(cal, who) ?? 'RO', cal_type: cal.type,
-    default_calendar: cal.isDefault && cal.owner === who,
+    default_calendar: cal.isDefault && cal.owner === who, ...cal.flags,
   });
+
+  /** The guide's whole calendar as `create` and `set` take it: every flag present, as a boolean word, or 9009. */
+  const calendarFields = (p: URLSearchParams): Pick<Calendar, 'description' | 'color' | 'flags'> => {
+    for (const k of ['cal_displayname', 'cal_description', 'cal_color'] as const) if (!p.has(k)) throw new Refuse(PARAMETER_ERROR);
+    const flags = { ...OFF };
+    for (const k of CALENDAR_FLAGS) {
+      const v = p.get(k);
+      if (v !== 'true' && v !== 'false') throw new Refuse(PARAMETER_ERROR);
+      flags[k] = v === 'true';
+    }
+    return { description: p.get('cal_description')!, color: p.get('cal_color') || '#5B8DEF', flags };
+  };
 
   /** The calendar, if this account may see it by that id, and may write to it when `write`. */
   const calendarFor = (cal_id: string, who: string, write = false): Calendar => {
@@ -365,21 +392,26 @@ export async function start(opts: {
         };
       },
       create: (p, who) => {
+        const type = p.get('cal_type');
+        if (type !== 'event' && type !== 'todo') throw new Refuse(PARAMETER_ERROR);
+        const fields = calendarFields(p);
         const displayname = need(p, 'cal_displayname');
         const cal: Calendar = {
-          cal_id: `/${who}/${hex(4)}/`, owner: who, displayname,
-          description: p.get('cal_description') ?? '', color: p.get('cal_color') || '#5B8DEF',
-          type: p.get('cal_type') === 'todo' ? 'todo' : 'event', isDefault: false, share: [], groups: [],
+          cal_id: `/${who}/${hex(4)}/`, owner: who, displayname, ...fields,
+          type, isDefault: false, share: [], groups: [],
         };
         calendars.set(cal.cal_id, cal);
         log(`${who} made calendar "${displayname}" ${cal.cal_id}`);
         return rawCalendar(cal, who);
       },
+      // The guide's `set` takes the whole calendar, every field required, so a
+      // set that sends only the name is refused 9009, as the NAS would.
       set: (p, who) => {
         const cal = ownCalendar(need(p, 'cal_id'), who);
-        if (p.has('cal_displayname')) cal.displayname = p.get('cal_displayname')!;
-        if (p.has('cal_description')) cal.description = p.get('cal_description')!;
-        if (p.has('cal_color')) cal.color = p.get('cal_color')!;
+        if (!p.has('original_cal_id')) throw new Refuse(PARAMETER_ERROR);
+        const fields = calendarFields(p);
+        cal.displayname = need(p, 'cal_displayname');
+        Object.assign(cal, fields);
         return rawCalendar(cal, who);
       },
       // Its owner's to delete, with its events: as deleting it in Synology Calendar does.
