@@ -113,6 +113,11 @@
  *   DELETE /api/guests/:email       { why }: take them off it, and end their sessions; their stays stand
  *   POST /api/guests/arrival        { text }: how a guest gets in, sent in each confirmation ('' for none; at most 1000)
  *                                   (these three and the two above: 404 in any household but the one friends book with)
+ *   POST /api/phone-setup/code      { calendar, home, origin }: a one-time link for a phone to set itself up, ten minutes,
+ *                                   one per member; { code, url, expiresAt, qr } with the QR as SVG. origin is the page's
+ *                                   own, https (or http on this computer); 400 for nothing chosen, or the calendar while
+ *                                   the NAS's address is not set
+ *   GET  /api/phone-setup/profile?calendar=1&home=1&origin=  the same profile for the signed-in member, as a file, for a Mac
  *   GET  /api/whoami                who you are, and whose household this is
  *   GET  /api/health                for the container healthcheck, with the version and commit running
  *
@@ -145,6 +150,13 @@
  *   POST /book/accept-suggestion    { id } of a suggestion made to them: { id } of a fresh request for those dates;
  *                                   409 once already taken up
  *
+ * And a phone's one-time link, which needs no session because the phone has
+ * none: the code in the path is the credential.
+ *
+ *   GET  /setup/:code               the configuration profile the code was made for, once; HEAD answers the same headers
+ *                                   and leaves the code alone. Anything else, or a code unknown, spent or ten minutes old,
+ *                                   is one 404 page that names nothing
+ *
  * Sign-in is the NAS's job, but it happens here rather than in front: the login
  * route asks DSM whether the credentials are real and then issues this app's own
  * session cookie. Nothing upstream is trusted, so this can be published to the
@@ -166,7 +178,7 @@ import { Store } from './store.ts';
 import type { NewEvent } from './store.ts';
 import { Households, adoptSingleLog } from './households.ts';
 import { isAdministrator, listAccounts } from './accounts.ts';
-import { connectors, loadConnectors, recordTest, resolvedEnv, saveConnector, sourceOf } from './connectors.ts';
+import { connectors, lastSavedBy, loadConnectors, recordTest, resolvedEnv, saveConnector, sourceOf } from './connectors.ts';
 import type { Change, MailValue, SavedKey } from './connectors.ts';
 import { connectorsView, needsAdmin, ROW_NAME } from './connectors-view.ts';
 import { teamFolders } from './drive.ts';
@@ -226,6 +238,10 @@ import type { BookingMail, BookingStatus } from './booking.ts';
 import { sendMail } from './mail.ts';
 import { Limiter } from './limiter.ts';
 import { softwareVersion } from './version.ts';
+import { buildProfile, caldavPath, PROFILE_CONTENT_TYPE, PROFILE_FILENAME } from './profile.ts';
+import { acceptedOrigin, createPhoneCodes } from './phone-setup.ts';
+import type { PhoneCodes, SetupFlags } from './phone-setup.ts';
+import QRCode from 'qrcode';
 
 const PORT = Number(process.env['PORT'] ?? 8090);
 /** Where every household's log lives, one directory each. */
@@ -527,6 +543,39 @@ function sendPage(res: ServerResponse, status: number, html: string): void {
     'x-content-type-options': 'nosniff', 'referrer-policy': 'strict-origin',
   });
   res.end(html);
+}
+
+/** A phone's link that is spent, stale or unknown. The same page whichever, and nothing about the household. */
+const CODE_EXPIRED = guestPage('This code has expired',
+  '<p>Open Home Planner on your computer and make a new one from Set up your iPhone.</p>');
+
+const NOT_HTTPS = 'a phone can be set up only from a page opened over https (or over http on this computer)';
+const NOTHING_CHOSEN = 'choose the Household calendar, Home Planner, or both';
+const NO_ADDRESS = "the NAS's address is not set: a DSM administrator sets it under Settings › This NAS › Where phones reach the NAS";
+
+/**
+ * What a phone's setup asks for, checked once for the code and the Mac's
+ * download alike. The origin is the page's own and is needed only for the Home
+ * Screen icon, which opens it; the NAS's address is read now and kept with a
+ * code, so the profile a phone gets matches what the sheet showed.
+ */
+function setupAsked(calendar: boolean, home: boolean, rawOrigin: unknown, originNeeded: boolean):
+  { flags: SetupFlags; origin: string | null; dsmPublicUrl: string | null } {
+  const origin = acceptedOrigin(rawOrigin);
+  if (originNeeded && origin === null) throw new ToolError(NOT_HTTPS);
+  if (!calendar && !home) throw new ToolError(NOTHING_CHOSEN);
+  const dsmPublicUrl = currentPublicUrl();
+  if (calendar && dsmPublicUrl === null) throw new ToolError(NO_ADDRESS);
+  return { flags: { calendar, home }, origin, dsmPublicUrl };
+}
+
+/** A profile as a file to install. HEAD gets the headers alone, so a phone's look ahead spends nothing. */
+function sendProfile(res: ServerResponse, profile: string, head: boolean): void {
+  res.writeHead(200, {
+    'content-type': PROFILE_CONTENT_TYPE, 'content-disposition': `attachment; filename="${PROFILE_FILENAME}"`,
+    'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
+  });
+  res.end(head ? undefined : profile);
 }
 
 /** The `month` asked for, or '' when it is missing or given twice: the caller's validation says 400 to both. */
@@ -1034,6 +1083,12 @@ const settingsView = async (store: Store, who: string, booking: BookingStatus, h
   return settingsOf(store.state, who, booking, household, moving);
 };
 
+/** Where a member's calendars are on the NAS from outside, typed into a phone by hand; null while the address is not set. */
+const caldavAddress = (who: string): string | null => {
+  const publicUrl = currentPublicUrl();
+  return publicUrl === null ? null : publicUrl + caldavPath(who);
+};
+
 const settingsOf = (
   state: State, who: string, booking: BookingStatus, household: string | null, moving: Awaited<ReturnType<typeof movingView>>,
 ) => ({
@@ -1086,6 +1141,14 @@ const settingsOf = (
    * Synology Calendar goes, and what Settings tells a phone to add the NAS's calendar at.
    */
   dsmPublicUrl: currentPublicUrl(),
+  /**
+   * What Set up your iPhone shows: the address a phone adds the calendar at by
+   * hand, or null while the NAS's address is not set, and whom to ask to set it.
+   */
+  phoneSetup: {
+    caldav: caldavAddress(who),
+    nasAdmin: ADMIN_USER || lastSavedBy() || null,
+  },
   /**
    * Whether friends can book here, and if not, why; whether the owner could
    * switch it on, what holds it, and whether a lost calendar turned it off.
@@ -1150,7 +1213,7 @@ async function sharedWithEveryone(sid: string, chosen: CalendarInfo, who: Actor,
 const todayInTz = (tz: string): string => householdDay(tz);
 
 export async function start(
-  opts: { send?: typeof sendMail; households?: Households } = {},
+  opts: { send?: typeof sendMail; households?: Households; phoneCodes?: PhoneCodes } = {},
 ): Promise<{ port: number; close: () => Promise<void> }> {
   // The NAS's connections first: everything below reads them when it is used.
   for (const problem of loadConnectors(CONNECTORS_PATH).problems) {
@@ -1165,6 +1228,15 @@ export async function start(
   /** Friends signed in to /book: memory only, apart from members' sessions. */
   const guests = new GuestSessions();
   const send = opts.send ?? sendMail;
+  /** Phones' one-time links: memory only, so a restart spends them all. A test hands in its own clock. */
+  const phoneCodes = opts.phoneCodes ?? createPhoneCodes();
+  // The Home Screen icon's picture, read once. Without it the icon still works, drawn by iOS from the page.
+  let iconPng: Buffer | null = null;
+  try {
+    iconPng = await readFile(join(SITE_DIR, 'icon-180.png'));
+  } catch {
+    console.warn(`[budget] ${join(SITE_DIR, 'icon-180.png')} could not be read; a phone's Home Screen icon goes without its picture`);
+  }
 
   // An install that predates many-households has its whole budget in one log.
   // Adopt it rather than leaving it on disk with nothing able to open it.
@@ -1660,6 +1732,17 @@ export async function start(
     // read here and nowhere else.
     if (path === '/book' || path.startsWith('/book/')) return book(req, res, path, url);
 
+    // A phone's one-time link, also before the gate: the phone has no session,
+    // and the code is the credential. Only a GET spends it.
+    if (path.startsWith('/setup/')) {
+      const code = path.slice('/setup/'.length);
+      const entry = req.method === 'GET' ? phoneCodes.redeem(code) : req.method === 'HEAD' ? phoneCodes.peek(code) : null;
+      if (!entry) return sendPage(res, 404, CODE_EXPIRED);
+      const profile = buildProfile({ ...entry.flags, member: entry.member, household: entry.household,
+        dsmPublicUrl: entry.dsmPublicUrl, origin: entry.origin, iconPng });
+      return sendProfile(res, profile, req.method === 'HEAD');
+    }
+
     // The app shell, before the gate — the login page has to be reachable by
     // someone who is by definition not signed in yet.
     if (!path.startsWith('/api/')) return serveStatic(url.pathname, res);
@@ -1952,6 +2035,27 @@ export async function start(
     }
 
     const active = await activeStore(session, households, devStore);
+
+    // ── setting up a phone, or a Mac ─────────────────────────────────────────
+    if (path === '/api/phone-setup/code' && req.method === 'POST') {
+      const body = (await readBody(req)) as { calendar?: unknown; home?: unknown; origin?: unknown } | null;
+      const asked = setupAsked(body?.calendar === true, body?.home === true, body?.origin, true);
+      const made = phoneCodes.issue({
+        member: who, household: active.state.label, flags: asked.flags, origin: asked.origin!, dsmPublicUrl: asked.dsmPublicUrl,
+      });
+      const qr = await QRCode.toString(made.url, { type: 'svg', margin: 1 });
+      return json(res, 200, { code: made.code, url: made.url, expiresAt: new Date(made.expiresAt).toISOString(), qr });
+    }
+
+    if (path === '/api/phone-setup/profile' && req.method === 'GET') {
+      const calendar = url.searchParams.get('calendar') === '1';
+      const home = url.searchParams.get('home') === '1';
+      const asked = setupAsked(calendar, home, url.searchParams.get('origin'), home);
+      return sendProfile(res, buildProfile({
+        member: who, household: active.state.label, dsmPublicUrl: asked.dsmPublicUrl, origin: asked.origin, calendar, home, iconPng,
+      }), false);
+    }
+
     // The household's own zone, read per request: it decides which day "today" is,
     // and getting that wrong shifts a receipt across a month boundary.
     const tz = zoneOf(active.state);
