@@ -24,6 +24,8 @@ import { byMonthly, everyMonthly, everyWords, goalFor, savingsCheck, shortDay, s
 import { incomeFor, project, sourcesFor } from './income.ts';
 import { lookUp, placeForZip } from './local.ts';
 import { groupKind, groupOrder, missingStarter } from './starter.ts';
+import { cardFor, hintFor } from './figures.ts';
+import type { Hint } from './figures.ts';
 import type { MissingStarter } from './starter.ts';
 import { board, card } from './plans.ts';
 import { SEARCH_KINDS, searchHousehold, searchKind, searchWords } from './search.ts';
@@ -219,6 +221,10 @@ const resolveMonth = (state: State, budget: string, month: unknown): Month => {
 
 // ─── reads ────────────────────────────────────────────────────────────────────
 
+// A hint's figure also goes out to the cent, so a screen that takes it does not round it.
+const hintView = (h: Hint | null) =>
+  h === null ? null : h.use ? { ...h, use: { ...h.use, exact: fmtExact(h.use.cents) } } : h;
+
 const getMonth: Tool = {
   name: 'get_month',
   description:
@@ -240,6 +246,7 @@ const getMonth: Tool = {
     const month = resolveMonth(state, budget, args['month']);
     const snap = snapshot(state, budget, month, ctx.today);
     if (!snap) throw new ToolError(`${month} is not open for ${budget}`, 404);
+    const budgetRow = state.budgets.get(budget);
     return {
       budget, month,
       dayOfMonth: snap.clock.dayOfMonth,
@@ -255,6 +262,8 @@ const getMonth: Tool = {
       // Still dollars, never raw cents: a bare 89334 is what gets misread.
       incomeExact: fmtExact(snap.view.income),
       toAssignExact: fmtExact(snap.view.toAssign),
+      card: cardFor(snap.view),
+      groups: groupOrder(snap.view.envelopes.map((e) => e.envelope.group)),
       balanced: snap.balanced,
       closed: state.months.get(monthKey(budget, month))?.closed === true,
       movesThisMonth: snap.view.moveCount,
@@ -276,6 +285,10 @@ const getMonth: Tool = {
         overspent: e.overspent,
         // Which categories feed it, so its goal can be set from their estimates.
         categories: e.envelope.match.categories,
+        // Action required while no figure has been given, with what could help give one.
+        needsFigure: e.envelope.needsFigure === true,
+        source: e.envelope.source ?? null,
+        hint: e.envelope.needsFigure && budgetRow ? hintView(hintFor(state, budgetRow, e.envelope, month)) : null,
         // Saved in Savings: what it holds so far is what is left in it.
         sinking: sinkingView(state, budget, e.envelope, month, e.available),
       })),

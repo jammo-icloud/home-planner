@@ -86,6 +86,31 @@ describe('the tool surface', () => {
 });
 
 describe('reads answer questions in one call', () => {
+  test("get_month answers each envelope's flag, source and hint, the card and the groups in order", async () => {
+    const c = await ctx();
+    await c.store.append('system', [
+      { op: 'category.define', category: 'upkeep', label: 'Repairs & upkeep' },
+      { op: 'category.define', category: 'rent', label: 'Rent or mortgage' },
+      { op: 'envelope.define', budget: 'harbor', envelope: 'upkeep', label: 'Repairs', group: 'Food',
+        match: { categories: ['upkeep'] }, template: parseDollars('0.00'), rollover: true, order: 2, needsFigure: true },
+      { op: 'envelope.define', budget: 'harbor', envelope: 'rent', label: 'Rent', group: 'Home',
+        match: { categories: ['rent'] }, template: parseDollars('900.00'), rollover: true, order: 3,
+        source: 'Public data for Harbor' },
+    ]);
+    const r = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;
+    const by = (id: string) => r.envelopes.find((e: any) => e.id === id);
+    assert.equal(by('upkeep').needsFigure, true);
+    assert.equal(by('upkeep').source, null);
+    assert.deepEqual(by('upkeep').hint, { text: "A common rule is 1% of the home's value a year." });
+    assert.equal(by('rent').needsFigure, false);
+    assert.equal(by('rent').source, 'Public data for Harbor');
+    assert.equal(by('rent').hint, null);
+    assert.equal(r.card.tone, 'warm');
+    assert.match(r.card.headline, /still to assign$/);
+    assert.equal(r.card.next, 'upkeep');
+    assert.deepEqual(r.groups, ['Home', 'Food', 'House', 'People']);
+  });
+
   test('get_month covers "how are we doing"', async () => {
     const c = await ctx();
     const r = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;
