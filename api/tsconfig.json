@@ -13,5 +13,5 @@
     "noEmit": true,
     "skipLibCheck": true
   },
-  "include": ["src/**/*.ts", "test/**/*.ts", "tools/fake-dsm/**/*.ts", "tools/synology-check/**/*.ts"]
+  "include": ["src/**/*.ts", "test/**/*.ts", "tools/fake-dsm/**/*.ts", "tools/synology-check/**/*.ts", "tools/make-icon.ts"]
 }
