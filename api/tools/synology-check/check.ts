@@ -2,10 +2,12 @@
  * Reads the NAS's own answers, so the client's guesses can be compared with them.
  *
  * Signs in as CHECK_USER at DSM_URL, asks which versions of each API the NAS
- * offers, and prints the raw reply to each read the app makes. Every call here
- * is a read: nothing is created, changed or deleted, except for the one opt-in
- * write below. (Signing in does leave a login in DSM's own log, and this signs
- * out again at the end.)
+ * offers, and prints the raw reply to each read the app makes. Without a write
+ * flag every call is a read: nothing is created, changed or deleted. Each write
+ * below is opt-in, by its own flag, writes only what that flag names, deletes
+ * nothing it did not make, and the end of the run says what it left behind.
+ * (Signing in does leave a login in DSM's own log, and this signs out again at
+ * the end.)
  *
  *   CHECK_USER, CHECK_PASS   a DSM account; CHECK_OTP if it asks for a code
  *   DSM_URL                  the NAS, e.g. http://192.0.2.10:5000
@@ -19,12 +21,32 @@
  * to list; CHECK_FILE is a file to download (only its size and type are shown).
  *
  * Synology Drive is read when PLANNER_ROOT is set, as the app reads it: the
- * Team Folders, the root's metadata, and a path that does not exist. The one
- * write is opt-in: with CHECK_DRIVE_WRITE=1 it makes <share>/.planner-check/
- * through File Station and writes check.md in it twice, then reads it back and
- * searches for it; then it makes .planner-check/sub and writes one check.md
- * there, to see whether the folder's cursor moves for a write two levels down.
- * Nothing else is written, and nothing outside that folder.
+ * Team Folders, the root's metadata, and a path that does not exist.
+ *
+ * The writes, each only when its flag is 1:
+ *
+ *   CHECK_DRIVE_WRITE     makes <share>/.planner-check/ through File Station,
+ *                         writes check.md in it twice through Drive, reads it
+ *                         back and searches for it; makes .planner-check/sub and
+ *                         writes one check.md there, to see whether the folder's
+ *                         cursor moves for a write two levels down; uploads
+ *                         fs-upload.md through File Station, downloads it and
+ *                         compares the bytes. Nothing outside that folder, and
+ *                         the folder is left for you to delete.
+ *   CHECK_CALENDAR_WRITE  makes a calendar "Planner check <date-time>", reads
+ *                         its sharing (and shares it, read-only, with
+ *                         CHECK_SHARE_WITH=<dsm account> when that is set),
+ *                         renames it, makes one event in it tomorrow, moves the
+ *                         event with its etag and then writes it with the old
+ *                         etag, which is the probe of what a stale etag answers,
+ *                         deletes the event and deletes the calendar. If the
+ *                         calendar's delete is not answered, the calendar is
+ *                         left and the run says so.
+ *   CHECK_CONTACTS_WRITE  adds a contact "Planner Check" with the made-up email
+ *                         planner-check@example.com to the first address book
+ *                         (or CHECK_ADDRESSBOOK=<name>), finds it, and tries to
+ *                         delete it; if the delete is not answered it is left
+ *                         and the run says so.
  *
  * The last section, "What the configuration design guessed", asks the NAS about
  * what the configuration work could only guess: how DSM names administrators
@@ -33,7 +55,7 @@
  * the administrator's side; CHECK_SECOND_TEAM names a second Team Folder for a
  * move between two. With CHECK_DRIVE_WRITE=1 it also makes .planner-check/made
  * and a few small files under .planner-check (and a .planner-check in the
- * second Team Folder). It deletes nothing it did not make, and nothing at all.
+ * second Team Folder), and leaves them.
  *
  * The session id and the password are never printed: every line goes through
  * `say`, which blanks them. See README.md for what to look for.
@@ -258,10 +280,10 @@ async function driveReads(
         + 'the real NAS answered 1003 (2026-11-03); if this is not 1003, set it in DRIVE_NO_SUCH_FILE (src/drive.ts)';
     });
 
-  // 5. The one write, only when asked.
+  // 5. The Drive and File Station writes, only when CHECK_DRIVE_WRITE asks.
   if (!driveWrite) {
     say(`\nDrive writes: skipped. Set CHECK_DRIVE_WRITE=1 to write check.md twice under ${root}/.planner-check/ `
-      + 'and search for it (delete that folder afterwards).');
+      + 'and search for it, and upload fs-upload.md there through File Station (delete that folder afterwards).');
     return;
   }
   const dir = `${team}/.planner-check`;

@@ -37,7 +37,9 @@ read -rs CHECK_PASS && export CHECK_PASS
 CHECK_USER=<your-dsm-account> DSM_URL=http://nas-ip:5000 npm run synology:check
 ```
 
-It only reads, apart from the one write you have to ask for (below), and never
+It only reads, apart from the writes you have to ask for, each by its own flag
+(`CHECK_DRIVE_WRITE`, `CHECK_CALENDAR_WRITE`, `CHECK_CONTACTS_WRITE`; the
+check's README says what each makes and what it leaves), and never
 prints the password or the session id. It prints the version range of each API
 and the raw reply to each read, beside what the app makes of it.
 `api/tools/synology-check/README.md` lists every guess and what to change. The
@@ -49,7 +51,8 @@ ones most likely to matter:
 | The Contacts lines show `{ addressbook: [...] }` and `{ contact: [...] }` | Nothing: those singular keys are what the real NAS answers, and the app reads them. `0 address book(s)` beside a reply that has rows means the key has changed: see the check's README. |
 | `SYNO.Cal.Cal list` is refused with **9009** ("Parameter error") | The real NAS answers 9009 to a `list` with no parameters; the guide marks `cal_type` required. The check's line says which parameters were sent, `is_evt` among them. If it still says 9009 with `cal_type=event` and `is_evt=true`, change `CALENDAR_LIST_PARAMS` in `synology.ts`. The reply should be `{ list: [...] }`. |
 | `SYNO.Cal.Event list` is refused with 114 or 120 | `cal_id_list` is the wrong parameter name: change it in `listEvents`, the one place it appears. |
-| Changing a plan's date in the app after its event was moved on a phone (the check cannot show this one) puts a card in Today, "Bob moved Fix the gate to Sun 8 Nov on their phone", with three choices | Nothing: that is the stale-etag refusal working, turned into a drift card (see [Calendar on the NAS](#calendar-on-the-nas)). |
+| With `CHECK_CALENDAR_WRITE=1`, the check's stale-etag write says `refused with code …, NOT the 9006 the client assumes` | The line names what to change: a code in `NOT_AN_ETAG_REFUSAL` comes out of it; any other code replaces 9006 in `setEvent`'s comment and in the fake DSM. |
+| Changing a plan's date in the app after its event was moved on a phone puts a card in Today, "Bob moved Fix the gate to Sun 8 Nov on their phone", with three choices | Nothing: that is the stale-etag refusal working, turned into a drift card (see [Calendar on the NAS](#calendar-on-the-nas)). |
 | The same change says "the NAS refused SYNO.Cal.Event set (code 9007)", or 9009 or 9017, instead of raising the card | That code is the stale-etag refusal after all: take it out of `NOT_AN_ETAG_REFUSAL` in `synology.ts`. |
 | An administrator is `REFUSED` the question of who is in the administrators group or which accounts exist (probes 1 and 2), or the reply is not `{ users: [{ name }] }` | Change `ADMIN_GROUP_CALL` or `ACCOUNTS_CALL` in `api/src/accounts.ts`. Until then name the administrator in `ADMIN_USER`: a reply the app cannot read counts as nobody, so a real administrator would be taken for an ordinary member. |
 | No Team Folder shows `can_write` (probe 3) | Every Team Folder would be read-only to the app: `teamFolders` in `drive.ts` reads that field. Report the reply. |

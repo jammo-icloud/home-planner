@@ -1,4 +1,4 @@
-# Checking the NAS against what the app assumes — read-only, run once
+# Checking the NAS against what the app assumes — read-only unless asked, run once
 
 Synology documents its Calendar API in a guide, its Contacts API not at all, and
 parts of File Station only by example. Synology Drive has a spec, but the copy
@@ -10,11 +10,15 @@ script does not make; the tables below say what a wrong guess looks like then).
 This is the check that settles the first kind: it signs in to your NAS, asks
 it which versions of each API it offers, and prints the **raw** reply to each
 read the app makes, beside what the app's own client made of that reply. A
-shape that differs is visible in the raw text.
+shape that differs is visible in the raw text. With the write flags below it
+settles much of the second kind too: it makes the writes the app makes, on
+things of its own, and prints DSM's whole reply to each.
 
-It creates, changes and deletes nothing, with one exception that you have to ask
-for (`CHECK_DRIVE_WRITE=1`, below; it writes only under `.planner-check`, and
-deletes nothing). Signing in leaves one login in DSM's log,
+Without a write flag it creates, changes and deletes nothing. Each write is
+asked for by its own flag (`CHECK_DRIVE_WRITE`, `CHECK_CALENDAR_WRITE`,
+`CHECK_CONTACTS_WRITE`, below), writes only what that flag names, and deletes
+nothing it did not make; the last lines of the run, *What the opt-in writes
+left on the NAS*, say what is still there. Signing in leaves one login in DSM's log,
 and the script signs out at the end. It never prints the session id, your
 password or the one-time code; every line is blanked of them before it is shown.
 The raw replies do contain your calendar names, one contact's name, number and
@@ -24,6 +28,14 @@ email address, and at most a few events, so read them before pasting anywhere.
 cd api
 read -rs CHECK_PASS && export CHECK_PASS      # type the password; it is not echoed or kept in history
 CHECK_USER=<your-dsm-account> DSM_URL=http://<nas-ip>:5000 npm run synology:check
+```
+
+Every write at once, which is the run that settles the write paths:
+
+```bash
+CHECK_USER=<your-dsm-account> DSM_URL=http://<nas-ip>:5000 PLANNER_ROOT=/<team-folder>/<folder> \
+  CHECK_DRIVE_WRITE=1 CHECK_CALENDAR_WRITE=1 CHECK_SHARE_WITH=<another-dsm-account> \
+  CHECK_CONTACTS_WRITE=1 npm run synology:check
 ```
 
 - `DSM_URL` is where the **NAS** answers, from the machine you run this on. The
@@ -54,14 +66,45 @@ CHECK_USER=<your-dsm-account> DSM_URL=http://<nas-ip>:5000 npm run synology:chec
   every line like the other.
 - `CHECK_SECOND_TEAM=<name>` is a second Team Folder you may write: one of the
   move checks then moves a file into its `.planner-check` and back.
-- `CHECK_DRIVE_WRITE=1` adds the one write: it makes the folder
+- `CHECK_DRIVE_WRITE=1` adds the Drive and File Station writes: it makes the folder
   `<PLANNER_ROOT>/.planner-check` through File Station, writes `check.md` in it
   twice through Drive, reads it back and searches for it, then makes
   `.planner-check/sub` and writes one `check.md` there. The design checks add
   `.planner-check/made` and a few small files in it (and a `.planner-check`
   in `CHECK_SECOND_TEAM`'s share), and move `check.md` out and back. It writes
-  nothing anywhere else and deletes nothing. Delete `<PLANNER_ROOT>/.planner-check`
-  afterwards (in File Station; Drive keeps the versions it made).
+  nothing anywhere else and deletes nothing. It also uploads `fs-upload.md` into
+  `.planner-check` through File Station's own upload (replacing an earlier
+  run's), downloads it and compares the bytes by sha256, and lists the folder.
+  Delete `<PLANNER_ROOT>/.planner-check` afterwards (in File Station; Drive
+  keeps the versions it made).
+- `CHECK_CALENDAR_WRITE=1` makes a calendar of its own, `Planner check
+  <date-time>`, reads its sharing, renames it to `… renamed`, makes one event
+  in it (an hour, tomorrow), reads it back, moves it an hour later carrying the
+  etag it read, then writes it again carrying the **old** etag (the stale-etag
+  probe), deletes the event and deletes the calendar. Nothing is written to any
+  other calendar. The app has no calendar delete, so the last step is the
+  check's own raw `SYNO.Cal.Cal delete` with `cal_id`, as the Calendar guide
+  has it; if it is not answered the calendar is left, and the run says so.
+- `CHECK_SHARE_WITH=<dsm account>`, with `CHECK_CALENDAR_WRITE`, also shares
+  that calendar read-only with the account and reads the sharing back. The
+  account sees a calendar called `Planner check …` until it is deleted at the
+  end of the run. Without it the share is skipped with a sentence.
+- `CHECK_CONTACTS_WRITE=1` adds one contact, `Planner Check`, with the made-up
+  address `planner-check@example.com`, finds it again, and tries to delete it.
+  The app has no contact delete either, and Contacts is not documented, so the
+  delete (`SYNO.Contacts.Contact delete` with `id`) is a guess; if it is not
+  answered the contact is left, and the run says so. Contacts of that name from
+  an earlier run are left alone.
+- `CHECK_ADDRESSBOOK=<name>`, with `CHECK_CONTACTS_WRITE`, picks the address
+  book to add it to (the first one listed otherwise).
+
+### What the writes leave behind
+
+| Flag | Left on the NAS | To remove it |
+|---|---|---|
+| `CHECK_DRIVE_WRITE` | Always: `<PLANNER_ROOT>/.planner-check` with `check.md`, `sub/check.md`, `fs-upload.md`, `made/` and the moves' small files; with `CHECK_SECOND_TEAM`, `/<second>/.planner-check` too | Delete the `.planner-check` folder(s) in File Station. Drive keeps the versions it made of `check.md`, which go with the folder |
+| `CHECK_CALENDAR_WRITE` | Nothing, when `SYNO.Cal.Cal delete` is answered. Otherwise the calendar `Planner check <date-time> renamed` (or without `renamed`, if the rename was refused), shared with `CHECK_SHARE_WITH` if that was set. The event is deleted on its own before the calendar | Delete the calendar in Synology Calendar; the last lines name it |
+| `CHECK_CONTACTS_WRITE` | Nothing, when the guessed delete is answered. Otherwise the contact `Planner Check` | Delete it in Synology Contacts |
 
 It exits non-zero, with a sentence, if it cannot sign in or DSM_URL is not DSM.
 It also exits non-zero if any call is refused or any API is missing or outside
@@ -76,7 +119,10 @@ other replies are still the point.
    will fail.
 2. **`raw data` / `the client reads`.** For each call, DSM's own `data`, then
    what `src/synology.ts` made of it. If the second line is empty, wrong, or an
-   error, the first line shows why.
+   error, the first line shows why. For the writes, which are made through the
+   client's own functions, the raw text is DSM's whole reply (`success` and
+   `data`, or `error` with its code), and a list of them when the function made
+   more than one call; a refused write prints its raw reply before `FAILED`.
 3. A `FAILED` line carries DSM's error code. 102 and 103 mean no such API or
    method; 105 no permission (the app says "your DSM account is not allowed to
    use …", and signing in again does not help); 114 a missing parameter; 120
@@ -85,9 +131,10 @@ other replies are still the point.
 
 ## What the client assumes, and what to change
 
-"Seen here" means this check shows it. The rest cannot be seen without writing,
-or without a path of yours; for those it says how to find out, and that is
-done once, by hand, in the real app on the real NAS.
+"Seen here" means this check shows it, with the flag named where it is a write.
+The rest cannot be seen without a path of yours, or without a second person;
+for those it says how to find out, and that is done once, by hand, in the real
+app on the real NAS.
 
 Almost all of these are literals inside the function named, not constants or
 environment variables. None has an environment variable: the Contacts version
@@ -99,30 +146,56 @@ constant.
 | Assumed | Seen here? | If the NAS disagrees |
 |---|---|---|
 | `Cal.Cal list` is sent `cal_type=event` and `is_evt=true` (`CALENDAR_LIST_PARAMS` in `synology.ts`) and answers `{ list: [...] }` as the guide shows it; a bare array or `{ cal_list }` is read too (`listCalendars`) | Yes: the first calendar block, whose title prints the parameters sent and says whether `is_evt` was among them | Confirmed on the real NAS (2026-11-03): a `list` with no parameters is refused **9009** ("Parameter error"). The guide marks `cal_type` required; its examples also send `is_evt`, and which of the two the NAS needs is not yet known, so both are sent. A 9009 with both: compare with the guide's `Method List` and change `CALENDAR_LIST_PARAMS`. Another wrapper: add its key to the `listRows` call in `listCalendars`. |
-| `Cal.Cal create` wants the eight parameters `is_hidden_in_cal`, `is_hidden_in_list` and six `notify_*` (`notify_import_cal_by_browser`, `…_by_mail`, `…_by_push`, `notify_alarm_by_browser`, `…_by_mail`, `…_by_push`). Only `notify_alarm_by_browser` and `notify_import_cal_by_mail` are known names; the other four are inferred | No: it would create a calendar | The first time the app creates the Household calendar, a wrong name is refused (114 or 120) and the log carries the code. Change the names in the `params` of `createCalendar`. |
-| `Sharing set` replaces the whole list, so `users` is everyone, not an addition (`shareCalendar`) | No: it is a write | Share the Household calendar through the app with two people, remove one, then run this with `CHECK_CALENDAR=Household`. If the removed person is still listed under `Sharing get`, `set` adds rather than replaces, and `shareCalendar` must send the difference instead. |
+| `Cal.Cal create` wants the eight parameters `is_hidden_in_cal`, `is_hidden_in_list` and six `notify_*` (`notify_import_cal_by_browser`, `…_by_mail`, `…_by_push`, `notify_alarm_by_browser`, `…_by_mail`, `…_by_push`). Only `notify_alarm_by_browser` and `notify_import_cal_by_mail` are known names; the other four are inferred. It answers the calendar made, read by `calendarInfo` (`cal_id`, `original_cal_id`, `cal_displayname`, …) | Yes, with `CHECK_CALENDAR_WRITE`: the `SYNO.Cal.Cal create` block, then `listCalendars shows it under the same cal_id` | Refused 114 or 120: a parameter name is wrong; change the names in the `params` of `createCalendar`. Answered, but the client reads `cal_id undefined`: `create` answers something other than the calendar (the raw reply shows what), so `createCalendar` must find the calendar it made in `listCalendars` instead (the check already does). `NOT the one create answered`: create and list name it differently; report both. |
+| `Cal.Cal set` with `cal_id`, `original_cal_id` and `cal_displayname` renames it (`renameCalendar`) | Yes, with `CHECK_CALENDAR_WRITE`, as the calendar's owner: the `SYNO.Cal.Cal set` block, then `listCalendars shows the new name` | Refused, or taken and the old name still listed: look at the `params` of `renameCalendar` against the guide's `Method set`. Whether anyone but the owner may rename is still first real use. |
+| `Sharing set` takes `cal_share_setting: { DSM_USER: [{ ug_name, cal_privilege }], DSM_GROUP }` (`shareCalendar`), and replaces the whole list, so `users` is everyone, not an addition | That it is taken and read back: yes, with `CHECK_CALENDAR_WRITE` and `CHECK_SHARE_WITH`, which shares the check's calendar RO and reads it again (`… is listed, RO, as set`). Whole-list replace: no, it needs two people | `NOT listed, though set was taken`: either `set` wants another shape (`shareCalendar`) or `get` answers the users elsewhere (`sharingOf`); the two raw `Sharing get` replies say which. Replace or add: share the Household calendar through the app with two people, remove one, then run this with `CHECK_CALENDAR=Household`. If the removed person is still listed under `Sharing get`, `set` adds rather than replaces, and `shareCalendar` must send the difference instead. |
 | `Sharing get` answers `cal_share_setting.DSM_USER`, or `DSM_USER` at the top of `data` (`sharingOf`) | Yes: the Sharing block. The fake DSM lets only the owner read a calendar's sharing; if the NAS refuses it for the first calendar, use `CHECK_CALENDAR` to pick one you own | Another place for the user list: change the `setting` line in `sharingOf`. Each user is read as `{ ug_name, cal_privilege }`. |
 | `Event get` takes `evt_id`, `cal_id`, `original_cal_id` (`getEvent`) | Yes, if there is an event in the coming week: the Event get block | If it answers 114 or 120, `evt_id` alone may be all it wants: trim the `params` of `getEvent`. |
 | `Event list` takes `cal_id_list` (a JSON list of ids), `start`, `end` as epoch seconds, and answers `{ list: [...] }` as the guide shows it (a bare array is read too) (`listEvents`) | Yes: the Event list block | If `cal_id_list` is refused (114 or 120), it is the one parameter to rename in `listEvents`. An empty `[]` for a week with events means the window or the ids were read differently, not that the call worked. |
-| A stale etag is refused with some error code, taken to be 9006 in the comments (`setEvent`) | No: it is a write | See below. |
+| `Event create` takes the fields of `eventFields` and answers the event with `evt_id`, `dav_etag`, `ical_uid` (`createEvent`, `calEvent`) | Yes, with `CHECK_CALENDAR_WRITE`: `evt_id …, dav_etag …, dtstart … as sent` | Refused 114 or 120: a field of `eventFields` or `EVENT_REQUIRED` is named otherwise, or `tz_id` (this machine's zone, printed in the title) is not one DSM knows. `evt_id undefined`: create answers something other than the event; the remaining event steps are skipped and the calendar's delete takes the event with it. |
+| `Event get` answers `dav_etag` and `last_modify_user` (`getEvent`) | Yes, with `CHECK_CALENDAR_WRITE`, for the event the check made | No `dav_etag`: `setEvent` makes no call without one, so the app could change no event; find the field in the raw reply and read it in `calEvent`. No `last_modify_user`: the drift card cannot say who changed an event; find the field and read it in `calEvent`. |
+| `Event set` carrying the current `dav_etag` is taken and answers the event with a **new** `dav_etag` (`setEvent`) | Yes, with `CHECK_CALENDAR_WRITE`: `dav_etag …: a new one; … one hour later as asked` | `NONE` or `the SAME as before`: the app keeps the etag from `set`'s reply, so it would hold none (and refuse the next change) or a stale one; `setEvent` must `getEvent` after a set. Counted as a failure. |
+| A stale etag is refused with 9006 (database operation error), the code the comments assume; every refusal of `set` but those in `NOT_AN_ETAG_REFUSAL` (9007, 9009, 9017) is taken as one (`setEvent`) | Yes, with `CHECK_CALENDAR_WRITE`: the block titled `carrying the OLD dav_etag …: what does a stale etag answer?`. Its raw reply is a list: `set`'s refusal, with its `error.code`, then the `get` `setEvent` makes to see that the etag really moved | See below. |
+| `Event delete` takes `evt_id`, `cal_id`, `original_cal_id` (`deleteEvent`); a `get` of a deleted event is refused 9009, which the app takes as gone (`NO_SUCH_EVENT` in `src/calendar.ts`) | Yes, with `CHECK_CALENDAR_WRITE`: `listEvents no longer shows it`, then `refused with code 9009` | Still listed: the delete was not done; look at `deleteEvent`. Another code for the deleted event: set `NO_SUCH_EVENT` in `src/calendar.ts` to it, or the app takes an event deleted on a phone for a failure. Both counted as failures. |
+| `Cal.Cal delete` takes `cal_id` alone (the Calendar guide's `Method Delete`). The app deletes no calendar: this is only the check's clean-up | Yes, with `CHECK_CALENDAR_WRITE`: the last calendar block, `answered, and listCalendars no longer shows it` | Refused: the calendar is left, the run says so in its last lines, and you delete it in Synology Calendar. Nothing in the app depends on it. |
 
 **A stale etag.** DSM's code for it is not what the app compares. `setEvent`
 takes every refusal `set` gives as a stale etag, **except** the codes in
-`NOT_AN_ETAG_REFUSAL` (9007, 9009, 9017), a dead session, or a NAS that did not
-answer. Before reporting a mismatch it fetches the event again to check that its
-etag really moved; if that fetch fails with anything but a dead session, the
-mismatch is reported anyway, just without showing what changed. The app never
-shows the code of a mismatch, so test it by what the app does show: open an
-event in the app, change the same event in Synology Calendar, then save in the
-app.
+`NOT_AN_ETAG_REFUSAL` (9007, 9009, 9017, in `src/synology.ts`), a dead session,
+or a NAS that did not answer. Before reporting a mismatch it fetches the event
+again to check that its etag really moved; if that fetch fails with anything but
+a dead session, the mismatch is reported anyway, just without showing what
+changed. 9006 is written in two places only: the comment on `setEvent`, and
+`ETAG_MISMATCH` in `tools/fake-dsm/server.ts`.
 
-- It says "this event was changed on the NAS since it was last read": nothing to
-  do.
-- It says "the NAS refused SYNO.Cal.Event set (code 9007)", or 9009 or 9017:
-  that code is the stale-etag refusal after all. Remove it from
-  `NOT_AN_ETAG_REFUSAL`.
-- A refusal for some other reason that the app reports as "changed on the NAS":
-  add that code to `NOT_AN_ETAG_REFUSAL`.
+With `CHECK_CALENDAR_WRITE=1` the check makes that write: it reads the event,
+moves it with that etag, then writes it again with the etag it read first. The
+`the client reads` line of that block says which of these it is:
+
+- `refused with code 9006, the 9006 the client assumes …; the client reads it
+  as EtagMismatch`: nothing to change.
+- `refused with code 9007` (or 9009, or 9017) `… is in NOT_AN_ETAG_REFUSAL`:
+  that code is the stale-etag refusal after all, and the app would report a
+  stale etag as a plain refusal. Remove it from `NOT_AN_ETAG_REFUSAL` in
+  `src/synology.ts`, and change 9006 to it in `setEvent`'s comment and in
+  `ETAG_MISMATCH` in the fake DSM. Counted as a failure.
+- `refused with code <n>, NOT the 9006 … not in NOT_AN_ETAG_REFUSAL`: the app
+  already takes it as a stale etag; change 9006 to `<n>` in `setEvent`'s
+  comment and in `ETAG_MISMATCH`, so the fake answers as the NAS does. Counted
+  as a failure, since the assumption was wrong.
+- `ACCEPTED`: the NAS does not compare `dav_etag` at all, and the app would
+  overwrite an edit made on a phone. Report it before plans are written to a
+  shared calendar. Counted as a failure.
+- `the client does NOT read it as EtagMismatch`: the code was one the app
+  takes as a stale etag, but the `get` that follows (the second raw reply)
+  showed the same etag as before, so `setEvent` took the refusal for something
+  else; read both raw replies.
+
+Without the check, the same can be tested by hand in the app: open an event in
+the app, change the same event in Synology Calendar, then save in the app. "This
+event was changed on the NAS since it was last read" is the right answer; "the
+NAS refused SYNO.Cal.Event set (code …)" means that code is in
+`NOT_AN_ETAG_REFUSAL` and should not be.
 
 **A calendar shared with you: are its ids yours or its owner's?** DSM does not
 say whether a calendar shared with someone is listed for them under the
@@ -154,27 +227,37 @@ here are the first evidence.
 | Assumed | Seen here? | If the NAS disagrees |
 |---|---|---|
 | The API version is asked of the NAS (1 if the range holds it, else the lowest offered) | Yes: the version table shows the range | If DSM answers 104 for the version, the app forgets it and asks again once; report the range shown. |
-| Methods `list` on `Addressbook` and `list`, `get`, `create` on `Contact` (`get` takes `id`; `list` takes `addressbook_id`, `limit`, `offset`) | `list` only | 102/103 on the others the first time the app uses them. Change the `method` or `params` in `getContact`, `createContact`, `listContacts`. |
+| Methods `list` on `Addressbook` and `list`, `get`, `create` on `Contact` (`get` takes `id`; `list` takes `addressbook_id`, `limit`, `offset`) | `list` always; `create` with `CHECK_CONTACTS_WRITE`; `get` no | 102/103 on the others the first time the app uses them. Change the `method` or `params` in `getContact`, `createContact`, `listContacts`. |
 | `Addressbook list` answers `{ addressbook: [...], total }`, rows with `id` and `name` (`listAddressbooks`); `{ addressbooks }` and a bare array are read too | Yes. Confirmed on the real NAS (2026-11-03): the singular key, rows also carrying `shared_from`, `shared_with`, `type`, `mode`, which the app does not use | Another key: add it to the `listRows` call in `listAddressbooks`. |
 | `Contact list` answers `{ contact: [...], offset }` (`listContacts`); `{ contacts }` and a bare array are read too | Yes. Confirmed on the real NAS (2026-11-03): the singular key, rows carrying `full_name`, `primary_mail`, `primary_tel`, `company` among others | Another key: add it to the `listRows` call in `listContacts`. |
 | A contact has `id`, `addressbook_id`, `full_name`, `org`; phones under `tel`, `phone` or `phones`; emails under `email` or `emails`, each a string, a list of strings, or a list of `{ value }` (`contact()`) | Yes, if there is a contact: the `the client reads` line says how many phones and emails it found. If it found none for a contact that has them, the field name differs | Add the real field name to the two lists in `contact()`. |
-| `get` and `create` answer the contact itself, or `{ contact }` (`contactReply`) | No: `get` and `create` are not called | A refusal naming "no contact" the first time the app opens or adds one: change `contactReply`. |
-| `create` takes `tel` and `email` as lists of `{ value }` (`createContact`) | No: it is a write | If a created contact has no number or email on the NAS, change the two lines in `createContact` that build `tel` and `email`. |
+| `get` and `create` answer the contact itself, or `{ contact }` (`contactReply`) | `create` with `CHECK_CONTACTS_WRITE`: the `SYNO.Contacts.Contact create` block shows the whole reply and `id …, full_name "Planner Check"`; `get` no | A refusal naming "no contact": change `contactReply` to the place the raw reply keeps it. |
+| `create` takes `addressbook_id`, `full_name`, and `email` as a list of `{ value }` (`createContact`); the contact is then found by `searchContacts` | Yes, with `CHECK_CONTACTS_WRITE`: `emails ["planner-check@example.com"]` on the create line, and `searchContacts finds it`. The list block prints only the rows called `Planner Check`, never the rest of the address book | `The email is not read back`: the list rows printed under it show how the NAS kept the address; if they have none, `create` wants it otherwise (change the line in `createContact` that builds `email`, and `tel` the same way); if they have it under another name, add that name to `contact()`. Not found by `searchContacts`: the contact went to another address book, or `full_name` is not what DSM keeps the name in. |
+| `Contact delete` takes `id`. The app deletes no contact: this is only the check's clean-up, and both the method and the parameter are guesses | Yes, with `CHECK_CONTACTS_WRITE`: `answered, and searchContacts no longer finds it` | Refused (103 no such method, 114/120 a parameter named otherwise): the contact is left, the run says so in its last lines, and you delete it in Synology Contacts. Nothing in the app depends on it. |
 
 ### File Station
 
 One read that needs no path (`list_share`) is always made. Read-only checks
 exist for a folder list and a download if you give them a path (`CHECK_FOLDER`,
 `CHECK_FILE`). Create-folder and upload are writes and are not run, unless
-`CHECK_DRIVE_WRITE=1` (create-folder, and `check.md` in `.planner-check` and
-in `.planner-check/sub`; see *Synology Drive*).
+`CHECK_DRIVE_WRITE=1`: create-folder for `.planner-check` (see *Synology
+Drive*), and File Station's own upload of `fs-upload.md` into it, its download,
+and a list of the folder, at the end of the Drive section.
+
+| Line | Should show | If it does not |
+|---|---|---|
+| `SYNO.FileStation.Upload upload …/.planner-check/fs-upload.md, overwrite true` | `success: true`, and `taken: <n> bytes sent, sha256 …` | 119 with a sid that works elsewhere: DSM wants the `Cookie: id=` header on upload too; send it as `downloadFile` does. 408: `path` wants to be JSON-quoted. 414: `overwrite` was not taken as sent. |
+| `SYNO.FileStation.Download download …/fs-upload.md` | The size, the content-type, and `the bytes read back are the bytes uploaded (sha256 equal)` | `DIFFER`: File Station kept other bytes than `uploadFile` sent; compare its multipart body with the file on the NAS. Counted as a failure. |
+| `SYNO.FileStation.List list …/.planner-check` | `fs-upload.md is listed, <n> bytes, as uploaded` | Not listed, or at another size: the upload went elsewhere, or was skipped. Counted as a failure. |
+
+What the client assumes of File Station in general:
 
 | Assumed | Seen here? | If the NAS disagrees |
 |---|---|---|
 | The sid from signing in with `session=Calendar` (`checkWithDsm` in `src/auth.ts`) is accepted by File Station and Contacts as well as Calendar | Yes: the `list_share` block and the two Contacts blocks, which are always run | File Station or Contacts answers 105/119 while Calendar works → the session name scopes the sid. Change the `session` value in `checkWithDsm` and run the check again until all three answer. |
-| Path parameters are plain strings, not JSON-quoted: `folder_path` and `name` on create-folder, `folder_path` on list, `path` on download and on the upload form (`createFolder`, `listFolder`, `downloadFile`, `uploadFile`) | List and download, with the two env vars. A path that exists but is answered 408 is the symptom. Create-folder and upload: the first time the app uses them | `JSON.stringify` the value in the `params` of the call that fails. |
+| Path parameters are plain strings, not JSON-quoted: `folder_path` and `name` on create-folder, `folder_path` on list, `path` on download and on the upload form (`createFolder`, `listFolder`, `downloadFile`, `uploadFile`) | List and download, with the two env vars; all four with `CHECK_DRIVE_WRITE`. A path that exists but is answered 408 is the symptom | `JSON.stringify` the value in the `params` of the call that fails. |
 | Where File Station takes a list of paths it splits on commas, so a comma in a name or path is refused before any call (`noComma`) | No | This only costs anything if a folder or file name has a comma. If File Station accepts such a single path, remove the `noComma` calls. |
-| Upload reads the session id from a `_sid` multipart part (`uploadFile`) | No: it is a write | Upload answering 119 with a sid that works elsewhere means DSM wants the `Cookie: id=` header there too; send the header as `downloadFile` does. |
+| Upload reads the session id from a `_sid` multipart part (`uploadFile`) | Yes, with `CHECK_DRIVE_WRITE`: the upload block above | Upload answering 119 with a sid that works elsewhere means DSM wants the `Cookie: id=` header there too; send the header as `downloadFile` does. |
 | Download reads the session id from a `Cookie: id=` header, not `_sid` in the query (`downloadFile`) | Yes, with `CHECK_FILE` | A 119 on download only: DSM wants `_sid` instead; add it to the query, knowing that puts the sid in the NAS's access log. |
 
 ### Synology Drive
@@ -235,4 +318,7 @@ one listed without it); probes 1, 2 and 7 need neither.
 `npm run fake-dsm` answers all of this with the client's own guesses, so
 running the check against it (`DSM_URL=http://127.0.0.1:<DSM_PORT>`, one of
 `FAKE_DSM_ACCOUNTS`) proves only that the script and the client agree. Only the
-real NAS can say whether DSM does.
+real NAS can say whether DSM does. Every write flag runs against it and leaves
+nothing but `.planner-check` in its temporary directory: the fake answers the
+two clean-up deletes (`SYNO.Cal.Cal delete`, `SYNO.Contacts.Contact delete`)
+with its own guesses, which the real NAS has not yet confirmed.
