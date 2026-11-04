@@ -824,7 +824,13 @@ lost.
 **Confirm on first run.** One thing no documentation settles: whether Build
 alone recreates the running container with the new image, or needs Start (or
 Stop and then Start) afterwards. A build that fails with a message about git
-means Git Server is not installed (step 1).
+means Git Server is not installed (step 1). The commit at the foot of your own
+settings in Settings, or `curl https://planner.example.com/api/health`, says
+which commit is running, so after a Build you can check it against the latest
+on GitHub: an older one means the container is still the previous image. With
+no commit shown, the NAS's Docker dropped `.git` from the build despite
+`BUILDKIT_CONTEXT_KEEP_GIT_DIR` in `docker.yml`, and the build time is the
+thing to check instead.
 
 ## TLS
 

@@ -124,6 +124,18 @@ describe('settings on the sandbox, with no DSM behind it', () => {
     assert.deepEqual(r.json.members, ['tester']);
   });
 
+  test('settings and health both say which software is running', async () => {
+    const s = (await call(tester, 'GET', '/api/settings')).json.software;
+    assert.equal(s.name, 'Home Planner');
+    assert.equal(typeof s.version, 'string');
+    assert.ok('commit' in s && 'commitDate' in s && 'builtAt' in s);
+    // Health needs no session: the same fields, beside ok.
+    const h = await (await fetch(base + '/api/health')).json() as { ok: boolean; version: string; commit: string | null };
+    assert.equal(h.ok, true);
+    assert.equal(h.version, s.version);
+    assert.equal(h.commit, s.commit);
+  });
+
   test('appearance is saved for the member who chose it', async () => {
     const r = await call(tester, 'POST', '/api/settings/appearance', { scheme: 'lapis', mode: 'dark' });
     assert.equal(r.status, 200);

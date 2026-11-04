@@ -3,6 +3,29 @@
 # No build step: Node strips TypeScript types at load, so what runs on the NAS is
 # the same source you edited. That removes a whole class of "works locally" bugs
 # and there is nothing to keep in sync.
+
+# Which build this is, for Settings and /api/health. This stage sees the whole
+# context, .git included when the build has one, and writes version.json: the
+# package version, the commit and its date, and when the image was built. Only
+# that file is copied out below, so nothing else from .git reaches the image.
+# A build from a GitHub URL keeps .git only with BUILDKIT_CONTEXT_KEEP_GIT_DIR
+# (docker.yml sets it); without .git the commit and its date are null.
+# safe.directory because the copied checkout belongs to another user than git
+# runs as, which git otherwise refuses to read.
+FROM node:26-alpine AS meta
+RUN apk add --no-cache git
+COPY . /src
+RUN set -e; cd /src; \
+    version=$(node -p "require('./api/package.json').version"); \
+    commit=null; commitDate=null; \
+    if [ -e .git ] && sha=$(git -c safe.directory='*' rev-parse HEAD 2>/dev/null); then \
+      commit="\"$(echo "$sha" | cut -c1-7)\""; \
+      commitDate="\"$(git -c safe.directory='*' log -1 --format=%cI)\""; \
+    fi; \
+    printf '{"version":"%s","commit":%s,"commitDate":%s,"builtAt":"%s"}\n' \
+      "$version" "$commit" "$commitDate" "$(date -u +%Y-%m-%dT%H:%M:%SZ)" > /version.json; \
+    cat /version.json
+
 FROM node:26-alpine
 
 ENV NODE_ENV=production
@@ -18,6 +41,11 @@ RUN npm ci --omit=dev
 
 COPY api/tsconfig.json ./
 COPY api/src ./src
+
+# Copied after the dependencies and the source, so a new version.json (every
+# build has a new build time) never makes npm ci run again. src/version.ts
+# reads it from beside package.json.
+COPY --from=meta /version.json ./version.json
 
 # The app shell ships with the image so a deploy updates both halves at once.
 # .dockerignore keeps site/*.jsonl out — budget.jsonl and transactions.jsonl are

@@ -1,7 +1,9 @@
+# .git is not excluded: the Dockerfile's first stage reads the commit and its
+# date from it for the version line in Settings. That stage is thrown away and
+# only its version.json reaches the image, so no history ships with the app.
 api/node_modules
 api/data
 api/test
 site/*.jsonl
 *.log
-.git
 .env

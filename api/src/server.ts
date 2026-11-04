@@ -68,7 +68,7 @@
  *   POST /api/connectors/claude
  *   POST /api/connectors/mail/test  { to }: a test mail, its result kept for the Mail row
  *   POST /api/connectors/claude/test one minimal request with the key as it stands; the result kept, never the key
- *   GET  /api/settings              the household's settings, your own appearance, and whether documents go to Drive
+ *   GET  /api/settings              the household's settings, your own appearance, whether documents go to Drive, and the software version
  *   POST /api/settings/areas        replace the household's areas
  *   POST /api/settings/areas/rename rename one area, and move its plans with it
  *   POST /api/settings/links        replace the household's links
@@ -114,7 +114,7 @@
  *   POST /api/guests/arrival        { text }: how a guest gets in, sent in each confirmation ('' for none; at most 1000)
  *                                   (these three and the two above: 404 in any household but the one friends book with)
  *   GET  /api/whoami                who you are, and whose household this is
- *   GET  /api/health                for the container healthcheck
+ *   GET  /api/health                for the container healthcheck, with the version and commit running
  *
  * And the guest door, the one surface a guest session reaches. Its cookie is
  * read by these routes and no others; everything above still wants a member.
@@ -225,6 +225,7 @@ import {
 import type { BookingMail, BookingStatus } from './booking.ts';
 import { sendMail } from './mail.ts';
 import { Limiter } from './limiter.ts';
+import { softwareVersion } from './version.ts';
 
 const PORT = Number(process.env['PORT'] ?? 8090);
 /** Where every household's log lives, one directory each. */
@@ -1596,7 +1597,9 @@ export async function start(
 
     if (path === '/api/health') {
       // No household is named: health is about the process, not anyone's money.
-      return json(res, 200, { ok: true, households: (await households.ids()).length });
+      // The version and commit say which build is running, so a rebuild on the
+      // NAS can be checked against GitHub without signing in.
+      return json(res, 200, { ok: true, households: (await households.ids()).length, ...softwareVersion() });
     }
 
     // ── signing in ───────────────────────────────────────────────────────────
@@ -2098,6 +2101,8 @@ export async function start(
       return json(res, 200, {
         ...await settingsView(active, who, await bookingNow(), openHousehold(session)),
         documents: await documentsStatus(ctx),
+        // Shown at the foot of your own settings: which build this is.
+        software: softwareVersion(),
       });
     }
 

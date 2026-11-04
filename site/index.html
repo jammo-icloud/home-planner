@@ -6481,6 +6481,12 @@ let settingsData = null;
  * every change's answer replaces, and only that GET sets it.
  */
 let documentsStatus = null;
+/**
+ * Which build is running ({ name, version, commit, commitDate, builtAt }),
+ * from GET /api/settings. Held apart like `documentsStatus`: the change
+ * routes answer without it.
+ */
+let softwareInfo = null;
 /** The screen Settings was opened from, which Back and Done return to. */
 let settingsFrom = 'today';
 /** The row open for editing, as { kind, index }, or null. */
@@ -6574,6 +6580,7 @@ async function loadSettings() {
     const [st, plans] = await Promise.all([api('/api/settings'), api('/api/plans?showDone=1')]);
     settingsData = st;
     documentsStatus = st.documents ?? null;
+    softwareInfo = st.software ?? softwareInfo;
     keepFilesFrom(st);
     // A shelf is a plan too; the cards already include what sits on shelves.
     areaCounts = new Map(plans.rows.map((r) => [r.area, r.planning.length + r.doing.length + r.shelves.length]));
@@ -6748,6 +6755,7 @@ function renderSettings() {
       title: 'Yours',
       hint: others.length ? `Only you see these. ${listOf(others)} ${others.length === 1 ? 'keeps their' : 'keep their'} own.` : 'Only you see these.',
       secs: [['Appearance', appearanceSec()], ['Calendars I check', conflictsSec()], ['Calendar on your iPhone and Mac', phoneCalSec()]],
+      foot: softwareLine(softwareInfo),
     },
     {
       title: "The household's",
@@ -6774,6 +6782,7 @@ function renderSettings() {
       index.appendChild(a);
       group.appendChild(sec);
     }
+    if (g.foot) group.appendChild(node('p', 'hint', g.foot));
     body.appendChild(group);
   }
   layout.append(index, body);
@@ -6788,6 +6797,20 @@ function renderSettings() {
   (auto ?? back2)?.focus({ preventScroll: !auto });
   // A row opened to rename: what is typed replaces the old name.
   if (auto?.tagName === 'INPUT' && auto.value) auto.select();
+}
+
+/**
+ * "Home Planner 0.1.0 · commit 202134c · built 3 Nov 2026, 19:40", leaving out
+ * what the build could not know: a checkout has no build time, and an image
+ * built without .git has no commit. Null until the settings have been read.
+ */
+function softwareLine(sw) {
+  if (!sw?.version) return null;
+  const parts = [`${sw.name ?? 'Home Planner'} ${sw.version}`];
+  if (sw.commit) parts.push(`commit ${sw.commit}`);
+  const built = sw.builtAt ? new Date(sw.builtAt) : null;
+  if (built && !Number.isNaN(built.getTime())) parts.push(`built ${built.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' })}`);
+  return parts.join(' · ');
 }
 
 /** The index marks the section being read: the last one whose top has scrolled up past the screen's top. */
@@ -9234,6 +9257,7 @@ async function enterApp() {
   settingsData = await api('/api/settings').catch((ex) => { settingsProblem = ex; return null; });
   if (settingsData) {
     documentsStatus = settingsData.documents ?? null;
+    softwareInfo = settingsData.software ?? null;
     keepFilesFrom(settingsData);
     syncLook();
   }

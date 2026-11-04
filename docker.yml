@@ -30,6 +30,12 @@ services:
       # carries site/ (the shell and /book) as well as api/.
       context: https://github.com/jammo-icloud/home-planner.git#main
       dockerfile: api/Dockerfile
+      # A build from a GitHub URL drops the .git folder unless this is set.
+      # With it the image knows its commit, and Settings (or /api/health) says
+      # which one is running, to check a rebuild against GitHub. Without it,
+      # on an older Docker, Settings shows the version and build time only.
+      args:
+        BUILDKIT_CONTEXT_KEEP_GIT_DIR: "1"
     container_name: home-planner
     ports:
       # Loopback only: DSM's reverse proxy is on the same host and is the one

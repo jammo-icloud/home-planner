@@ -127,6 +127,9 @@ such as the DSM port and how many proxies are in front, stay in `.env`.
 Without a Claude key the app still runs: the briefing is a plain summary of
 the same figures, and receipts are sorted by rule and by hand.
 
+Settings ends your own section with the version running, the commit it was
+built from and when, so you can see which build is live.
+
 [DEPLOY.md](DEPLOY.md) has the details: every variable and Connectors row, the
 Drive, Calendar, booking and TLS setup, and what each failure in the log means.
 
