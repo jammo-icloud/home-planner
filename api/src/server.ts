@@ -212,7 +212,7 @@ import { attach, ATTACH_MAX_BYTES, detach, filesOff, PLANNER_ROOT, readAttachmen
 import type { FileContext } from './attachments.ts';
 import { answerTextFrom, briefingBodyFrom, currentDoc, documentsStatus, readDoc, teamFolderKnown } from './docs.ts';
 import { carryOver, checkFolder, chooseFolder, cleanFolder, drivePathOf, folderOf, nasPathOf, pickerFolders, pickerTeams, rememberDocuments, stillMoving } from './folders.ts';
-import { folderSource, setupNotices, setupSteps, zoneSource } from './setup.ts';
+import { budgetNotices, folderSource, setupNotices, setupSteps, zoneSource } from './setup.ts';
 import { matchModel, modelChoices, modelSource, pickerOptions, suggestForRows } from './match.ts';
 import { cents, fmt, fmtExact } from './money.ts';
 import type { Cents } from './money.ts';
@@ -2686,6 +2686,8 @@ export async function start(
           adminRows: isAdmin && !session.local ? needsAdmin((await connectorsNow(null)).rows) : [],
           rowName: (id) => ROW_NAME[id],
         }),
+        // Envelopes still needing a figure, and those short, for each live budget this month.
+        budget: budgetNotices(active.state, ctx.today),
       });
     }
 

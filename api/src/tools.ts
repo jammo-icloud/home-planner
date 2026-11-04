@@ -24,8 +24,8 @@ import { byMonthly, everyMonthly, everyWords, goalFor, savingsCheck, shortDay, s
 import { incomeFor, project, sourcesFor } from './income.ts';
 import { lookUp, placeForZip } from './local.ts';
 import { groupKind, groupOrder, missingStarter } from './starter.ts';
-import { cardFor, hintFor } from './figures.ts';
-import type { Hint } from './figures.ts';
+import { cardFor, coverFor, hintFor } from './figures.ts';
+import type { Cover, Hint } from './figures.ts';
 import type { MissingStarter } from './starter.ts';
 import { board, card } from './plans.ts';
 import { SEARCH_KINDS, searchHousehold, searchKind, searchWords } from './search.ts';
@@ -225,6 +225,16 @@ const resolveMonth = (state: State, budget: string, month: unknown): Month => {
 const hintView = (h: Hint | null) =>
   h === null ? null : h.use ? { ...h, use: { ...h.use, exact: fmtExact(h.use.cents) } } : h;
 
+/** A cover for get_month: its cents, and the same as exact dollars. */
+const shortView = (c: Cover | null) => c === null ? null : {
+  ...c,
+  amountExact: fmtExact(c.amount),
+  hadLeftExact: fmtExact(c.hadLeft),
+  receipt: c.receipt === null ? null : { ...c.receipt, exact: fmtExact(c.receipt.amount) },
+  donors: c.donors.map((d) => ({ ...d, spareExact: fmtExact(d.spare) })),
+  assignExact: c.assign === null ? null : fmtExact(c.assign),
+};
+
 const getMonth: Tool = {
   name: 'get_month',
   description:
@@ -289,6 +299,8 @@ const getMonth: Tool = {
         needsFigure: e.envelope.needsFigure === true,
         source: e.envelope.source ?? null,
         hint: e.envelope.needsFigure && budgetRow ? hintView(hintFor(state, budgetRow, e.envelope, month)) : null,
+        // Short only once it has a figure: a flagged envelope shows Action required, never Short.
+        short: e.envelope.needsFigure ? null : shortView(coverFor(state, snap.view, e.envelope.id, ctx.today)),
         // Saved in Savings: what it holds so far is what is left in it.
         sinking: sinkingView(state, budget, e.envelope, month, e.available),
       })),
@@ -914,6 +926,7 @@ const moveMoney: Tool = {
       to: { type: 'string' },
       amountCents: { type: 'number', description: 'Whole cents. $96.00 is 9600.' },
       why: { type: 'string', description: 'One line. This is what gets read the next morning.' },
+      onlyWhileShort: { type: 'boolean', description: 'Refuse unless the envelope moved to is still short, so a cover is not made twice.' },
     },
     required: ['budget', 'from', 'to', 'amountCents', 'why'],
   },
@@ -934,6 +947,10 @@ const moveMoney: Tool = {
     const src = view.envelopes.find((e) => e.envelope.id === from);
     const dst = view.envelopes.find((e) => e.envelope.id === to);
     if (!src || !dst) throw new ToolError('unknown envelope', 404);
+    // A cover is made once: a second tap, or another member's, finds it no longer short.
+    if (args['onlyWhileShort'] === true && dst.available >= 0) {
+      throw new ToolError(`${dst.envelope.label} is no longer short`, 409);
+    }
 
     const effects = [
       `${src.envelope.label}: ${fmtExact(src.available)} left becomes ${fmtExact(sub(src.available, amount))}`,

@@ -5,10 +5,11 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { needsAdmin } from '../src/connectors-view.ts';
+import { cents } from '../src/money.ts';
 import type { ConnectorRow, RowId } from '../src/connectors-view.ts';
 import { PAGE_RETRY_MS } from '../src/pages.ts';
 import { replay } from '../src/replay.ts';
-import { SETUP_ORDER, STEP_ROW, setupNotices } from '../src/setup.ts';
+import { SETUP_ORDER, STEP_ROW, budgetNotices, setupNotices } from '../src/setup.ts';
 import { SYSTEM } from '../src/types.ts';
 import type { Event, NewEventShape } from '../src/types.ts';
 
@@ -144,5 +145,60 @@ describe("Today's setup notices", () => {
     const chosen = stateOf(...lost,
       ['alice', { op: 'calendar.household', cal_id: '/alice/new/', original_cal_id: '/alice/new/', name: 'Household', replaces: cal.cal_id }]);
     assert.deepEqual(setupNotices({ ...base, state: chosen }), [], 'gone once a calendar is chosen');
+  });
+});
+
+describe("Today's budget notices", () => {
+  const TODAY = '2026-11-02';
+  const budget = (id: string, label: string): Line => ['alice', { op: 'budget.create', budget: id, label }];
+  const category = (id: string): Line => ['alice', { op: 'category.define', category: id, label: id }];
+  const envelope = (b: string, id: string, label: string, order: number, o: { figure?: boolean } = {}): Line => ['alice', {
+    op: 'envelope.define', budget: b, envelope: id, label, group: 'Home', match: { categories: [id] },
+    template: cents(10000), rollover: true, order, ...(o.figure === false ? { needsFigure: true as const } : {}),
+  } as NewEventShape];
+  const open = (b: string, month = '2026-11'): Line => ['alice', { op: 'month.open', budget: b, month, income: cents(100000) }];
+  const spend = (id: string, category: string, amount: number): Line => ['alice', {
+    op: 'txn.add', txns: [{ id, date: '2026-11-01', payee: 'VALLEY MARKET', amount: cents(amount), dedupeKey: id, category }],
+  } as NewEventShape];
+
+  test('envelopes needing a figure are one notice that opens the first', () => {
+    const lines: Line[] = [...CLAIMED, budget('placitas', 'Placitas')];
+    for (let i = 0; i < 17; i++) lines.push(category(`e${i}`));
+    // Listed out of order: the first is the lowest order, not the first written.
+    for (let i = 16; i >= 0; i--) lines.push(envelope('placitas', `e${i}`, `E${i}`, i + 1, { figure: false }));
+    lines.push(open('placitas'));
+    assert.deepEqual(budgetNotices(stateOf(...lines), TODAY), [{
+      kind: 'figures', text: '17 envelopes still need a figure',
+      action: { label: 'Go to the first one', open: 'budget', budget: 'placitas', envelope: 'e0' },
+    }]);
+    const one = stateOf(...CLAIMED, budget('placitas', 'Placitas'), category('e0'),
+      envelope('placitas', 'e0', 'E0', 1, { figure: false }), open('placitas'));
+    assert.equal(budgetNotices(one, TODAY)[0]!.text, '1 envelope still needs a figure');
+  });
+
+  test('a short envelope with a figure is its own notice that opens its cover', () => {
+    const state = stateOf(...CLAIMED, budget('placitas', 'Placitas'), category('groceries'),
+      envelope('placitas', 'groceries', 'Groceries', 1), open('placitas'), spend('t1', 'groceries', -14200));
+    assert.deepEqual(budgetNotices(state, TODAY), [{
+      kind: 'short', text: 'Groceries is short $42',
+      action: { label: 'Cover it', open: 'budget', budget: 'placitas', envelope: 'groceries', cover: true },
+    }]);
+  });
+
+  test('an envelope with no figure yet is not also called short', () => {
+    const state = stateOf(...CLAIMED, budget('placitas', 'Placitas'), category('groceries'),
+      envelope('placitas', 'groceries', 'Groceries', 1, { figure: false }), open('placitas'), spend('t1', 'groceries', -14200));
+    assert.deepEqual(budgetNotices(state, TODAY).map((n) => n.kind), ['figures']);
+  });
+
+  test('with more than one live budget each notice names its budget', () => {
+    const state = stateOf(...CLAIMED,
+      budget('placitas', 'Placitas'), category('groceries'),
+      envelope('placitas', 'groceries', 'Groceries', 1), open('placitas'), spend('t1', 'groceries', -14200),
+      budget('lodge', 'Lodge'), envelope('lodge', 'groceries', 'Groceries', 1), open('lodge', '2026-10'),
+      budget('old', 'Old'), envelope('old', 'groceries', 'Groceries', 1, { figure: false }), open('old'),
+      ['alice', { op: 'budget.archive', budget: 'old', archived: true, why: 'done' }]);
+    assert.deepEqual(budgetNotices(state, TODAY).map((n) => n.text), ['Placitas: Groceries is short $42']);
+    // Lodge has no month open now, so only the live budget with one is named.
   });
 });

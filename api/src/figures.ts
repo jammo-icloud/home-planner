@@ -11,8 +11,9 @@ import type { Cents } from './money.ts';
 import { incomeFor, sourcesFor } from './income.ts';
 import { PRICED } from './starter.ts';
 import { INCOME, isSpend, monthOf, partsOf, prevMonth } from './types.ts';
-import type { Budget, BudgetId, CategoryId, Envelope, EnvelopeId, Month, State } from './types.ts';
+import type { Budget, BudgetId, CategoryId, Day, Envelope, EnvelopeId, Month, State } from './types.ts';
 import type { MonthView } from './envelopes.ts';
+import { donors, monthClock } from './analytics.ts';
 
 export interface Hint {
   readonly text: string;
@@ -138,4 +139,47 @@ export function cardFor(view: MonthView): Card {
     line = `${lead} ${tail}`;
   }
   return { tone, headline, line, next, green: GREEN };
+}
+
+export interface Cover {
+  /** The shortfall, positive. */
+  readonly amount: Cents;
+  /** The latest line to land in the envelope: the one that most likely tipped it over. */
+  readonly receipt: { readonly payee: string; readonly amount: Cents } | null;
+  /** What it had left before that receipt. */
+  readonly hadLeft: Cents;
+  /** Envelopes that can spare the whole shortfall, most first, at most three. */
+  readonly donors: readonly { readonly envelope: EnvelopeId; readonly label: string; readonly spare: Cents }[];
+  /** What unassigned income could cover: the shortfall, or less while less is unassigned; null at none. */
+  readonly assign: Cents | null;
+}
+
+/** What it would take to cover an overspent envelope, and who could give it; null unless it is short. */
+export function coverFor(state: State, view: MonthView, envelope: EnvelopeId, today: Day): Cover | null {
+  const e = view.envelopes.find((v) => v.envelope.id === envelope);
+  if (!e || e.available >= 0) return null;
+  const amount = cents(-e.available);
+
+  // The latest by the receipt's own date; of two on one day, the one listed later.
+  let latest: { date: Day; payee: string; amount: Cents } | null = null;
+  for (const line of e.lines) {
+    const t = state.txns.get(line.txnId);
+    if (!t) continue;
+    if (latest === null || t.date >= latest.date) latest = { date: t.date, payee: t.payee, amount: line.amount };
+  }
+  // With no receipt in it (a move took its money), it had nothing left to start from.
+  const hadLeft = latest ? add(e.available, latest.amount) : ZERO;
+
+  const spare = donors(view, monthClock(view.month, today), envelope, state)
+    .filter((d) => d.spare >= amount)
+    .slice(0, 3)
+    .map((d) => ({ envelope: d.envelope, label: d.label, spare: d.spare }));
+
+  return {
+    amount,
+    receipt: latest ? { payee: latest.payee, amount: latest.amount } : null,
+    hadLeft,
+    donors: spare,
+    assign: view.toAssign > 0 ? cents(Math.min(amount, view.toAssign)) : null,
+  };
 }

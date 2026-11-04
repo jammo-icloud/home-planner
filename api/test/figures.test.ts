@@ -10,7 +10,8 @@ import type { NewEvent } from '../src/store.ts';
 import { INCOME } from '../src/types.ts';
 import type { Envelope } from '../src/types.ts';
 import type { MonthView } from '../src/envelopes.ts';
-import { cardFor, hintFor, incomeSuggestion, lastMonthSpent } from '../src/figures.ts';
+import { monthView } from '../src/envelopes.ts';
+import { cardFor, coverFor, hintFor, incomeSuggestion, lastMonthSpent } from '../src/figures.ts';
 
 const NOW = '2026-11-04T09:00:00Z';
 
@@ -170,5 +171,53 @@ describe('the card', () => {
       ],
     } as unknown as MonthView;
     assert.equal(cardFor(v).next, 'early');
+  });
+});
+
+describe('the cover for a short envelope', () => {
+  const TODAY = '2026-11-04';
+  // An envelope with a figure, funded by its template when the month opens.
+  const funded = (id: string, amount: number, label = id): NewEvent[] => [
+    { op: 'category.define', category: id, label },
+    { op: 'envelope.define', budget: 'placitas', envelope: id, label, group: 'Home',
+      match: { categories: [id] }, template: cents(amount), rollover: true, order: 0 },
+  ];
+  const open = (income: number): NewEvent => ({ op: 'month.open', budget: 'placitas', month: '2026-11', income: cents(income) });
+  const coverOf = (s: Store, id = 'groceries') => {
+    const v = monthView(s.state, 'placitas', '2026-11')!;
+    return coverFor(s.state, v, id, TODAY);
+  };
+
+  test("a short envelope's cover names the receipt, what it had, and who can spare it", async () => {
+    const s = await fresh([
+      ...funded('groceries', 4540, 'Groceries'), ...funded('a', 90000), ...funded('b', 50000),
+      ...funded('c', 30000), ...funded('d', 1000),
+      open(300000),
+      txn('g1', '2026-11-03', -8740, 'groceries'),
+    ]);
+    const c = coverOf(s)!;
+    assert.equal(c.amount, 4200);
+    assert.equal(c.hadLeft, 4540);
+    assert.deepEqual(c.receipt, { payee: 'VALLEY MARKET', amount: 8740 });
+    assert.deepEqual(c.donors.map((d) => d.envelope), ['a', 'b', 'c'], '1000 cannot spare 4200, so it is never offered');
+  });
+
+  test('the unassigned option is what is unassigned, up to the shortfall, and absent at zero', async () => {
+    const seed = (income: number) => [
+      ...funded('groceries', 4540, 'Groceries'), open(income), txn('g1', '2026-11-03', -8740, 'groceries'),
+    ];
+    assert.equal(coverOf(await fresh(seed(4540 + 100000)))!.assign, 4200);
+    assert.equal(coverOf(await fresh(seed(4540 + 2000)))!.assign, 2000);
+    assert.equal(coverOf(await fresh(seed(4540)))!.assign, null);
+  });
+
+  test('no one can spare it: no donors', async () => {
+    const s = await fresh([...funded('groceries', 4540, 'Groceries'), open(4540), txn('g1', '2026-11-03', -8740, 'groceries')]);
+    assert.deepEqual(coverOf(s)!.donors, []);
+  });
+
+  test('an envelope not short has no cover', async () => {
+    const s = await fresh([...funded('groceries', 4540, 'Groceries'), open(4540), txn('g1', '2026-11-03', -4540, 'groceries')]);
+    assert.equal(coverOf(s), null);
   });
 });

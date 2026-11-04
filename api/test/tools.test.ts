@@ -379,6 +379,28 @@ describe('with the household at hand, a sentence uses names', () => {
     assert.equal(at({ op: 'txn.categorize', txn: 'x4', category: TRANSFER }), 'categorized a transaction as a transfer');
   });
 
+  test('a flagged envelope is not short on the Budget screen either', async () => {
+    const c = await ctx();
+    await c.store.append('system', [
+      { op: 'category.define', category: 'upkeep', label: 'Repairs & upkeep' },
+      { op: 'envelope.define', budget: 'harbor', envelope: 'upkeep', label: 'Repairs', group: 'House',
+        match: { categories: ['upkeep'] }, template: parseDollars('0.00'), rollover: true, order: 2, needsFigure: true },
+      { op: 'txn.add', txns: [{ id: 'x8', date: '2026-08-12', payee: 'VALLEY MARKET #101', amount: parseDollars('-50.00'), dedupeKey: 'x8', category: 'upkeep' }] },
+    ]);
+    const r = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;
+    const upkeep = r.envelopes.find((e: any) => e.id === 'upkeep');
+    assert.equal(upkeep.left, '-$50');
+    assert.equal(upkeep.short, null);
+    // One with a figure is short, with its cover in cents and exact dollars.
+    await c.store.append('system', [
+      { op: 'txn.add', txns: [{ id: 'x7', date: '2026-08-12', payee: 'EXAMPLE POWER', amount: parseDollars('-250.00'), dedupeKey: 'x7', category: 'electricity' }] },
+    ]);
+    const again = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;
+    const util = again.envelopes.find((e: any) => e.id === 'util');
+    assert.equal(util.short.amount, parseDollars('70.00'));
+    assert.equal(util.short.amountExact, '$70.00');
+  });
+
   test('without it, ids as before, so nothing that cannot reach the state breaks', () => {
     const line = describeEvent({ id: 'i', at: NOW, who: 'alice', op: 'month.open', budget: 'harbor', month: '2026-08', income: 100 } as never);
     assert.equal(line.what, 'opened 2026-08 for harbor');
@@ -413,6 +435,23 @@ describe('writes propose, they never execute', () => {
     const daily = v.envelopes.find((e) => e.envelope.id === 'daily')!;
     assert.equal(daily.planned, parseDollars('1525.00'), 'plan of record still untouched');
     assert.equal(daily.funded, parseDollars('1621.00'));
+  });
+
+  test('a cover move is refused once the envelope is no longer short', async () => {
+    const c = await ctx();
+    // Utilities carries $300; $320 spent leaves it $20 short.
+    await c.store.append('system', [
+      { op: 'txn.add', txns: [{ id: 'x9', date: '2026-08-11', payee: 'EXAMPLE POWER', amount: parseDollars('-200.00'), dedupeKey: 'x9', category: 'electricity' }] },
+    ]);
+    const short = monthView(c.store.state, 'harbor', '2026-08')!.envelopes.find((e) => e.envelope.id === 'util')!;
+    assert.equal(short.available, parseDollars('-20.00'));
+    const cover = { budget: 'harbor', from: 'daily', to: 'util', amountCents: 2000, why: 'cover', onlyWhileShort: true };
+    const p = call('move_money', cover, c) as Proposal;
+    await commit(p.id, c);
+    assert.throws(() => call('move_money', cover, c), (e: unknown) =>
+      e instanceof ToolError && e.status === 409 && /Utilities is no longer short/.test(e.message));
+    // Without the flag the move is proposed as before.
+    assert.ok(call('move_money', { ...cover, onlyWhileShort: undefined }, c));
   });
 
   test('a proposal can only be approved once', async () => {
