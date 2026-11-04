@@ -44,6 +44,7 @@ export const STARTER_CATEGORIES: readonly StarterCategory[] = [
   { id: 'dining', label: 'Dining out', kind: 'People' },
   { id: 'transport', label: 'Fuel & transport', kind: 'People' },
   { id: 'carins', label: 'Car insurance', kind: 'People' },
+  { id: 'healthins', label: 'Health insurance', kind: 'People' },
   { id: 'health', label: 'Health & medical', kind: 'People' },
   { id: 'clothing', label: 'Clothing', kind: 'People' },
   { id: 'personal', label: 'Personal care', kind: 'People' },
@@ -54,6 +55,53 @@ export const STARTER_CATEGORIES: readonly StarterCategory[] = [
   { id: 'savings', label: 'Savings', kind: 'Future' },
   { id: 'travel', label: 'Travel', kind: 'Future' },
 ];
+
+export interface StarterGroup {
+  readonly name: string;
+  readonly envelopes: readonly { readonly id: CategoryId; readonly label: string }[];
+}
+
+// The groups the budget's walkthrough offers, in the order it shows them. An
+// envelope is a starter category, so its label is read from there rather than
+// typed a second time. Health & medical is left out on purpose: it is a
+// category, but not one of the envelopes a new budget starts with.
+const GROUP_IDS: readonly (readonly [string, readonly CategoryId[]])[] = [
+  ['Home', ['rent', 'tax', 'upkeep']],
+  ['Food', ['groceries', 'dining']],
+  ['Insurance', ['homeins', 'carins', 'healthins']],
+  ['Utilities', ['elec', 'heat', 'water', 'internet']],
+  ['Savings and sinking funds', ['emergency', 'savings', 'travel', 'gifts']],
+  ['Everyday', ['transport', 'clothing', 'personal', 'subscriptions', 'fun']],
+];
+
+export const STARTER_GROUPS: readonly StarterGroup[] = GROUP_IDS.map(([name, ids]) => ({
+  name,
+  envelopes: ids.map((id) => {
+    const category = STARTER_CATEGORIES.find((s) => s.id === id);
+    if (!category) throw new Error(`starter group ${name} names ${id}, which is not a starter category`);
+    return { id, label: category.label };
+  }),
+}));
+
+// The categories public data can put a figure on: rent and property tax from
+// local figures, electricity from the local rate.
+export const PRICED: ReadonlySet<CategoryId> = new Set(['rent', 'tax', 'elec']);
+
+/** Distinct group names: the six starter groups in their order, then any others alphabetically. */
+export function groupOrder(names: Iterable<string>): string[] {
+  const seen = new Set(names);
+  const starters = STARTER_GROUPS.map((g) => g.name);
+  const first = starters.filter((n) => seen.has(n));
+  const rest = [...seen].filter((n) => !starters.includes(n)).sort((a, b) => a.localeCompare(b));
+  return [...first, ...rest];
+}
+
+/** The kind of a category made for a row of one's own: the house and the future have groups, everything else is people. */
+export function groupKind(group: string): 'House' | 'People' | 'Future' {
+  if (group === 'Home' || group === 'Utilities') return 'House';
+  if (group === 'Savings and sinking funds') return 'Future';
+  return 'People';
+}
 
 export const STARTER_RULES: readonly StarterRule[] = [
   { id: 'r-starter-card-payment', match: 'PAYMENT THANK YOU', category: TRANSFER,

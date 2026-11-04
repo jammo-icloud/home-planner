@@ -8,7 +8,7 @@ import { Store } from '../src/store.ts';
 import { toolByName, commit, ProposalStore, ToolError } from '../src/tools.ts';
 import type { Proposal, ToolContext } from '../src/tools.ts';
 import { categorize } from '../src/replay.ts';
-import { STARTER_CATEGORIES, STARTER_RULES, missingStarter } from '../src/starter.ts';
+import { STARTER_CATEGORIES, STARTER_RULES, STARTER_GROUPS, PRICED, groupOrder, groupKind, missingStarter } from '../src/starter.ts';
 import { TRANSFER, INCOME } from '../src/types.ts';
 import type { NewEvent } from '../src/store.ts';
 
@@ -91,5 +91,47 @@ describe('the starter set', () => {
     await commit(propose(c).id, c);
     assert.deepEqual(missingStarter(c.store.state), { categories: [], rules: [], skippedCategories: STARTER_CATEGORIES.map((s) => s.label), skippedRules: [] });
     assert.throws(() => propose(c), (e: ToolError) => e instanceof ToolError && /already has everything/.test(e.message));
+  });
+});
+
+describe('the starter groups', () => {
+  test("six groups in the spec's order, each envelope a starter category", () => {
+    assert.deepEqual(STARTER_GROUPS.map((g) => g.name),
+      ['Home', 'Food', 'Insurance', 'Utilities', 'Savings and sinking funds', 'Everyday']);
+    assert.deepEqual(STARTER_GROUPS.map((g) => g.envelopes.map((e) => e.id)), [
+      ['rent', 'tax', 'upkeep'],
+      ['groceries', 'dining'],
+      ['homeins', 'carins', 'healthins'],
+      ['elec', 'heat', 'water', 'internet'],
+      ['emergency', 'savings', 'travel', 'gifts'],
+      ['transport', 'clothing', 'personal', 'subscriptions', 'fun'],
+    ]);
+    for (const g of STARTER_GROUPS) {
+      for (const e of g.envelopes) {
+        assert.equal(e.label, STARTER_CATEGORIES.find((s) => s.id === e.id)?.label);
+      }
+    }
+    const grouped = new Set(STARTER_GROUPS.flatMap((g) => g.envelopes.map((e) => e.id)));
+    assert.equal(grouped.has('health'), false);
+    assert.ok(STARTER_CATEGORIES.some((s) => s.id === 'health'));
+    const hi = STARTER_CATEGORIES.find((s) => s.id === 'healthins');
+    assert.equal(hi?.label, 'Health insurance');
+    assert.equal(hi?.kind, 'People');
+  });
+
+  test('PRICED is rent, tax and elec', () => {
+    assert.deepEqual([...PRICED].sort(), ['elec', 'rent', 'tax']);
+  });
+
+  test('groupOrder puts the six first and the rest alphabetically', () => {
+    assert.deepEqual(groupOrder(['People', 'Food', 'Zeta', 'Home', 'Alpha', 'Food']),
+      ['Home', 'Food', 'Alpha', 'People', 'Zeta']);
+  });
+
+  test('groupKind', () => {
+    assert.equal(groupKind('Home'), 'House');
+    assert.equal(groupKind('Utilities'), 'House');
+    assert.equal(groupKind('Savings and sinking funds'), 'Future');
+    for (const g of ['Food', 'Insurance', 'Everyday', 'Pets']) assert.equal(groupKind(g), 'People');
   });
 });
