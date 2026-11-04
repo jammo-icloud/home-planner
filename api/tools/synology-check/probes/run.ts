@@ -9,12 +9,13 @@
  *
  * Each probe exports `run(sid): Promise<void>` and a `WHAT` sentence.
  */
+// First, so tools/synology-check/.env is read before anything fixes DSM_URL at load.
+import { account, signIn } from '../signin.ts';
 import { readdirSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { AUTH_VERSION, DSM_URL } from '../../../src/auth.ts';
 import { dsm } from '../../../src/synology.ts';
-import { account, signIn } from '../signin.ts';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const NOT_PROBES = new Set(['run.ts', 'shared.ts']);

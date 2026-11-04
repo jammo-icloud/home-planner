@@ -63,9 +63,10 @@
 
 import { createHash } from 'node:crypto';
 
+// First, so tools/synology-check/.env is read before anything fixes DSM_URL at load.
+import { ENV_FILE, signIn } from './signin.ts';
 import { ACCOUNTS_CALL, ADMIN_GROUP_CALL, isAdministrator, listAccounts } from '../../src/accounts.ts';
 import { AUTH_VERSION, DSM_URL } from '../../src/auth.ts';
-import { ENV_FILE, signIn } from './signin.ts';
 import {
   DRIVE_API, DRIVE_BASE, DRIVE_NAME_TAKEN, byLink, getFile, isNoSuchFile, listChanges, listFolders, listTeamFolders,
   readFile, search, teamFolderName, teamFolderPath, teamFolders, writeFile,

@@ -12,11 +12,35 @@
  * sign-in tried again. CHECK_OTP, when set, is used first without asking. The
  * code is never printed back, and neither is the password.
  */
+import { readFileSync } from 'node:fs';
 import { createInterface } from 'node:readline/promises';
 import { stdin, stdout } from 'node:process';
 import { OtpRequired, checkWithDsm } from '../../src/auth.ts';
 
 export const ENV_FILE = 'tools/synology-check/.env';
+
+/**
+ * Node's --env-file never overrides a variable the shell already has, even one
+ * exported empty (a `read -rs CHECK_PASS` answered with return, say), and then
+ * the file's value is silently lost. So the file is read here too, and fills
+ * in every key whose value in the environment is empty or absent. A value the
+ * shell set to something still wins.
+ */
+function fillFromEnvFile(): void {
+  let text: string;
+  try { text = readFileSync(ENV_FILE, 'utf8'); } catch { return; }
+  for (const raw of text.split('\n')) {
+    const line = raw.trim();
+    if (!line || line.startsWith('#')) continue;
+    const eq = line.indexOf('=');
+    if (eq < 1) continue;
+    const key = line.slice(0, eq).trim();
+    let value = line.slice(eq + 1).trim();
+    if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) value = value.slice(1, -1);
+    if (/^[A-Z_][A-Z0-9_]*$/.test(key) && !process.env[key]) process.env[key] = value;
+  }
+}
+fillFromEnvFile();
 
 /** The account the environment names, or a sentence saying what to set. */
 export function account(): { user: string; pass: string } {
