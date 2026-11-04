@@ -1046,7 +1046,7 @@
   /* A row: the title in a fixed column, its status beside it, the action at the end; the form opens under the status.
      On a phone the title and the action share the first line and the status goes full width under them. */
   .set-row{display:grid;grid-template-columns:9.5rem minmax(0,1fr) auto;gap:var(--sp-2) var(--sp-4);align-items:start;
-    margin:0;padding-block:var(--sp-4);border-top:var(--stroke) solid var(--hair);scroll-margin-top:var(--sp-5)}
+    margin:0;padding-block:var(--sp-4);border-top:var(--stroke) solid var(--hair);scroll-margin-top:72px}
   .set-row > h3{grid-column:1;grid-row:1;font-size:var(--fs-ui);font-weight:var(--fw-semibold);line-height:1.4;padding-top:6px}
   .set-status{grid-column:2;grid-row:1;display:grid;gap:var(--sp-1);justify-items:start;min-width:0;padding-top:6px;
     font-size:var(--fs-ui);color:var(--ink-soft);overflow-wrap:anywhere}
@@ -7373,9 +7373,11 @@ async function phoneCode() {
     area.textContent = '';
     // The server's own words: over plain http from another machine, why no code can be made.
     area.appendChild(node('p', 'err', ex.message));
+    mac.hidden = true;
     return;
   }
   if (ask !== phoneAsked) return;
+  mac.hidden = false;
   markPhoneSetUp();
   area.textContent = '';
   // The QR comes as SVG text; as an image's source it is drawn, never run.

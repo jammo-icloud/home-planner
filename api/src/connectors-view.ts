@@ -86,7 +86,7 @@ function calendarRow(env: NodeJS.ProcessEnv): ConnectorRow {
   const raw = env['DSM_PUBLIC_URL']?.trim() ?? '';
   const form = { address: raw || null };
   if (source === 'off') return { id: 'calendar', state: 'off', source, line: OFF_ON_PURPOSE, form };
-  if (!raw) return { id: 'calendar', state: 'off', source, line: 'Not set: phones are told to ask the owner', form };
+  if (!raw) return { id: 'calendar', state: 'off', source, line: 'Not set: phones are told to ask an administrator', form };
   const origin = dsmPublicUrl(raw);
   if (origin === null) return { id: 'calendar', state: 'broken', source, line: 'The saved address no longer parses', form };
   return { id: 'calendar', state: 'on', source, line: origin, form };
