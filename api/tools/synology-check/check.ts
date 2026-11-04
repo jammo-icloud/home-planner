@@ -47,10 +47,12 @@ import {
 } from '../../src/drive.ts';
 import type { DriveFile } from '../../src/drive.ts';
 import {
-  CALENDAR_LIST_PARAMS, CAL_VERSION, COPY_MOVE_VERSION, EVENT_VERSION, FILE_STATION_VERSION, NAS_MOVE_WAIT_MS, SHARING_VERSION,
-  SynologyError, contactsVersionNow, createFolder, dsm, downloadFile, fetchFor, getEvent, jsonBody, listAddressbooks,
-  listCalendars, listContacts, listEvents, listFolder, listRows, reach, sharingOf, verdict,
+  CALENDAR_LIST_PARAMS, CAL_VERSION, COPY_MOVE_VERSION, EVENT_VERSION, EtagMismatch, FILE_STATION_VERSION, NAS_MOVE_WAIT_MS,
+  NOT_AN_ETAG_REFUSAL, SHARING_VERSION, SynologyError, contactsVersionNow, createCalendar, createEvent, createFolder,
+  deleteEvent, dsm, downloadFile, fetchFor, getEvent, jsonBody, listAddressbooks, listCalendars, listContacts, listEvents,
+  listFolder, listRows, reach, renameCalendar, setEvent, shareCalendar, sharingOf, verdict,
 } from '../../src/synology.ts';
+import type { CalEvent, CalendarRef, DsmFetch } from '../../src/synology.ts';
 import { MOVE_WAIT_MS } from '../../src/moves.ts';
 
 const user = process.env['CHECK_USER']?.trim() ?? '';
@@ -64,6 +66,10 @@ const driveWrite = process.env['CHECK_DRIVE_WRITE']?.trim() === '1';
 const adminUser = process.env['CHECK_ADMIN_USER']?.trim() ?? '';
 const adminPass = process.env['CHECK_ADMIN_PASS'] ?? '';
 const secondTeam = process.env['CHECK_SECOND_TEAM']?.trim() ?? '';
+const calendarWrite = process.env['CHECK_CALENDAR_WRITE']?.trim() === '1';
+const shareWith = process.env['CHECK_SHARE_WITH']?.trim() ?? '';
+const contactsWrite = process.env['CHECK_CONTACTS_WRITE']?.trim() === '1';
+const addressbookName = process.env['CHECK_ADDRESSBOOK']?.trim() ?? '';
 
 let sid = '';
 /** The administrator's own sid, when CHECK_ADMIN_USER and CHECK_ADMIN_PASS were given. */
@@ -379,6 +385,57 @@ async function answer(call: () => Promise<unknown>): Promise<Answer> {
 async function ask(title: string, call: () => Promise<unknown>, read: (a: Answer) => string | Promise<string>): Promise<Answer | undefined> {
   let got: Answer | undefined;
   await probe(title, async () => (got = await answer(call)), async () => read(got!));
+  return got;
+}
+
+// ─── the opt-in writes ────────────────────────────────────────────────────────
+
+/** What each opt-in write left on the NAS, or removed again: said once more at the very end. */
+const afterWrites: string[] = [];
+
+/** One reply, or the list of them when a client call made several. */
+const oneOrAll = (bodies: unknown[]): unknown => (bodies.length === 1 ? bodies[0] : bodies);
+
+/**
+ * A fetch that keeps every JSON body DSM answers through it. Handed to a client
+ * function, it shows DSM's whole reply (`success` and `data`, or `error` and its
+ * code) to the very call the client makes, with the client's own parameters.
+ * Not for a download: that body is the file.
+ */
+function recording(): { f: DsmFetch; bodies: unknown[] } {
+  const bodies: unknown[] = [];
+  const f = (async (input: Parameters<DsmFetch>[0], init?: Parameters<DsmFetch>[1]) => {
+    const res = await fetchFor(undefined)(input, init);
+    bodies.push(await res.clone().json().catch(() =>
+      `(not JSON: HTTP ${res.status}, ${res.headers.get('content-type') ?? 'no content-type'})`));
+    return res;
+  }) as DsmFetch;
+  return { f, bodies };
+}
+
+/**
+ * `probe` for a write made through the client: DSM's whole raw reply prints,
+ * then `read` says what the client returned. A refusal prints its raw reply
+ * before the FAILED line. The value comes back wrapped, so a call that returns
+ * nothing still says it was taken; undefined means it was not.
+ */
+async function viaClient<T>(
+  title: string, call: (f: DsmFetch) => Promise<T>, read: (got: T) => string | Promise<string>,
+): Promise<{ value: T } | undefined> {
+  const { f, bodies } = recording();
+  let got: { value: T } | undefined;
+  await probe(title, async () => {
+    try {
+      got = { value: await call(f) };
+    } catch (err) {
+      if (bodies.length) {
+        say('  raw reply:');
+        say(raw(oneOrAll(bodies)));
+      }
+      throw err;
+    }
+    return oneOrAll(bodies);
+  }, async () => read(got!.value));
   return got;
 }
 
@@ -785,6 +842,256 @@ async function checkDesign(): Promise<void> {
   say(`\nThe check left files under ${nasDir}${secondTeam ? ` and /${secondTeam}/.planner-check` : ''}; delete the .planner-check folder(s) in File Station.`);
 }
 
+// ─── calendar writes, with CHECK_CALENDAR_WRITE=1 ────────────────────────────
+
+/** The code the client's comments assume for a stale etag (setEvent, src/synology.ts; ETAG_MISMATCH in the fake DSM). */
+const STALE_ETAG_ASSUMED = 9006;
+/** The code the app takes as "this event is gone" (NO_SUCH_EVENT in src/calendar.ts), a guess until the delete below answers. */
+const NO_SUCH_EVENT_ASSUMED = 9009;
+const HOUR = 60 * 60;
+
+/** The two ids of a calendar, without the rest of what `listCalendars` reads. */
+const refOf = (c: CalendarRef): CalendarRef => ({ cal_id: c.cal_id, original_cal_id: c.original_cal_id });
+
+/**
+ * Makes a calendar of the check's own, shares it (with CHECK_SHARE_WITH),
+ * renames it, writes one event in it, moves the event with its etag and then
+ * with the old one, deletes the event, and deletes the calendar. Nothing is
+ * written to any other calendar.
+ */
+async function checkCalendarWrite(): Promise<void> {
+  if (!calendarWrite) {
+    say('\nCalendar writes: skipped. Set CHECK_CALENDAR_WRITE=1 to make a calendar "Planner check <date-time>", write and '
+      + 'move one event in it (once with a stale etag), and delete both again; CHECK_SHARE_WITH=<dsm account> also shares it.');
+    return;
+  }
+  const name = `Planner check ${new Date().toISOString()}`;
+  const renamed = `${name} renamed`;
+  say(`\n── Calendar writes (CHECK_CALENDAR_WRITE): a calendar of the check's own, "${name}" ──`);
+
+  /** The calendar of that name as listCalendars reads it, or null. */
+  const listed = async (displayname: string) => (await listCalendars(sid)).find((c) => c.displayname === displayname) ?? null;
+
+  const made = await viaClient(`SYNO.Cal.Cal create (v${CAL_VERSION}), "${name}", with the parameters createCalendar sends`,
+    (f) => createCalendar(sid, {
+      displayname: name, description: 'Made by the Home Planner NAS check, which deletes it again.', color: '#5B8DEF',
+    }, f),
+    async (c) => {
+      const there = await listed(name);
+      if (!there) failed.push('the calendar made is not listed');
+      return `cal_id ${JSON.stringify(c.cal_id)}, original_cal_id ${JSON.stringify(c.original_cal_id)}, displayname ${JSON.stringify(c.displayname)}; `
+        + (!there ? 'listCalendars does NOT show it'
+          : `listCalendars shows it${there.cal_id === c.cal_id ? ' under the same cal_id' : ` under cal_id ${there.cal_id}, NOT the one create answered`}`);
+    });
+
+  // Found by its name whatever create answered: a reply the client could not read may still have made it.
+  const found = await listed(name).catch(() => null);
+  const cal = found ? refOf(found) : made?.value.cal_id ? refOf(made.value) : null;
+  if (!cal) {
+    if (made) {
+      failed.push('the calendar made could not be found again');
+      afterWrites.push(`The calendar '${name}' was made but could not be found again; if Synology Calendar shows it, delete it there.`);
+    } else {
+      afterWrites.push('No calendar was left: create was refused.');
+    }
+    say('\nThe rest of the calendar writes: skipped, because there is no calendar of the check\'s to use.');
+    return;
+  }
+
+  let nameNow = name;
+  let sharedWith = '';
+  try {
+    // Who it is shared with, then (with CHECK_SHARE_WITH) a share and the sharing read again.
+    const before = await viaClient(`SYNO.Cal.Sharing get (v${SHARING_VERSION}), the calendar just made`,
+      (f) => sharingOf(sid, cal.cal_id, f),
+      (s) => `${s.users.length} user(s), ${s.groups.length} group(s)${s.users.length || s.groups.length ? '' : ', as a calendar just made should have'}`);
+    if (!shareWith) {
+      say('\nSYNO.Cal.Sharing set: skipped. Set CHECK_SHARE_WITH=<another dsm account> to share the check\'s calendar with it, read-only, and read the sharing back.');
+    } else {
+      const shared = await viaClient(`SYNO.Cal.Sharing set (v${SHARING_VERSION}), with ${shareWith} RO, as shareCalendar sends it`,
+        (f) => shareCalendar(sid, cal.cal_id, { users: [{ name: shareWith, privilege: 'RO' }], groups: before?.value.groups ?? [] }, f),
+        () => 'taken');
+      if (shared) {
+        sharedWith = shareWith;
+        await viaClient(`SYNO.Cal.Sharing get (v${SHARING_VERSION}), after sharing with ${shareWith}`,
+          (f) => sharingOf(sid, cal.cal_id, f),
+          (s) => {
+            const u = s.users.find((x) => x.name.toLowerCase() === shareWith.toLowerCase());
+            if (!u) failed.push(`${shareWith} is not in the calendar's sharing after set`);
+            return u
+              ? `${shareWith} is listed, ${u.privilege}${u.privilege === 'RO' ? ', as set' : ', NOT RO as set'}`
+              : `${shareWith} is NOT listed, though set was taken: either set wants another cal_share_setting (shareCalendar) `
+                + 'or get answers the users elsewhere (sharingOf, src/synology.ts); the two raw replies say which';
+          });
+      }
+    }
+
+    await viaClient(`SYNO.Cal.Cal set (v${CAL_VERSION}), cal_displayname "${renamed}", as renameCalendar sends it`,
+      (f) => renameCalendar(sid, cal, renamed, f),
+      async () => {
+        const there = await listed(renamed);
+        if (there) nameNow = renamed;
+        else failed.push('the renamed calendar is not listed under its new name');
+        return there ? 'listCalendars shows the new name' : `taken, but listCalendars does NOT show "${renamed}": look at the params of renameCalendar`;
+      });
+
+    await eventWrites(cal);
+  } finally {
+    await deleteCheckCalendar(cal, nameNow, sharedWith);
+  }
+}
+
+/** One event in the check's calendar: made, read, moved with its etag, written with the old one, deleted. */
+async function eventWrites(cal: CalendarRef): Promise<void> {
+  // Tomorrow, on the hour, for an hour; in this machine's zone, as the app sends the household's.
+  const start = (Math.floor(Date.now() / 1000 / HOUR) + 24) * HOUR;
+  const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  const made = (await viaClient(`SYNO.Cal.Event create (v${EVENT_VERSION}), one hour tomorrow, tz_id ${tz}`,
+    (f) => createEvent(sid, {
+      ...cal, summary: 'Planner check', description: 'Made by the Home Planner NAS check, which deletes it again.',
+      is_all_day: false, dtstart: start, dtend: start + HOUR, tz_id: tz,
+    }, f),
+    (e) => `evt_id ${e.evt_id}, dav_etag ${JSON.stringify(e.dav_etag)}, ical_uid ${JSON.stringify(e.ical_uid)}, `
+      + `dtstart ${e.dtstart}${e.dtstart === start ? ', as sent' : `, NOT ${start} as sent`}`))?.value;
+  if (!made) {
+    say('\nThe other event steps: skipped, because create was refused.');
+    return;
+  }
+  if (typeof made.evt_id !== 'number') {
+    failed.push('event create answered no evt_id');
+    say('\nThe other event steps: skipped, because create answered no evt_id (calEvent reads `evt_id` from its reply; the raw reply shows what it holds). '
+      + 'Deleting the calendar takes the event with it.');
+    return;
+  }
+  const ref = { ...cal, evt_id: made.evt_id };
+
+  const got = (await viaClient(`SYNO.Cal.Event get (v${EVENT_VERSION}), evt_id ${made.evt_id}, as getEvent sends it`,
+    (f) => getEvent(sid, ref, f),
+    (e) => {
+      if (!e.dav_etag) failed.push('event get answered no dav_etag');
+      return `dav_etag ${JSON.stringify(e.dav_etag)}${e.dav_etag === made.dav_etag ? ', the one create answered' : made.dav_etag ? `, not create's ${JSON.stringify(made.dav_etag)}` : ''}, `
+        + (e.last_modify_user ? `last_modify_user ${JSON.stringify(e.last_modify_user)}`
+          : 'no last_modify_user (the client\'s guess at the name: without it the drift card cannot say who changed an event)');
+    }))?.value;
+
+  if (got?.dav_etag) {
+    const base = Number.isFinite(got.dtstart) ? got.dtstart : start;
+    const moved = (await viaClient(`SYNO.Cal.Event set (v${EVENT_VERSION}), one hour later, carrying the dav_etag get answered`,
+      (f) => setEvent(sid, got, { dtstart: base + HOUR, dtend: base + 2 * HOUR }, f),
+      (e) => {
+        const fresh = !!e.dav_etag && e.dav_etag !== got.dav_etag;
+        if (!fresh) failed.push('event set answered no new dav_etag');
+        return `dav_etag ${JSON.stringify(e.dav_etag)}: ${fresh ? 'a new one' : e.dav_etag ? 'the SAME as before' : 'NONE'}; `
+          + `dtstart ${e.dtstart}${e.dtstart === base + HOUR ? ', one hour later as asked' : ''}`
+          + (fresh ? '' : '. setEvent reads the new etag from set\'s reply (calEvent); with none the app holds no etag, and refuses the next change of this event');
+      }))?.value;
+    if (moved) await staleEtag(got);
+    else say('\nThe stale-etag write: skipped, because the set above was not taken, so the etag get answered is not stale.');
+  } else {
+    say('\nThe two event sets: skipped, because there is no dav_etag to carry (setEvent makes no call without one).');
+  }
+
+  const day = 24 * HOUR;
+  const deleted = await viaClient(`SYNO.Cal.Event delete (v${EVENT_VERSION}), evt_id ${made.evt_id}, as deleteEvent sends it`,
+    (f) => deleteEvent(sid, ref, f),
+    async () => {
+      const still = (await listEvents(sid, { calendars: [cal], start: start - day, end: start + day })).some((e) => e.evt_id === made.evt_id);
+      if (still) failed.push('a deleted event is still listed');
+      return still ? 'listEvents STILL shows it' : 'listEvents no longer shows it';
+    });
+  if (deleted) {
+    await ask(`SYNO.Cal.Event get (v${EVENT_VERSION}), the event just deleted`,
+      () => dsm({ api: 'SYNO.Cal.Event', version: EVENT_VERSION, method: 'get', sid, params: { ...ref } }),
+      (a) => {
+        if ('answered' in a) {
+          failed.push('a deleted event was answered');
+          return 'ANSWERED for an event that was deleted';
+        }
+        const { code } = a.refused;
+        if (code === NO_SUCH_EVENT_ASSUMED) return `refused with code ${code}, which the app takes as "gone" (NO_SUCH_EVENT in src/calendar.ts)`;
+        failed.push(`a deleted event is answered ${code}, not ${NO_SUCH_EVENT_ASSUMED}`);
+        return `refused with code ${code}, NOT ${NO_SUCH_EVENT_ASSUMED}: set NO_SUCH_EVENT in src/calendar.ts to ${code}, `
+          + 'or the app takes an event deleted on a phone for a failure';
+      });
+  }
+}
+
+/**
+ * The key probe: `setEvent` with the copy read before the move, whose etag is
+ * now stale. Made through the client, so the raw replies are set's refusal and
+ * the get setEvent makes to see whether the etag really moved.
+ */
+async function staleEtag(old: CalEvent): Promise<void> {
+  const { f, bodies } = recording();
+  let accepted = false;
+  let refusal: unknown = null;
+  await probe(`SYNO.Cal.Event set (v${EVENT_VERSION}), carrying the OLD dav_etag ${JSON.stringify(old.dav_etag)}: what does a stale etag answer?`,
+    async () => {
+      try {
+        await setEvent(sid, old, { summary: 'Planner check, from a stale copy' }, f);
+        accepted = true;
+      } catch (err) {
+        if (!(err instanceof SynologyError) || bodies.length === 0) throw err;
+        refusal = err;
+      }
+      // The first reply is set's; a second is the get setEvent makes before it says EtagMismatch.
+      return oneOrAll(bodies);
+    },
+    async () => {
+      if (accepted) {
+        failed.push('a stale dav_etag was accepted');
+        return 'ACCEPTED: the NAS took a set carrying an etag that is no longer the event\'s, so dav_etag guards nothing and '
+          + 'setEvent (src/synology.ts) would overwrite an edit made on a phone. Report this before the app writes to a shared calendar.';
+      }
+      const code = (bodies[0] as { error?: { code?: unknown } } | undefined)?.error?.code;
+      const mismatch = refusal instanceof EtagMismatch;
+      if (!mismatch) failed.push('a stale etag was not read as EtagMismatch');
+      const client = mismatch
+        ? 'the client reads it as EtagMismatch ("this event was changed on the NAS since it was last read"), as it should'
+        : `the client does NOT read it as EtagMismatch: it says "${why(refusal)}"`;
+      if (typeof code !== 'number') {
+        failed.push('a stale etag was refused with no code');
+        return `refused with no error code in the reply; ${client}`;
+      }
+      if (code === STALE_ETAG_ASSUMED) {
+        return `refused with code ${code}, the ${STALE_ETAG_ASSUMED} the client assumes (setEvent, src/synology.ts); ${client}`;
+      }
+      failed.push(`a stale etag was refused with ${code}, not ${STALE_ETAG_ASSUMED}`);
+      const fix = `set ${STALE_ETAG_ASSUMED} to ${code} in setEvent's comment (src/synology.ts) and in ETAG_MISMATCH (tools/fake-dsm/server.ts)`;
+      return NOT_AN_ETAG_REFUSAL.has(code)
+        ? `refused with code ${code}, NOT the ${STALE_ETAG_ASSUMED} the client assumes, and ${code} is in NOT_AN_ETAG_REFUSAL, so the app `
+          + `reports a stale etag as a plain refusal, never as "changed on the NAS". Remove ${code} from NOT_AN_ETAG_REFUSAL in src/synology.ts, and ${fix}; ${client}`
+        : `refused with code ${code}, NOT the ${STALE_ETAG_ASSUMED} the client assumes. ${code} is not in NOT_AN_ETAG_REFUSAL `
+          + `(${[...NOT_AN_ETAG_REFUSAL].join(', ')}, src/synology.ts), so the app still takes it as a stale etag; ${fix}; ${client}`;
+    });
+}
+
+/**
+ * The check's own clean-up: the app has no deleteCalendar, so this is a raw
+ * call. The Calendar guide's `Method Delete` (2024-06) takes `cal_id` alone,
+ * from version 5, and lists 9006, 9007, 9009 and 9017 as its errors; the guide
+ * spells the method with a capital D, and `delete` is sent as every other
+ * method name is. Whether deleting takes the events with it is not said.
+ */
+async function deleteCheckCalendar(cal: CalendarRef, name: string, sharedWith: string): Promise<void> {
+  let gone = false;
+  await ask(`SYNO.Cal.Cal delete (v${CAL_VERSION}), cal_id ${cal.cal_id} (the check's own clean-up; the app deletes no calendar)`,
+    () => dsm({ api: 'SYNO.Cal.Cal', version: CAL_VERSION, method: 'delete', sid, params: { cal_id: cal.cal_id } }),
+    async (a) => {
+      if ('refused' in a) return `refused (code ${a.refused.code})`;
+      gone = !(await listCalendars(sid)).some((c) => c.cal_id === cal.cal_id);
+      return gone ? 'answered, and listCalendars no longer shows it' : 'answered, but listCalendars STILL shows it';
+    });
+  if (gone) {
+    afterWrites.push(`The calendar '${name}' was deleted; no calendar was left.`);
+    return;
+  }
+  failed.push('the check\'s calendar was not deleted');
+  const left = `The calendar '${name}' was left; delete it in Synology Calendar.`;
+  say(`  ${left}`);
+  afterWrites.push(`${left}${sharedWith ? ` It is shared with ${sharedWith}.` : ''}`);
+}
+
 if (!user || !pass) {
   stop('Set CHECK_USER and CHECK_PASS (and CHECK_OTP if the account asks for a code) to a DSM account, then run this again.');
 }
@@ -906,6 +1213,13 @@ try {
     }
   }
 
+  // 4b. Calendar writes, only when asked, on a calendar the check makes and deletes.
+  try {
+    await checkCalendarWrite();
+  } catch (err) {
+    stepFailed('the calendar writes stopped before their end', err);
+  }
+
   // 5. File Station. One read that needs no path, always: if it is answered
   // 105 or 119 while the calendar reads worked, the sid is scoped by the
   // session name it was issued under, and every File Station call would fail
@@ -945,6 +1259,14 @@ try {
   if (adminSid) await dsm({ api: 'SYNO.API.Auth', version: AUTH_VERSION, method: 'logout', sid: adminSid }).catch(() => undefined);
   const out = await dsm({ api: 'SYNO.API.Auth', version: AUTH_VERSION, method: 'logout', sid }).then(() => true, () => false);
   say(out ? '\nSigned out.' : '\nCould not sign out; the session will expire on its own.');
+}
+
+// What the writes left, said again here whatever happened above them, so it is the last thing read.
+if (afterWrites.length) {
+  say('\nWhat the opt-in writes left on the NAS:');
+  for (const line of afterWrites) say(`  ${line}`);
+} else {
+  say('\nNo write was asked for, so the check made nothing on the NAS.');
 }
 
 if (failed.length) {

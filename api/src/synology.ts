@@ -322,9 +322,9 @@ export async function createCalendar(
       cal_color: o.color,
       // The guide marks every one of these required, so every one is sent. Only
       // notify_alarm_by_browser and notify_import_cal_by_mail are known names; the
-      // other four are inferred from them. All eight are confirmed at first real
-      // use, when the app first makes the Household calendar: the check does not
-      // create anything.
+      // other four are inferred from them. All eight are confirmed by the
+      // check's CHECK_CALENDAR_WRITE pass, which makes a calendar of its own
+      // with them, or at first real use, when the app makes the Household calendar.
       is_hidden_in_cal: false,
       is_hidden_in_list: false,
       notify_import_cal_by_browser: false,
@@ -340,9 +340,10 @@ export async function createCalendar(
 
 /**
  * Give a calendar a new name: `SYNO.Cal.Cal` `set` with `cal_displayname`, the
- * name `create` takes. The check renames nothing, so these parameters (and
- * whether DSM lets anyone but the calendar's owner do it) are confirmed at
- * first real use, the first time someone renames the Household calendar.
+ * name `create` takes. The check's CHECK_CALENDAR_WRITE pass renames the
+ * calendar it made, as its owner; whether DSM lets anyone but the owner do it
+ * is confirmed at first real use, the first time a member renames the
+ * Household calendar.
  */
 export async function renameCalendar(sid: string, cal: CalendarRef, name: string, f?: DsmFetch): Promise<void> {
   await dsm<unknown>({
@@ -371,8 +372,9 @@ interface ShareSetting { DSM_USER?: { ug_name: string; cal_privilege: Privilege 
  * Replace who `cal_id` is shared with. `set` is believed to be a whole-list
  * replace, so `users` is the complete list, not an addition to it, and
  * `groups` must be the groups read by `sharingOf` or they are unshared
- * (none, for a calendar just made). Confirmed by hand after first real use:
- * the check's README has the steps.
+ * (none, for a calendar just made). The check (CHECK_CALENDAR_WRITE=1 with
+ * CHECK_SHARE_WITH) shows that `set` is taken; whether it replaces rather than
+ * adds is confirmed by hand after first real use: the check's README has the steps.
  */
 export async function shareCalendar(
   sid: string,
@@ -541,17 +543,18 @@ export async function deleteEvent(sid: string, ref: EventRef, f?: DsmFetch): Pro
 
 /**
  * Failures of `set` taken to be about something other than the etag; these
- * stay plain `SynologyError`s. Confirmed at first real use: the check's README
- * says how to provoke a stale etag by hand and what each outcome means.
+ * stay plain `SynologyError`s. Exported for the check, whose
+ * CHECK_CALENDAR_WRITE pass makes a stale-etag write on the real NAS and says
+ * whether its code is one of these; its README says what each outcome means.
  */
-const NOT_AN_ETAG_REFUSAL: ReadonlySet<number> = new Set([9007, 9009, 9017]);
+export const NOT_AN_ETAG_REFUSAL: ReadonlySet<number> = new Set([9007, 9009, 9017]);
 
 /**
  * Change an event, carrying the etag it was read with. Without one DSM would
  * silently overwrite whatever is there now, so no call is made at all.
  *
- * Which code DSM answers a stale etag with is not documented. Until first real
- * use settles it (the check cannot: it would have to write), 9006 (database
+ * Which code DSM answers a stale etag with is not documented. Until the check
+ * settles it (with CHECK_CALENDAR_WRITE=1, on a calendar it makes), 9006 (database
  * operation error) and any other code `set` fails with, bar the three above,
  * is taken to be the etag refusal. A session that ended, an account that is
  * not allowed, or a NAS that did not answer is never one.
