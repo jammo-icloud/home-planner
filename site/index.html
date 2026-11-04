@@ -1109,35 +1109,29 @@
   .rowform .msg{margin:0;font-size:var(--fs-small);color:var(--problem)}
   .rowform .msg:empty{display:none}
   .rowform .err{margin:0}
-  /* Connectors: each row a button opening its form below it; the chip says on, off or broken */
-  #connectors .page-head{margin-bottom:0}
-  #connectors .done{display:none}
-  @container page (max-width: 759px){
-    #connectors .back{display:none}
-    #connectors .done{display:inline-flex}
-  }
-  .conn{display:grid;gap:var(--sp-3);max-width:var(--measure);margin-inline:auto;padding-block:var(--sp-5) var(--sp-8);min-width:0}
-  #hh-panel .conn{margin-top:18px;padding:0}
-  #hh-panel .conn .actions{flex-direction:row}
-  #hh-panel .conn .actions .btn{width:auto}
-  .conn-row{width:100%;font:inherit;color:var(--ink);text-align:left;background:none;border:0;cursor:pointer}
-  .conn-row:hover{background:var(--surface-sunken)}
-  .conn-row:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
-  .conn-row .conn-top{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2)}
-  .conn-row .end{color:var(--ink-faint)}
+  /* This NAS: the chip says on, off or broken; a form's secret field carries set or not set beside it */
   .chip.on{color:var(--good);background:var(--good-tint);border-color:var(--good-line)}
   .chip.broken{color:var(--problem);background:var(--problem-tint);border-color:var(--problem-line)}
-  .conn .secret{display:flex;align-items:center;gap:var(--sp-2);min-width:0}
-  .conn .secret .input{flex:1;min-width:0}
-  .conn .secret .set{flex:none;font-size:var(--fs-micro);color:var(--ink-faint)}
-  .conn .rowform .check{display:flex;color:var(--ink);font-size:var(--fs-ui);padding:var(--sp-1) 0;min-width:0;overflow-wrap:anywhere}
-  .conn .rowform .check input{margin-top:3px;flex:none}
-  .conn .rowform .test{display:grid;gap:var(--sp-2);margin-top:var(--sp-2);padding-top:var(--sp-3);border-top:var(--stroke) solid var(--hair)}
-  .conn .rowform .test .note:empty{display:none}
-  .conn fieldset{display:grid;gap:0;min-width:0;margin:0;padding:0;border:0}
-  .conn legend{padding:0;margin-bottom:var(--sp-1);font-size:var(--fs-small);color:var(--ink-soft)}
-  .conn .hh-folder{font-size:var(--fs-small);color:var(--ink)}
-  .conn .hh-folder .meta{display:block;font-size:var(--fs-micro);color:var(--ink-faint)}
+  .conn-form .secret{display:flex;align-items:center;gap:var(--sp-2);min-width:0}
+  .conn-form .secret .input{flex:1;min-width:0}
+  .conn-form .secret .set{flex:none;font-size:var(--fs-micro);color:var(--ink-faint)}
+  .conn-form .check{display:flex;color:var(--ink);font-size:var(--fs-ui);padding:var(--sp-1) 0;min-width:0;overflow-wrap:anywhere}
+  .conn-form .check input{margin-top:3px;flex:none}
+  .conn-form .test{display:grid;gap:var(--sp-2);margin-top:var(--sp-2);padding-top:var(--sp-3);border-top:var(--stroke) solid var(--hair)}
+  .conn-form .test .note:empty{display:none}
+  .conn-form fieldset{display:grid;gap:0;min-width:0;margin:0;padding:0;border:0}
+  .conn-form legend{padding:0;margin-bottom:var(--sp-1);font-size:var(--fs-small);color:var(--ink-soft)}
+  .conn-form .hh-folder{font-size:var(--fs-small);color:var(--ink)}
+  .conn-form .hh-folder .meta{display:block;font-size:var(--fs-micro);color:var(--ink-faint)}
+  /* On the households screen the column is a phone's width at most: each row is laid out as Settings lays it out on a phone. */
+  #hh-panel .nas{margin-top:18px}
+  #hh-panel .nas header > *{margin:0}
+  #hh-panel .set-row{grid-template-columns:minmax(0,1fr) auto}
+  #hh-panel .set-status{grid-column:1 / -1;grid-row:2;padding-top:0}
+  #hh-panel .set-acts{grid-column:2}
+  #hh-panel .set-form{grid-column:1 / -1;grid-row:3}
+  #hh-panel .nas .btn{width:auto}
+  #hh-panel .nas .actions{flex-direction:row;flex-wrap:wrap}
   .folder-pick fieldset{display:grid;gap:var(--sp-2);min-width:0;margin:0;padding:0;border:0}
   .folder-pick legend{padding:0;margin-bottom:var(--sp-1);font-size:var(--fs-small);color:var(--ink-soft)}
   .folder-pick label.pick{display:flex;margin:0;min-width:0;color:var(--ink)}
@@ -1227,7 +1221,7 @@
       <button class="btn primary" id="hh-new" type="button">Start a new household</button>
       <button class="btn" id="hh-restore" type="button">Restore from a backup file</button>
       <button class="btn" id="hh-admin" type="button" hidden>All households on this server</button>
-      <button class="btn" id="hh-connectors" type="button" hidden>Connectors</button>
+      <button class="btn" id="hh-connectors" type="button" hidden>This NAS</button>
       <button class="btn" id="hh-signout" type="button">Sign out</button>
     </div>
     <div id="hh-panel"></div>
@@ -1282,7 +1276,6 @@
         </button>
         <div class="menu-list end" id="me-menu" role="menu" aria-labelledby="me-menu-btn" hidden>
           <p class="quiet-line" id="who"></p>
-          <button type="button" class="menu-item" role="menuitem" id="me-connectors" hidden>Connectors</button>
           <button type="button" class="menu-item" role="menuitem" id="switch-hh">Switch household</button>
           <button type="button" class="menu-item" role="menuitem" id="signout">Sign out</button>
         </div>
@@ -1529,8 +1522,6 @@
     <!-- Settings: yours, then the household's. Drawn from GET /api/settings. -->
     <div id="settings" hidden></div>
 
-    <!-- Connectors: what the NAS connects to, for administrators. Drawn from GET /api/connectors. -->
-    <div id="connectors" hidden></div>
 
   </main>
   </div>
@@ -6611,7 +6602,14 @@ async function loadSettings() {
   folderPick = null;
   calState = 'loading';
   try {
-    const [st, plans] = await Promise.all([api('/api/settings'), api('/api/plans?showDone=1')]);
+    // This NAS is read beside the rest for an administrator; if it cannot be,
+    // Settings still draws, and the error box says why the group is empty.
+    const [st, plans, nas] = await Promise.all([
+      api('/api/settings'), api('/api/plans?showDone=1'),
+      amAdmin ? api('/api/connectors').catch((ex) => ({ problem: ex })) : null,
+    ]);
+    connData = nas && !nas.problem ? nas : null;
+    connAccounts = null;
     settingsData = st;
     documentsStatus = st.documents ?? null;
     softwareInfo = st.software ?? softwareInfo;
@@ -6619,6 +6617,7 @@ async function loadSettings() {
     // A shelf is a plan too; the cards already include what sits on shelves.
     areaCounts = new Map(plans.rows.map((r) => [r.area, r.planning.length + r.doing.length + r.shelves.length]));
     renderSettings();
+    if (nas?.problem) showProblem(nas.problem);
   } catch (ex) {
     showProblem(ex);
     return;
@@ -6783,7 +6782,7 @@ function openRow(group, row, { edit = null, direct = false, back = `row-${row}` 
   settingsEdit = edit ? { kind: edit, index: null } : null;
   if (row !== 'documents') folderPick = null;
   $('app-err').hidden = true;
-  renderSettings();
+  redrawRows();
 }
 function closeRow() {
   // What went wrong in the form went with it.
@@ -6792,7 +6791,7 @@ function closeRow() {
   settingsOpen = null;
   settingsEdit = null;
   folderPick = null;
-  renderSettings();
+  redrawRows();
 }
 
 function textBtn(label, cls, key, act) {
@@ -6901,6 +6900,14 @@ function renderSettings() {
       rows: [setupRow(), membersRow(), areasRow(), budgetRow(), hcalRow(), guestsRow(), documentsRow(), linksRow(), backupRow()],
     },
   ];
+  // Anyone else has neither the group nor its lines in the index.
+  if (amAdmin) {
+    groups.push({
+      id: 'nas', title: 'This NAS', hint: NAS_HINT,
+      rows: (connData?.rows ?? []).map(nasRow),
+      foot: connData ? null : 'What this NAS connects to could not be read just now.',
+    });
+  }
   const layout = node('div', 'settings');
   const index = node('nav', 'set-index');
   index.setAttribute('aria-label', 'Settings sections');
@@ -6927,7 +6934,14 @@ function renderSettings() {
   box.append(head, layout);
   window.scrollTo({ top: y });
   markSettingsIndex();
+  refocus(box, keep);
+}
 
+/**
+ * Focus after the rows are drawn again: a form's first field as it opens,
+ * else the control a change names, else the one that had it before.
+ */
+function refocus(box, keep) {
   const auto = box.querySelector('[data-autofocus]');
   const want = settingsFocus ?? keep;
   settingsFocus = null;
@@ -7969,56 +7983,82 @@ function backupRow() {
   });
 }
 
-// ── Connectors: what the NAS connects to, the administrator's alone ────────
+// ── This NAS: what the NAS connects to, the administrator's alone ──────────
 //
 // Seven rows from GET /api/connectors, each on, off or broken, with where its
-// value comes from and one line. Clicking a row opens its form below it, as a
-// Settings row does; every save and test answers with the page again. No
-// secret comes back: a key or a password is only "set" or "not set", and its
-// field starts empty. The page needs no household, so an administrator in
-// none sees it on the households screen, with that screen's error box.
+// value comes from and one line: Settings' third group, drawn only for an
+// administrator. Every save and test answers with the rows again. No secret
+// comes back: a key or a password is only "set" or "not set", and its field
+// starts empty. Settings needs a household, so an administrator in none sees
+// the same rows on the households screen, with that screen's error box.
 
 const CONNECTOR_NAMES = {
-  claude: 'Claude', drive: 'Synology Drive', calendar: 'Calendar on phones', mail: 'Mail',
-  booking: 'Booking', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
+  claude: 'Claude', drive: 'Synology Drive', calendar: 'Where phones reach the NAS', mail: 'Mail',
+  booking: 'Booking address', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
 };
 const CONNECTOR_STATES = { on: 'On', off: 'Off', broken: 'Broken' };
 /** Where each row saves: Pricing's two keys apiece, Drive nowhere (it says what it finds). */
 const CONNECTOR_ROUTES = {
   claude: ['claude'], calendar: ['public-url'], mail: ['mail'], booking: ['book-url'], 'sign-in': ['sign-in'], pricing: ['census', 'eia'],
 };
+const NAS_HINT = 'Seen by DSM administrators only. Shared by every household on this NAS.';
 
-/** The page as last answered; null until it is. */
+/** Whether this sign-in is a DSM administrator's, as /api/whoami says: only one is shown This NAS. */
+let amAdmin = false;
+/** The rows as last answered; null until they are, or when they could not be read. */
 let connData = null;
-/** The row whose form is open. */
-let connOpen = null;
 /** Who may sign in's accounts: { accounts } as listed, { typed } with the words why they are typed, null while asked. */
 let connAccounts = null;
-/** The screen Connectors was opened from, which Back and Done go to. */
-let connFrom = 'today';
-/** The control focused once the page is drawn again: the row whose form just closed. */
-let connFocus = null;
 /** Ids for the set or not set beside a secret field. */
 let connIds = 0;
 
-/** Where the page is drawn, and its error box: the app's own, or the households screen's. */
-const connPlace = () => ($('app').hidden ? { box: $('hh-panel'), err: $('hh-err') } : { box: $('connectors'), err: $('app-err') });
+/** The households screen is up: This NAS is drawn there, under its buttons, rather than in Settings. */
+const onHouseholds = () => $('app').hidden;
+/** The error box of the screen the rows are on. */
+const rowsErr = () => (onHouseholds() ? $('hh-err') : $('app-err'));
+/** Draw the rows again where they are. */
+const redrawRows = () => (onHouseholds() ? renderNasPanel() : renderSettings());
 
 /** A refusal, in the server's words, in the one error box. */
 function connProblem(ex) {
-  const { err } = connPlace();
+  const err = rowsErr();
   if (err === $('app-err')) showProblem(ex);
   else { err.textContent = ex.message; err.hidden = false; }
   err.scrollIntoView({ block: 'nearest' });
 }
 
-async function loadConnectors() {
+/** A row's status: its state as a chip, then its line and where its value comes from. */
+const nasStatus = (r) => [
+  node('span', `chip ${r.state}`, CONNECTOR_STATES[r.state] ?? r.state),
+  // A line that ends a sentence loses its full stop before the source.
+  `${r.line.replace(/\.$/, '')} · ${r.source}`,
+];
+
+/** One row of This NAS. Drive has nothing to set, so it shows; Who may sign in asks the NAS for its accounts as it opens. */
+function nasRow(r) {
+  const action = { label: r.id === 'drive' ? 'Show' : 'Change', opens: true };
+  if (r.id === 'sign-in') action.act = () => { void loadAccounts(); openRow('nas', r.id); };
+  return settingRow({ key: r.id, title: CONNECTOR_NAMES[r.id] ?? r.id, status: nasStatus(r), actions: [action], form: () => connForm(r) });
+}
+
+/** A row's status drawn again in place, after a test or a save refused halfway: the form under it keeps what is typed. */
+function redrawConnectorRow(id) {
+  const r = connData.rows.find((x) => x.id === id);
+  const st = (onHouseholds() ? $('hh-panel') : $('settings')).querySelector(`#set-${CSS.escape(id)} .set-status`);
+  if (r && st) st.replaceChildren(...nasStatus(r).map((x) => (typeof x === 'string' ? node('p', '', x) : x)));
+}
+
+/** This NAS on the households screen, for an administrator who is in no household yet and still has the NAS to set up. */
+async function loadNasPanel() {
+  const box = $('hh-panel');
+  $('hh-err').hidden = true;
+  settingsOpen = null;
   connData = null;
-  connOpen = null;
   connAccounts = null;
-  const { box } = connPlace();
+  // The last household's Settings must not keep a second set of these rows' ids.
+  $('settings').textContent = '';
   box.textContent = '';
-  box.appendChild(node('p', 'quiet', 'Reading what the NAS connects to…'));
+  box.appendChild(node('p', 'note', 'Reading what the NAS connects to…'));
   try {
     connData = await api('/api/connectors');
   } catch (ex) {
@@ -8026,36 +8066,26 @@ async function loadConnectors() {
     connProblem(ex);
     return;
   }
-  renderConnectors();
+  renderNasPanel();
 }
+$('hh-connectors').addEventListener('click', () => void loadNasPanel());
 
-/**
- * Connectors, opened at a row if one is named, as clicking it would. Today's
- * card for an administrator calls this; in no household it opens on the
- * households screen.
- */
-async function openConnectors(row) {
-  if ($('app').hidden) {
-    $('hh-err').hidden = true;
-    await loadConnectors();
-  } else await showView('connectors');
-  if (!row || !connData?.rows.some((r) => r.id === row)) return;
-  openConnectorRow(row);
-  document.getElementById(`conn-${row}`)?.scrollIntoView({ block: 'start' });
-}
-const leaveConnectors = () => showView(connFrom);
-$('me-connectors').addEventListener('click', () => void openConnectors());
-$('hh-connectors').addEventListener('click', () => void openConnectors());
-
-function openConnectorRow(id) {
-  connOpen = id;
-  if (id === 'sign-in') void loadAccounts();
-  renderConnectors();
-}
-function closeConnectorRow() {
-  connFocus = connOpen ? `conn-${connOpen}` : null;
-  connOpen = null;
-  renderConnectors();
+function renderNasPanel() {
+  const box = $('hh-panel');
+  if (!connData) return;
+  const keep = document.activeElement?.dataset?.key;
+  box.textContent = '';
+  const group = node('div', 'set-group nas');
+  const gh = node('header');
+  gh.append(node('div', 'h', 'This NAS'), node('p', 'hint', NAS_HINT));
+  group.appendChild(gh);
+  for (const r of connData.rows) {
+    const row = nasRow(r);
+    row.dataset.group = 'nas';
+    group.appendChild(row);
+  }
+  box.appendChild(group);
+  refocus(box, keep);
 }
 
 /** The DSM accounts for Who may sign in. Without a DSM session behind this sign-in (a 409) the names are typed instead. */
@@ -8068,70 +8098,9 @@ async function loadAccounts() {
     got = { typed: ex.status === 409 ? ex.message : null };
     if (ex.status !== 409) connProblem(ex);
   }
-  if (connOpen !== 'sign-in') return;
+  if (settingsOpen?.row !== 'sign-in') return;
   connAccounts = got;
-  renderConnectors();
-}
-
-function renderConnectors() {
-  const { box } = connPlace();
-  if (!connData) return;
-  const keep = document.activeElement?.dataset?.key;
-  const y = window.scrollY;
-  box.textContent = '';
-  const page = node('div', 'conn');
-  if (box === $('connectors')) {
-    const head = node('div', 'page-head');
-    const back = textBtn('', 'back', null, leaveConnectors);
-    back.append(icon('back', 'i'), 'Back');
-    head.append(back, node('h1', '', 'Connectors'), textBtn('Done', 'btn small done', null, leaveConnectors));
-    page.appendChild(head);
-  } else page.appendChild(node('div', 'h', 'Connectors'));
-  page.appendChild(node('p', 'hint', connData.adminRule === 'ADMIN_USER'
-    ? "What this NAS connects to, for every household on it. Only the administrator named in Home Planner's deployment sees this."
-    : "What this NAS connects to, for every household on it. Only members of the NAS's administrators group see this."));
-  const rows = node('div', 'rows');
-  for (const r of connData.rows) {
-    rows.appendChild(connRow(r));
-    if (connOpen === r.id) rows.appendChild(connForm(r));
-  }
-  page.appendChild(rows);
-  box.appendChild(page);
-  window.scrollTo({ top: y });
-
-  const auto = box.querySelector('[data-autofocus]');
-  const want = connFocus ?? keep;
-  connFocus = null;
-  const back2 = want ? box.querySelector(`[data-key="${CSS.escape(want)}"]`) : null;
-  (auto ?? back2)?.focus({ preventScroll: !auto });
-}
-
-/** A row: its name, the state as a chip, its line and where its value comes from. Clicking it opens or closes its form. */
-function connRow(r) {
-  const open = connOpen === r.id;
-  const b = node('button', 'rowi conn-row');
-  b.type = 'button';
-  b.id = `conn-${r.id}`;
-  b.dataset.key = `conn-${r.id}`;
-  b.setAttribute('aria-expanded', String(open));
-  if (open) b.setAttribute('aria-controls', `conn-${r.id}-form`);
-  const t = node('span');
-  const top = node('span', 'conn-top');
-  top.append(node('b', '', CONNECTOR_NAMES[r.id] ?? r.id), node('span', `chip ${r.state}`, CONNECTOR_STATES[r.state] ?? r.state));
-  // A line that ends a sentence loses its full stop before the source.
-  t.append(top, node('span', 'meta', `${r.line.replace(/\.$/, '')} · ${r.source}`));
-  const end = node('span', 'end');
-  end.appendChild(icon(open ? 'up' : 'down'));
-  b.append(t, end);
-  b.addEventListener('click', () => (open ? closeConnectorRow() : openConnectorRow(r.id)));
-  return b;
-}
-
-/** A row drawn again in place, after a test or a save refused halfway: the form below it keeps what is typed. */
-function redrawConnectorRow(id) {
-  const r = connData.rows.find((x) => x.id === id);
-  const old = document.getElementById(`conn-${id}`);
-  if (r && old) old.replaceWith(connRow(r));
+  redrawRows();
 }
 
 /** A field of a row's form. A secret is a password field, always empty, with set or not set beside it. */
@@ -8160,16 +8129,15 @@ function connField(label, value, o = {}) {
 const keepPlaceholder = (setOrNot, fresh) => (setOrNot === 'set' ? 'Leave empty to keep it' : fresh);
 
 /**
- * A row's form, below it: its fields, then Save, Turn off (not on Who may sign
+ * A row's form, under its status: its fields, then Save, Turn off (not on Who may sign
  * in, which cannot be off), Use the deployment's and Cancel; Mail and Claude
  * carry their test. Drive has nothing to set: it lists the households.
  */
 function connForm(r) {
-  const f = node('form', 'rowform');
-  f.id = `conn-${r.id}-form`;
+  const f = node('form', 'rowform conn-form');
   // The server says what is wrong with a value, in words: the browser does not stop it first.
   f.noValidate = true;
-  f.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeConnectorRow(); });
+  f.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRow(); });
   const fm = r.form ?? {};
   const acts = node('div', 'actions');
   const busy = (on) => { for (const x of f.querySelectorAll('button, input')) x.disabled = on; };
@@ -8185,8 +8153,8 @@ function connForm(r) {
       connProblem(ex);
       return;
     }
-    connPlace().err.hidden = true;
-    closeConnectorRow();
+    rowsErr().hidden = true;
+    closeRow();
   };
   const routes = CONNECTOR_ROUTES[r.id] ?? [];
   /** The changes Save posts, as [route, body] pairs; none for a form with nothing to save yet. */
@@ -8202,7 +8170,7 @@ function connForm(r) {
       f.appendChild(p);
     }
     f.appendChild(node('p', 'note', 'Drive is reached at the address in Home Planner’s deployment. Each owner chooses their household’s folder in Settings.'));
-    const close = textBtn('Close', 'btn', null, closeConnectorRow);
+    const close = textBtn('Close', 'btn', null, closeRow);
     close.dataset.autofocus = '';
     acts.appendChild(close);
     f.appendChild(acts);
@@ -8215,6 +8183,12 @@ function connForm(r) {
     // A saved key left empty is kept; with none saved, the server says it is needed.
     changesOf = () => (key.value.trim() || fm.key !== 'set' ? [['claude', { value: key.value }]] : []);
   } else if (r.id === 'calendar' || r.id === 'booking') {
+    if (r.id === 'calendar') {
+      const hint = node('p', 'hint');
+      hint.append("DSM's own address from outside the house, with its port, such as ", node('code', '', 'https://nas.example.com:5001'),
+        ". Not the planner's address and not the LAN one. It is the server Apple Calendar is given, and where 'Open in Synology Calendar' goes.");
+      f.appendChild(hint);
+    }
     const [l, addr] = r.id === 'calendar'
       ? connField('The NAS’s public address', fm.address, { type: 'url', placeholder: 'https://nas.example.com:5001' })
       : connField('The booking page’s address', fm.address, { type: 'url', placeholder: 'https://book.example.com' });
@@ -8293,7 +8267,7 @@ function connForm(r) {
   if (r.id !== 'sign-in') acts.appendChild(textBtn('Turn off', 'btn', null, () => void post(routes.map((x) => [x, { off: true }]))));
   acts.append(
     textBtn('Use the deployment’s', 'btn', null, () => void post(routes.map((x) => [x, { clear: true }]))),
-    textBtn('Cancel', 'btn', null, closeConnectorRow),
+    textBtn('Cancel', 'btn', null, closeRow),
   );
   f.appendChild(acts);
   if (r.id === 'mail' || r.id === 'claude') f.appendChild(connTest(r, busy));
@@ -8303,7 +8277,7 @@ function connForm(r) {
     if (!changesOf) return;
     const changes = changesOf();
     // A saved key left empty: nothing to change.
-    if (!changes.length) { closeConnectorRow(); return; }
+    if (!changes.length) { closeRow(); return; }
     void post(changes);
   });
   return f;
@@ -8330,7 +8304,7 @@ function connTest(r, busy) {
       connProblem(ex);
       return;
     }
-    connPlace().err.hidden = true;
+    rowsErr().hidden = true;
     busy(false);
     redrawConnectorRow(r.id);
     said.textContent = connData.rows.find((x) => x.id === r.id)?.line ?? '';
@@ -9219,13 +9193,12 @@ function markTabs() {
 }
 markTabs();
 
-/** Today's date on this device, under the household's name. Settings and Connectors say where you are instead. */
+/** Today's date on this device, under the household's name. Settings says where you are instead. */
 let todayText = '';
-const pageWords = () => (view === 'settings' ? 'Settings' : view === 'connectors' ? 'Connectors' : todayText);
+const pageWords = () => (view === 'settings' ? 'Settings' : todayText);
 
 async function showView(next) {
   if (next === 'settings' && view !== 'settings') settingsFrom = view;
-  if (next === 'connectors' && view !== 'connectors') connFrom = view;
   view = next;
   markTabs();
   closeMenus();
@@ -9247,12 +9220,10 @@ async function showView(next) {
   $('plan-card').hidden = view !== 'plan-card';
   $('calendar').hidden = view !== 'calendar';
   $('settings').hidden = view !== 'settings';
-  $('connectors').hidden = view !== 'connectors';
   if (view === 'plan') await loadBoard();
   if (view === 'calendar') await loadCalendar(calWeek ?? todayKey());
   if (view === 'plan-card') { await loadCard(); window.scrollTo({ top: 0 }); }
   if (view === 'settings') { window.scrollTo({ top: 0 }); await loadSettings(); }
-  if (view === 'connectors') { window.scrollTo({ top: 0 }); await loadConnectors(); }
   if (view === 'compare') {
     $('loading').hidden = false;
     try { fillComparePickers(); await loadCompare(); } catch (ex) { showProblem(ex); }
@@ -9495,7 +9466,7 @@ async function enterApp() {
   $('me-disc').textContent = (who.who || '?').slice(0, 1).toUpperCase();
   $('me-name').textContent = who.who;
   $('me-menu-btn').setAttribute('aria-label', `${who.who}, signed in`);
-  $('me-connectors').hidden = who.admin !== true;
+  amAdmin = who.admin === true;
   $('hh-name').textContent = householdLabel ?? 'Household';
   // The settings, once per load: More's links, whether cards keep files, and
   // your look, which the log decides and the cache only paints first.
