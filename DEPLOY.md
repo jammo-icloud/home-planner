@@ -112,8 +112,10 @@ docker compose logs budget-api --tail 20
 | An administrator has no This NAS group in Settings, and the log says `could not ask DSM whether x is an administrator: code N` | DSM answered the question about its administrators group in a way the app does not read. Run the check as an administrator (probe 1; see [Checking the NAS's API shapes](#checking-the-nass-api-shapes)); until then set `ADMIN_USER` to that account. |
 
 The calendar profile is signed when it can be and goes out unsigned when it cannot, so a
-problem with signing never stops a phone from being set up. The startup log says which, as
-`profile signing: signed as … until …` or `profile signing: off (…)`:
+problem with signing never stops a phone from being set up. The log says which once, at
+startup, as `profile signing: signed as … until …` or `profile signing: off (…)`; it does not
+change while the app runs, so it catches up on the next restart. Settings › Set up your
+iPhone reads the files on every load and is the live answer. The reasons:
 
 | What the log says | What it means |
 |---|---|
@@ -122,7 +124,7 @@ problem with signing never stops a phone from being set up. The startup log says
 | `profile signing: off (unreadable)` | The files are there but the app's user cannot read them. `privkey.pem` must belong to uid 1000, the image's `node` user; the script's `install -o 1000 -g 1000` does that. Run the task again, or `chown 1000:1000` the three files. |
 | `profile signing: off (expired)` | The copy's certificate has run out, which means the task has stopped running or DSM has not renewed it. Renew the certificate in DSM (Control Panel → Security → Certificate), then run the task. |
 | `profile signing: off (invalid)` | `cert.pem` is not a certificate the app can read, or its dates make no sense. Check that the task copied the right files, then run it again. |
-| `profile signing failed, sending it unsigned: …` | Signing was set up but openssl failed or took longer than ten seconds, for example because the private key has a passphrase. The message says why. The phone still gets the profile, unsigned. |
+| `profile signing failed, sending it unsigned: …` | Signing was set up but openssl failed or took longer than ten seconds, for example because the private key has a passphrase. The message says why. The phone still gets the profile, unsigned. A private key that does not match the certificate (files copied from two different archive folders) still shows as signed in Settings, because the app never reads the key; it fails at each download with this line instead. |
 
 Claude being unavailable never stops the app. The log says why:
 
@@ -234,7 +236,7 @@ saved value counts from the next request, with no restart and no rebuild.
 | `DSM_URL` | `http://host.docker.internal:5000` | Needs `extra_hosts: host.docker.internal:host-gateway`. Compose builds it from `DSM_PORT`. |
 | `DSM_PORT` | `5000` | DSM's HTTP port. Leave unset on the NAS. On a laptop, the port `api/tools/fake-dsm` listens on (`5555`; a Mac holds 5000 for AirPlay). Stays in `.env`. |
 | `DSM_PUBLIC_URL` | unset | *A default.* Set it under Settings › This NAS (Where phones reach the NAS). DSM's address as a phone reaches it from outside the container, such as `https://nas.example.com:5001` (the origin only; a path is dropped). Settings tells members to add the NAS's calendar to their iPhone and Mac at this address, and the Calendar's *Open in Synology Calendar* link goes to it. Unset hides the link and tells members to ask an administrator. Not guessed from `DSM_URL`, which is usually an address only the container can reach. See [Calendar on the NAS](#calendar-on-the-nas). |
-| `PROFILE_CERT_DIR` | unset (`/data/cert` in `docker.yml` and the image) | The folder the app reads `cert.pem`, `privkey.pem` and `chain.pem` from to sign the calendar profile. Empty, or a folder with no certificate, means the profile goes out unsigned and iOS marks it Not Signed. See [Signing the calendar profile](#signing-the-calendar-profile). |
+| `PROFILE_CERT_DIR` | unset (`/data/cert` in `docker.yml`) | The folder the app reads `cert.pem`, `privkey.pem` and `chain.pem` from to sign the calendar profile. Empty, or a folder with no certificate, means the profile goes out unsigned and iOS marks it Not Signed. See [Signing the calendar profile](#signing-the-calendar-profile). |
 | `PLANNER_ROOT` | unset | Only for an install from before folders were chosen in Settings: the share its files were kept in, such as `/Planner`. A household whose log already names files under it has that folder carried over, once; and it is the first Team Folder the picker suggests. It is never where a new household's documents or files go. See *Documents in Synology Drive*. |
 | `LOG_PATH` | `/data/events.jsonl` | The volume. Only the old single log is read from here, once, to be adopted as a household. |
 | `HOUSEHOLDS_DIR` | `/data/households` | One directory per household. **Must be under `/data`** — anywhere else is inside the image and is lost on redeploy. |
@@ -957,7 +959,7 @@ set -eu
 host=planner.example.com
 dest=/volume1/docker/home-planner/data/cert
 for d in /usr/syno/etc/certificate/_archive/*/; do
-  if openssl x509 -in "$d/cert.pem" -noout -text 2>/dev/null | grep -q "DNS:$host"; then
+  if openssl x509 -in "$d/cert.pem" -noout -text 2>/dev/null | grep -qE "DNS:$host(,|\$)"; then
     mkdir -p "$dest"
     for f in cert.pem privkey.pem chain.pem; do
       install -m 600 -o 1000 -g 1000 "$d/$f" "$dest/$f"
@@ -969,6 +971,9 @@ echo "no certificate for $host under /usr/syno/etc/certificate/_archive" >&2
 exit 1
 ```
 
+A wildcard certificate (`*.example.com`) is not matched by name; put the archive
+folder's path in `d` directly instead of the loop.
+
 **Why `1000`.** The app runs as the image's `node` user, uid 1000. The container
 hands `/data` to that user only when it starts, so files copied later must
 already belong to it. `privkey.pem` must be readable by uid 1000, which the
@@ -976,10 +981,11 @@ already belong to it. `privkey.pem` must be readable by uid 1000, which the
 `profile signing: off (unreadable)` and the profile goes out unsigned.
 
 **Checking it.** Run the task once by hand (Task Scheduler → Run). Settings › Set
-up your iPhone then says the profile is signed as `planner.example.com` beside the button, and
-the container log says `profile signing: signed as …`. The app reads the files
-each time a profile is made, so there is no restart. If the log says
-`profile signing: off (…)` instead, the word in brackets says why; see
+up your iPhone then says the profile is signed as `planner.example.com` beside the button. The
+app reads the files on every load, so there is no restart. The container log
+line `profile signing: signed as …` is printed once, at startup, so it catches up
+on the next restart. If Settings says the profile is not signed, restart once and
+read the word in `profile signing: off (…)`; see
 [When sign-in fails](#when-sign-in-fails) for the table. Today warns an administrator
 30 days before the copy expires, and again once it has, which means the task has
 stopped running or DSM has stopped renewing.

@@ -8009,7 +8009,15 @@ function phoneProfileWords() {
   const signing = settingsData?.phoneSetup?.signing;
   if (signing?.signed) return `${how} It is signed as ${signing.signedAs}, so iOS shows it as Verified.`;
   const unsigned = `${how} It is not signed, so iOS shows "Not Signed" in red; it installs all the same.`;
-  return amAdmin ? `${unsigned} To sign it, see DEPLOY.md, Signing the calendar profile.` : unsigned;
+  const reasons = {
+    'no-directory': 'The certificate folder is not there yet.',
+    'no-certificate': 'The certificate folder has no cert.pem and privkey.pem yet.',
+    unreadable: "The certificate files are there, but the app's user cannot read them.",
+    expired: 'The certificate copy has expired.',
+    invalid: 'cert.pem is not a certificate the app can read.',
+  };
+  const why = Object.hasOwn(reasons, signing?.reason) ? ` ${reasons[signing.reason]}` : '';
+  return amAdmin ? `${unsigned}${why} To sign it, see DEPLOY.md, Signing the calendar profile.` : unsigned;
 }
 
 /** Section 2 before a code is asked for: the button, with what the profile will say beside it. */
