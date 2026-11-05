@@ -75,7 +75,8 @@ Plans' due dates, blocks of time and appointments live in Synology Calendar,
 read and written with each member's own DSM session. The household's owner
 makes the Household calendar, shared with every member. Synology Calendar is a
 CalDAV server, so members can add it to their phones and computers and see the
-same events there. A change made on a phone to an event the app made arrives on
+same events there. The profile that sets up an iPhone is signed with the NAS's
+certificate when a copy of it is on the volume. A change made on a phone to an event the app made arrives on
 Today as a card with three choices, and the app never overwrites an event
 someone else changed.
 
@@ -150,7 +151,9 @@ reverse proxy serves it over https on 443, at an address such as
 `https://planner.example.com`. Sign in with a DSM account, then an
 administrator opens Settings, under This NAS, and each owner opens Settings.
 [DEPLOY.md](DEPLOY.md#on-the-nas-behind-https) has every click, from the
-certificate and the router to upgrading.
+certificate and the router to upgrading. Its section on
+[signing the calendar profile](DEPLOY.md#signing-the-calendar-profile) says how
+to put the certificate where the app can use it.
 
 ### On a laptop
 
