@@ -2711,7 +2711,8 @@ export async function start(
           failures: moveFailures(active.path),
           adminRows: isAdmin && !session.local ? needsAdmin((await connectorsNow(null)).rows) : [],
           rowName: (id) => ROW_NAME[id],
-          signing: (await loadSigner(profileCertDir())).status,
+          // Only an administrator is shown it, so nobody else costs a read of the certificate.
+          signing: isAdmin && !session.local ? (await loadSigner(profileCertDir())).status : { signed: false, reason: 'no-directory' },
         }),
         // Envelopes still needing a figure, and those short, for each live budget this month.
         budget: budgetNotices(active.state, ctx.today),
