@@ -31,7 +31,8 @@ FROM node:26-alpine
 ENV NODE_ENV=production
 
 # su-exec drops from root to node at start; see docker-entrypoint.sh.
-RUN apk add --no-cache su-exec
+# openssl signs the calendar profile; see DEPLOY.md, Signing the calendar profile.
+RUN apk add --no-cache su-exec openssl
 
 WORKDIR /app
 
@@ -74,6 +75,12 @@ ENV SESSIONS_PATH=/data/sessions.json
 # HOUSEHOLDS_DIR. Holds secrets, so the app keeps it mode 0600. The default is
 # relative to /app, which is inside the image and not writable by the app's user.
 ENV CONNECTORS_PATH=/data/connectors.json
+
+# Where a copy of the NAS's certificate (cert.pem, privkey.pem, chain.pem) is
+# kept for signing the calendar profile. Not set in the image, so an install
+# without the copy sends the profile unsigned and says so at startup; docker.yml
+# sets it. See DEPLOY.md, Signing the calendar profile.
+# ENV PROFILE_CERT_DIR=/data/cert
 
 # The local-bypass sandbox. Somewhere writable, ephemeral, and pointedly not the
 # volume above: signing in without DSM gets you the whole app and none of the

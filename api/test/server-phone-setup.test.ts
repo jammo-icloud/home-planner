@@ -5,7 +5,8 @@
 // running each test file in its own process.
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp } from 'node:fs/promises';
+import { execFile, execFileSync } from 'node:child_process';
+import { copyFile, mkdir, mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -28,6 +29,7 @@ delete process.env['DEV_USER'];
 delete process.env['DSM_PUBLIC_URL'];
 delete process.env['ANTHROPIC_API_KEY'];
 delete process.env['ANTHROPIC_AUTH_TOKEN'];
+delete process.env['PROFILE_CERT_DIR'];
 
 const { start } = await import('../src/server.ts');
 const { saveConnector } = await import('../src/connectors.ts');
@@ -254,5 +256,81 @@ describe('a phone is set up from a one-time link', () => {
       await saveConnector('publicUrl', { clear: true }, 'alex');
       await saveConnector('publicUrl', { value: 'https://nas.example.com:5001' }, 'alex');
     }
+  });
+});
+
+// The signed profile needs the openssl CLI both to make a certificate and to
+// read the signature back; without it these are skipped and say why.
+const opensslMissing = ((): string | false => {
+  try {
+    execFileSync('openssl', ['version'], { stdio: 'ignore' });
+    return false;
+  } catch {
+    return 'openssl is not on this PATH';
+  }
+})();
+
+/** openssl's reading of a signed profile: the plist it wraps. */
+function unwrap(der: Buffer): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const child = execFile('openssl', ['smime', '-verify', '-noverify', '-inform', 'DER'], { encoding: 'utf8' }, (err, stdout) => {
+      if (err) reject(err); else resolve(stdout);
+    });
+    child.stdin!.end(der);
+  });
+}
+
+describe('the profile is signed when a copy of the certificate is there', { skip: opensslMissing }, () => {
+  const certDir = join(dir, 'cert');
+
+  before(async () => {
+    await mkdir(certDir, { recursive: true });
+    execFileSync('openssl', [
+      'req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-keyout', join(certDir, 'privkey.pem'), '-out', join(certDir, 'cert.pem'),
+      '-days', '3', '-subj', '/CN=planner.example.com', '-addext', 'subjectAltName=DNS:planner.example.com',
+    ], { stdio: 'ignore' });
+    await copyFile(join(certDir, 'cert.pem'), join(certDir, 'chain.pem'));
+  });
+
+  after(() => { delete process.env['PROFILE_CERT_DIR']; });
+
+  test('the Mac download is signed, and openssl reads the profile back out of it', async () => {
+    process.env['PROFILE_CERT_DIR'] = certDir;
+    const res = await fetch(`${base}/api/phone-setup/profile`, { headers: { cookie: alex } });
+    assert.equal(res.status, 200);
+    assertProfileHeaders(res.headers);
+    const der = Buffer.from(await res.arrayBuffer());
+    assert.equal(der[0], 0x30);
+    const plist = parsePlist(await unwrap(der)) as Plist & { PayloadDisplayName: string };
+    assert.equal(plist.PayloadDisplayName, 'Home Planner');
+  });
+
+  test('a code\'s link is signed too, and a HEAD still answers headers and no body', async () => {
+    process.env['PROFILE_CERT_DIR'] = certDir;
+    const { code } = await issue();
+    const head = await open(`/setup/${code}`, 'HEAD');
+    assert.equal(head.status, 200);
+    assertProfileHeaders(head.headers);
+    assert.equal(head.text, '');
+    const res = await fetch(`${base}/setup/${code}`);
+    assert.equal(res.status, 200);
+    const der = Buffer.from(await res.arrayBuffer());
+    assert.equal(der[0], 0x30);
+    assert.equal((parsePlist(await unwrap(der)) as Plist & { PayloadDisplayName: string }).PayloadDisplayName, 'Home Planner');
+  });
+
+  test('with no directory set the profile is the XML as before', async () => {
+    delete process.env['PROFILE_CERT_DIR'];
+    const res = await fetch(`${base}/api/phone-setup/profile`, { headers: { cookie: alex } });
+    assert.equal(res.status, 200);
+    const text = await res.text();
+    assert.ok(text.startsWith('<?xml'), text.slice(0, 40));
+    assert.equal((parsePlist(text) as Plist & { PayloadDisplayName: string }).PayloadDisplayName, 'Home Planner');
+  });
+
+  test('an empty directory setting is unset, and the profile is the XML', async () => {
+    process.env['PROFILE_CERT_DIR'] = '';
+    const res = await fetch(`${base}/api/phone-setup/profile`, { headers: { cookie: alex } });
+    assert.ok((await res.text()).startsWith('<?xml'));
   });
 });

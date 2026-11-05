@@ -35,6 +35,9 @@ services:
       # DSM as a phone reaches it, for Settings and the Calendar's link to
       # Synology Calendar; see DEPLOY.md. Set in .env. Empty hides the link.
       DSM_PUBLIC_URL: "${DSM_PUBLIC_URL:-}"
+      # A copy of the NAS's certificate for signing the calendar profile; see
+      # DEPLOY.md. A laptop leaves it empty and the profile goes out unsigned.
+      PROFILE_CERT_DIR: "${PROFILE_CERT_DIR:-}"
       # Any DSM account on this NAS may sign in and gets a household of its own.
       # Isolation is per household, not per server: membership in each log
       # decides who sees it, so a new account signing in sees an empty app and

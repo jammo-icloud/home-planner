@@ -241,6 +241,7 @@ import { sendMail } from './mail.ts';
 import { Limiter } from './limiter.ts';
 import { softwareVersion } from './version.ts';
 import { buildProfile, caldavPath, PROFILE_CONTENT_TYPE, PROFILE_FILENAME } from './profile.ts';
+import { loadSigner, signedOrPlain } from './sign.ts';
 import { acceptedOrigin, createPhoneCodes, homeLink, homeOrigin } from './phone-setup.ts';
 import type { PhoneCodes } from './phone-setup.ts';
 import QRCode from 'qrcode';
@@ -571,13 +572,19 @@ function setupAsked(rawOrigin: unknown, originNeeded: boolean): { origin: string
 }
 
 /** A profile as a file to install. HEAD gets the headers alone, so a phone's look ahead spends nothing. */
-function sendProfile(res: ServerResponse, profile: string, head: boolean): void {
+function sendProfile(res: ServerResponse, profile: string | Buffer, head: boolean): void {
   res.writeHead(200, {
     'content-type': PROFILE_CONTENT_TYPE, 'content-disposition': `attachment; filename="${PROFILE_FILENAME}"`,
     'cache-control': 'no-store', 'x-content-type-options': 'nosniff',
   });
   res.end(head ? undefined : profile);
 }
+
+/**
+ * Where the copy of the NAS's certificate is, read per request so a saved
+ * value and a deployment's agree with the rest; an empty value is unset.
+ */
+const profileCertDir = (): string | undefined => resolvedEnv()['PROFILE_CERT_DIR'] || undefined;
 
 /** The `month` asked for, or '' when it is missing or given twice: the caller's validation says 400 to both. */
 const monthParam = (url: URL): string => {
@@ -1285,6 +1292,11 @@ export async function start(
     console.log(`[budget]   ${h.id}: ${where}; zone ${zoneOf(state)} (${zoneSource(state)})${left > 0 ? `; ${left} files left to move` : ''}`);
   }
   console.log(`[budget] admin: ${ADMIN_USER ? `ADMIN_USER=${ADMIN_USER}` : "DSM's administrators group"}`);
+  // Whose certificate and until when, or why not; never anything from the key.
+  const signing = (await loadSigner(profileCertDir())).status;
+  console.log(`[budget] profile signing: ${signing.signed
+    ? `signed as ${signing.signedAs} until ${signing.validTo.slice(0, 10)}`
+    : `off (${signing.reason})`}`);
   // Where the key comes from, never the key.
   console.log(`[budget] Claude: ${claudeKey() === null ? 'off' : sourceOf('claude') === 'saved' ? 'key saved on This NAS' : 'key from the deployment'}`);
   const retired = 'SYNO_CONTACTS_VERSION';
@@ -1733,8 +1745,10 @@ export async function start(
       const code = path.slice('/setup/'.length);
       const entry = req.method === 'GET' ? phoneCodes.redeem(code) : req.method === 'HEAD' ? phoneCodes.peek(code) : null;
       if (!entry) return sendPage(res, 404, CODE_EXPIRED);
+      // A HEAD is answered with the headers alone, so it builds and signs nothing.
+      if (req.method === 'HEAD') return sendProfile(res, '', true);
       const profile = buildProfile({ member: entry.member, household: entry.household, dsmPublicUrl: entry.dsmPublicUrl });
-      return sendProfile(res, profile, req.method === 'HEAD');
+      return sendProfile(res, await signedOrPlain(profile, profileCertDir()), false);
     }
 
     // The app shell, before the gate — the login page has to be reachable by
@@ -2043,7 +2057,8 @@ export async function start(
 
     if (path === '/api/phone-setup/profile' && req.method === 'GET') {
       const asked = setupAsked(null, false);
-      return sendProfile(res, buildProfile({ member: who, household: active.state.label, dsmPublicUrl: asked.dsmPublicUrl }), false);
+      const profile = buildProfile({ member: who, household: active.state.label, dsmPublicUrl: asked.dsmPublicUrl });
+      return sendProfile(res, await signedOrPlain(profile, profileCertDir()), false);
     }
 
     // The Home Screen's QR is only the page's address, so it needs no code and no NAS address.

@@ -63,6 +63,11 @@ services:
       # what Settings tells an iPhone to add the calendar at, and where the
       # Calendar's link to Synology Calendar goes. Empty hides the link.
       DSM_PUBLIC_URL: "${DSM_PUBLIC_URL:-}"
+      # Where a DSM scheduled task copies the NAS's certificate, so the
+      # calendar profile goes out signed and iOS shows it as Verified. Without
+      # the copy the profile goes out unsigned. See DEPLOY.md, Signing the
+      # calendar profile.
+      PROFILE_CERT_DIR: "${PROFILE_CERT_DIR:-/data/cert}"
       # Your DSM account: sees that households exist, never what is in them.
       ADMIN_USER: "${ADMIN_USER:-}"
       # The DSM accounts that may sign in, comma separated. Empty means any
