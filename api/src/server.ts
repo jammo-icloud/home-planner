@@ -2934,12 +2934,15 @@ export async function start(
           && !args['budget']) {
         args['budget'] = defaultBudget(ctx);
       }
-      // runTool records the args on a write's proposal, for its effect on approval.
-      const result = await runTool(tool, args, ctx);
       if (approve) {
-        // A run that threw never reaches here, and a refused commit throws too: either leaves the log as it was.
-        const proposal = result as Proposal;
-        const done = await commit(proposal.id, ctx);
+        // The tool's check (a cover only while short) reads the state before the append lands on
+        // disk, so two taps in the same moment would both pass it: run and commit one at a time
+        // per household. Its own key, so a commit that takes oneEffectAtATime never waits on itself.
+        // A run that threw never commits, and a refused commit throws too: either leaves the log as it was.
+        const { proposal, done } = await oneAtATime(`${ctx.store.path}|approve-in-one`, async () => {
+          const proposal = (await runTool(tool, args, ctx)) as Proposal;
+          return { proposal, done: await commit(proposal.id, ctx) };
+        });
         return json(res, 200, {
           proposal, summary: done.summary,
           committed: done.committed.map((e) => ({ id: e.id, op: e.op, at: e.at, who: e.who })),
@@ -2947,6 +2950,8 @@ export async function start(
           lastEventId: active.state.lastEventId,
         });
       }
+      // runTool records the args on a write's proposal, for its effect on approval.
+      const result = await runTool(tool, args, ctx);
       // Writes come back as a proposal so the caller — UI or Claude — must
       // present it for approval. Nothing here has changed the log.
       return json(res, 200, tool.kind === 'write' ? { proposal: result } : { result });

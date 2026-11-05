@@ -208,7 +208,7 @@ describe('giving an envelope a figure', () => {
     assert.equal(e.template, 0);
   });
 
-  test("setting this month's assignment by hand clears the flag and the source, and keeps the template", async () => {
+  test("setting this month's assignment by hand clears the flag, and keeps the template and the source", async () => {
     const c = await fresh(flagged({ source: 'a statement' }));
     const p = toolByName.get('set_assignment')!.run({
       budget: 'placitas', envelope: 'groceries', toCents: 40000, why: 'by hand',
@@ -218,6 +218,34 @@ describe('giving an envelope a figure', () => {
     assert.equal(funded(c), 40000);
     assert.equal(groceries(c).template, 0);
     assert.equal('needsFigure' in groceries(c), false);
-    assert.equal(groceries(c).source, undefined);
+    assert.equal(groceries(c).source, 'a statement');
+  });
+
+  const assign = (c: ToolContext, args: Record<string, unknown>) =>
+    toolByName.get('set_assignment')!.run({ budget: 'placitas', envelope: 'groceries', why: 'cover', ...args }, c) as Proposal;
+  const receipt = (c: ToolContext, amount: number) => c.store.append('alex', [{ op: 'txn.add', txns: [
+    { id: 'r1', date: '2026-11-03', payee: 'VALLEY MARKET #101', amount: cents(-amount), dedupeKey: 'r1', category: 'groceries' },
+  ] } as NewEvent]);
+
+  test('an assignment only while short is refused once the envelope is no longer short', async () => {
+    const c = await fresh(flagged());
+    // Nothing spent and nothing funded: available is 0, so it is not short.
+    assert.throws(() => assign(c, { toCents: 4000, onlyWhileShort: true }),
+      (e: any) => e.status === 409 && /Groceries is no longer short/.test(e.message));
+  });
+
+  test('an assignment only while short goes through while it is short', async () => {
+    const c = await fresh(flagged());
+    await receipt(c, 4000);
+    const p = assign(c, { toCents: 4000, onlyWhileShort: true });
+    await commit(p.id, c);
+    assert.equal(funded(c), 4000);
+  });
+
+  test('an assignment without onlyWhileShort is set whether or not it is short', async () => {
+    const c = await fresh(flagged());
+    const p = assign(c, { toCents: 4000 });
+    await commit(p.id, c);
+    assert.equal(funded(c), 4000);
   });
 });

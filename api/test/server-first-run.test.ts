@@ -120,6 +120,32 @@ describe('approving in the request that runs the tool', () => {
     assert.equal(month.json.result.card.headline, '$6,400 still to assign');
   });
 
+  test('two Move taps at once on a short envelope move the money once', async () => {
+    assert.equal((await approve('create_budget', { label: 'Galisteo' })).status, 200);
+    assert.equal((await approve('open_month', { budget: 'galisteo', month: thisMonth, incomeCents: 0 })).status, 200);
+    assert.equal((await approve('make_starter_envelopes', { budget: 'galisteo', envelopes: starterRows })).status, 200);
+    // Groceries is made short by moving out of it what it does not have.
+    const out = await approve('move_money', {
+      budget: 'galisteo', month: thisMonth, from: 'groceries', to: 'dining', amountCents: 5000, why: 'make it short',
+    });
+    assert.equal(out.status, 200, JSON.stringify(out.json));
+
+    const cover = () => approve('move_money', {
+      budget: 'galisteo', month: thisMonth, from: 'fun', to: 'groceries', amountCents: 5000,
+      why: 'covered the shortfall in Groceries', onlyWhileShort: true,
+    });
+    // Two taps alone do not always land in the gap before the write reaches the log; five at once do.
+    const taps = await Promise.all([cover(), cover(), cover(), cover(), cover()]);
+    assert.deepEqual(taps.map((r) => r.status).sort(), [200, 409, 409, 409, 409], JSON.stringify(taps.map((r) => r.json.error)));
+    for (const r of taps.filter((t) => t.status === 409)) assert.match(r.json.error, /Groceries is no longer short/);
+
+    const month = await call('POST', '/api/tools/get_month', { budget: 'galisteo', month: thisMonth });
+    const fun = month.json.result.envelopes.find((e: any) => e.id === 'fun');
+    assert.equal(fun.leftExact, '-$50.00', 'Fun paid for the cover once');
+    const winner = taps.find((r) => r.status === 200)!;
+    assert.equal(seq(winner.json.lastEventId), seq(out.json.lastEventId) + 1, 'one write after the move out');
+  });
+
   test('Today carries the budget notices', async () => {
     const today = await call('GET', '/api/today');
     // Other budgets exist by now, so the notice names its budget.

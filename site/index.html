@@ -199,6 +199,9 @@
   .walk-seen{font-size:var(--fs-micro);color:var(--ink-soft);margin-bottom:10px;align-self:flex-end}
   .walk .card{margin-bottom:0}
   .walk-line{margin:0;font-size:var(--fs-body)}
+  .walk-why{margin:6px 0 0;font-size:var(--fs-small);color:var(--ink-soft)}
+  .walk-why summary{cursor:pointer}
+  .walk-why p{margin:4px 0 0}
   .walk-group h3{margin:0 0 6px}
   .walk-row{display:flex;align-items:center;gap:10px;padding:6px 0;border-top:1px solid var(--hair)}
   .walk-row:first-of-type{border-top:none}
@@ -3297,10 +3300,16 @@ const toCents = (text) => {
   return Number.isFinite(n) ? Math.round(n * 100) : NaN;
 };
 
+// Which loadBudget is the latest. One that was overtaken (a step's own reload and Finish's,
+// say) must not draw over the newer one when its answer lands late.
+let budgetLoads = 0;
+
 async function loadBudget() {
+  const load = ++budgetLoads;
   // A budget with no envelopes is the walkthrough, at the step it was left on.
   const asked = chosenBudget();
   const fr = await api(`/api/budget/first-run${asked ? `?budget=${encodeURIComponent(asked)}` : ''}`);
+  if (load !== budgetLoads) return;
   if (fr.budget && fr.budget !== asked) {
     localStorage.setItem('budget', fr.budget);
     $('budget-pick').value = fr.budget;
@@ -3308,9 +3317,6 @@ async function loadBudget() {
   }
   if (fr.step || pricingFor === fr.budget) { drawWalk(fr); return; }
   pricingFor = null;
-  $('walk').hidden = true;
-  $('budget').hidden = view !== 'budget';
-  $('bands').textContent = '';
   // Every committed change comes back through here, so this is where a cached
   // category list goes stale — a category added a moment ago has to be in the
   // pickers below without a reload.
@@ -3323,8 +3329,20 @@ async function loadBudget() {
   // Omitted rather than sent empty: the server picks a sensible default and,
   // when there are none at all, says "no budgets yet" — which is what a brand
   // new household needs to read, not "budget is required".
-  const { result } = await api('/api/tools/get_month',
-    chosenBudget() ? { budget: chosenBudget() } : {});
+  // The screen changes only once the month is here: shown and emptied before it, a slow or
+  // refused answer left the Budget screen a blank card with no rows (straight after the
+  // walkthrough's Finish, until a reload).
+  let result;
+  try {
+    ({ result } = await api('/api/tools/get_month', chosenBudget() ? { budget: chosenBudget() } : {}));
+  } finally {
+    if (load === budgetLoads) {
+      $('walk').hidden = true;
+      $('budget').hidden = view !== 'budget';
+      $('bands').textContent = '';
+    }
+  }
+  if (load !== budgetLoads) return;
   month = result;
 
   // The card's words and colour are the server's, so Today and this screen never disagree.
@@ -3604,7 +3622,7 @@ function coverCard(e) {
     give.append(node('h4', '', 'Or, while income is not all assigned'),
       act(`Assign ${coverMoney(s.assign)} to ${e.label}`, 'set_assignment', {
         envelope: e.id, toCents: toCents(e.fundedExact) + s.assign,
-        why: 'covered the shortfall from unassigned income',
+        why: 'covered the shortfall from unassigned income', onlyWhileShort: true,
       }),
       node('p', 'cover-note', 'This choice disappears once the budget reaches zero.'));
     card.appendChild(give);
@@ -4608,11 +4626,17 @@ function walkPricingStep(fr) {
   const h = node('h3', '', 'Looking up what this place costs…');
   card.appendChild(h);
   el.append(node('h2', '', 'Pricing'), card);
+  // As a visit to the Budget screen does it: the budgets and the month read again, the
+  // screen drawn once the month is here, and a refusal said rather than left blank.
   const finish = async () => {
     pricingFor = null;
     $('manage-panel').textContent = '';
-    await loadBudgets();
-    await loadBudget();
+    $('loading').hidden = false;
+    try {
+      await loadBudgets();
+      await loadBudget();
+    } catch (ex) { showProblem(ex); }
+    finally { $('loading').hidden = true; }
   };
   // Nothing found, nothing to price, or nowhere to look: said in one line, and the walk can still end.
   const refused = (words) => {
@@ -4621,7 +4645,17 @@ function walkPricingStep(fr) {
     row.append(
       textBtn('Set the location', 'btn', null, () => $('bud-where').click()),
       textBtn('Finish', 'btn primary', null, async (ev) => { ev.currentTarget.disabled = true; await finish(); }));
-    card.append(node('p', 'walk-line', words), row);
+    // The server's refusal reads as one line to the member, its first sentence; the rest says
+    // which lookups and keys were missing, which is for whoever runs the server, so it waits under Why.
+    const cut = words.indexOf('. ');
+    card.appendChild(node('p', 'walk-line', cut < 0 ? words : words.slice(0, cut + 1)));
+    if (cut >= 0) {
+      const why = node('details', 'walk-why');
+      const rest = words.slice(cut + 2);
+      why.append(node('summary', '', 'Why'), node('p', '', rest.charAt(0).toUpperCase() + rest.slice(1)));
+      card.appendChild(why);
+    }
+    card.appendChild(row);
   };
   if (!fr.location) { refused('No location yet, so nothing can be looked up.'); return el; }
   api('/api/tools/seed_from_location', { budget: fr.budget }).then(({ proposal }) => {

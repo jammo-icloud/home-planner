@@ -985,6 +985,7 @@ const setAssignment: Tool = {
       envelope: { type: 'string' },
       toCents: { type: 'number' },
       why: { type: 'string' },
+      onlyWhileShort: { type: 'boolean', description: 'Refuse unless the envelope is still short, so a cover assigned from a stale figure is not made twice.' },
     },
     required: ['budget', 'envelope', 'toCents', 'why'],
   },
@@ -1000,6 +1001,11 @@ const setAssignment: Tool = {
     if (!view) throw new ToolError(`${month} is not open for ${budget}`, 404);
     const e = view.envelopes.find((x) => x.envelope.id === envelope);
     if (!e) throw new ToolError(`no envelope ${envelope}`, 404);
+    // toCents is absolute and read from the page's figures: once the envelope is covered, a second
+    // tap would set it again from a stale number, so it is refused instead (as move_money does).
+    if (args['onlyWhileShort'] === true && e.available >= 0) {
+      throw new ToolError(`${e.envelope.label} is no longer short`, 409);
+    }
 
     const delta = sub(to, e.funded);
     const nextToAssign = sub(view.toAssign, delta);
@@ -1018,11 +1024,14 @@ const setAssignment: Tool = {
       who: ctx.who,
       summary: `Set ${e.envelope.label} to ${fmtExact(to)}`,
       effects,
-      // A figure set by hand is a figure: the flag and the source go, and the template stays.
+      // A figure set by hand is a figure, so the flag goes. The template is unchanged and is still
+      // the public-data figure, so its source stays with it.
       events: [
         { op: 'assign', budget, month, envelope, to, why },
-        ...(e.envelope.needsFigure || e.envelope.source !== undefined
-          ? [redefine(budget, e.envelope, { figure: { template: e.envelope.template } })] : []),
+        ...(e.envelope.needsFigure
+          ? [redefine(budget, e.envelope, {
+            figure: { template: e.envelope.template, ...(e.envelope.source !== undefined ? { source: e.envelope.source } : {}) },
+          })] : []),
       ],
     }, new Date(`${ctx.today}T00:00:00Z`).toISOString());
   },
@@ -1413,7 +1422,7 @@ const defineEnvelope: Tool = {
       budget: { type: 'string' },
       envelope: { type: 'string', description: 'The id. A new one creates; an existing one edits.' },
       label: { type: 'string' },
-      group: { type: 'string', description: 'The group it shows under, e.g. Home or Food' },
+      group: { type: 'string', description: 'The group it shows under, e.g. Home or Food. A new envelope with none goes under Everyday.' },
       categories: { type: 'array', items: { type: 'string' }, description: 'Which categories feed it.' },
       templateCents: {
         type: 'number',
@@ -1449,7 +1458,7 @@ const defineEnvelope: Tool = {
     const given = args['templateCents'] === undefined || args['templateCents'] === null
       ? null : money(args['templateCents'], 'templateCents');
     if (given !== null && given < 0) throw new ToolError('a figure is not less than nothing');
-    const group = typeof args['group'] === 'string' && args['group'] ? args['group'] : existing?.group ?? 'People';
+    const group = typeof args['group'] === 'string' && args['group'] ? args['group'] : existing?.group ?? 'Everyday';
     const rollover = typeof args['rollover'] === 'boolean' ? args['rollover'] : existing?.rollover ?? true;
     const match = { categories };
 
