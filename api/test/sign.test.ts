@@ -128,6 +128,18 @@ test('a directory with no chain still signs, with no chain', { skip: opensslMiss
   assert.equal((await verify(await signProfile(xml, signer))).replace(/\r\n/g, '\n'), xml);
 });
 
+test('a chain that is not a certificate is dropped, and the profile still signs', { skip: opensslMissing }, async () => {
+  const badChain = await subdir('bad-chain');
+  await copyFile(join(root, 'good', 'cert.pem'), join(badChain, 'cert.pem'));
+  await copyFile(join(root, 'good', 'privkey.pem'), join(badChain, 'privkey.pem'));
+  await writeFile(join(badChain, 'chain.pem'), 'not a chain\n');
+  const { signer, status } = await loadSigner(badChain);
+  assert.equal(status.signed, true);
+  assert.ok(signer);
+  assert.equal(signer.chain, null);
+  assert.equal((await signProfile(xml, signer))[0], 0x30);
+});
+
 test('signedOrPlain signs when it can', { skip: opensslMissing }, async () => {
   const out = await signedOrPlain(xml, join(root, 'good'));
   assert.ok(Buffer.isBuffer(out));

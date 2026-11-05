@@ -86,7 +86,17 @@ export async function loadSigner(dir: string | undefined, now: () => number = Da
 
     const validTo = new Date(until).toISOString();
     const signedAs = signerName(x509);
-    const chain = (await readable(chainPath)) === 'ok' ? chainPath : null;
+    // A chain that is not a certificate would fail every -certfile, so it is
+    // dropped rather than let the status say signed while nothing signs.
+    let chain: string | null = null;
+    if ((await readable(chainPath)) === 'ok') {
+      try {
+        new X509Certificate(await readFile(chainPath));
+        chain = chainPath;
+      } catch {
+        chain = null;
+      }
+    }
     return { signer: { cert, key, chain, signedAs, validTo }, status: { signed: true, signedAs, validTo } };
   } catch {
     // Nothing above should throw, but a status line must never take the page down.
@@ -112,10 +122,13 @@ export function signProfile(xml: string, signer: Signer): Promise<Buffer> {
     '-nodetach', '-outform', 'DER',
   ];
   return new Promise((resolve, reject) => {
-    const child = execFile('openssl', args, { encoding: 'buffer', maxBuffer: 4 << 20 }, (err, stdout, stderr) => {
+    // The timeout means a passphrase prompt or a hung openssl cannot park a download or leave a process behind.
+    const child = execFile('openssl', args, { encoding: 'buffer', maxBuffer: 4 << 20, timeout: 10_000 }, (err, stdout, stderr) => {
       if (err) {
         const code = (err as NodeJS.ErrnoException).code;
-        const why = code === 'ENOENT' ? 'openssl is not installed' : opensslReason(stderr.toString('utf8'));
+        const why = code === 'ENOENT' ? 'openssl is not installed'
+          : (err as { killed?: boolean }).killed ? 'openssl took longer than ten seconds'
+          : opensslReason(stderr.toString('utf8'));
         reject(new Error(`openssl could not sign the profile: ${why}`));
         return;
       }

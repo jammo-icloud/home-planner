@@ -6,7 +6,7 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
 import { execFile, execFileSync } from 'node:child_process';
-import { copyFile, mkdir, mkdtemp } from 'node:fs/promises';
+import { copyFile, mkdir, mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -100,7 +100,8 @@ before(async () => {
   assert.equal(made.status, 200);
 });
 
-after(async () => { await close(); await nas.close(); });
+// The temp directory holds a generated private key, so it does not outlive the run.
+after(async () => { await close(); await nas.close(); await rm(dir, { recursive: true, force: true }); });
 
 describe('a phone is set up from a one-time link', () => {
   test('a code answers its link, its expiry and the QR as SVG', async () => {
