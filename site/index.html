@@ -14,9 +14,13 @@
 <link rel="manifest" href="/manifest.webmanifest" />
 <!-- Named explicitly, or Safari guesses at /apple-touch-icon.png and then at
      /<hostname>.png, and 404s on both. -->
+<!-- Safari ignores an SVG favicon, so the .ico comes first; other browsers take
+     the SVG. -->
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32" />
 <link rel="icon" href="/icon.svg" type="image/svg+xml" />
 <!-- iOS does not use an SVG touch icon, so the Home Screen gets the PNG. -->
 <link rel="apple-touch-icon" href="/icon-180.png" />
+<link rel="mask-icon" href="/mask-icon.svg" color="#0C8CE9" />
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="default" />
 <meta name="apple-mobile-web-app-title" content="Home Planner" />

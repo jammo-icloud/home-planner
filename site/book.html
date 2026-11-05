@@ -4,6 +4,10 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <title>Come and stay</title>
+<!-- Safari ignores an SVG favicon, so the .ico comes first. -->
+<link rel="icon" href="/favicon.ico" sizes="16x16 32x32" />
+<link rel="icon" href="/icon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icon-180.png" />
 <!-- The booking page: the one page a guest reaches, through the owner's proxy,
      which exposes /book and nothing else. So the shared tokens are read from
      /book/tokens.css (the same file as /tokens.css), and the page never stamps
