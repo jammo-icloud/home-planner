@@ -129,6 +129,7 @@
  *
  *   GET  /book                      the booking page (served whether or not booking is on)
  *   GET  /book/tokens.css           the shared tokens, under the one path the proxy exposes
+ *   GET  /book/favicon.ico, /book/icon.svg, /book/icon-180.png   the page's icons, under the same path
  *   POST /book/start                { email }: one sentence back, always; a code and link by email if it is on the list
  *   GET  /book/open?token=          the emailed link: a page with one Continue button, and no side effects,
  *                                   so a mail scanner that fetches the link spends nothing
@@ -1468,6 +1469,10 @@ export async function start(
     }
     if (path === '/book' && req.method === 'GET') return serveStatic('/book.html', res);
     if (path === '/book/tokens.css' && req.method === 'GET') return serveStatic('/tokens.css', res);
+    // The page's icons ride the same one path the proxy exposes, for the same reason as the tokens.
+    if (path === '/book/favicon.ico' && req.method === 'GET') return serveStatic('/favicon.ico', res);
+    if (path === '/book/icon.svg' && req.method === 'GET') return serveStatic('/icon.svg', res);
+    if (path === '/book/icon-180.png' && req.method === 'GET') return serveStatic('/icon-180.png', res);
 
     if (req.method === 'POST' && now.on) {
       if (req.headers.origin !== now.config.url) return sendPage(res, 403, WRONG_ORIGIN);

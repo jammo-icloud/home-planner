@@ -347,4 +347,15 @@ describe('the guest page, as a file', () => {
     }
     assert.equal(a.text, b.text);
   });
+
+  test('/book icons: without a session, the root files under the one path the proxy exposes', async () => {
+    for (const [name, type] of [['favicon.ico', 'image/'], ['icon.svg', 'image/svg+xml'], ['icon-180.png', 'image/png']] as const) {
+      const a = await call('GET', `/book/${name}`);
+      const b = await call('GET', `/${name}`);
+      assert.equal(a.status, 200, name);
+      assert.ok((a.headers.get('content-type') ?? '').startsWith(type), `${name}: ${a.headers.get('content-type')}`);
+      assert.equal(a.headers.get('content-type'), b.headers.get('content-type'), name);
+      assert.equal(a.headers.get('content-length'), b.headers.get('content-length'), name);
+    }
+  });
 });
