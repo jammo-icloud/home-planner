@@ -1986,7 +1986,7 @@ async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
   const data = await res.json().catch(() => ({}));
   // The household this page had open is gone (its owner removed it): the server has
   // already cleared it from this session, so show the picker rather than a stack of errors.
-  if (res.status === 409 && /^no household is open/.test(data.error ?? '') && !$('app').hidden) void backToPicker();
+  if (res.status === 409 && /^no household is open/.test(data.error ?? '') && !$('app').hidden && !leaving) void backToPicker();
   if (!res.ok) throw Object.assign(new Error(data.error || `request failed (${res.status})`), { status: res.status });
   return data;
 }
@@ -4249,6 +4249,8 @@ async function refresh() {
  * that "no open month" was a thing they could fix.
  */
 function showProblem(ex) {
+  // The picker is already on its way (see api()); an error box under it would only confuse.
+  if (/^no household is open/.test(ex.message)) return;
   // "No budget yet" and "no open month" are Today's and Budget's to say: the
   // Plan board and the Calendar have nothing to do with either.
   if (/no budgets yet|no open month|no months are open/i.test(ex.message)
@@ -7635,7 +7637,7 @@ function renderSettings() {
       hint: `${others.length === 1 ? 'You both see' : 'Everyone in the household sees'} and change${others.length === 1 ? '' : 's'} these. `
         + "Every change goes in the household's history.",
       rows: [setupRow(), membersRow(), areasRow(), budgetRow(), hcalRow(), guestsRow(), documentsRow(), linksRow(), backupRow(),
-        ...(settingsData.setup.youOwn ? [removeRow()] : [])],
+        ...(settingsData.setup.youOwn && !inSandbox ? [removeRow()] : [])],
     },
   ];
   // Anyone else has neither the group nor its lines in the index.
@@ -8945,7 +8947,6 @@ function removeHousehold() {
   ], (i) => ({
     run: async () => {
       await api('/api/households/remove', { household: id, label: i.label.value });
-      try { localStorage.removeItem('budget'); } catch { /* private window */ }
       await backToPicker();
     },
   }), {
@@ -10273,7 +10274,11 @@ function showHouseholds(state) {
  * it may be gone. Every screen is put away first, so the next one opened starts
  * at Today instead of on Settings of a household that no longer exists.
  */
+// Several requests in flight can all meet the same 409; only the first sends the page to the picker.
+let leaving = false;
 async function backToPicker() {
+  if (leaving) return;
+  leaving = true;
   view = 'today';
   settingsFrom = 'today';
   for (const id of ['budget', 'walk', 'import', 'compare', 'plan', 'plan-card', 'calendar', 'settings', 'budget-head']) $(id).hidden = true;
@@ -10285,7 +10290,7 @@ async function backToPicker() {
   try { localStorage.removeItem('budget'); } catch { /* private window */ }
   try {
     showHouseholds(await api('/api/households'));
-  } catch { location.reload(); }
+  } catch { location.reload(); } finally { leaving = false; }
 }
 
 async function openHousehold(id) {
