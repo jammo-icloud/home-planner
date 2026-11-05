@@ -117,6 +117,23 @@ export class Sessions {
     if (!s.local) this.#save();
   }
 
+  /**
+   * Close a household in every live session that has it open, for when it has
+   * been removed: each of them lands on Choose a household at their next
+   * request. Bypass sessions are left alone; they only ever open the sandbox.
+   * Returns how many were cleared.
+   */
+  leave(household: string): number {
+    let cleared = 0;
+    for (const s of this.#byHash.values()) {
+      if (s.local || s.household !== household) continue;
+      s.household = null;
+      cleared++;
+    }
+    if (cleared) this.#save();
+    return cleared;
+  }
+
   get(token: string | undefined): Session | null {
     if (!token) return null;
     const key = hash(token);

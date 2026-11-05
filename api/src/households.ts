@@ -11,7 +11,7 @@
  * whole log and caches it, which happens when somebody actually looks.
  */
 
-import { copyFile, mkdir, readFile, readdir, stat, writeFile, rename } from 'node:fs/promises';
+import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile, rename } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
@@ -190,6 +190,26 @@ export class Households {
 
   /** Forget the cached replay. The file is untouched. */
   forget(id: string): void { this.#open.delete(id); }
+
+  /**
+   * Delete a household: its directory, log and all.
+   *
+   * The one place the app deletes anything. Everywhere else a change is a new
+   * event and the past stays readable; this ends the past. It is allowed because
+   * the owner asked for exactly this, by typing the household's name back, and
+   * a backup taken first is the way back. Whether `who` may is the route's
+   * question, as it is for create and open.
+   *
+   * The id must be a directory name before it is joined to anything, so no
+   * path from a request can reach outside the households folder. The cache is
+   * forgotten first, so nothing serves the replay of a log that is gone, and a
+   * household made again under the same name starts from an empty one.
+   */
+  async remove(id: string): Promise<void> {
+    if (!isValidId(id)) throw new Error(`"${id}" is not a household id`);
+    this.forget(id);
+    await rm(join(this.dir, id), { recursive: true, force: true });
+  }
 }
 
 export interface Adoption {

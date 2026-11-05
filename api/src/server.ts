@@ -51,6 +51,10 @@
  *   GET  /api/households            the households you are in
  *   POST /api/households            make one, and open it
  *   POST /api/households/select     open a different one
+ *   POST /api/households/remove     { household, label }: the owner deletes it for good, its log and all, once its name
+ *                                   is typed back exactly (400 otherwise); every session that had it open has none
+ *                                   open after. 403 to a member who is not the owner, and to anyone else as select
+ *                                   answers; 409 from the local sandbox
  *   GET  /api/backup                the open household's log, as a file
  *   POST /api/restore/preview       what a backup would bring, and what would collide
  *   POST /api/restore               take it, refusing on any collision
@@ -178,7 +182,7 @@ import { extname, join, normalize, resolve as resolvePath } from 'node:path';
 
 import { Store } from './store.ts';
 import type { NewEvent } from './store.ts';
-import { Households, adoptSingleLog } from './households.ts';
+import { Households, adoptSingleLog, isValidId } from './households.ts';
 import { isAdministrator, listAccounts } from './accounts.ts';
 import { connectors, lastSavedBy, loadConnectors, recordTest, resolvedEnv, saveConnector, sourceOf } from './connectors.ts';
 import type { Change, MailValue, SavedKey } from './connectors.ts';
@@ -1799,6 +1803,26 @@ export async function start(
       if (!mine.some((h) => h.id === id)) throw new ToolError('you do not have access to that household', 403);
       sessions.select(token, id);
       return json(res, 200, { household: id });
+    }
+
+    // Removing a household for good. The checks run in this order, and only an
+    // id that is one of `who`'s households ever reaches the directory: the
+    // removal uses the Households class's own path for it, never the request's.
+    if (path === '/api/households/remove' && req.method === 'POST') {
+      if (session.local) throw new ToolError('the local sandbox has no household to remove', 409);
+      const body = (await readBody(req)) as { household?: unknown; label?: unknown };
+      const id = typeof body.household === 'string' ? body.household.trim() : '';
+      const mine = await households.forUser(who);
+      // The same answer as select: a stranger learns nothing about whether it exists.
+      const target = isValidId(id) ? mine.find((h) => h.id === id) : undefined;
+      if (!target) throw new ToolError('you do not have access to that household', 403);
+      if (target.owner !== who) throw new ToolError('only the owner can remove a household', 403);
+      // Against the label of the household the id names, never a search by label.
+      if (body.label !== target.label) throw new ToolError("type the household's name exactly to remove it", 400);
+      await households.remove(target.id);
+      sessions.leave(target.id);
+      console.log(`[budget] household ${target.id} removed by ${who}`);
+      return json(res, 200, { removed: target.id });
     }
 
     // ── backup and restore ───────────────────────────────────────────────────

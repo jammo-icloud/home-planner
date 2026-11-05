@@ -1,6 +1,7 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -776,5 +777,43 @@ describe('event ids across households', () => {
     // The format stays: base-36 milliseconds, then a six-digit sequence.
     assert.match(ea!.id, /^[0-9a-z]+-\d{6}$/);
     assert.match(eb!.id, /^[0-9a-z]+-\d{6}$/);
+  });
+});
+
+describe('removing a household', () => {
+  test('removing a household deletes its directory and forgets its replay', async () => {
+    const hh = new Households(await dir());
+    await hh.create('alex', 'Wren');
+    await hh.open('wren');
+    await hh.remove('wren');
+    assert.ok(!(await hh.ids()).includes('wren'));
+    assert.equal(existsSync(join(hh.dir, 'wren')), false);
+    // Not served from the cache: opened again, there is nobody's claim in it.
+    const again = await hh.open('wren');
+    assert.equal(again.state.owner, null);
+    assert.deepEqual(await hh.ids(), [], 'opening it did not bring it back');
+  });
+
+  test('a household made again under the same name starts empty', async () => {
+    const hh = new Households(await dir());
+    const { store } = await hh.create('alex', 'Wren');
+    await store.append('alex', { op: 'budget.create', budget: 'home', label: 'Home' });
+    assert.equal(store.state.budgets.size, 1);
+    await hh.remove('wren');
+    const made = await hh.create('alex', 'Wren');
+    assert.equal(made.id, 'wren');
+    assert.equal(made.store.state.budgets.size, 0);
+    assert.equal(made.store.state.owner, 'alex');
+    assert.equal((await hh.open('wren')).state.budgets.size, 0);
+  });
+
+  test('an id that is not a directory name is refused before anything is touched', async () => {
+    const hh = new Households(await dir());
+    await hh.create('alex', 'Wren');
+    await assert.rejects(hh.remove('../x'));
+    await assert.rejects(hh.remove('A B'));
+    await assert.rejects(hh.remove('..'));
+    await assert.rejects(hh.remove(''));
+    assert.deepEqual(await hh.ids(), ['wren']);
   });
 });
