@@ -164,6 +164,14 @@ Isolation is enforced at every route. Someone with a valid DSM login who is not 
 member gets `403` and nothing else — not a balance, not a category list. The
 owner cannot be removed, so a household always has an administrator.
 
+The owner can remove the whole household under Settings › Household, after typing
+its name back. That deletes the log for good, for everyone in it, and everyone who
+had it open lands on Choose a household. A backup is the only way back. An
+administrator who does not own a household cannot remove it: you see that
+households exist, never what is in them. Removal touches that one household's
+directory and nothing else, so the `data` folder's other households and
+`connectors.json` stay as they are.
+
 Three gates, deliberately separate:
 
 | | Set where | Decides |
@@ -802,7 +810,9 @@ skipped and reported at boot rather than being fatal.
 ### A fresh install starts empty
 
 Sign in and the app walks you through it: create a budget, say where it is,
-open the month, record what comes in. Each step offers the next.
+open the month, record what comes in. Each step offers the next. To get back to
+this point from a household that exists, its owner removes it under Settings ›
+Household and signs in again.
 
 ## On the NAS, behind https
 

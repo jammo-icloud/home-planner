@@ -100,6 +100,11 @@ DEPLOY.md says how to give each household folder its own permissions. A DSM
 administrator can see that households exist (owner, size, last activity) and
 never what is in them.
 
+The owner of a household can remove it under Settings › Household. That deletes
+the household's log for everyone in it, and everyone who had it open lands back
+on Choose a household. A backup is the only way back, so download one first if
+there is any doubt. It is also how to start again from the first sign-in.
+
 ## How it is configured
 
 Almost nothing has to live in `.env`. Configuration is done in the app, by two
