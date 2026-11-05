@@ -10235,6 +10235,8 @@ let me = null;
 
 function showHouseholds(state) {
   me = state;
+  // The page's own title, as on a fresh load: the last household's name is not this screen's.
+  document.title = 'Today';
   $('login').hidden = true;
   $('app').hidden = true;
   $('households').hidden = false;
