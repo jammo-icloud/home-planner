@@ -816,4 +816,34 @@ describe('removing a household', () => {
     await assert.rejects(hh.remove(''));
     assert.deepEqual(await hh.ids(), ['wren']);
   });
+
+  test('a store held across the removal cannot write the directory back', async () => {
+    const hh = new Households(await dir());
+    const { store } = await hh.create('alex', 'Wren');
+    await hh.remove('wren');
+    await assert.rejects(
+      store.append('alex', { op: 'budget.create', budget: 'home', label: 'Home' }),
+      (err: Error & { status?: number }) => err.message === 'this household was removed' && err.status === 409,
+    );
+    assert.equal(existsSync(join(hh.dir, 'wren')), false);
+    const made = await hh.create('alex', 'Wren');
+    assert.equal(made.store.state.budgets.size, 0);
+    assert.equal(made.store.state.owner, 'alex');
+  });
+
+  test('an open that was loading when the household was removed is not cached', async () => {
+    const d = await dir();
+    await new Households(d).create('alex', 'Wren');
+    // A fresh instance, so nothing is cached and open() really loads.
+    const hh = new Households(d);
+    const loading = hh.open('wren');   // runs up to its load, then waits on the disk
+    await hh.remove('wren');           // counted before that load finishes
+    const late = await loading;
+    assert.equal(late.closed, true);
+    await assert.rejects(late.append('alex', { op: 'budget.create', budget: 'home', label: 'Home' }));
+    assert.equal(existsSync(join(d, 'wren')), false);
+    const fresh = await hh.open('wren');
+    assert.notEqual(fresh, late, 'the late load was never cached');
+    assert.equal(fresh.state.owner, null);
+  });
 });

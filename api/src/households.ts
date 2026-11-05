@@ -46,6 +46,11 @@ export const slugify = (label: string): string =>
 export class Households {
   readonly dir: string;
   #open = new Map<string, Store>();
+  /**
+   * How many times each id has been removed. An `open()` notes it before its
+   * load and compares after, so a load that straddles a removal is never cached.
+   */
+  #removals = new Map<string, number>();
 
   constructor(dir: string) { this.dir = resolve(dir); }
 
@@ -107,8 +112,15 @@ export class Households {
     if (!isValidId(id)) throw new Error(`"${id}" is not a household id`);
     const cached = this.#open.get(id);
     if (cached) return cached;
+    const generation = this.#removals.get(id) ?? 0;
     const store = new Store({ path: this.path(id) });
     await store.load();
+    // Removed while this was loading: caching it would serve, and let a write
+    // recreate, a log that is gone. The caller gets it closed, never cached.
+    if ((this.#removals.get(id) ?? 0) !== generation) {
+      store.close();
+      return store;
+    }
     this.#open.set(id, store);
     return store;
   }
@@ -201,12 +213,21 @@ export class Households {
    * question, as it is for create and open.
    *
    * The id must be a directory name before it is joined to anything, so no
-   * path from a request can reach outside the households folder. The cache is
-   * forgotten first, so nothing serves the replay of a log that is gone, and a
-   * household made again under the same name starts from an empty one.
+   * path from a request can reach outside the households folder. Before the
+   * directory goes: the removal is counted, so an `open()` already loading it
+   * is not cached; the cached store is closed, so a request already holding
+   * it cannot write and bring the directory back; and the cache is forgotten,
+   * so nothing serves the replay of a log that is gone and a household made
+   * again under the same name starts from an empty one.
+   *
+   * If the rm fails partway, the cache is already forgotten, the owner gets a
+   * 500, and sessions keep the id. That is acceptable: every next request
+   * re-reads membership from whatever is left on disk.
    */
   async remove(id: string): Promise<void> {
     if (!isValidId(id)) throw new Error(`"${id}" is not a household id`);
+    this.#removals.set(id, (this.#removals.get(id) ?? 0) + 1);
+    this.#open.get(id)?.close();
     this.forget(id);
     await rm(join(this.dir, id), { recursive: true, force: true });
   }

@@ -1820,8 +1820,8 @@ export async function start(
       // Against the label of the household the id names, never a search by label.
       if (body.label !== target.label) throw new ToolError("type the household's name exactly to remove it", 400);
       await households.remove(target.id);
-      sessions.leave(target.id);
-      console.log(`[budget] household ${target.id} removed by ${who}`);
+      const closed = sessions.leave(target.id);
+      console.log(`[budget] household ${target.id} removed by ${who}; ${closed} session${closed === 1 ? '' : 's'} closed`);
       return json(res, 200, { removed: target.id });
     }
 

@@ -12,6 +12,7 @@ import { existsSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 
 import { apply, replay, validate, requireReason, ReplayError } from './replay.ts';
+import { ToolError } from './errors.ts';
 import type { Actor, Event, NewEventShape, State } from './types.ts';
 
 /** An event as callers write it: the store stamps id, timestamp and actor. */
@@ -51,6 +52,13 @@ export class Store {
   /** Serialises appends. One process, so a promise chain is the whole story. */
   #tail: Promise<unknown> = Promise.resolve();
   #report: LoadReport = { events: 0, skipped: [] };
+  /**
+   * Set when the household this log belongs to has been removed. Every write
+   * checks it before touching the disk, because each one starts with a mkdir
+   * that would otherwise bring the deleted directory back with a log that has
+   * no claim in it: a household nobody can see that still holds the name.
+   */
+  #closed = false;
 
   constructor(opts: StoreOptions = {}) {
     this.path = resolve(opts.path ?? 'data/events.jsonl');
@@ -60,6 +68,15 @@ export class Store {
 
   get state(): State { return this.#state; }
   get loadReport(): LoadReport { return this.#report; }
+  get closed(): boolean { return this.#closed; }
+
+  /** No more writes, ever: the household is gone. Reads of what is in memory still answer. */
+  close(): void { this.#closed = true; }
+
+  /** A 409, so a request that was already on its way when the household went answers that, not a 500. */
+  #refuseIfClosed(): void {
+    if (this.#closed) throw new ToolError('this household was removed', 409);
+  }
 
   /**
    * Read the whole log and replay it.
@@ -121,6 +138,8 @@ export class Store {
     if (batch.length === 0) return [];
 
     const run = async (): Promise<Event[]> => {
+      // Checked when the queued write runs, not when it was asked for: it may have waited behind the removal.
+      this.#refuseIfClosed();
       const at = this.#now().toISOString();
       const stamped = batch.map((e) => ({ id: this.#id(), at, who, ...e }) as Event);
 
@@ -165,6 +184,7 @@ export class Store {
     if (events.length === 0) return [];
 
     const run = async (): Promise<Event[]> => {
+      this.#refuseIfClosed();
       const here = new Set<string>();
       if (existsSync(this.path)) {
         for (const line of (await readFile(this.path, 'utf8')).split('\n')) {
@@ -211,6 +231,7 @@ export class Store {
 
   /** Replace the log wholesale. Only for seeding an empty install. */
   async seed(events: Event[]): Promise<void> {
+    this.#refuseIfClosed();
     if (existsSync(this.path)) {
       const existing = await readFile(this.path, 'utf8');
       if (existing.trim()) throw new ReplayError('refusing to seed over an existing log');
