@@ -13,6 +13,7 @@ import type { RowId } from './connectors-view.ts';
 import { modelSource } from './match.ts';
 import type { MoveFailure } from './moves.ts';
 import { PAGE_RETRY_MS } from './pages.ts';
+import type { SigningStatus } from './sign.ts';
 import { monthView } from './envelopes.ts';
 import { cents, fmt } from './money.ts';
 import { householdDay, monthOf, movesLeft, zoneOf } from './types.ts';
@@ -61,7 +62,7 @@ export function setupSteps(state: State, env: NodeJS.ProcessEnv = process.env): 
 
 // ─── Today's notices ─────────────────────────────────────────────────────────
 
-export type NoticeKind = 'folder' | 'not-team-folder' | 'connectors' | 'moving' | 'booking-off';
+export type NoticeKind = 'folder' | 'not-team-folder' | 'connectors' | 'moving' | 'booking-off' | 'certificate';
 
 /** One quiet card above Today's thread: a reminder, never a decision, and never logged. */
 export interface SetupNotice {
@@ -80,11 +81,13 @@ const listOf = (names: readonly string[]): string =>
  * carried over is not a Team Folder, as this session last heard from Drive),
  * a member to ask the owner; everyone sees a move under way and what failed
  * in it; the owner sees booking turned off for a lost calendar until one is
- * chosen; an admin, the rows of This NAS that need them.
+ * chosen; an admin, the rows of This NAS that need them, and a calendar-profile
+ * certificate within 30 days of running out or already out.
  */
 export function setupNotices(o: {
   state: State; who: Actor; admin: boolean; sandbox: boolean; env: NodeJS.ProcessEnv;
   teamFolder: boolean | null; failures: readonly MoveFailure[]; adminRows: readonly RowId[]; rowName: (id: RowId) => string;
+  signing: SigningStatus; now?: number;
 }): SetupNotice[] {
   if (o.sandbox) return [];
   const { state } = o;
@@ -142,6 +145,22 @@ export function setupNotices(o: {
       text: `Set up the NAS: ${listOf(o.adminRows.map(o.rowName))}.`,
       action: { label: 'Open This NAS', open: 'settings', group: 'nas', row: o.adminRows[0]! },
     });
+  }
+
+  if (o.admin) {
+    const fix = 'Check the NAS task that copies it.';
+    if (o.signing.signed) {
+      const days = Math.floor((Date.parse(o.signing.validTo) - (o.now ?? Date.now())) / 86_400_000);
+      if (days <= 30) {
+        const when = days <= 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
+        notices.push({ kind: 'certificate', text: `The certificate that signs the calendar profile expires ${when}. ${fix}` });
+      }
+    } else if (o.signing.reason === 'expired') {
+      notices.push({
+        kind: 'certificate',
+        text: `The certificate that signs the calendar profile has expired, so the profile goes out unsigned. ${fix}`,
+      });
+    }
   }
   return notices;
 }

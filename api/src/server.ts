@@ -243,6 +243,7 @@ import { Limiter } from './limiter.ts';
 import { softwareVersion } from './version.ts';
 import { buildProfile, caldavPath, PROFILE_CONTENT_TYPE, PROFILE_FILENAME } from './profile.ts';
 import { loadSigner, signedOrPlain } from './sign.ts';
+import type { SigningStatus } from './sign.ts';
 import { acceptedOrigin, createPhoneCodes, homeLink, homeOrigin } from './phone-setup.ts';
 import type { PhoneCodes } from './phone-setup.ts';
 import QRCode from 'qrcode';
@@ -1089,7 +1090,9 @@ async function movingView(store: Store) {
 
 const settingsView = async (store: Store, who: string, booking: BookingStatus, household: string | null) => {
   const moving = await movingView(store);
-  return settingsOf(store.state, who, booking, household, moving);
+  // Per request, so a certificate copied in or run out shows on the next look.
+  const signing = (await loadSigner(profileCertDir())).status;
+  return settingsOf(store.state, who, booking, household, moving, signing);
 };
 
 /** Where a member's calendars are on the NAS from outside, typed into a phone by hand; null while the address is not set. */
@@ -1100,6 +1103,7 @@ const caldavAddress = (who: string): string | null => {
 
 const settingsOf = (
   state: State, who: string, booking: BookingStatus, household: string | null, moving: Awaited<ReturnType<typeof movingView>>,
+  signing: SigningStatus,
 ) => ({
   savings: savingsSettings(state),
   areas: state.settings.areas,
@@ -1152,11 +1156,13 @@ const settingsOf = (
   dsmPublicUrl: currentPublicUrl(),
   /**
    * What Set up your iPhone shows: the address a phone adds the calendar at by
-   * hand, or null while the NAS's address is not set, and whom to ask to set it.
+   * hand, or null while the NAS's address is not set, and whom to ask to set it;
+   * and whether the profile it downloads is signed, as whom and until when.
    */
   phoneSetup: {
     caldav: caldavAddress(who),
     nasAdmin: ADMIN_USER || lastSavedBy() || null,
+    signing,
   },
   /**
    * Whether friends can book here, and if not, why; whether the owner could
@@ -2705,6 +2711,7 @@ export async function start(
           failures: moveFailures(active.path),
           adminRows: isAdmin && !session.local ? needsAdmin((await connectorsNow(null)).rows) : [],
           rowName: (id) => ROW_NAME[id],
+          signing: (await loadSigner(profileCertDir())).status,
         }),
         // Envelopes still needing a figure, and those short, for each live budget this month.
         budget: budgetNotices(active.state, ctx.today),

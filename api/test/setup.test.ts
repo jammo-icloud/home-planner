@@ -9,6 +9,7 @@ import { cents } from '../src/money.ts';
 import type { ConnectorRow, RowId } from '../src/connectors-view.ts';
 import { PAGE_RETRY_MS } from '../src/pages.ts';
 import { replay } from '../src/replay.ts';
+import type { SigningStatus } from '../src/sign.ts';
 import { SETUP_ORDER, STEP_ROW, budgetNotices, setupNotices } from '../src/setup.ts';
 import { SYSTEM } from '../src/types.ts';
 import type { Event, NewEventShape } from '../src/types.ts';
@@ -36,6 +37,7 @@ const rowName = (id: RowId): string => NAMES[id];
 const base = {
   state: stateOf(...CLAIMED), who: 'alice', admin: false, sandbox: false, env: {},
   teamFolder: null, failures: [], adminRows: [], rowName,
+  signing: { signed: false, reason: 'no-directory' } as SigningStatus,
 };
 
 const DOC = { link: 'f3c1', file_id: '881', hash: 'abc', version_id: '1', path: '/team-folders/Planner/h1/today/2026-11-02-household.md' };
@@ -200,5 +202,31 @@ describe("Today's budget notices", () => {
       ['alice', { op: 'budget.archive', budget: 'old', archived: true, why: 'done' }]);
     assert.deepEqual(budgetNotices(state, TODAY).map((n) => n.text), ['Placitas: Groceries is short $42']);
     // Lodge has no month open now, so only the live budget with one is named.
+  });
+
+  test('an administrator is warned 30 days before the profile certificate expires', () => {
+    const now = Date.parse(NOW);
+    const signing = (days: number, extra = 0): SigningStatus =>
+      ({ signed: true, signedAs: 'planner.example.com', validTo: new Date(now + days * 86_400_000 + extra).toISOString() });
+    const run = (s: SigningStatus, admin = true) => setupNotices({ ...base, admin, signing: s, now }).filter((n) => n.kind === 'certificate');
+    const fix = 'Check the NAS task that copies it.';
+    assert.deepEqual(run(signing(12)), [{ kind: 'certificate',
+      text: `The certificate that signs the calendar profile expires in 12 days. ${fix}` }]);
+    assert.deepEqual(run(signing(12), false), []);
+    assert.deepEqual(run(signing(45)), []);
+    assert.equal(run(signing(1))[0]!.text, `The certificate that signs the calendar profile expires tomorrow. ${fix}`);
+    assert.equal(run(signing(0, 3_600_000))[0]!.text, `The certificate that signs the calendar profile expires today. ${fix}`);
+    assert.equal(run(signing(30))[0]!.kind, 'certificate');
+  });
+
+  test('an expired certificate tells the administrator the profile goes out unsigned', () => {
+    const expired: SigningStatus = { signed: false, reason: 'expired' };
+    const certs = (o: { admin: boolean; signing: SigningStatus }) =>
+      setupNotices({ ...base, ...o }).filter((n) => n.kind === 'certificate');
+    assert.deepEqual(certs({ admin: true, signing: expired }), [{ kind: 'certificate',
+      text: 'The certificate that signs the calendar profile has expired, so the profile goes out unsigned. Check the NAS task that copies it.' }]);
+    assert.deepEqual(certs({ admin: false, signing: expired }), []);
+    for (const reason of ['no-directory', 'no-certificate', 'unreadable', 'invalid'] as const)
+      assert.deepEqual(certs({ admin: true, signing: { signed: false, reason } }), [], reason);
   });
 });

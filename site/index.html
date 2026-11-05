@@ -8003,12 +8003,21 @@ function drawPhoneSheet(ps) {
   if (calArea) phoneAddButton(calArea);
 }
 
+/** What the profile will look like on the phone, from Settings' word on whether the NAS signs it. */
+function phoneProfileWords() {
+  const how = 'Opens as a profile: Settings → Profile Downloaded → Install.';
+  const signing = settingsData?.phoneSetup?.signing;
+  if (signing?.signed) return `${how} It is signed as ${signing.signedAs}, so iOS shows it as Verified.`;
+  const unsigned = `${how} It is not signed, so iOS shows "Not Signed" in red; it installs all the same.`;
+  return amAdmin ? `${unsigned} To sign it, see DEPLOY.md, Signing the calendar profile.` : unsigned;
+}
+
 /** Section 2 before a code is asked for: the button, with what the profile will say beside it. */
 function phoneAddButton(area) {
   area.textContent = '';
   const row = node('div', 'phone-add');
   row.append(textBtn('Add the calendar account', 'btn primary', 'phone-add', () => void phoneCode()),
-    node('p', '', 'Opens as a profile: Settings → Profile Downloaded → Install. It is unsigned, so iOS says "Not Verified".'));
+    node('p', '', phoneProfileWords()));
   area.appendChild(row);
 }
 

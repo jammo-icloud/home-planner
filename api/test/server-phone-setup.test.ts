@@ -249,7 +249,7 @@ describe('a phone is set up from a one-time link', () => {
 
   test('settings say where phones reach the NAS and whom to ask', async () => {
     assert.deepEqual((await call(alex, 'GET', '/api/settings')).json.phoneSetup,
-      { caldav: 'https://nas.example.com:5001/caldav/alex/', nasAdmin: 'alex' });
+      { caldav: 'https://nas.example.com:5001/caldav/alex/', nasAdmin: 'alex', signing: { signed: false, reason: 'no-directory' } });
     await saveConnector('publicUrl', { off: true }, 'alex');
     try {
       assert.equal((await call(alex, 'GET', '/api/settings')).json.phoneSetup.caldav, null);
@@ -318,6 +318,16 @@ describe('the profile is signed when a copy of the certificate is there', { skip
     const der = Buffer.from(await res.arrayBuffer());
     assert.equal(der[0], 0x30);
     assert.equal((parsePlist(await unwrap(der)) as Plist & { PayloadDisplayName: string }).PayloadDisplayName, 'Home Planner');
+  });
+
+  test('settings say whether the profile is signed, and as whom', async () => {
+    process.env['PROFILE_CERT_DIR'] = certDir;
+    const on = (await call(alex, 'GET', '/api/settings')).json.phoneSetup.signing;
+    assert.equal(on.signed, true);
+    assert.equal(on.signedAs, 'planner.example.com');
+    assert.ok(Number.isFinite(Date.parse(on.validTo)));
+    delete process.env['PROFILE_CERT_DIR'];
+    assert.deepEqual((await call(alex, 'GET', '/api/settings')).json.phoneSetup.signing, { signed: false, reason: 'no-directory' });
   });
 
   test('with no directory set the profile is the XML as before', async () => {
