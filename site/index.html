@@ -3328,7 +3328,10 @@ const FIGURE_PERS = [
   ['fortnight', 'fortnights?|fortnightly|2 weeks|two weeks|other week|bi-?weekly'],
   ['half-year', '6 months|six months|half-?\\s?years?|half-?yearly'],
   ['week', 'weeks?|wks?|w|weekly'],
-].map(([per, words]) => [per, new RegExp(`^(?:(?:an?|per|each|every|/)\\s*)?(?:${words})$`)]);
+].map(([per, words]) => [per, new RegExp(`^(?:(?:an?|per|each|every)\\s+|/\\s*)?(?:${words})$`)]);
+/** What to say when parseFigure refuses a figure. */
+const figureProblem = (text) => /^\s*-/.test(text) ? 'A figure is not less than nothing.'
+  : 'Say how often: a month, a year, a quarter, a fortnight or a week.';
 const parseFigure = (text) => {
   const m = String(text).toLowerCase().match(/^\s*(\$?\s*(?:\d[\d,]*\.?\d*|\.\d+))\s*(.*?)\s*$/);
   if (!m) return null;
@@ -3577,7 +3580,7 @@ function envelopeRow(e) {
   // giving each a figure is a tap per row rather than an editor per row.
   // A closed month is history, and its envelopes are not given figures from it.
   const acts = node('div', 'env-acts');
-  if (!month.closed) {
+  if (!month.closed && (e.needsFigure || !e.sinking)) {
     acts.appendChild(textBtn(e.needsFigure ? 'Set' : 'Change', 'btn small', null, () => openFigureForm(row, e)));
   }
   if (e.needsFigure && !month.closed) {
@@ -3730,14 +3733,14 @@ function openFigureForm(row, e) {
     amount.placeholder = 'e.g. 1,200 a year';
     // Starts from the figure as it was given: its yearly basis, else its monthly.
     amount.value = e.basis ? basisText(e.basis)
-      : !e.needsFigure && Number.isFinite(toCents(e.fundedExact)) ? (toCents(e.fundedExact) / 100).toFixed(2) : '';
+      : !e.needsFigure && e.templateExact && Number.isFinite(toCents(e.templateExact)) ? (toCents(e.templateExact) / 100).toFixed(2) : '';
     const live = node('div', 'live');
     live.setAttribute('aria-live', 'polite');
     const showLive = () => {
       const typed = amount.value.trim();
       const got = typed === '' ? null : parseFigure(typed);
       live.textContent = typed === '' ? ''
-        : !got ? 'Say how often: a month, a year, a quarter, a fortnight or a week.'
+        : !got ? figureProblem(typed)
         : got.per === 'month' ? '' : `= ${exactDollars(monthlyOfFigure(got.cents, got.per))} a month`;
     };
     amount.addEventListener('input', showLive);
@@ -3768,7 +3771,7 @@ function openFigureForm(row, e) {
       msg.textContent = '';
       // Empty is not a figure; 0 is.
       const got = amount.value.trim() === '' ? null : parseFigure(amount.value);
-      if (!got) { msg.textContent = 'Say how often: a month, a year, a quarter, a fortnight or a week.'; amount.focus(); return; }
+      if (!got) { msg.textContent = figureProblem(amount.value); amount.focus(); return; }
       save.disabled = true;
       try {
         // A figure typed as a monthly goes as a monthly alone, which clears an old basis.
