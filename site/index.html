@@ -169,6 +169,58 @@
   .figure-form{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:13px}
   .figure-form .f{flex:1 1 140px;min-width:0}
 
+  /* Budget's rows: one button per envelope, the name over its bar, the amount over one small line, a chevron.
+     No figure is warm behind it, short is red; nothing in a row opens in place. */
+  .erow{display:grid;grid-template-columns:minmax(0,1fr) auto auto;align-items:center;gap:var(--sp-3);width:100%;
+    min-height:64px;margin:0;padding:var(--sp-2) var(--sp-4);font:inherit;text-align:left;color:var(--ink);
+    background:none;border:0;border-top:var(--stroke) solid var(--hair);border-radius:0;cursor:pointer;scroll-margin-top:72px}
+  .erow.needs-figure{background:var(--figure-row)}
+  .erow.short{background:var(--short-row)}
+  .erow:active{background:var(--surface-sunken)}
+  .erow:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+  .erow-l{display:grid;gap:var(--sp-2);min-width:0}
+  .erow-name{font-size:var(--fs-ui);font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .erow .bar{margin-top:0}
+  .erow-r{display:grid;justify-items:end;gap:2px;text-align:right}
+  .erow-amt{font-size:var(--fs-body);font-weight:600;white-space:nowrap;font-variant-numeric:tabular-nums}
+  .erow-amt.over{color:var(--problem)}
+  .erow-amt.fig{color:var(--figure-chip-ink)}
+  .erow-sub{font-size:var(--fs-micro);color:var(--ink-soft);white-space:nowrap}
+  .erow .chev{color:var(--ink-faint)}
+
+  /* An envelope's page: the Settings page frame, then the card and the sections under it. */
+  .ep{scroll-margin-top:72px}
+  .ep-body{display:grid;gap:var(--sp-6);min-width:0}
+  .ep-card{display:grid;gap:var(--sp-3);padding:var(--sp-4);background:var(--surface-raised);
+    border:var(--stroke) solid var(--line);border-radius:var(--r-card);box-shadow:var(--e-1)}
+  .ep-big{margin:0;font-size:var(--fs-headline);font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+  .ep-big.over{color:var(--problem)}
+  .ep-big span{font-size:var(--fs-small);font-weight:500;letter-spacing:0;color:var(--ink-soft)}
+  .ep-meter{height:8px;border-radius:999px;background:var(--hair);overflow:hidden}
+  .ep-meter span{display:block;height:100%;background:var(--accent);border-radius:999px}
+  .ep-meter span.over{background:var(--problem)}
+  .ep-sums{display:flex;justify-content:space-between;flex-wrap:wrap;gap:var(--sp-1) var(--sp-3);margin:0;
+    font-size:var(--fs-small);color:var(--ink-soft)}
+  .ep-sec{display:grid;gap:var(--sp-2);min-width:0}
+  .ep-sec[hidden]{display:none}
+  /* Scrolled to the top for a form: the heading lands below the sticky bar, the field clear of a phone's keyboard. */
+  .ep-sec-h{margin:0;font-size:var(--fs-ui);font-weight:600;color:var(--ink);scroll-margin-top:72px}
+  /* A phone's bar is two rows, the search box under the screens: the heading clears that too. */
+  @container page (max-width: 759px){ .ep,.ep-sec-h{scroll-margin-top:100px} }
+  .ep-sec-h:focus{outline:none}
+  .ep-sec-h .count{margin-left:var(--sp-1);padding:0;background:none;border:0;border-radius:0;box-shadow:none;
+    font-weight:500;color:var(--ink-faint)}
+  .ep-line{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--sp-3);margin:0;font-size:var(--fs-body)}
+  .ep-t{display:grid;gap:2px;min-width:0}
+  .ep-t .was{font-size:var(--fs-small)}
+  .ep-form{display:grid;gap:var(--sp-3);min-width:0}
+  .ep-q{margin:0;font-size:var(--fs-title);font-weight:600}
+  .ep-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+  .ep-form .err{margin:0}
+  .rcpts{padding:var(--sp-1) var(--sp-4) var(--sp-3)}
+  .ep-foot{display:flex;flex-wrap:wrap;gap:0 var(--sp-5);padding-top:var(--sp-3);border-top:var(--stroke) solid var(--hair)}
+  .ep-foot .link{min-height:var(--tap)}
+
   /* ── the budget walkthrough: the steps in a rail, the current one beside it ── */
   #app:has(#walk:not([hidden])) .wrap{max-width:calc(220px + var(--sp-8) + var(--measure))}
   .walk{margin-top:0}
@@ -1572,6 +1624,8 @@
     </div>
 
     <div id="budget" hidden>
+      <!-- The list of envelopes, or one envelope's own page in its place: never both. -->
+      <div id="budget-list">
       <div class="toassign" id="toassign">
         <div class="ta-main">
           <div class="v" id="ta-v"></div>
@@ -1616,7 +1670,9 @@
         <p id="month-note"></p>
         <button class="btn" id="month-close" type="button">Close the month</button>
       </section>
+      </div>
 
+      <section id="env-page" hidden></section>
     </div>
 
     <!-- A budget with no envelopes has nothing else to show, so the walkthrough is
@@ -3126,6 +3182,12 @@ document.addEventListener('visibilitychange', () => {
 
 // ── budget ─────────────────────────────────────────────────────────────────
 let month = null;
+/**
+ * The envelope whose page is open in place of the list, or null for the list.
+ * A fresh object each time one opens, so a reply that lands after Back (or
+ * after another envelope was opened) can tell it is no longer wanted.
+ */
+let envelopePage = null;
 
 /** "$2,204.00" -> 220400. Exact, which is why the API sends exact dollars. */
 const toCents = (text) => {
@@ -3239,7 +3301,7 @@ async function loadBudget() {
     $('budget-pick').value = fr.budget;
     markChosenBudget();
   }
-  if (fr.step || pricingFor === fr.budget) { drawWalk(fr); return; }
+  if (fr.step || pricingFor === fr.budget) { clearEnvelopePage(); drawWalk(fr); return; }
   pricingFor = null;
   // Every committed change comes back through here, so this is where a cached
   // category list goes stale — a category added a moment ago has to be in the
@@ -3257,12 +3319,15 @@ async function loadBudget() {
   // refused answer left the Budget screen a blank card with no rows (straight after the
   // walkthrough's Finish, until a reload).
   let result;
+  // A row with focus (Back from its page, a moment ago) keeps it through the redraw.
+  let rowFocus = null;
   try {
     ({ result } = await api('/api/tools/get_month', chosenBudget() ? { budget: chosenBudget() } : {}));
   } finally {
     if (load === budgetLoads) {
       $('walk').hidden = true;
       $('budget').hidden = view !== 'budget';
+      rowFocus = document.activeElement?.closest?.('#bands [data-envelope]')?.dataset.envelope ?? null;
       $('bands').textContent = '';
     }
   }
@@ -3334,6 +3399,8 @@ async function loadBudget() {
     $('bands').appendChild(band);
   }
   if (saved.length) $('bands').appendChild(savingsBand(saved, result.savings));
+  if (envelopePage?.view === 'envelope') renderEnvelopePage();
+  else if (rowFocus && !envelopePage) $('bands').querySelector(`[data-envelope="${CSS.escape(rowFocus)}"]`)?.focus({ preventScroll: true });
 }
 
 /** The envelopes saved in Savings, and under them what Savings showed against them. */
@@ -3358,124 +3425,78 @@ function savingsBand(list, check) {
   return band;
 }
 
-function envelopeRow(e) {
-  const row = document.createElement('div');
-  row.className = e.needsFigure ? 'env needs-figure' : e.short ? 'env short' : 'env';
-  // So the card, and Today, can find the row an envelope is drawn in.
-  row.dataset.envelope = e.id;
-
-  const head = document.createElement('div');
-  head.className = 'env-head';
-  const name = document.createElement('div');
-  name.className = 'env-name';
-  name.textContent = e.label;
-  // With no figure there is nothing for "left" to be measured from, so the
-  // chip says what is missing instead of showing $0.
-  // Short says by how much, in the red chip, where what is left would be.
-  const left = e.needsFigure
-    ? node('span', 'chip figure', 'Action required')
-    : e.short ? node('span', 'chip short', `Short ${coverMoney(e.short.amount)}`)
-    : node('div', `env-left ${e.overspent ? 'over' : ''}`, e.left);
-  head.append(name, left);
-
-  // Under the name: where the figure came from, or what could help give one.
-  const sub = node('div', 'env-sub');
-  if (e.source) sub.appendChild(node('span', 'chip source', e.source));
-  if (e.needsFigure && e.hint) sub.appendChild(node('p', 'env-hint', e.hint.text));
-
-  const meta = document.createElement('div');
-  meta.className = 'env-meta';
-  const funded = document.createElement('span');
-  // Both numbers whenever the month has been adjusted. The plan of record is
-  // immutable precisely so "was $975" stays answerable in December.
-  // A month that opened with no plan for it has nothing to have been, so a
-  // first figure reads as funded alone, not "was $0".
-  funded.innerHTML = e.adjustedBy && toCents(e.plannedExact) !== 0
-    ? `${e.funded} funded <span class="was">was ${e.planned}</span>`
-    : `${e.funded} funded`;
-  const spent = document.createElement('span');
-  spent.textContent = `${e.spent} spent`;
-  meta.append(funded, spent);
-  // A figure given by the year, quarter or week keeps saying so, so a later edit starts from it.
-  if (e.basis && !e.needsFigure) meta.appendChild(node('span', 'was', `from $${basisText(e.basis)}`));
-  if (toCents(e.carriedIn) !== 0) {
-    const c = document.createElement('span');
-    c.className = 'was';
-    c.textContent = `${e.carriedIn} carried in`;
-    meta.appendChild(c);
-  }
-
-  // Saved in Savings: what it holds is saved so far, and the bar fills toward
-  // the goal rather than emptying as it is spent.
+/**
+ * How full an envelope's bar is: spent against funded (carried-in money counts
+ * as funded); for one saved in Savings, saved toward its goal; full, in the
+ * problem colour, when overspent; empty while it has no figure to measure from.
+ */
+function envFill(e) {
+  if (e.needsFigure) return { pct: 0, over: false };
+  if (e.overspent) return { pct: 100, over: true };
   const s = e.sinking;
   if (s) {
-    const goal = node('span');
-    goal.textContent = s.kind === 'by'
-      ? `${s.saved} saved of ${s.goal} ${s.passed ? 'that was due by' : 'by'} ${s.byName}`
-      : toCents(s.goalExact) > 0 ? `${s.saved} saved toward ${s.goal} of estimates` : 'No estimates yet';
-    const monthly = node('span', 'was', `${s.monthly} a month`);
-    meta.prepend(goal, monthly);
+    const goal = toCents(s.goalExact);
+    return { pct: goal > 0 ? Math.max(0, Math.min(100, (toCents(s.savedExact) / goal) * 100)) : 0, over: false };
   }
+  const funded = toCents(e.fundedExact) + toCents(e.carriedIn);
+  return { pct: funded > 0 ? Math.min(100, (toCents(e.spentExact) / funded) * 100) : 0, over: false };
+}
 
-  const bar = document.createElement('div');
-  bar.className = 'bar';
-  const fill = document.createElement('span');
-  const fundedC = toCents(e.fundedExact) + toCents(e.carriedIn);
-  const pct = s
-    ? (toCents(s.goalExact) > 0 ? Math.max(0, Math.min(100, (toCents(s.savedExact) / toCents(s.goalExact)) * 100)) : 0)
-    : fundedC > 0 ? Math.min(100, (toCents(e.spentExact) / fundedC) * 100) : 0;
-  fill.style.width = `${e.overspent ? 100 : pct}%`;
-  if (e.overspent) fill.className = 'over';
+/** The bar (a row's) or the meter (the page's) for an envelope, filled by envFill. */
+function envBar(e, tag, cls) {
+  const bar = node(tag, cls);
+  const fill = node('span');
+  const { pct, over } = envFill(e);
+  fill.style.width = `${pct}%`;
+  if (over) fill.className = 'over';
   bar.appendChild(fill);
+  return bar;
+}
 
-  const body = document.createElement('div');
-  body.className = 'env-body';
-  body.hidden = true;
-  head.tabIndex = 0;
-  head.setAttribute('role', 'button');
-  head.setAttribute('aria-expanded', 'false');
-  const toggle = () => {
-    if (body.hidden) openEnvBody(row, e);
-    else { body.hidden = true; head.setAttribute('aria-expanded', 'false'); }
-  };
-  head.addEventListener('click', toggle);
-  head.addEventListener('keydown', (ev) => {
-    if (ev.key === 'Enter' || ev.key === ' ') { ev.preventDefault(); toggle(); }
-  });
-
-  // An envelope with no figure carries its way to one on the row itself, so
-  // giving each a figure is a tap per row rather than an editor per row.
-  // A closed month is history, and its envelopes are not given figures from it.
-  const acts = node('div', 'env-acts');
-  if (!month.closed && (e.needsFigure || !e.sinking)) {
-    acts.appendChild(textBtn(e.needsFigure ? 'Set' : 'Change', 'btn small', null, () => openFigureForm(row, e)));
+/**
+ * One envelope in the list: a button the width of the list that opens its page.
+ * The name and its bar, what it has (or what is wrong) and one small line under
+ * that, a chevron. Its text is its accessible name, so all of it is read; the
+ * spaces between the columns are there for that, and take no room in the grid.
+ */
+function envelopeRow(e) {
+  const row = node('button', `erow${e.needsFigure ? ' needs-figure' : e.short ? ' short' : ''}`);
+  row.type = 'button';
+  // So the card, Today and Back can find the row an envelope is drawn in.
+  row.dataset.envelope = e.id;
+  // Funded with what was carried in: what "left of" and "spent of" are measured against.
+  const F = coverMoney(toCents(e.fundedExact) + toCents(e.carriedIn));
+  const s = e.sinking;
+  let amt;
+  let sub;
+  let tone = '';
+  if (e.needsFigure) {
+    amt = 'No figure yet';
+    tone = ' fig';
+    sub = spentWords(e);
+  } else if (e.short) {
+    amt = `Short ${coverMoney(e.short.amount)}`;
+    tone = ' over';
+    sub = `${e.spent} spent of ${F}`;
+  } else if (s) {
+    amt = s.saved;
+    sub = s.kind === 'by' ? `of ${s.goal} goal · ${s.byName}`
+      : toCents(s.goalExact) > 0 ? `of ${s.goal} of estimates` : 'no estimates yet';
+  } else {
+    amt = e.left;
+    sub = `left of ${F}`;
   }
-  if (e.needsFigure && !month.closed) {
-    const use = e.hint?.use;
-    if (use) {
-      const b = textBtn(use.label, 'btn small', null, async () => {
-        b.disabled = true;
-        try {
-          await approveNow('set_envelope_figure', {
-            budget: month.budget, envelope: e.id, amountCents: use.cents, month: month.month,
-          });
-          await loadBudget();
-        } catch (ex) { b.disabled = false; showProblem(ex); }
-      });
-      acts.appendChild(b);
-    }
-    // Pricing reads the budget's place, so it is the budget menu's own action, run from here.
-    if (e.hint?.price) acts.appendChild(textBtn('Price it from local data', 'btn small', null, () => $('bud-seed').click()));
-  }
-
-  // A row with no figure has no bar and no funded and spent: nothing funded is
-  // nothing to measure against, and the hint says what is missing instead.
-  // A short one has its cover card under it, while the month is open.
-  row.append(head, ...(sub.childNodes.length ? [sub] : []), ...(e.needsFigure ? [] : [meta, bar]),
-    ...(e.short && !month.closed ? [coverCard(e)] : []),
-    ...(acts.childNodes.length ? [acts] : []), body);
+  const left = node('span', 'erow-l');
+  left.append(node('span', 'erow-name', e.label), ' ', envBar(e, 'span', 'bar'));
+  const right = node('span', 'erow-r');
+  right.append(node('span', `erow-amt${tone}`, amt), ' ', node('span', 'erow-sub', sub));
+  row.append(left, ' ', right, icon('go', 'i sm chev'));
+  row.addEventListener('click', () => { openEnvelopePage(e.id); });
   return row;
 }
+
+/** "$212 spent", or "nothing spent": what an envelope with no figure says instead of what is left. */
+const spentWords = (e) => (toCents(e.spentExact) === 0 ? 'nothing spent' : `${e.spent} spent`);
 
 /** A cover amount: whole dollars when it is whole, as "$42", and to the cent when it is not. */
 const coverMoney = (c) => exactDollars(c).replace(/\.00$/, '');
@@ -3559,96 +3580,304 @@ function coverCard(e) {
   return card;
 }
 
-/** Shows an envelope's row open, building its editor and receipts the first time. */
-function openEnvBody(row, e) {
-  const body = row.querySelector(':scope > .env-body');
-  if (!body.dataset.built) {
-    // A closed month is history. Its receipts still read; its money does not move.
-    if (!month.closed) buildEditor(body, e);
-    void showReceipts(body, e);
-    body.dataset.built = '1';
-  }
-  body.hidden = false;
-  row.querySelector(':scope > .env-head').setAttribute('aria-expanded', 'true');
-  return body;
-}
-
 /** Run one of the tools the server approves in one request; answers { proposal, summary, committed, touches, lastEventId }. */
 const approveNow = (tool, args) => api(`/api/tools/${tool}?approve=1`, args);
 
+// ── an envelope's page ─────────────────────────────────────────────────────
+//
+// Tapping a row hides the list and draws that envelope's page in its place,
+// on the model of a Settings page: the list's scroll kept for Back, the window
+// at the top once, focus moved without scrolling, Escape going Back, and every
+// reply checked against the page it was asked from (`envelopePage === page`)
+// so one that lands after Back draws nothing and moves no focus.
+
+/** Back to the list with no page and no Escape listener: what every way off the page starts from. */
+function clearEnvelopePage() {
+  envelopePage = null;
+  document.removeEventListener('keydown', envPageEscape);
+  $('budget-list').hidden = false;
+  $('env-page').hidden = true;
+  $('env-page').textContent = '';
+}
+
 /**
- * The figure form, at the top of the row's open body: one amount, for this month
- * and every month after. Saved at once, since a figure is the envelope's own
- * plan and moves nothing else; a typed 0 is a figure too.
+ * Open an envelope's page. `linked`: opened from elsewhere (a notice on Today),
+ * so the list was never seen at a scroll and Back brings the row into view.
+ * `focus` names the control to start on. False when this month has no such envelope.
  */
-function openFigureForm(row, e) {
-  // A closed month is history: it gives no envelope a figure, so there is no form.
-  if (month.closed) return null;
-  const body = openEnvBody(row, e);
-  let form = body.querySelector(':scope > .figure-form');
-  if (!form) {
-    form = node('form', 'figure-form');
-    const f = node('div', 'f');
-    const control = figureField({
-      label: 'From this month on',
-      amount: !e.needsFigure && Number.isFinite(toCents(e.basis?.amount ?? e.templateExact)) ? plainDollars(e.basis?.amount ?? e.templateExact) : '',
-      per: e.basis?.per ?? 'month',
-      averages: e.hint?.averages ?? [],
-    });
-    f.appendChild(control.el);
-    const save = node('button', 'btn primary', 'Save');
-    save.type = 'submit';
-    const msg = node('span', 'msg');
-    msg.setAttribute('role', 'status');
-    form.append(f, save, msg);
-    form.addEventListener('submit', async (ev) => {
-      ev.preventDefault();
-      msg.textContent = '';
-      // Empty is not a figure; 0 is.
-      const got = control.value();
-      if (!got) { msg.textContent = 'A number, in dollars.'; control.focus(); return; }
-      save.disabled = true;
-      try {
-        // A figure typed as a monthly goes as a monthly alone, which clears an old basis.
-        await approveNow('set_envelope_figure', {
-          budget: month.budget, envelope: e.id, month: month.month,
-          ...(got.per === 'month' ? { amountCents: got.amountCents } : { basis: got }),
-        });
-        await loadBudget();
-      } catch (ex) {
-        msg.textContent = ex.message;
-        save.disabled = false;
-      }
-    });
-    body.prepend(form);
+function openEnvelopePage(id, { linked = false, focus = null } = {}) {
+  if (!month?.envelopes?.some((x) => x.id === id)) return false;
+  envelopePage = { id, view: 'envelope', editing: null, listScroll: linked ? null : window.scrollY };
+  // Whatever opened it (a row, a notice on Today, the card) gives focus up to the page.
+  document.activeElement?.blur?.();
+  $('budget-list').hidden = true;
+  $('env-page').hidden = false;
+  renderEnvelopePage({ focus });
+  window.scrollTo({ top: 0 });
+  // A field that takes focus as the page opens (the question's amount) sits in the top half, clear of a
+  // phone's keyboard: when the budget's head above would push it lower, the page's own head goes to the top.
+  const field = document.activeElement?.matches?.('#env-page input, #env-page select') ? document.activeElement : null;
+  if (field && field.getBoundingClientRect().bottom > window.innerHeight / 2) $('env-page').querySelector('.ep')?.scrollIntoView({ block: 'start' });
+  // Escape goes Back while a page is open.
+  document.addEventListener('keydown', envPageEscape);
+  return true;
+}
+
+/** Back to the list: at the scroll it was left at, or with the row brought into view, and focus on the row. */
+function closeEnvelopePage({ refocus = true } = {}) {
+  const page = envelopePage;
+  clearEnvelopePage();
+  if (!page) return;
+  const row = $('bands').querySelector(`[data-envelope="${CSS.escape(page.id)}"]`);
+  if (page.listScroll === null) row?.scrollIntoView({ block: 'center' }); else window.scrollTo({ top: page.listScroll });
+  if (refocus) row?.focus({ preventScroll: true });
+}
+
+/**
+ * Escape on the page goes Back: from inside it, or with focus fallen to the
+ * page itself. Not from the bar above (the search box), a menu or a sheet,
+ * which have their own Escape. From a page of its own (funding, Remove) it
+ * goes back to the envelope.
+ */
+function envPageEscape(ev) {
+  if (!envelopePage) { document.removeEventListener('keydown', envPageEscape); return; }
+  if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+  // A sheet over the page (the categories, your iPhone) has its own Done: nothing under it goes Back.
+  if (!$('cat-sec').hidden || !$('phone-sec').hidden) return;
+  const host = $('env-page');
+  const t = ev.target;
+  if (!(t === document.body || t === document.documentElement || host.contains(t))) return;
+  ev.preventDefault();
+  if (envelopePage.view === 'envelope') { closeEnvelopePage(); return; }
+  const from = envelopePage.view;
+  // A fresh object: a reply to the page being left must not draw on the envelope.
+  envelopePage = { ...envelopePage, view: 'envelope', editing: null };
+  renderEnvelopePage({ focus: from === 'remove' ? 'remove' : 'adjust' });
+}
+
+/**
+ * The page's frame: Back, the envelope's name as the heading, a line under it,
+ * and the body the sections go in.
+ */
+function envFrame({ back, onBack, title, line }) {
+  const section = node('section', 'set-page ep');
+  section.setAttribute('aria-labelledby', 'env-page-h');
+  const head = node('div', 'set-page-head');
+  const b = textBtn('', 'back', null, onBack);
+  b.append(icon('back', 'i'), back);
+  const h = node('h1', '', title);
+  h.id = 'env-page-h';
+  h.tabIndex = -1;
+  h.dataset.key = 'heading';
+  head.append(b, h, node('p', 'set-line', line));
+  const body = node('div', 'ep-body');
+  section.append(head, body);
+  return { section, body };
+}
+
+/** One section of the page: its heading (focusable when `key` names it) and the slot its line or form goes in. */
+function envSection(title, key) {
+  const el = node('section', 'ep-sec');
+  const h = node('h2', 'ep-sec-h', title);
+  if (key) { h.dataset.key = key; h.tabIndex = -1; }
+  const slot = node('div', 'ep-slot');
+  el.append(h, slot);
+  return { el, slot };
+}
+
+/** Whether this month's funding was moved off the plan: a month that opened with no plan has nothing to have been. */
+const envAdjusted = (e) => !!e.adjustedBy && toCents(e.plannedExact) !== 0;
+
+/** A line on the page: what it says over what it means, and the one action beside it. */
+function envLine(main, sub, action) {
+  const p = node('p', 'ep-line');
+  const t = node('span', 'ep-t');
+  t.appendChild(node('span', '', main));
+  if (sub) t.append(' ', node('span', 'was', sub));
+  p.appendChild(t);
+  if (action) p.append(' ', action);
+  return p;
+}
+
+/**
+ * A figure for this month and every month after, in a form: the question form
+ * that stands in for the card while there is none, and Each month's Change.
+ * Saved at once, since a figure is the envelope's own plan and moves nothing
+ * else. A refusal goes in the form's own slot with what was typed kept.
+ */
+function envFigureForm(e, { amount = '', per = 'month', question = false, onCancel = null, done }) {
+  const form = node('form', 'ep-form');
+  if (question) form.appendChild(node('h2', 'ep-q', 'How much each month?'));
+  const control = figureField({
+    label: 'From this month on', amount, per,
+    averages: e.hint?.averages ?? [], price: !!e.hint?.price, hint: e.hint?.text ?? '',
+  });
+  const acts = node('div', 'ep-acts');
+  const save = node('button', 'btn primary', 'Save');
+  save.type = 'submit';
+  acts.appendChild(save);
+  if (onCancel) acts.appendChild(textBtn('Cancel', 'btn', null, onCancel));
+  const err = node('p', 'err ep-err');
+  err.setAttribute('aria-live', 'polite');
+  err.tabIndex = -1;
+  err.hidden = true;
+  const say = (text) => { err.textContent = text; err.hidden = !text; };
+  form.append(control.el, acts, err);
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    say('');
+    // Empty is not a figure; 0 is.
+    const got = control.value();
+    if (!got) { say('A number, in dollars.'); control.focus(); return; }
+    const page = envelopePage;
+    save.disabled = true;
+    try {
+      // A figure typed as a monthly goes as a monthly alone, which clears an old basis.
+      await approveNow('set_envelope_figure', {
+        budget: month.budget, envelope: e.id, month: month.month,
+        ...(got.per === 'month' ? { amountCents: got.amountCents } : { basis: { amountCents: got.amountCents, per: got.per } }),
+      });
+      if (envelopePage !== page) return;
+      await loadBudget();
+      if (envelopePage !== page) return;
+    } catch (ex) {
+      if (envelopePage !== page) return;
+      say(ex.message);
+      save.disabled = false;
+      err.focus({ preventScroll: true });
+      return;
+    }
+    page.editing = null;
+    renderEnvelopePage({ focus: done });
+  });
+  return { form, control };
+}
+
+/** The envelope, one card: what is left, a meter, funded on the left and spent on the right. */
+function envCard(e) {
+  const card = node('div', 'ep-card');
+  const big = node('p', `ep-big${e.overspent ? ' over' : ''}`, e.left);
+  big.append(' ', node('span', '', 'left'));
+  const funded = node('span');
+  funded.appendChild(node('span', '', envAdjusted(e) ? `${e.funded} funded · was ${e.planned}` : `${e.funded} funded`));
+  if (toCents(e.carriedIn) !== 0) funded.append(' ', node('span', 'was', `${e.carriedIn} carried in`));
+  const sums = node('p', 'ep-sums');
+  sums.append(funded, ' ', node('span', '', `${e.spent} spent`));
+  card.append(big, envBar(e, 'div', 'ep-meter'), sums);
+  return card;
+}
+
+/**
+ * The open envelope's page, drawn whole from `month`. Focus goes to the
+ * control `focus` names, else back to the one that had it, else the amount of
+ * the question form, else the heading; it is left alone when it is somewhere
+ * else (the search box) while a reload draws the page again.
+ */
+function renderEnvelopePage({ focus = null } = {}) {
+  const page = envelopePage;
+  if (!page) return;
+  const e = month?.envelopes?.find((x) => x.id === page.id);
+  if (!e) { closeEnvelopePage({ refocus: false }); return; }
+  const host = $('env-page');
+  const active = document.activeElement;
+  const inPage = !!active && host.contains(active);
+  const had = inPage ? active.dataset?.key ?? null : null;
+  const takeFocus = focus !== null || inPage || !active || active === document.body || $('budget-list').contains(active);
+  // Drawn as it stands: a form that was open is gone with the old drawing.
+  page.editing = null;
+  const open = !month.closed;
+  // With no figure, the first thing on the page is the only thing to do.
+  const asking = e.needsFigure && open;
+
+  const { section, body } = envFrame({
+    back: 'Budget', onBack: () => closeEnvelopePage(), title: e.label,
+    line: `${e.sinking ? 'Saved in Savings' : e.group} · ${monthLong(month.month)}`,
+  });
+  body.appendChild(asking ? envFigureForm(e, { question: true, done: 'heading' }).form : envCard(e));
+
+  // Each month: the figure, and where it came from. Left out under the question form,
+  // except as the place the goal form opens.
+  const each = envSection('Each month');
+  each.el.hidden = asking;
+  const drawEach = () => {
+    const change = open && !e.sinking ? textBtn('Change', 'btn small', 'change', () => {
+      page.editing = 'figure';
+      const amt = e.basis?.amount ?? e.templateExact;
+      const { form, control } = envFigureForm(e, {
+        amount: Number.isFinite(toCents(amt)) ? plainDollars(amt) : '',
+        per: e.basis?.per ?? 'month',
+        onCancel: () => { page.editing = null; drawEach(); each.slot.querySelector('[data-key="change"]')?.focus({ preventScroll: true }); },
+        done: 'change',
+      });
+      each.slot.replaceChildren(form);
+      // The section's heading to the top, under the sticky bar, so the field is clear of a phone's keyboard.
+      each.el.querySelector('.ep-sec-h').scrollIntoView({ block: 'start' });
+      control.focus();
+    }) : null;
+    each.slot.replaceChildren(envLine(`${coverMoney(toCents(e.templateExact))} a month`,
+      e.basis ? `from $${basisText(e.basis)}` : e.source ?? '', change));
+  };
+  drawEach();
+  body.appendChild(each.el);
+
+  // This month: what it was funded with, and whether that was the plan.
+  const now = envSection('This month');
+  if (e.needsFigure) {
+    now.slot.appendChild(envLine(spentWords(e), 'Nothing funded yet. Give it a figure first.', null));
+  } else {
+    const adjust = open ? textBtn('Adjust', 'btn small', 'adjust', () => {
+      if (!now.slot.querySelector('.edit')) buildEditor(now.slot, e);
+      now.el.querySelector('.ep-sec-h').scrollIntoView({ block: 'start' });
+      now.slot.querySelector('.edit input')?.focus({ preventScroll: true });
+    }) : null;
+    now.slot.appendChild(envLine(`${e.funded} funded`, envAdjusted(e) ? `was ${e.planned}` : 'as planned', adjust));
   }
-  form.querySelector('[data-key="amount"]').focus();
-  return form;
+  body.appendChild(now.el);
+
+  // Receipts: the existing list, its head drawn as this section's once the count is known.
+  const rec = envSection('Receipts');
+  const rcpts = node('div', 'list rcpts');
+  rec.slot.appendChild(rcpts);
+  body.appendChild(rec.el);
+
+  // A closed month is history: nothing on its page changes the envelope.
+  if (open) {
+    const foot = node('div', 'ep-foot');
+    foot.append(
+      textBtn(e.sinking ? 'Change its goal' : 'Make this a savings goal', 'link', 'goal', () => {
+        page.editing = 'goal';
+        each.el.hidden = false;
+        each.el.querySelector('.ep-sec-h').scrollIntoView({ block: 'start' });
+        void goalForm(each.slot, e, { onCancel: () => renderEnvelopePage({ focus: 'goal' }) });
+      }),
+      textBtn('Remove this envelope', 'link', 'remove', () => {
+        panel(`Remove ${e.label} from this budget`, [
+          { name: 'why', label: 'Why', placeholder: 'Its receipts stop belonging to any envelope', wide: true },
+        ], (i) => ({
+          tool: 'remove_envelope',
+          args: { budget: month.budget, envelope: e.id, why: i.why.value },
+        }));
+      }),
+    );
+    body.appendChild(foot);
+  }
+
+  host.replaceChildren(section);
+  void showReceipts(rcpts, e);
+  if (!takeFocus) return;
+  const want = [focus, had, asking ? 'amount' : null, 'heading'].filter(Boolean);
+  for (const key of want) {
+    const to = host.querySelector(`[data-key="${CSS.escape(key)}"]`);
+    if (to && !to.disabled && !to.closest('[hidden]')) { to.focus({ preventScroll: true }); return; }
+  }
 }
 
-/**
- * Brings an envelope's row to the top of the Budget screen: with `cover`, at
- * its cover card's first button; otherwise, while it needs a figure, at its
- * figure form.
- */
-function goToRow(envelope, cover) {
-  const row = envelope && $('bands').querySelector(`[data-envelope="${CSS.escape(envelope)}"]`);
-  if (!row) return;
-  row.scrollIntoView({ block: 'start', behavior: 'smooth' });
-  const e = month.envelopes.find((x) => x.id === envelope);
-  // The row is on its way to the top; focus must not jump it somewhere else.
-  row.querySelector('.env-head').focus({ preventScroll: true });
-  const first = cover ? row.querySelector(':scope > .cover button:not([disabled])')
-    : e?.needsFigure ? openFigureForm(row, e)?.querySelector('[data-key="amount"]') : null;
-  first?.focus({ preventScroll: true });
-}
-
-// The card's way down the list: the first envelope still with no figure, open at its form.
-$('ta-next').addEventListener('click', () => { goToRow(month?.card?.next, false); });
+// The card's way down the list: the first envelope still with no figure, open at its question.
+$('ta-next').addEventListener('click', () => { if (month?.card?.next) openEnvelopePage(month.card.next); });
 
 /**
  * From a notice on Today: the budget it is about chosen, the Budget screen
- * shown, and the envelope's row brought up at its cover card or its figure form.
+ * shown, and the envelope's page opened, at its cover or its figure.
  */
 async function openBudgetAt(budget, envelope, cover) {
   if (budget && budget !== chosenBudget()) {
@@ -3658,7 +3887,8 @@ async function openBudgetAt(budget, envelope, cover) {
     month = null;
   }
   await showView('budget');
-  if (month) goToRow(envelope, cover);
+  if (!envelope || view !== 'budget' || month?.budget !== chosenBudget()) return;
+  if (month.envelopes.some((x) => x.id === envelope)) openEnvelopePage(envelope, { linked: true, focus: cover ? 'cover' : null });
 }
 
 function buildEditor(body, e) {
@@ -3713,6 +3943,7 @@ function buildEditor(body, e) {
 
     go.disabled = true;
     row.querySelector('.msg')?.remove();
+    const page = envelopePage;
     try {
       // Moving between envelopes is zero-sum and leaves the month total alone;
       // assigning changes it. Which one this is depends on where it comes from.
@@ -3726,8 +3957,10 @@ function buildEditor(body, e) {
       if (from.value && target - now <= 0) throw new Error('a move has to be an increase — reduce the other envelope instead');
 
       const { proposal } = await api(`/api/tools/${call.tool}`, call.args);
+      if (envelopePage !== page) return;
       showProposal(body, proposal, go);
     } catch (ex) {
+      if (envelopePage !== page) return;
       const m = document.createElement('span');
       m.className = 'msg';
       m.style.color = 'var(--problem)';
@@ -3738,22 +3971,8 @@ function buildEditor(body, e) {
       go.disabled = false;
     }
   });
-  const drop = document.createElement('button');
-  drop.className = 'btn';
-  drop.textContent = 'Remove this envelope';
-  drop.addEventListener('click', () => {
-    panel(`Remove ${e.label} from this budget`, [
-      { name: 'why', label: 'Why', placeholder: 'Its receipts stop belonging to any envelope', wide: true },
-    ], (i) => ({
-      tool: 'remove_envelope',
-      args: { budget: month.budget, envelope: e.id, why: i.why.value },
-    }));
-  });
-  const goal = document.createElement('button');
-  goal.className = 'btn';
-  goal.textContent = e.sinking ? 'Change its goal' : 'Save it in Savings';
-  goal.addEventListener('click', () => void goalForm(body, e, goal));
-  row.append(go, goal, drop);
+  // The goal and Remove are the page's own links, at its foot.
+  row.append(go);
   body.append(form, row);
 }
 
@@ -3761,9 +3980,11 @@ function buildEditor(body, e) {
  * Saved in Savings: the goal, and for one saved every so often the estimates
  * on its categories, edited here though they are kept on the categories, so
  * every budget works out the same figure. Shown, then approved, like any change.
+ * Drawn in `slot` in place of what it holds, once the categories are read;
+ * nothing when the page it was opened on has gone by then.
  */
-async function goalForm(body, e, trigger) {
-  body.querySelector('.goal-form')?.remove();
+async function goalForm(slot, e, { onCancel }) {
+  const page = envelopePage;
   const s = e.sinking;
   const wrap = node('div', 'goal-form');
   const fieldOf = (label, el, cls = 'f') => {
@@ -3784,6 +4005,7 @@ async function goalForm(body, e, trigger) {
 
   // Every so often: one line per category feeding it, with its estimate if it has one.
   const cats = await categoryList();
+  if (!slot.isConnected || envelopePage !== page) return;
   const estimates = s?.estimates ?? (e.categories ?? []).map((id) => {
     const c = cats.find((x) => x.id === id);
     return { category: id, label: c?.label ?? id, cost: c?.sinking?.cost ?? null, everyYears: c?.sinking?.everyYears ?? null };
@@ -3846,15 +4068,17 @@ async function goalForm(body, e, trigger) {
         });
       }
       const { proposal } = await api('/api/tools/set_sinking_goal', args);
-      showProposal(body, proposal, go);
+      if (envelopePage !== page) return;
+      showProposal(slot, proposal, go);
     } catch (ex) {
+      if (envelopePage !== page) return;
       msg.textContent = ex.message;
     }
   });
-  row.append(go, msg);
+  row.append(go, textBtn('Cancel', 'btn', null, onCancel), msg);
   wrap.append(head, every, byLine, row);
-  body.insertBefore(wrap, trigger.parentElement.nextSibling);
-  kind.focus();
+  slot.replaceChildren(wrap);
+  kind.focus({ preventScroll: true });
 }
 
 function showProposal(body, proposal, trigger) {
@@ -3876,10 +4100,14 @@ function showProposal(body, proposal, trigger) {
   yes.textContent = proposal.summary;
   yes.addEventListener('click', async () => {
     yes.disabled = true;
+    // Approved on an envelope's page: once Back has been pressed, the reply draws nothing.
+    const page = envelopePage;
     try {
       await api('/api/commit', { proposalId: proposal.id });
+      if (page && envelopePage !== page) return;
       await loadBudget();
     } catch (ex) {
+      if (page && envelopePage !== page) return;
       yes.textContent = ex.message;
     }
   });
@@ -4148,6 +4376,8 @@ $('budget-pick').addEventListener('change', async (ev) => {
   localStorage.setItem('budget', ev.target.value);
   markChosenBudget();
   month = null;
+  // Another budget's list: an envelope page open on this one has nothing to show.
+  clearEnvelopePage();
   await refresh();
 });
 
@@ -5103,9 +5333,12 @@ $('bud-archive').addEventListener('click', () => {
 // entirely: what actually went in and out, and do the receipts add up to the
 // number on the front. If they do not, the number is a claim rather than a fact.
 async function showReceipts(body, e) {
+  const page = envelopePage;
   const box = document.createElement('div');
   box.textContent = 'Reading receipts…';
   body.appendChild(box);
+  // A reply for a page that was left, or drawn again since, has nowhere to go.
+  const gone = () => envelopePage !== page || !body.isConnected;
   try {
     // The picker's options come with the receipts, so Edit opens at once. They
     // are only for editing: if they cannot be read the receipts still show.
@@ -5113,14 +5346,15 @@ async function showReceipts(body, e) {
       api('/api/tools/explain_envelope', { budget: month.budget, month: month.month, envelope: e.id }),
       api('/api/match', { budget: month.budget, txnIds: [] }).catch(() => null),
     ]);
+    if (gone()) return;
     const options = picker?.options ?? null;
     box.textContent = '';
 
-    const head = document.createElement('div');
-    head.className = 'h';
-    head.style.marginTop = '4px';
-    head.textContent = `Receipts — ${result.transactions.length}`;
-    box.appendChild(head);
+    // The section's heading, with the count now it is known.
+    const head = node('h2', 'ep-sec-h', 'Receipts ');
+    head.appendChild(node('span', 'count', String(result.transactions.length)));
+    const was = body.closest('.ep-sec')?.querySelector(':scope > .ep-sec-h');
+    if (was) was.replaceWith(head); else box.appendChild(head);
 
     if (!result.transactions.length) {
       const none = document.createElement('p');
@@ -5180,6 +5414,7 @@ async function showReceipts(body, e) {
         + 'do not trust this envelope.';
     box.appendChild(tie);
   } catch (ex) {
+    if (gone()) return;
     box.textContent = ex.message;
   }
 }
@@ -10515,6 +10750,8 @@ async function showView(next) {
     settingsPage = null; settingsEditing = null; folderPick = null; restorePick = null; settingsSheetFrom = null;
     document.removeEventListener('keydown', pageEscape);
   }
+  // Any screen, Budget included, opens on the list: a page left open would be shown stale.
+  clearEnvelopePage();
   view = next;
   markTabs();
   closeMenus();
