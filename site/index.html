@@ -3686,7 +3686,7 @@ function envPageEscape(ev) {
   ev.preventDefault();
   if (envelopePage.view === 'envelope') { closeEnvelopePage(); return; }
   // A fresh page, with the list's scroll carried over for the envelope's own Back.
-  openEnvelopePage(envelopePage.id, { focus: envelopePage.view === 'remove' ? 'remove' : 'adjust' });
+  backToEnvelope(envelopePage.id, envelopePage.view === 'remove' ? 'remove' : 'adjust');
 }
 
 /**
@@ -3749,8 +3749,9 @@ function envFigureForm(e, { amount = '', per = 'month', question = false, onCanc
   const acts = node('div', 'ep-acts');
   const save = node('button', 'btn primary', 'Save');
   save.type = 'submit';
-  acts.appendChild(save);
+  // The secondary first, the primary at the right.
   if (onCancel) acts.appendChild(textBtn('Cancel', 'btn', null, onCancel));
+  acts.appendChild(save);
   const err = node('p', 'err ep-err');
   err.setAttribute('aria-live', 'polite');
   err.tabIndex = -1;
@@ -3977,9 +3978,14 @@ function openEnvSubPage(view, { title, line, backTo }) {
   const page = { ...envelopePage, view, editing: null, focusNext: null };
   envelopePage = page;
   const { section, body } = envFrame({
-    back: e.label, onBack: () => openEnvelopePage(e.id, { focus: backTo }), title, line,
+    back: e.label, onBack: () => backToEnvelope(e.id, backTo), title, line,
   });
   return { page, e, section, body };
+}
+
+/** Back from a page of its own to the envelope's, or to the list when the envelope is no longer in the month. */
+function backToEnvelope(id, focus) {
+  if (!openEnvelopePage(id, { focus })) closeEnvelopePage();
 }
 
 /** Shown, with the window at the top and focus in its first field, clear of a phone's keyboard. */
@@ -4006,8 +4012,9 @@ function reviewState(slot, proposal, why, { onChange, onApproved }) {
   const box = node('div', 'ep-review');
   const h = node('h2', 'ep-sec-h', 'This will');
   h.tabIndex = -1;
-  const ul = node('ul', 'effects');
-  for (const eff of proposal.effects) ul.appendChild(node('li', '', eff));
+  // No effects, no empty grey box.
+  const ul = proposal.effects?.length ? node('ul', 'effects') : null;
+  for (const eff of proposal.effects ?? []) ul.appendChild(node('li', '', eff));
   const { err, say } = epErr();
   const acts = node('div', 'ep-acts');
   const yes = textBtn(proposal.summary, 'btn primary', 'approve', async () => {
@@ -4016,16 +4023,25 @@ function reviewState(slot, proposal, why, { onChange, onApproved }) {
     say('');
     try {
       await api('/api/commit', { proposalId: proposal.id });
-      // Committed: the list is read again even if Back was pressed meanwhile.
-      await loadBudget();
-      if (envelopePage !== page) return;
-      await onApproved();
     } catch (ex) {
       if (envelopePage !== page) return;
       say(ex.message);
       yes.disabled = false;
       err.focus({ preventScroll: true });
+      return;
     }
+    // Committed: the list is read again even if Back was pressed meanwhile. A reload that
+    // fails leaves Approve off, since the proposal is spent.
+    try {
+      await loadBudget();
+    } catch {
+      if (envelopePage !== page) return;
+      say('Approved. The screen could not be read again; go Back to see it.');
+      err.focus({ preventScroll: true });
+      return;
+    }
+    if (envelopePage !== page) return;
+    await onApproved();
   });
   const change = textBtn('Change it', 'btn', 'change-it', () => {
     box.remove();
@@ -4033,8 +4049,8 @@ function reviewState(slot, proposal, why, { onChange, onApproved }) {
     onChange();
     form?.querySelector('input, select')?.focus({ preventScroll: true });
   });
-  acts.append(yes, change);
-  box.append(h, ul, node('p', 'ep-why', `“${why}”`), acts, err);
+  acts.append(change, yes);
+  box.append(h, ...(ul ? [ul] : []), node('p', 'ep-why', `“${why}”`), acts, err);
   slot.appendChild(box);
   h.focus({ preventScroll: true });
 }
@@ -4084,7 +4100,7 @@ function openFundingPage() {
   const acts = node('div', 'ep-acts');
   const save = node('button', 'btn primary', 'Save');
   save.type = 'submit';
-  acts.append(save, textBtn('Cancel', 'btn', null, () => openEnvelopePage(e.id, { focus: 'adjust' })));
+  acts.append(textBtn('Cancel', 'btn', null, () => backToEnvelope(e.id, 'adjust')), save);
   const { err, say } = epErr();
   form.append(
     epField('Funded this month', amount, live),
@@ -4098,8 +4114,9 @@ function openFundingPage() {
   const showLive = () => {
     const t = target();
     const delta = t === null ? 0 : t - now;
-    live.classList.toggle('problem', t === null || (delta < 0 && from.value !== ''));
-    live.textContent = t === null ? 'A number, in dollars.'
+    live.classList.toggle('problem', (t === null && typed() !== '') || (delta < 0 && from.value !== ''));
+    live.textContent = typed() === '' ? ''
+      : t === null ? 'A number, in dollars.'
       : delta > 0 ? `+${coverMoney(delta)} more than ${base}`
       : delta < 0 && from.value ? 'A decrease goes back to Money not yet assigned, not to another envelope.'
       : delta < 0 ? `${coverMoney(-delta)} less than ${base}; it goes back to Money not yet assigned`
@@ -4115,7 +4132,7 @@ function openFundingPage() {
     const t = target();
     if (t === null) { say('A number, in dollars.'); amount.focus({ preventScroll: true }); return; }
     const delta = t - now;
-    if (delta === 0) { amount.focus({ preventScroll: true }); return; }
+    if (delta === 0) { say('Nothing has changed.'); amount.focus({ preventScroll: true }); return; }
     const reason = why.value.trim();
     if (!reason) { say('Say why, in one line.'); why.focus({ preventScroll: true }); return; }
     if (delta < 0 && from.value) { from.focus({ preventScroll: true }); return; }
@@ -4137,8 +4154,9 @@ function openFundingPage() {
           const e2 = month.envelopes.find((x) => x.id === e.id);
           if (!e2) { closeEnvelopePage({ refocus: false }); return; }
           // The head's line had the old figures; the done line says the new ones.
-          section.querySelector('.set-line').hidden = true;
-          const back = textBtn(`Back to ${e.label}`, 'btn primary', 'back-to', () => openEnvelopePage(e.id, { focus: 'adjust' }));
+          const headLine = section.querySelector('.set-line');
+          if (headLine) headLine.hidden = true;
+          const back = textBtn(`Back to ${e.label}`, 'btn primary', 'back-to', () => backToEnvelope(e.id, 'adjust'));
           const done = node('div', 'ep-done');
           done.append(node('p', 'set-done',
             `${e2.label} has ${e2.funded} funded for ${monthLong(month.month)} and ${e2.left} of it left.`), back);
@@ -4177,7 +4195,7 @@ function openRemovePage() {
   const acts = node('div', 'ep-acts');
   const go = node('button', 'btn danger', 'Remove');
   go.type = 'submit';
-  acts.append(go, textBtn('Cancel', 'btn', null, () => openEnvelopePage(e.id, { focus: 'remove' })));
+  acts.append(textBtn('Cancel', 'btn', null, () => backToEnvelope(e.id, 'remove')), go);
   const { err, say } = epErr();
   form.append(epField('Why', why), acts, err);
   form.addEventListener('submit', async (ev) => {
