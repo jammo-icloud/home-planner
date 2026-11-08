@@ -1214,13 +1214,6 @@
   .set-page .btn.danger[type="submit"]{background:var(--problem);border-color:var(--problem);color:var(--surface)}
   .set-err[hidden]{display:none}
   .set-err:focus{outline:2px solid var(--focus);outline-offset:2px}
-  /* Setup's five steps: the step's name, then a mark and what it is */
-  .setup-grid{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-1) var(--sp-3);margin:0;align-items:baseline;width:100%}
-  .setup-grid dt{color:var(--ink)}
-  .setup-grid dt[aria-current="step"]{color:var(--accent-ink);font-weight:var(--fw-semibold)}
-  .setup-grid dd{margin:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--sp-2);min-width:0}
-  .setup-grid .mark{flex:none;width:1em;color:var(--ink-faint)}
-  .setup-grid .mark.ok{color:var(--ink)}
   /* div.rows: the import table already answers to .rows */
   div.rows{background:var(--surface-raised);border:var(--stroke) solid var(--line);border-radius:var(--r-card);overflow:hidden}
   div.rows > *{border-top:var(--stroke) solid var(--hair)}
@@ -7491,6 +7484,7 @@ function openPage(key, group, { linked = false, from = null } = {}) {
   if (!it) return false;
   folderPick = null;
   restorePick = null;
+  membersSaid = null;
   settingsEditing = null;
   settingsEditOpener = null;
   settingsPage = { key, group: it.group, listScroll: linked ? null : window.scrollY, returnTo: `row-${key}`, from };
@@ -7587,6 +7581,8 @@ function renderSettingsPage() {
 function pageEscape(e) {
   if (!settingsPage) { document.removeEventListener('keydown', pageEscape); return; }
   if (e.key !== 'Escape' || e.defaultPrevented) return;
+  // A sheet over the page (the categories, your iPhone) has its own Done: nothing under it goes Back.
+  if (!$('cat-sec').hidden || !$('phone-sec').hidden) return;
   const s = settingsHost().querySelector('.set-page');
   const t = e.target;
   if (!s || !(t === document.body || t === document.documentElement || s.contains(t))) return;
@@ -7900,7 +7896,8 @@ function calendarsOff() {
 
 /** Calendars I check: the ones read for clashes, yours and the Household one always among them. */
 function conflictsItem() {
-  let status = calendarsOffWords();
+  // Still reading says so; signed in without the NAS, or refused by it, the list says only that, and the page says why.
+  let status = calState === 'loading' ? calendarsOffWords() : 'Not reachable';
   if (calState === 'ok') {
     const { conflicts, household } = settingsData.calendar;
     const names = [
@@ -8391,7 +8388,7 @@ function budgetForm() {
 /** The order the steps are asked in, as `setup.ts` has it. */
 const SETUP_ORDER = ['folder', 'zone', 'calendar', 'booking', 'model'];
 const SETUP_LABELS = {
-  folder: 'Where documents live', zone: 'Time zone', calendar: 'Household calendar', booking: 'Booking', model: 'Envelope model',
+  folder: 'Where documents live', zone: 'Time zone', calendar: 'Household calendar', booking: 'Booking', model: 'Claude model',
 };
 /** The server's NOT_TEAM_FOLDER (folders.ts), word for word. */
 const NOT_TEAM_FOLDER = 'A shared folder not listed here is not a Team Folder yet. Enable it in Synology Drive Admin Console, Team Folder.';
@@ -8438,16 +8435,6 @@ const indexedWords = (indexed) => (indexed === true ? 'Universal Search reads it
   : indexed === false ? 'Universal Search finds its pages by name only.'
   : 'Universal Search: not known yet. Settings asks again after the first page.');
 
-function folderStep() {
-  const d = settingsData.setup.documents;
-  return [d.folder ? `${d.folder.team} › ${d.folder.folder}` : 'No folder chosen'];
-}
-
-function zoneStep() {
-  const { zone, source } = settingsData.setup.zone;
-  return [`${zone} · ${source}`];
-}
-
 function zoneItem() {
   const z = settingsData.setup.zone;
   if (!z) return null;
@@ -8473,14 +8460,6 @@ function zoneForm() {
   });
 }
 
-/** The Household calendar is chosen in its own row: this step says what it is. */
-function calendarStep() {
-  const { household, target } = settingsData.calendar;
-  const elsewhere = target && !sameCal(target, household);
-  return [elsewhere ? `Plans go on ${calList?.find((c) => sameCal(c, target))?.name ?? 'another calendar'}`
-    : household ? household.name : 'No Household calendar yet'];
-}
-
 /** What Settings says once the app turned booking off for a lost calendar, until one is chosen. */
 const BOOKING_CALENDAR_GONE = 'Booking is off: the household calendar is gone. Choose one, then turn booking on again.';
 
@@ -8490,10 +8469,6 @@ const aheadLine = (a) => {
     .filter(Boolean).join(' and ');
   return words ? `${words[0].toUpperCase()}${words.slice(1)}: it stays on until then.` : null;
 };
-
-function bookingStep() {
-  return [settingsData.booking?.on ? 'On' : 'Off'];
-}
 
 /**
  * Booking: the owner's switch, posting { on }, at the head of Guests and
@@ -8530,19 +8505,14 @@ function bookingSwitch() {
   return rows;
 }
 
-function modelStep() {
-  const m = settingsData.model;
-  const listed = m.choices.find((c) => c.id === m.chosen);
-  return [listed ? listed.label : `${m.chosen}, no longer offered`, m.claudeOff ? node('span', 'hint', 'Claude is off on this NAS') : null];
-}
-
 function modelItem() {
   const m = settingsData.model;
   if (!m) return null;
   const listed = m.choices.find((c) => c.id === m.chosen);
   return {
     key: 'model', title: 'Claude model', owner: true,
-    status: listed ? listed.label : `${m.chosen}, no longer offered`, attention: !stepDone('model'),
+    // The list says the model's short name: "Claude Haiku 5.5: quick, and the default" is "Haiku 5.5".
+    status: listed ? listed.label.split(':')[0].replace(/^Claude /, '') : `${m.chosen}, no longer offered`, attention: !stepDone('model'),
     line: 'The model Claude suggests envelopes with.',
     notes: [m.claudeOff ? 'Claude is off on this NAS.' : null],
     body: modelForm,
@@ -8982,8 +8952,11 @@ function documentsItem() {
 /** The open household's name, for the pages that have to say whose it is. */
 const hereLabel = () => myHouseholds.find((h) => h.id === myHouseholdId)?.label ?? householdLabel ?? 'this household';
 
+/** What the last Invite or Remove did, said on the Members page until it is left. */
+let membersSaid = null;
+
 /** Post a change to who is in the household; the route answers with the members, kept beside the settings. */
-async function changeMembers(method, body, focus) {
+async function changeMembers(method, body, focus, said) {
   const page = settingsPage;
   let out;
   try {
@@ -8995,6 +8968,7 @@ async function changeMembers(method, body, focus) {
   settingsData = { ...settingsData, members: out.members };
   members = out.members;
   if (settingsPage !== page) return true;
+  membersSaid = said;
   settingsEditing = null;
   clearPageErr();
   redrawPage(focus);
@@ -9023,7 +8997,8 @@ function membersItem() {
             fields: [{ name: 'why', label: `Why ${m} is leaving ${here}`, placeholder: 'e.g. moved out', optional: true }],
             notes: [node('p', 'note', `${m} can no longer open ${here}, and the Household calendar is no longer shared with them.`)],
             submit: `Remove ${m}`, danger: true,
-            onSave: (v) => changeMembers('DELETE', { member: m, ...(v.why ? { why: v.why } : {}) }, 'member-invite'),
+            onSave: (v) => changeMembers('DELETE', { member: m, ...(v.why ? { why: v.why } : {}) }, 'member-invite',
+              `${m} can no longer open ${here}.`),
           }));
           continue;
         }
@@ -9039,6 +9014,11 @@ function membersItem() {
         rows.appendChild(r);
       }
       const out = [rows];
+      // Said once, after the change: a status line a screen reader reads out, gone when the page is left.
+      const said = node('p', 'set-done', membersSaid ?? '');
+      said.setAttribute('role', 'status');
+      said.hidden = !membersSaid;
+      out.push(said);
       if (owns) {
         out.push(node('h2', 'set-sub', 'Invite someone'));
         out.push(fieldsForm({
@@ -9048,7 +9028,7 @@ function membersItem() {
           ],
           notes: [node('p', 'note', `They will see everything in ${here}, every budget, envelope and receipt, and can change it. The log records that you added them, and why.`)],
           submit: 'Invite', cancel: null, autofocus: false, cls: 'invite',
-          onSave: (v) => changeMembers('POST', v, 'member-invite'),
+          onSave: (v) => changeMembers('POST', v, 'member-invite', `${v.member.toLowerCase()} can now open ${here}.`),
         }));
         out.at(-1).dataset.nofocus = '';
       }
@@ -10502,7 +10482,10 @@ const pageWords = () => (view === 'settings' ? 'Settings' : todayText);
 async function showView(next) {
   if (next === 'settings' && view !== 'settings') settingsFrom = view;
   // Leaving Settings closes its page: an answer still on its way draws nothing.
-  if (next !== 'settings') { settingsPage = null; settingsEditing = null; folderPick = null; settingsSheetFrom = null; }
+  if (next !== 'settings') {
+    settingsPage = null; settingsEditing = null; folderPick = null; restorePick = null; settingsSheetFrom = null;
+    document.removeEventListener('keydown', pageEscape);
+  }
   view = next;
   markTabs();
   closeMenus();
@@ -10784,6 +10767,10 @@ function hhPanel(title, fields, onSubmit) {
 let householdLabel = null;
 
 async function enterApp() {
+  // A page of This NAS left open on the households screen is not carried into the household.
+  settingsPage = null;
+  settingsEditing = null;
+  document.removeEventListener('keydown', pageEscape);
   const who = await api('/api/whoami');
   householdLabel = who.household?.label ?? null;
   docHousehold = `${who.sandbox ? 'sandbox' : 'nas'}:${who.who}:${who.household?.id ?? ''}`;
