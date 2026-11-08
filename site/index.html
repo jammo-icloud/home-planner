@@ -145,6 +145,9 @@
   .chip.short{color:var(--short-chip-ink);background:var(--short-chip);border-color:transparent;flex:none}
   .cover{margin-top:11px;padding:12px 13px;border-radius:var(--r-control);background:var(--surface-raised);
     border:1px solid var(--short-row-line)}
+  /* In the page's card the block is part of it: a rule above, no box of its own. */
+  .ep-card .cover{margin:0;padding:var(--sp-3) 0 0;border:0;border-top:var(--stroke) solid var(--short-row-line);
+    border-radius:0;background:none}
   .cover h3{font-size:var(--fs-ui);font-weight:600;margin:0 0 4px}
   .cover-body{font-size:var(--fs-small);color:var(--ink-soft);margin:0}
   .cover-group{margin-top:12px}
@@ -3502,12 +3505,13 @@ const spentWords = (e) => (toCents(e.spentExact) === 0 ? 'nothing spent' : `${e.
 const coverMoney = (c) => exactDollars(c).replace(/\.00$/, '');
 
 /**
- * The cover card under a short envelope: the receipt that took it under, then
- * the envelopes that can spare the whole shortfall, and while income is not
- * all assigned, that too. Each is one tap, approved at once; the first tap
- * takes every button in the card out, and the screen is read again after.
+ * The cover block in a short envelope's card: the receipt that took it under,
+ * then the envelopes that can spare the whole shortfall, and while income is
+ * not all assigned, that too. Each is one tap, approved at once; the first tap
+ * takes every button in the block out, and the month is read again after. The
+ * first button carries `data-key="cover"`, where focus starts from a notice.
  */
-function coverCard(e) {
+function coverBlock(e) {
   const s = e.short;
   const need = coverMoney(s.amount);
   const card = node('div', 'cover');
@@ -3516,7 +3520,7 @@ function coverCard(e) {
   title.id = `cover-${e.id}`;
   card.setAttribute('aria-labelledby', title.id);
   // Without a receipt (a move took its money) there is no receipt to name.
-  const why = 'An envelope never pays what it does not hold, so this one is marked Action required until the shortfall is covered.';
+  const why = 'An envelope never pays what it does not hold, so this one stays short until the shortfall is covered.';
   const body = s.receipt
     ? `The receipt from ${s.receipt.payee} for ${s.receipt.exact} is in ${e.label}, ${s.alreadyShort ? 'which was already short' : `which had ${s.hadLeftExact} left`}. ${why}`
     : why;
@@ -3526,16 +3530,27 @@ function coverCard(e) {
   msg.setAttribute('role', 'status');
   const buttons = [];
   const act = (label, tool, args) => {
-    const b = textBtn(label, 'btn small', null, async () => {
+    const b = textBtn(label, 'btn small', buttons.length ? null : 'cover', async () => {
+      const page = envelopePage;
       for (const x of buttons) x.disabled = true;
       msg.textContent = '';
       try {
         await approveNow(tool, { budget: month.budget, month: month.month, ...args });
+        // Committed: the month is read again even if Back was pressed meanwhile. The page, still
+        // open, is drawn once by that reload, with focus on its heading; after Back nothing is.
+        page.focusNext = 'heading';
         await loadBudget();
       } catch (ex) {
         // Covered already, by another tap or another member: the screen is out
         // of date, so it is read again and says why nothing moved.
-        if (ex.status === 409) { await loadBudget().catch(() => {}); showProblem(ex); return; }
+        if (ex.status === 409) {
+          page.focusNext = 'heading';
+          await loadBudget().catch(() => {});
+          showProblem(ex);
+          return;
+        }
+        page.focusNext = null;
+        if (envelopePage !== page) return;
         msg.textContent = ex.message;
         for (const x of buttons) x.disabled = false;
       }
@@ -3753,17 +3768,35 @@ function envFigureForm(e, { amount = '', per = 'month', question = false, onCanc
   return { form, control };
 }
 
-/** The envelope, one card: what is left, a meter, funded on the left and spent on the right. */
+/**
+ * What a savings envelope is saving toward, worded once for the card and the
+ * Each month line: "$4,000 by March", "$4,000 that was due by March" once the
+ * month has passed, "$900 of estimates" for one saved every so often, and
+ * null while it has no estimates.
+ */
+function sinkGoalWords(s) {
+  if (s.kind === 'by') return `${s.goal} ${s.passed ? 'that was due by' : 'by'} ${s.byName}`;
+  return toCents(s.goalExact) > 0 ? `${s.goal} of estimates` : null;
+}
+
+/**
+ * The envelope, one card: what is left (what is saved, for one saved in
+ * Savings), a meter, funded on the left and spent on the right. Under a short
+ * envelope's sums, while the month is open, its cover block.
+ */
 function envCard(e) {
   const card = node('div', 'ep-card');
-  const big = node('p', `ep-big${e.overspent ? ' over' : ''}`, e.left);
-  big.append(' ', node('span', '', 'left'));
+  const s = e.sinking;
+  const goal = s ? sinkGoalWords(s) : null;
+  const big = node('p', `ep-big${e.overspent ? ' over' : ''}`, s ? s.saved : e.left);
+  big.append(' ', node('span', '', s ? (goal ? `of ${goal}` : 'No estimates yet') : 'left'));
   const funded = node('span');
   funded.appendChild(node('span', '', envAdjusted(e) ? `${e.funded} funded · was ${e.planned}` : `${e.funded} funded`));
   if (toCents(e.carriedIn) !== 0) funded.append(' ', node('span', 'was', `${e.carriedIn} carried in`));
   const sums = node('p', 'ep-sums');
   sums.append(funded, ' ', node('span', '', `${e.spent} spent`));
   card.append(big, envBar(e, 'div', 'ep-meter'), sums);
+  if (e.short && !month.closed) card.appendChild(coverBlock(e));
   return card;
 }
 
@@ -3802,8 +3835,23 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
   // except as the place the goal form opens.
   const each = envSection('Each month');
   each.el.hidden = asking;
+  // The goal form in Each month's place: from Change on a savings envelope and from the foot's link.
+  const openGoal = (back) => {
+    page.editing = 'goal';
+    each.el.hidden = false;
+    each.el.querySelector('.ep-sec-h').scrollIntoView({ block: 'start' });
+    void goalForm(each.slot, e, { onCancel: () => renderEnvelopePage({ focus: back }) });
+  };
   const drawEach = () => {
-    const change = open && !e.sinking ? textBtn('Change', 'btn small', 'change', () => {
+    const s = e.sinking;
+    if (s) {
+      const goal = sinkGoalWords(s);
+      each.slot.replaceChildren(envLine(goal ? `${s.monthly} a month toward ${goal}` : 'No estimates yet', '',
+        open ? textBtn('Change', 'btn small', 'change', () => openGoal('change')) : null));
+      return;
+    }
+    if (e.needsFigure && !open) { each.slot.replaceChildren(envLine('No figure yet', '', null)); return; }
+    const change = open ? textBtn('Change', 'btn small', 'change', () => {
       page.editing = 'figure';
       const amt = e.basis?.amount ?? e.templateExact;
       const { form, control } = envFigureForm(e, {
@@ -3826,7 +3874,7 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
   // This month: what it was funded with, and whether that was the plan.
   const now = envSection('This month');
   if (e.needsFigure) {
-    now.slot.appendChild(envLine(spentWords(e), 'Nothing funded yet. Give it a figure first.', null));
+    now.slot.appendChild(envLine(spentWords(e), open ? 'Nothing funded yet. Give it a figure first.' : 'Nothing funded.', null));
   } else {
     const adjust = open ? textBtn('Adjust', 'btn small', 'adjust', () => {
       if (!now.slot.querySelector('.edit')) buildEditor(now.slot, e);
@@ -3847,12 +3895,7 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
   if (open) {
     const foot = node('div', 'ep-foot');
     foot.append(
-      textBtn(e.sinking ? 'Change its goal' : 'Make this a savings goal', 'link', 'goal', () => {
-        page.editing = 'goal';
-        each.el.hidden = false;
-        each.el.querySelector('.ep-sec-h').scrollIntoView({ block: 'start' });
-        void goalForm(each.slot, e, { onCancel: () => renderEnvelopePage({ focus: 'goal' }) });
-      }),
+      textBtn(e.sinking ? 'Change its goal' : 'Make this a savings goal', 'link', 'goal', () => openGoal('goal')),
       textBtn('Remove this envelope', 'link', 'remove', () => {
         panel(`Remove ${e.label} from this budget`, [
           { name: 'why', label: 'Why', placeholder: 'Its receipts stop belonging to any envelope', wide: true },
