@@ -223,6 +223,23 @@
   .rcpts{padding:var(--sp-1) var(--sp-4) var(--sp-3)}
   .ep-foot{display:flex;flex-wrap:wrap;gap:0 var(--sp-5);padding-top:var(--sp-3);border-top:var(--stroke) solid var(--hair)}
   .ep-foot .link{min-height:var(--tap)}
+  /* This month's funding and Remove: labelled fields, then "This will" in the form's place, then done. */
+  .ep-form[hidden]{display:none}
+  .ep-f{display:grid;gap:var(--sp-1);min-width:0}
+  .ep-f label{font-size:var(--fs-small);font-weight:var(--fw-medium);color:var(--ink-soft)}
+  .ep-f input,.ep-f select{width:100%;min-width:0;font:inherit;font-size:var(--fs-input);padding:var(--sp-2) var(--sp-3);
+    min-height:var(--tap);border:var(--stroke) solid var(--line-strong);border-radius:var(--r-control);
+    background:var(--surface-raised);color:var(--ink)}
+  .ep-f input:focus,.ep-f select:focus{outline:2px solid var(--focus);outline-offset:2px}
+  .ep-f .figure-live{margin:0}
+  .ep-f .note{margin:0;text-align:left;font-size:var(--fs-small);color:var(--ink-soft)}
+  .ep-acts .btn{min-height:var(--tap)}
+  .ep-review{display:grid;gap:var(--sp-3);min-width:0}
+  .ep-review .ep-sec-h:focus{outline:none}
+  .ep-review .effects{margin:0}
+  .ep-review .err{margin:0}
+  .ep-why{margin:0;font-size:var(--fs-ui);color:var(--ink-soft);overflow-wrap:anywhere}
+  .ep-done{display:grid;gap:var(--sp-3);justify-items:start}
 
   /* ── the budget walkthrough: the steps in a rail, the current one beside it ── */
   #app:has(#walk:not([hidden])) .wrap{max-width:calc(220px + var(--sp-8) + var(--measure))}
@@ -3213,6 +3230,8 @@ const basisText = (b) => {
 
 /** "$14,400.00" -> "14,400", "$1,200.50" -> "1,200.50": a formatted amount as it is typed into a figure. */
 const plainDollars = (text) => String(text).replace(/^\$/, '').replace(/\.00$/, '');
+/** Whether typed dollars (no "$", no spaces) are an amount: real comma grouping only, at most two decimals. */
+const isDollars = (t) => /^(\d{1,3}(,\d{3})*|\d+)(\.\d{0,2})?$|^\.\d{1,2}$/.test(t);
 
 let figureIds = 0;
 /**
@@ -3249,7 +3268,7 @@ function figureField({ label, amount = '', per = 'month', averages = [], price =
   const chips = node('div', 'figure-chips');
 
   const typed = () => input.value.replace(/\s/g, '').replace(/^\$/, '');
-  const valid = () => /^(\d{1,3}(,\d{3})*|\d+)(\.\d{0,2})?$|^\.\d{1,2}$/.test(typed());
+  const valid = () => isDollars(typed());
   const value = () => (valid() ? { amountCents: toCents(typed()), per: select.value } : null);
   const empty = () => typed() === '';
   const showLive = () => {
@@ -3622,7 +3641,9 @@ function clearEnvelopePage() {
  */
 function openEnvelopePage(id, { linked = false, focus = null } = {}) {
   if (!month?.envelopes?.some((x) => x.id === id)) return false;
-  envelopePage = { id, view: 'envelope', editing: null, listScroll: linked ? null : window.scrollY };
+  // Back from a page of its own (funding, Remove) is not a list visit: the list's scroll is the one saved.
+  const from = envelopePage?.id === id && envelopePage.view !== 'envelope' ? envelopePage : null;
+  envelopePage = { id, view: 'envelope', editing: null, listScroll: from ? from.listScroll : linked ? null : window.scrollY };
   // Whatever opened it (a row, a notice on Today, the card) gives focus up to the page.
   document.activeElement?.blur?.();
   $('budget-list').hidden = true;
@@ -3664,10 +3685,8 @@ function envPageEscape(ev) {
   if (!(t === document.body || t === document.documentElement || host.contains(t))) return;
   ev.preventDefault();
   if (envelopePage.view === 'envelope') { closeEnvelopePage(); return; }
-  const from = envelopePage.view;
-  // A fresh object: a reply to the page being left must not draw on the envelope.
-  envelopePage = { ...envelopePage, view: 'envelope', editing: null };
-  renderEnvelopePage({ focus: from === 'remove' ? 'remove' : 'adjust' });
+  // A fresh page, with the list's scroll carried over for the envelope's own Back.
+  openEnvelopePage(envelopePage.id, { focus: envelopePage.view === 'remove' ? 'remove' : 'adjust' });
 }
 
 /**
@@ -3876,11 +3895,7 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
   if (e.needsFigure) {
     now.slot.appendChild(envLine(spentWords(e), open ? 'Nothing funded yet. Give it a figure first.' : 'Nothing funded.', null));
   } else {
-    const adjust = open ? textBtn('Adjust', 'btn small', 'adjust', () => {
-      if (!now.slot.querySelector('.edit')) buildEditor(now.slot, e);
-      now.el.querySelector('.ep-sec-h').scrollIntoView({ block: 'start' });
-      now.slot.querySelector('.edit input')?.focus({ preventScroll: true });
-    }) : null;
+    const adjust = open ? textBtn('Adjust', 'btn small', 'adjust', () => openFundingPage()) : null;
     now.slot.appendChild(envLine(`${e.funded} funded`, envAdjusted(e) ? `was ${e.planned}` : e.adjustedBy ? '' : 'as planned', adjust));
   }
   body.appendChild(now.el);
@@ -3896,14 +3911,7 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
     const foot = node('div', 'ep-foot');
     foot.append(
       textBtn(e.sinking ? 'Change its goal' : 'Make this a savings goal', 'link', 'goal', () => openGoal('goal')),
-      textBtn('Remove this envelope', 'link', 'remove', () => {
-        panel(`Remove ${e.label} from this budget`, [
-          { name: 'why', label: 'Why', placeholder: 'Its receipts stop belonging to any envelope', wide: true },
-        ], (i) => ({
-          tool: 'remove_envelope',
-          args: { budget: month.budget, envelope: e.id, why: i.why.value },
-        }));
-      }),
+      textBtn('Remove this envelope', 'link', 'remove', () => openRemovePage()),
     );
     body.appendChild(foot);
   }
@@ -3937,89 +3945,274 @@ async function openBudgetAt(budget, envelope, cover) {
   if (month.envelopes.some((x) => x.id === envelope)) openEnvelopePage(envelope, { linked: true, focus: cover ? 'cover' : null });
 }
 
-function buildEditor(body, e) {
-  const form = document.createElement('div');
-  form.className = 'edit';
+let epFieldIds = 0;
+/** A labelled field on a page of the envelope's own: the label over the control, and under it what it says. */
+function epField(label, control, ...under) {
+  const f = node('div', 'ep-f');
+  control.id = `ep-f-${++epFieldIds}`;
+  const l = node('label', '', label);
+  l.htmlFor = control.id;
+  f.append(l, control, ...under);
+  return f;
+}
 
-  const field = (label, node) => {
-    const f = document.createElement('div');
-    f.className = 'f';
-    const l = document.createElement('label');
-    l.textContent = label;
-    f.append(l, node);
-    return f;
-  };
+/** The error slot every page form ends with: read out when it changes, empty until something is refused. */
+function epErr() {
+  const err = node('p', 'err ep-err');
+  err.setAttribute('aria-live', 'polite');
+  err.tabIndex = -1;
+  err.hidden = true;
+  return { err, say: (text) => { err.textContent = text; err.hidden = !text; } };
+}
 
-  const amount = document.createElement('input');
-  amount.inputMode = 'decimal';
-  amount.value = e.fundedExact.replace(/[$,]/g, '');
+/**
+ * A page of the envelope's own (this month's funding, Remove) in place of the
+ * envelope's: a fresh `envelopePage`, so a reply to the envelope's drawing does
+ * not land here, with the list's scroll carried over, since this is not a list
+ * visit. Back goes to the envelope with focus on the control that opened it.
+ */
+function openEnvSubPage(view, { title, line, backTo }) {
+  const e = month?.envelopes?.find((x) => x.id === envelopePage?.id);
+  if (!e) return null;
+  const page = { ...envelopePage, view, editing: null, focusNext: null };
+  envelopePage = page;
+  const { section, body } = envFrame({
+    back: e.label, onBack: () => openEnvelopePage(e.id, { focus: backTo }), title, line,
+  });
+  return { page, e, section, body };
+}
 
-  const from = document.createElement('select');
-  const own = document.createElement('option');
-  own.value = '';
-  own.textContent = 'Money not yet assigned';
-  from.appendChild(own);
-  for (const other of month.envelopes) {
-    if (other.id === e.id) continue;
-    const o = document.createElement('option');
-    o.value = other.id;
-    o.textContent = `${other.label} — ${other.left} left`;
-    from.appendChild(o);
-  }
+/** Shown, with the window at the top and focus in its first field, clear of a phone's keyboard. */
+function showEnvSubPage(section) {
+  $('env-page').replaceChildren(section);
+  window.scrollTo({ top: 0 });
+  const field = section.querySelector('input, select');
+  field?.focus({ preventScroll: true });
+  if (field && field.getBoundingClientRect().bottom > window.innerHeight / 2) section.scrollIntoView({ block: 'start' });
+}
 
-  const why = document.createElement('input');
-  why.placeholder = 'Why — this is what gets read tomorrow morning';
-  const whyField = field('Reason', why);
-  whyField.className = 'f why';
-
-  form.append(field('Set funding to', amount), field('Take it from', from), whyField);
-
-  const row = document.createElement('div');
-  row.className = 'row';
-  const go = document.createElement('button');
-  go.className = 'btn';
-  go.textContent = 'Show what this would do';
-  go.addEventListener('click', async () => {
-    // Every edit carries a note. Not a nag: a move without a reason is
-    // unreadable a month later, which is when it actually gets read.
-    if (!why.value.trim()) { why.focus(); return; }
-    const target = toCents(amount.value);
-    const now = toCents(e.fundedExact);
-    if (!Number.isFinite(target)) { amount.focus(); return; }
-
-    go.disabled = true;
-    row.querySelector('.msg')?.remove();
+/**
+ * The server's proposal in place of the form in `slot`: "This will", its
+ * effects one per line, the reason in quotes, Approve (labelled with the
+ * proposal's summary) and "Change it". The form is hidden, not removed, so
+ * Change it brings it back with what was typed. Approve commits and reloads
+ * the list whatever happens to the page meanwhile; `onApproved` runs only
+ * while the page it was asked from is still open.
+ */
+function reviewState(slot, proposal, why, { onChange, onApproved }) {
+  const form = slot.querySelector(':scope > form');
+  slot.querySelector(':scope > .ep-review')?.remove();
+  if (form) form.hidden = true;
+  const box = node('div', 'ep-review');
+  const h = node('h2', 'ep-sec-h', 'This will');
+  h.tabIndex = -1;
+  const ul = node('ul', 'effects');
+  for (const eff of proposal.effects) ul.appendChild(node('li', '', eff));
+  const { err, say } = epErr();
+  const acts = node('div', 'ep-acts');
+  const yes = textBtn(proposal.summary, 'btn primary', 'approve', async () => {
     const page = envelopePage;
+    yes.disabled = true;
+    say('');
     try {
-      // Moving between envelopes is zero-sum and leaves the month total alone;
-      // assigning changes it. Which one this is depends on where it comes from.
-      const call = from.value
-        ? { tool: 'move_money', args: {
-            budget: month.budget, month: month.month, from: from.value, to: e.id,
-            amountCents: target - now, why: why.value.trim() } }
-        : { tool: 'set_assignment', args: {
-            budget: month.budget, month: month.month, envelope: e.id,
-            toCents: target, why: why.value.trim() } };
-      if (from.value && target - now <= 0) throw new Error('a move has to be an increase — reduce the other envelope instead');
-
-      const { proposal } = await api(`/api/tools/${call.tool}`, call.args);
+      await api('/api/commit', { proposalId: proposal.id });
+      // Committed: the list is read again even if Back was pressed meanwhile.
+      await loadBudget();
       if (envelopePage !== page) return;
-      showProposal(body, proposal, go);
+      await onApproved();
     } catch (ex) {
       if (envelopePage !== page) return;
-      const m = document.createElement('span');
-      m.className = 'msg';
-      m.style.color = 'var(--problem)';
-      m.style.fontSize = 'var(--fs-small)';
-      m.textContent = ex.message;
-      row.appendChild(m);
-    } finally {
-      go.disabled = false;
+      say(ex.message);
+      yes.disabled = false;
+      err.focus({ preventScroll: true });
     }
   });
-  // The goal and Remove are the page's own links, at its foot.
-  row.append(go);
-  body.append(form, row);
+  const change = textBtn('Change it', 'btn', 'change-it', () => {
+    box.remove();
+    if (form) form.hidden = false;
+    onChange();
+    form?.querySelector('input, select')?.focus({ preventScroll: true });
+  });
+  acts.append(yes, change);
+  box.append(h, ul, node('p', 'ep-why', `“${why}”`), acts, err);
+  slot.appendChild(box);
+  h.focus({ preventScroll: true });
+}
+
+/**
+ * This month's funding, a page of its own from Adjust: the amount, where it
+ * comes from and why, shown as "This will" before it is approved. A decrease
+ * always goes back to the pool (set_assignment), so one that names an
+ * envelope is refused here rather than by the server.
+ */
+function openFundingPage() {
+  const cur = month?.envelopes?.find((x) => x.id === envelopePage?.id);
+  if (!cur) return;
+  const name = monthLong(month.month);
+  const sub = openEnvSubPage('funding', {
+    title: "This month's funding",
+    line: cur.short
+      ? `${cur.label} has ${cur.funded} funded for ${name} and is ${coverMoney(cur.short.amount)} short.`
+      : `${cur.label} has ${cur.funded} funded for ${name} and ${cur.left} of it left.`,
+    backTo: 'adjust',
+  });
+  if (!sub) return;
+  const { page, e, section, body } = sub;
+  const now = toCents(e.fundedExact);
+  const base = e.adjustedBy ? 'now' : 'planned';
+
+  const form = node('form', 'ep-form');
+  const amount = node('input');
+  amount.inputMode = 'decimal';
+  amount.autocomplete = 'off';
+  amount.value = plainDollars(e.fundedExact);
+  const live = node('p', 'figure-live');
+  live.setAttribute('aria-live', 'polite');
+  const from = node('select');
+  const pool = node('option', '', `Money not yet assigned · ${month.toAssign}`);
+  pool.value = '';
+  from.appendChild(pool);
+  for (const o of month.envelopes) {
+    if (o.id === e.id) continue;
+    const opt = node('option', '', `${o.label} · ${o.left} left`);
+    opt.value = o.id;
+    from.appendChild(opt);
+  }
+  const why = node('input');
+  why.placeholder = 'e.g. two birthdays this month';
+  why.autocomplete = 'off';
+  const acts = node('div', 'ep-acts');
+  const save = node('button', 'btn primary', 'Save');
+  save.type = 'submit';
+  acts.append(save, textBtn('Cancel', 'btn', null, () => openEnvelopePage(e.id, { focus: 'adjust' })));
+  const { err, say } = epErr();
+  form.append(
+    epField('Funded this month', amount, live),
+    epField('Take it from', from),
+    epField('Why', why, node('p', 'note', 'One line. It is what gets read next month when someone asks why.')),
+    acts, err,
+  );
+
+  const typed = () => amount.value.replace(/\s/g, '').replace(/^\$/, '');
+  const target = () => (isDollars(typed()) ? toCents(typed()) : null);
+  const showLive = () => {
+    const t = target();
+    const delta = t === null ? 0 : t - now;
+    live.classList.toggle('problem', t === null || (delta < 0 && from.value !== ''));
+    live.textContent = t === null ? 'A number, in dollars.'
+      : delta > 0 ? `+${coverMoney(delta)} more than ${base}`
+      : delta < 0 && from.value ? 'A decrease goes back to Money not yet assigned, not to another envelope.'
+      : delta < 0 ? `${coverMoney(-delta)} less than ${base}; it goes back to Money not yet assigned`
+      : '';
+  };
+  amount.addEventListener('input', showLive);
+  from.addEventListener('change', showLive);
+  showLive();
+
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    say('');
+    const t = target();
+    if (t === null) { say('A number, in dollars.'); amount.focus({ preventScroll: true }); return; }
+    const delta = t - now;
+    if (delta === 0) { amount.focus({ preventScroll: true }); return; }
+    const reason = why.value.trim();
+    if (!reason) { say('Say why, in one line.'); why.focus({ preventScroll: true }); return; }
+    if (delta < 0 && from.value) { from.focus({ preventScroll: true }); return; }
+    save.disabled = true;
+    try {
+      // Moving between envelopes is zero-sum and leaves the month's total alone; assigning changes it.
+      const { proposal } = from.value
+        ? await api('/api/tools/move_money', {
+          budget: month.budget, month: month.month, from: from.value, to: e.id, amountCents: delta, why: reason,
+        })
+        : await api('/api/tools/set_assignment', {
+          budget: month.budget, month: month.month, envelope: e.id, toCents: t, why: reason,
+        });
+      if (envelopePage !== page) return;
+      save.disabled = false;
+      reviewState(body, proposal, reason, {
+        onChange: () => {},
+        onApproved: async () => {
+          const e2 = month.envelopes.find((x) => x.id === e.id);
+          if (!e2) { closeEnvelopePage({ refocus: false }); return; }
+          // The head's line had the old figures; the done line says the new ones.
+          section.querySelector('.set-line').hidden = true;
+          const back = textBtn(`Back to ${e.label}`, 'btn primary', 'back-to', () => openEnvelopePage(e.id, { focus: 'adjust' }));
+          const done = node('div', 'ep-done');
+          done.append(node('p', 'set-done',
+            `${e2.label} has ${e2.funded} funded for ${monthLong(month.month)} and ${e2.left} of it left.`), back);
+          body.replaceChildren(done);
+          back.focus({ preventScroll: true });
+        },
+      });
+    } catch (ex) {
+      if (envelopePage !== page) return;
+      say(ex.message);
+      save.disabled = false;
+      err.focus({ preventScroll: true });
+    }
+  });
+  body.appendChild(form);
+  showEnvSubPage(section);
+}
+
+/**
+ * Removing the envelope, a page of its own from the foot: why, then "This
+ * will" before it is approved. Approving goes back to the list with the row
+ * gone and focus on the row that was beside it.
+ */
+function openRemovePage() {
+  const cur = month?.envelopes?.find((x) => x.id === envelopePage?.id);
+  if (!cur) return;
+  const sub = openEnvSubPage('remove', {
+    title: `Remove ${cur.label}`, line: 'Its receipts stay, but stop belonging to any envelope.', backTo: 'remove',
+  });
+  if (!sub) return;
+  const { page, e, section, body } = sub;
+  const form = node('form', 'ep-form');
+  const why = node('input');
+  why.placeholder = 'e.g. we sold the car';
+  why.autocomplete = 'off';
+  const acts = node('div', 'ep-acts');
+  const go = node('button', 'btn danger', 'Remove');
+  go.type = 'submit';
+  acts.append(go, textBtn('Cancel', 'btn', null, () => openEnvelopePage(e.id, { focus: 'remove' })));
+  const { err, say } = epErr();
+  form.append(epField('Why', why), acts, err);
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    say('');
+    const reason = why.value.trim();
+    if (!reason) { say('Say why, in one line.'); why.focus({ preventScroll: true }); return; }
+    go.disabled = true;
+    try {
+      const { proposal } = await api('/api/tools/remove_envelope', { budget: month.budget, envelope: e.id, why: reason });
+      if (envelopePage !== page) return;
+      go.disabled = false;
+      // The row to land on, read before the commit takes this one out of the list.
+      const rows = [...$('bands').querySelectorAll('[data-envelope]')];
+      const at = rows.findIndex((r) => r.dataset.envelope === e.id);
+      const beside = at < 0 ? null : (rows[at + 1] ?? rows[at - 1])?.dataset.envelope ?? null;
+      reviewState(body, proposal, reason, {
+        onChange: () => {},
+        onApproved: async () => {
+          const linked = page.listScroll === null;
+          closeEnvelopePage({ refocus: false });
+          const to = (beside && $('bands').querySelector(`[data-envelope="${CSS.escape(beside)}"]`)) || $('env-new');
+          if (linked) to.scrollIntoView({ block: 'center' });
+          to.focus({ preventScroll: true });
+        },
+      });
+    } catch (ex) {
+      if (envelopePage !== page) return;
+      say(ex.message);
+      go.disabled = false;
+      err.focus({ preventScroll: true });
+    }
+  });
+  body.appendChild(form);
+  showEnvSubPage(section);
 }
 
 /**
