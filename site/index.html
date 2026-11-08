@@ -1196,6 +1196,19 @@
   .set-page-body > .rowform{padding:0}
   .set-page-body .actions .btn{min-height:var(--tap)}
   .set-err{margin:0}
+  /* Inside a page: a second heading, what was done, the Setup page's steps, the restore, and a form's red button. */
+  .set-sub{margin:var(--sp-4) 0 0;font-size:var(--fs-ui);font-weight:var(--fw-semibold)}
+  .set-done{margin:0;font-size:var(--fs-ui);color:var(--good)}
+  .set-done:focus{outline:none}
+  .set-page-body > .note{margin:0;text-align:left;font-size:var(--fs-small);color:var(--ink-soft)}
+  .set-page-body > .rowform.invite{padding-top:var(--sp-2)}
+  .restore{display:grid;gap:var(--sp-3);min-width:0}
+  .restore > .note{margin:0;text-align:left;font-size:var(--fs-small);color:var(--ink-soft)}
+  .restore > label{display:grid;gap:var(--sp-1);min-width:0;font-size:var(--fs-small);color:var(--ink-soft);overflow-wrap:anywhere}
+  .restore .bands{display:grid;gap:0;min-width:0;margin:0;padding:0;border:0}
+  .restore .bands legend{padding:0;margin-bottom:var(--sp-1);font-size:var(--fs-small);color:var(--ink-soft)}
+  .restore .effects{margin:0}
+  .set-page .btn.danger[type="submit"]{background:var(--problem);border-color:var(--problem);color:var(--surface)}
   .set-err[hidden]{display:none}
   .set-err:focus{outline:none}
   /* Setup's five steps: the step's name, then a mark and what it is */
@@ -2127,217 +2140,6 @@ const BANDS = [
   { key: 'settings', name: 'Settings',
     what: 'Areas, links and the Household calendar.' },
 ];
-
-/** Restore…: the panel that takes chosen pieces out of a backup file, at the top of the page. */
-function takeFromBackup() {
-  const box = $('manage-panel');
-  box.textContent = '';
-  const card = document.createElement('div');
-  card.className = 'card';
-  const h = document.createElement('h3');
-  h.textContent = 'Take from a backup';
-  const sub = document.createElement('p');
-  sub.className = 'detail';
-  sub.textContent = 'Choose a backup file and what to take out of it. Nothing is written until '
-    + 'you approve, and anything that would collide with what is already here stops the whole thing.';
-  const file = document.createElement('input');
-  file.type = 'file';
-  file.accept = '.jsonl,.json,text/plain';
-  file.style.marginTop = '12px';
-  card.append(h, sub, file);
-
-  const out = document.createElement('div');
-  card.appendChild(out);
-  box.appendChild(card);
-  // The card is the first thing in <main>: the page goes to its top, where the sticky bar
-  // covers none of it, and focus to its first control, since Restore… is pressed from the foot of Settings.
-  window.scrollTo({ top: 0 });
-  file.focus({ preventScroll: true });
-
-  let content = null;
-  const chosen = new Set(['facts', 'budgets', 'months', 'thread']);
-
-  file.addEventListener('change', async () => {
-    const f = file.files?.[0];
-    if (!f) return;
-    out.textContent = 'Reading…';
-    try { content = await f.text(); } catch (ex) { out.textContent = ex.message; return; }
-    await refreshPreview();
-  });
-
-  async function refreshPreview() {
-    if (!content) return;
-    try {
-      const p = await api('/api/restore/preview', { content, scopes: [...chosen] });
-      render(p);
-    } catch (ex) {
-      out.textContent = '';
-      const e = document.createElement('div');
-      e.className = 'blocked';
-      e.textContent = ex.message;
-      out.appendChild(e);
-    }
-  }
-
-  function render(p) {
-    out.textContent = '';
-
-    const from = document.createElement('p');
-    from.className = 'detail';
-    from.style.marginTop = '12px';
-    from.textContent = p.from.label
-      ? `From “${p.from.label}”, a household of ${p.from.owner}'s.`
-      : 'From a backup with no household name in it.';
-    out.appendChild(from);
-
-    if (p.unreadable.length) {
-      const u = document.createElement('div');
-      u.className = 'needs';
-      u.textContent = `${p.unreadable.length} line(s) in that file could not be read and will be ignored.`;
-      out.appendChild(u);
-    }
-
-    for (const band of BANDS) {
-      const available = p.available[band.key] ?? 0;
-      const label = document.createElement('label');
-      label.className = `pick ${chosen.has(band.key) ? 'on' : ''} ${available ? '' : 'empty'}`;
-
-      const cb = document.createElement('input');
-      cb.type = 'checkbox';
-      cb.checked = chosen.has(band.key) && available > 0;
-      cb.disabled = available === 0;
-      cb.addEventListener('change', async () => {
-        if (cb.checked) chosen.add(band.key); else chosen.delete(band.key);
-        await refreshPreview();
-      });
-
-      const text = document.createElement('span');
-      text.innerHTML = `<span class="name">${band.name}</span>`
-        + `<span class="what">${band.what}</span>`;
-      const count = document.createElement('span');
-      count.className = 'count';
-      count.textContent = available ? `${available} events` : 'none in this file';
-
-      label.append(cb, text, count);
-      out.appendChild(label);
-    }
-
-    // Prerequisites first: they are usually fixed by ticking another box, which
-    // is a better thing to read than a list of collisions you cannot act on.
-    if (p.missingPrerequisites.length) {
-      const n = document.createElement('div');
-      n.className = 'needs';
-      n.innerHTML = '<b>Something it needs is not selected.</b>';
-      const ul = document.createElement('ul');
-      for (const m of p.missingPrerequisites.slice(0, 6)) {
-        const li = document.createElement('li');
-        li.textContent = m;
-        ul.appendChild(li);
-      }
-      n.appendChild(ul);
-      out.appendChild(n);
-    }
-
-    if (p.collisions.length) {
-      const c = document.createElement('div');
-      c.className = 'blocked';
-      // Accounts that are not members here are a different problem from ids
-      // that mean something else, and are said as one.
-      const owners = p.collisions.filter((x) => x.kind === 'owner').length;
-      const clashes = p.collisions.length - owners;
-      const lead = document.createElement('b');
-      lead.textContent = [
-        clashes ? `${clashes} thing(s) here already mean something else.` : '',
-        owners ? `${owners} account(s) with plans in the backup are not members here.` : '',
-      ].filter(Boolean).join(' ');
-      c.append(lead, ' Nothing will be taken while that is true — a wrong merge is silent, and this is not.');
-      const ul = document.createElement('ul');
-      for (const x of p.collisions.slice(0, 5)) {
-        const li = document.createElement('li');
-        li.textContent = `${x.what} — ${x.why}`;
-        ul.appendChild(li);
-      }
-      c.appendChild(ul);
-      if (p.collisions.length > 5) {
-        const more = document.createElement('div');
-        more.className = 'more';
-        more.textContent = `and ${p.collisions.length - 5} more of the same kind`;
-        c.appendChild(more);
-      }
-      out.appendChild(c);
-    }
-
-    if (p.summary.length) {
-      const ul = document.createElement('ul');
-      ul.className = 'effects';
-      for (const line of p.summary) {
-        const li = document.createElement('li');
-        li.textContent = line;
-        ul.appendChild(li);
-      }
-      out.appendChild(ul);
-    }
-
-    const row = document.createElement('div');
-    row.className = 'row';
-    const go = document.createElement('button');
-    go.className = 'btn primary';
-    go.disabled = !p.canApply;
-    go.textContent = p.canApply
-      ? `Take ${Object.values(p.selected).reduce((a, b) => a + b, 0)} events`
-      : p.collisions.length ? 'Blocked by collisions'
-      : p.missingPrerequisites.length ? 'Missing something it needs'
-      : 'Nothing selected';
-    go.addEventListener('click', async () => {
-      go.disabled = true;
-      go.textContent = 'Taking…';
-      try {
-        const done = await api('/api/restore', { content, scopes: [...chosen] });
-        box.textContent = '';
-        const ok = document.createElement('div');
-        ok.className = 'card';
-        ok.innerHTML = `<h3>Took ${done.restored} events</h3>`;
-        box.appendChild(ok);
-        await loadBudgets();
-        await loadBudget();
-      } catch (ex) {
-        go.textContent = ex.message;
-      }
-    });
-    const cancel = document.createElement('button');
-    cancel.className = 'btn';
-    cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', () => { box.textContent = ''; });
-    row.append(go, cancel);
-    out.appendChild(row);
-  }
-}
-
-// Sharing is the owner's to do, and the reason goes in the log like any other
-// decision — the other person reads why they were added.
-function inviteSomeone() {
-  panel('Share this household', [
-    { name: 'member', label: 'Their DSM account name', placeholder: 'exactly as it is on the NAS' },
-    { name: 'why', label: 'Why', placeholder: 'e.g. my partner', wide: true },
-  ], (i) => {
-    const member = i.member.value.trim();
-    const why = i.why.value.trim();
-    // Checked before the preview, so nothing is offered for approval that the
-    // server would then refuse.
-    if (!member) throw new Error('whose DSM account?');
-    if (!why) throw new Error('sharing needs a reason, the same as moving money');
-    const here = householdLabel ?? 'this household';
-    return {
-      direct: () => api('/api/members', { member, why }),
-      confirm: `Share ${here} with ${member}`,
-      effects: [
-        `${member} will see everything in ${here} — every budget, envelope and receipt — and can change it`,
-        `The log records that you added them, and why: “${why}”`,
-      ],
-      done: `${member} can now open ${here}.`,
-    };
-  });
-}
 
 $('signout').addEventListener('click', async () => {
   await api('/api/auth/logout', {});
@@ -7525,14 +7327,14 @@ function settingsHead() {
 }
 
 /** One row of the list: a button the width of the list, its title, its one-line status and a chevron. */
-function settingItem(it, group) {
+function settingItem(it, group, open = null) {
   const b = node('button', `set-item${it.attention ? ' warn' : ''}`);
   b.type = 'button';
   b.id = `set-${it.key}`;
   b.dataset.key = `row-${it.key}`;
   b.dataset.group = group;
   b.append(node('span', 'set-t', it.title), node('span', 'set-s', it.status ?? ''), icon('go', 'i sm chev'));
-  b.addEventListener('click', () => { if (it.open) it.open(); else openPage(it.key, group); });
+  b.addEventListener('click', () => { if (open) open(); else if (it.open) it.open(); else openPage(it.key, group); });
   return b;
 }
 
@@ -7595,13 +7397,14 @@ function refreshItems(keys) {
  * Open a row's page. `linked`: opened from elsewhere (a notice, the Budget
  * screen), so the list was never seen at a scroll: Back brings its row into view.
  */
-function openPage(key, group, { linked = false } = {}) {
+function openPage(key, group, { linked = false, from = null } = {}) {
   const it = pageFor(key, group);
   if (!it) return false;
   folderPick = null;
+  restorePick = null;
   settingsEditing = null;
   settingsEditOpener = null;
-  settingsPage = { key, group: it.group, listScroll: linked ? null : window.scrollY, returnTo: `row-${key}` };
+  settingsPage = { key, group: it.group, listScroll: linked ? null : window.scrollY, returnTo: `row-${key}`, from };
   renderSettingsPage();
   return true;
 }
@@ -7615,6 +7418,14 @@ function closePage({ refocus = true } = {}) {
   settingsPage = null;
   settingsEditing = null;
   folderPick = null;
+  restorePick = null;
+  // A step opened from Setup goes Back to Setup, drawn again with what is chosen now, focus on the step.
+  if (page?.from) {
+    settingsPage = page.from;
+    renderSettingsPage();
+    if (refocus) settingsHost().querySelector(`.set-page [data-key="${CSS.escape(page.returnTo)}"]`)?.focus({ preventScroll: true });
+    return;
+  }
   if (onHouseholds()) renderNasPanel(); else renderSettingsList();
   if (!page) return;
   const row = settingsHost().querySelector(`[data-key="${CSS.escape(page.returnTo)}"]`);
@@ -7647,7 +7458,7 @@ function renderSettingsPage() {
   s.id = `set-${page.key}-page`;
   const head = node('div', 'set-page-head');
   const back = textBtn('', 'back set-back', 'set-back', () => closePage());
-  back.append(icon('back', 'i'), onHouseholds() ? 'This NAS' : 'Settings');
+  back.append(icon('back', 'i'), onHouseholds() ? 'This NAS' : page.from ? pageFor(page.from.key, page.from.group)?.title ?? 'Settings' : 'Settings');
   const h = node(onHouseholds() ? 'h2' : 'h1', '', it.title);
   h.id = 'set-page-h';
   h.tabIndex = -1;
@@ -7684,8 +7495,9 @@ function renderSettingsPage() {
 
 /** Focus the page's first field, without scrolling: the one marked to start on, else the first that can be used, else the heading. */
 function focusFirst(s) {
+  // A form that waits at the foot of a list (Invite) is not where a page starts.
   const auto = s.querySelector('.set-page-body [data-autofocus]')
-    ?? s.querySelector('.set-page-body :is(input, select, textarea):not(:disabled)');
+    ?? s.querySelector('.set-page-body :is(input, select, textarea):not(:disabled):not([data-nofocus] *)');
   const to = auto ?? s.querySelector('#set-page-h');
   to?.focus({ preventScroll: true });
   // A field opened to rename: what is typed replaces the old name.
@@ -7793,9 +7605,10 @@ const editing = (kind, index = null) => settingsEditing?.kind === kind && settin
  * | 'select' | 'textarea', options, optional, key }; a select's options are
  * [value, text, disabled] or { group, options }. An empty field that is not
  * optional is refused in the page's slot, focus on it. `onSave(values)` answers
- * true once it is done, false to leave the form as typed.
+ * true once it is done, false to leave the form as typed. `cancel: null` is a
+ * form that is always on its page: no Cancel. `danger` paints its button red.
  */
-function fieldsForm({ fields, notes = [], submit = 'Save', onSave, cancel = cancelEdit, autofocus = true, cls = '' }) {
+function fieldsForm({ fields, notes = [], submit = 'Save', onSave, cancel = cancelEdit, autofocus = true, cls = '', danger = false }) {
   const f = node('form', `rowform${cls ? ` ${cls}` : ''}`);
   // The page says what is missing, in its slot: the browser does not stop it first.
   f.noValidate = true;
@@ -7841,12 +7654,14 @@ function fieldsForm({ fields, notes = [], submit = 'Save', onSave, cancel = canc
   if (autofocus) Object.values(inputs)[0].dataset.autofocus = '';
   for (const n of notes) if (n) f.appendChild(n);
   const acts = node('div', 'actions');
-  const go = node('button', 'btn primary', submit);
+  const go = node('button', danger ? 'btn danger' : 'btn primary', submit);
   go.type = 'submit';
-  acts.append(go, textBtn('Cancel', 'btn', null, cancel));
+  acts.appendChild(go);
+  // A form that is always on its page has no Cancel: Back is its way out, and Escape goes Back.
+  if (cancel) acts.appendChild(textBtn('Cancel', 'btn', null, cancel));
   f.appendChild(acts);
   f.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape') return;
+    if (e.key !== 'Escape' || !cancel) return;
     e.preventDefault();
     cancel();
   });
@@ -7856,7 +7671,7 @@ function fieldsForm({ fields, notes = [], submit = 'Save', onSave, cancel = canc
     if (missing) {
       const i = inputs[missing.name];
       i.setAttribute('aria-invalid', 'true');
-      pageErr(new Error(fields.length === 1 ? 'Fill this in first.' : `Fill in ${missing.label.toLowerCase()} first.`), { focus: false });
+      pageErr(new Error(fields.length === 1 ? 'Fill this in first.' : `Fill in ${missing.label[0].toLowerCase()}${missing.label.slice(1)} first.`), { focus: false });
       i.focus({ preventScroll: true });
       return;
     }
@@ -8048,10 +7863,10 @@ function conflictsForm() {
  */
 function phoneItem() {
   const at = phoneSetAt();
-  const when = at ? new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : null;
+  const when = at ? new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' }) : null;
   return {
     key: 'phone', title: 'Your iPhone and Mac',
-    status: when ? `Set up on this device on ${when}` : 'Not set up on this device yet',
+    status: when ? `Set up ${when}` : 'Not set up',
     // Its own sheet, already a full screen with its heading: its Done comes back to the list.
     open: () => { sheetFromSettings('row-phone'); void openPhoneSheet(); },
   };
@@ -8393,10 +8208,8 @@ function linksForm() {
  */
 function budgetItem() {
   const sv = settingsData.savings ?? { account: null, accounts: [], balance: null };
-  const cats = `Categories: ${settingsData.categoriesInUse ?? 0} in use`;
-  const status = sv.balance ? `${cats} · Savings shown today: ${sv.balance.exact}`
-    : sv.account ? `${cats} · Savings is account ${sv.account}, with no balance yet`
-    : `${cats} · No savings account chosen`;
+  const cats = plural(settingsData.categoriesInUse ?? 0, 'category', 'categories');
+  const status = `${cats} · ${sv.balance ? `Savings ${sv.balance.exact}` : sv.account ? `Savings account ${sv.account}` : 'No savings account'}`;
   return {
     key: 'budget', title: 'Budget', status, list: true,
     line: 'The categories every budget shares, and the account the envelopes saved in Savings live in.',
@@ -8482,32 +8295,36 @@ const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
 /** Whether a step of Setup has been chosen; true for a step the household does not have. */
 const stepDone = (id) => settingsData.setup.steps.find((x) => x.id === id)?.done ?? true;
 
+/** Each step of Setup and the row it is chosen in. */
+const STEP_ROW = { folder: 'documents', zone: 'zone', calendar: 'hcal', booking: 'guests', model: 'model' };
+
+/**
+ * Setup: the guided version of the Household group. Its page lists the five
+ * steps in the order they are asked, each a row that opens the page it is
+ * chosen on; Back from that page comes here again.
+ */
 function setupItem() {
   const su = settingsData.setup;
   const steps = SETUP_ORDER.map((id) => su.steps.find((x) => x.id === id)).filter(Boolean);
-  const left = steps.filter((s) => !s.done).length;
+  const done = steps.filter((s) => s.done).length;
   return {
-    key: 'setup', title: 'Setup',
-    status: left ? `${plural(left, 'step')} to choose` : 'All chosen',
-    attention: left > 0,
-    line: 'What a new household chooses first, in the order it is asked.',
+    key: 'setup', title: 'Setup', list: true,
+    status: done === steps.length ? 'All chosen' : `${done} of ${steps.length} chosen`,
+    attention: done < steps.length,
+    line: su.youOwn ? 'What a new household chooses first, in the order it is asked. Only you choose these.'
+      : `What a new household chooses first, in the order it is asked. Only ${su.owner ?? 'the owner'} chooses these.`,
     body: () => {
-      const grid = node('dl', 'setup-grid');
-      const values = { folder: folderStep, zone: zoneStep, calendar: calendarStep, booking: bookingStep, model: modelStep };
+      const list = node('div', 'set-list');
       for (const step of steps) {
-        const dt = node('dt', '', SETUP_LABELS[step.id]);
-        if (su.first === step.id) dt.setAttribute('aria-current', 'step');
-        const dd = node('dd');
-        const mark = node('span', `mark${step.done ? ' ok' : ''}`, step.done ? '✓' : '○');
-        mark.setAttribute('aria-hidden', 'true');
-        dd.appendChild(mark);
-        for (const v of values[step.id]()) if (v) dd.appendChild(typeof v === 'string' ? node('span', '', v) : v);
-        if (!step.done) dd.appendChild(node('span', 'hint', 'Not chosen yet'));
-        grid.append(dt, dd);
+        const it = pageFor(STEP_ROW[step.id], 'household');
+        if (!it) continue;
+        const row = { ...it, title: SETUP_LABELS[step.id], status: step.done ? it.status : 'Not chosen', attention: !step.done };
+        const from = settingsPage;
+        const b = settingItem(row, 'household', () => openPage(it.key, 'household', { from }));
+        if (su.first === step.id) b.setAttribute('aria-current', 'step');
+        list.appendChild(b);
       }
-      const who = su.youOwn ? 'Only you choose these. Each is a row of its own in Settings.'
-        : `Only ${su.owner ?? 'the owner'} chooses these. Each is a row of its own in Settings.`;
-      return [grid, node('p', 'hint', who)];
+      return [list];
     },
   };
 }
@@ -8856,7 +8673,7 @@ function hcalItem() {
   if (elsewhere) notes.push(`Plans go on ${elsewhereName}, chosen instead of the Household calendar.`);
   return {
     key: 'hcal', title: 'Household calendar', owner: true,
-    status: elsewhere ? `Plans go on ${elsewhereName}` : household ? household.name : 'No Household calendar yet',
+    status: elsewhere ? elsewhereName : household ? household.name : 'Not chosen',
     attention: !household && !elsewhere,
     line: "Where plans' due dates and blocks go, and the only calendar the shared briefing reads.",
     notes,
@@ -8949,7 +8766,7 @@ function guestsItem() {
   const b = settingsData.booking ?? {};
   return {
     key: 'guests', title: 'Guests and booking', list: true,
-    status: `${plural(g.list?.length ?? 0, 'guest')} on the list · Booking ${b.on ? 'on' : 'off'}`,
+    status: b.on ? `On · ${plural(g.list?.length ?? 0, 'guest')}` : 'Off',
     line: 'Who may ask to stay, and the note a guest is sent once a stay is confirmed.',
     notes: [!b.on && b.needsAddress ? 'Needs the booking address set under This NAS before it can go on.' : null],
     body: guestsForm,
@@ -9049,7 +8866,7 @@ function documentsItem() {
   if (documentsStatus && !documentsStatus.on && documentsStatus.why) notes.push(documentsStatus.why);
   return {
     key: 'documents', title: 'Documents', owner: true,
-    status: d.folder ? `${d.folder.team} › ${d.folder.folder}` : 'No folder chosen',
+    status: d.folder ? `${d.folder.team}/${d.folder.folder}` : 'Not chosen',
     attention: !d.folder,
     line: "The folder in Synology Drive that briefings, answers and cards' files go to.",
     notes,
@@ -9058,81 +8875,273 @@ function documentsItem() {
   };
 }
 
-/** Members: who is in the household, the owner marked; only the owner invites someone. */
+/** The open household's name, for the pages that have to say whose it is. */
+const hereLabel = () => myHouseholds.find((h) => h.id === myHouseholdId)?.label ?? householdLabel ?? 'this household';
+
+/** Post a change to who is in the household; the route answers with the members, kept beside the settings. */
+async function changeMembers(method, body, focus) {
+  const page = settingsPage;
+  let out;
+  try {
+    out = await api('/api/members', body, method);
+  } catch (ex) {
+    if (settingsPage === page) pageErr(ex);
+    return false;
+  }
+  settingsData = { ...settingsData, members: out.members };
+  members = out.members;
+  if (settingsPage !== page) return true;
+  settingsEditing = null;
+  clearPageErr();
+  redrawPage(focus);
+  return true;
+}
+
+/**
+ * Members: who is in the household, the owner marked. The owner removes
+ * someone from beside their name and invites someone at the foot; the reason
+ * goes in the log like any other decision, and the other person reads it.
+ */
 function membersItem() {
   const owner = settingsData.setup.owner;
+  const owns = settingsData.setup.youOwn;
   return {
     key: 'members', title: 'Members', list: true,
-    status: settingsData.members.map((m) => (m === owner ? `${m} (owner)` : m)).join(' · '),
-    line: settingsData.setup.youOwn ? 'Who is in the household. Only you invite someone.'
-      : `Who is in the household. Only ${owner ?? 'the owner'} invites someone.`,
+    status: settingsData.members.join(' · '),
+    line: owns ? 'Who is in the household. Only you invite or remove someone.'
+      : `Who is in the household. Only ${owner ?? 'the owner'} invites or removes someone.`,
     body: () => {
+      const here = hereLabel();
       const rows = node('div', 'rows');
       for (const m of settingsData.members) {
+        if (owns && m !== owner && editing('member-remove', m)) {
+          rows.appendChild(fieldsForm({
+            fields: [{ name: 'why', label: `Why ${m} is leaving ${here}`, placeholder: 'e.g. moved out', optional: true }],
+            notes: [node('p', 'note', `${m} can no longer open ${here}, and the Household calendar is no longer shared with them.`)],
+            submit: `Remove ${m}`, danger: true,
+            onSave: (v) => changeMembers('DELETE', { member: m, ...(v.why ? { why: v.why } : {}) }, 'member-invite'),
+          }));
+          continue;
+        }
         const r = node('div', 'rowi');
         const t = node('span', '', m);
         if (m === owner) t.appendChild(node('span', 'meta', 'Owner'));
         r.appendChild(t);
+        if (owns && m !== owner) {
+          const end = node('span', 'end');
+          end.appendChild(textBtn('Remove', 'btn bare small danger', `member-remove-${m}`, () => editRows('member-remove', m)));
+          r.appendChild(end);
+        }
         rows.appendChild(r);
       }
       const out = [rows];
-      if (settingsData.setup.youOwn) {
-        const acts = node('div', 'actions');
-        acts.appendChild(textBtn('Invite someone', 'btn', 'members-invite', inviteSomeone));
-        out.push(acts);
+      if (owns) {
+        out.push(fieldsForm({
+          fields: [
+            { name: 'member', label: 'Their DSM account name', placeholder: 'exactly as it is on the NAS', key: 'member-invite' },
+            { name: 'why', label: 'Why', placeholder: 'e.g. my partner' },
+          ],
+          notes: [node('p', 'note', `They will see everything in ${here}, every budget, envelope and receipt, and can change it. The log records that you added them, and why.`)],
+          submit: 'Invite', cancel: null, autofocus: false, cls: 'invite',
+          onSave: (v) => changeMembers('POST', v, 'member-invite'),
+        }));
+        out.at(-1).dataset.nofocus = '';
       }
       return out;
     },
   };
 }
 
+// ── Restore: taking pieces out of a backup file, on the Backup page ────────
+
+/**
+ * The restore while it is on the Backup page, as { name, content, chosen,
+ * preview, reading, done }. A new object for each file, so a preview that
+ * answers after the page was left, or another file chosen, is dropped.
+ */
+let restorePick = null;
+
+async function previewRestore(pick) {
+  pick.reading = true;
+  redrawPage();
+  let p = null;
+  let problem = null;
+  try {
+    p = await api('/api/restore/preview', { content: pick.content, scopes: [...pick.chosen] });
+  } catch (ex) { problem = ex; }
+  if (restorePick !== pick || settingsPage?.key !== 'backup') return;
+  pick.reading = false;
+  if (p) pick.preview = p;
+  redrawPage();
+  if (problem) pageErr(problem, { focus: false }); else clearPageErr();
+}
+
+/** The Backup page's restore: a file, the bands to take, what they would do, and Take. */
+function restoreForm() {
+  const box = node('div', 'restore');
+  box.appendChild(node('h2', 'set-sub', 'Take from a backup'));
+  box.appendChild(node('p', 'note', 'Choose a backup file and what to take out of it. Nothing is written until '
+    + 'you approve, and anything that would collide with what is already here stops the whole thing.'));
+  const pick = restorePick;
+  if (pick?.done) {
+    const done = node('p', 'set-done', `Took ${pick.done} events from ${pick.name}.`);
+    done.tabIndex = -1;
+    box.appendChild(done);
+    return box;
+  }
+  const l = node('label', '', pick ? `Backup file: ${pick.name}` : 'Backup file');
+  const file = node('input', 'input');
+  file.type = 'file';
+  file.accept = '.jsonl,.json,text/plain';
+  file.dataset.key = 'restore-file';
+  l.appendChild(file);
+  box.appendChild(l);
+  file.addEventListener('change', async () => {
+    const f = file.files?.[0];
+    if (!f) return;
+    const next = { name: f.name, content: null, chosen: new Set(['facts', 'budgets', 'months', 'thread']), preview: null, reading: true, done: 0 };
+    restorePick = next;
+    clearPageErr();
+    redrawPage('restore-file');
+    try { next.content = await f.text(); } catch (ex) {
+      if (restorePick === next) { next.reading = false; redrawPage(); pageErr(ex); }
+      return;
+    }
+    if (restorePick === next) await previewRestore(next);
+  });
+  if (!pick) return box;
+  if (pick.reading) {
+    const r = node('p', 'note', 'Reading…');
+    r.setAttribute('role', 'status');
+    box.appendChild(r);
+  }
+  const p = pick.preview;
+  if (!p) return box;
+
+  box.appendChild(node('p', 'note', p.from.label ? `From “${p.from.label}”, a household of ${p.from.owner}'s.` : 'From a backup with no household name in it.'));
+  if (p.unreadable.length) box.appendChild(node('div', 'needs', `${p.unreadable.length} line(s) in that file could not be read and will be ignored.`));
+  const set = node('fieldset', 'bands');
+  set.appendChild(node('legend', '', 'What to take'));
+  for (const band of BANDS) {
+    const available = p.available[band.key] ?? 0;
+    const label = node('label', `pick${pick.chosen.has(band.key) ? ' on' : ''}${available ? '' : ' empty'}`);
+    const cb = node('input');
+    cb.type = 'checkbox';
+    cb.checked = pick.chosen.has(band.key) && available > 0;
+    cb.disabled = available === 0 || pick.reading;
+    cb.dataset.key = `restore-${band.key}`;
+    cb.addEventListener('change', () => {
+      if (cb.checked) pick.chosen.add(band.key); else pick.chosen.delete(band.key);
+      void previewRestore(pick);
+    });
+    const text = node('span');
+    text.append(node('span', 'name', band.name), node('span', 'what', band.what));
+    label.append(cb, text, node('span', 'count', available ? `${available} events` : 'none in this file'));
+    set.appendChild(label);
+  }
+  box.appendChild(set);
+  const list = (cls, lead, items, more) => {
+    const d = node('div', cls);
+    d.appendChild(node('b', '', lead));
+    const ul = node('ul');
+    for (const x of items) ul.appendChild(node('li', '', x));
+    d.appendChild(ul);
+    if (more) d.appendChild(node('div', 'more', more));
+    box.appendChild(d);
+  };
+  // Prerequisites first: they are usually fixed by ticking another box, which
+  // is a better thing to read than a list of collisions you cannot act on.
+  if (p.missingPrerequisites.length) list('needs', 'Something it needs is not selected.', p.missingPrerequisites.slice(0, 6));
+  if (p.collisions.length) {
+    // Accounts that are not members here are a different problem from ids that mean something else, and are said as one.
+    const owners = p.collisions.filter((x) => x.kind === 'owner').length;
+    const clashes = p.collisions.length - owners;
+    const lead = [
+      clashes ? `${clashes} thing(s) here already mean something else.` : '',
+      owners ? `${owners} account(s) with plans in the backup are not members here.` : '',
+    ].filter(Boolean).join(' ') + ' Nothing will be taken while that is true: a wrong merge is silent, and this is not.';
+    list('blocked', lead, p.collisions.slice(0, 5).map((x) => `${x.what}: ${x.why}`),
+      p.collisions.length > 5 ? `and ${p.collisions.length - 5} more of the same kind` : null);
+  }
+  if (p.summary.length) {
+    const ul = node('ul', 'effects');
+    for (const line of p.summary) ul.appendChild(node('li', '', line));
+    box.appendChild(ul);
+  }
+  const acts = node('div', 'actions');
+  const go = textBtn(p.canApply ? `Take ${Object.values(p.selected).reduce((a, b) => a + b, 0)} events`
+    : p.collisions.length ? 'Blocked by collisions'
+    : p.missingPrerequisites.length ? 'Missing something it needs'
+    : 'Nothing selected', 'btn primary', 'restore-go', async () => {
+    go.disabled = true;
+    go.textContent = 'Taking…';
+    const page = settingsPage;
+    let done;
+    try {
+      done = await api('/api/restore', { content: pick.content, scopes: [...pick.chosen] });
+    } catch (ex) {
+      if (restorePick === pick && settingsPage === page) { redrawPage(); pageErr(ex); }
+      return;
+    }
+    pick.done = done.restored;
+    // What was taken may hold areas, links or budgets: read them again, then say what was done.
+    try { settingsData = await api('/api/settings'); keepFilesFrom(settingsData); renderHouseholdApps(); } catch { /* the next visit reads them */ }
+    try { await loadBudgets(); } catch { /* Budget reads them again when opened */ }
+    if (restorePick === pick && settingsPage === page) {
+      redrawPage();
+      settingsHost().querySelector('.set-page .set-done')?.focus({ preventScroll: true });
+    }
+  });
+  go.disabled = !p.canApply || pick.reading;
+  acts.append(go, textBtn('Choose another file', 'btn', 'restore-again', () => { restorePick = null; clearPageErr(); redrawPage('restore-file'); }));
+  box.appendChild(acts);
+  return box;
+}
+
 function backupItem() {
   return {
     key: 'backup', title: 'Backup', list: true, status: '',
-    line: "The household's log, everything it has decided.",
+    line: "The household's log, everything it has decided. Download a copy to keep, or take chosen pieces back out of one.",
     body: () => {
       const acts = node('div', 'actions');
-      const dl = node('a', 'btn', 'Download');
+      const dl = node('a', 'btn', 'Download the backup');
       dl.href = '/api/backup';
       dl.setAttribute('download', '');
       dl.dataset.key = 'backup-download';
-      acts.append(dl, textBtn('Restore…', 'btn', 'backup-restore', takeFromBackup));
-      return [acts];
+      acts.appendChild(dl);
+      return [acts, restoreForm()];
     },
   };
 }
 
-/** Remove this household: the owner's alone, last in the group, and for good. */
+/** Remove this household: the owner's alone, last in the group, and for good. Its name is typed to be sure. */
 function removeItem() {
+  const label = hereLabel();
   return {
     key: 'remove', title: 'Remove this household', list: true, status: '',
-    line: 'Everything in it goes, for everyone in it, for good. A backup from Backup is the only way back.',
-    body: () => {
-      const acts = node('div', 'actions');
-      acts.appendChild(textBtn('Remove…', 'btn danger', 'remove-go', removeHousehold));
-      return [acts];
-    },
-  };
-}
-
-function removeHousehold() {
-  const id = myHouseholdId;
-  const label = myHouseholds.find((h) => h.id === id)?.label ?? householdLabel ?? id;
-  panel(`Remove ${label} for good`, [
-    { name: 'label', label: "Type the household's name", placeholder: label, wide: true },
-  ], (i) => ({
-    run: async () => {
-      await api('/api/households/remove', { household: id, label: i.label.value });
-      await backToPicker();
-    },
-  }), {
-    button: `Remove ${label} for good`,
-    intro: [
-      "This deletes the household's log: its budgets, receipts, plans, rules, members and history. "
-        + 'Everyone in it is signed out of it and lands on Choose a household.',
-      "It does not touch your files in Drive, the calendar in Synology Calendar, other households, or the NAS's own settings.",
+    line: 'For good, for everyone in it. A backup is the only way back.',
+    body: () => [
+      node('p', 'note', "This deletes the household's log: its budgets, receipts, plans, rules, members and history. "
+        + 'Everyone in it is signed out of it and lands on Choose a household.'),
+      // What it leaves alone sits under the field, still above the button: the field opens in the top half of a phone.
+      fieldsForm({
+        fields: [{ name: 'label', label: "Type the household's name", placeholder: label, key: 'remove-label' }],
+        notes: [node('p', 'note', "It does not touch your files in Drive, the calendar in Synology Calendar, other households, or the NAS's own settings.")],
+        submit: `Remove ${label} for good`, danger: true, cancel: null,
+        onSave: async (v) => {
+          const page = settingsPage;
+          try {
+            await api('/api/households/remove', { household: myHouseholdId, label: v.label });
+          } catch (ex) {
+            if (settingsPage === page) pageErr(ex);
+            return false;
+          }
+          await backToPicker();
+          return true;
+        },
+      }),
     ],
-  });
+  };
 }
 
 // ── This NAS: what the NAS connects to, the administrator's alone ──────────

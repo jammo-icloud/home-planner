@@ -110,6 +110,10 @@ there is any doubt. It is also how to start again from the first sign-in.
 Almost nothing has to live in `.env`. Configuration is done in the app, by two
 kinds of people, in two places.
 
+Settings is a list, one line per setting with what it is set to. Each setting
+opens as a page of its own, with its form at the top, and Back returns to the
+list where you left it. A reminder on Today opens the page it is about.
+
 **The household's owner, in Settings.** A *Setup* checklist asks, in order:
 where documents live (the Drive folder), the household's time zone, the
 Household calendar, whether the household takes bookings, and the model that
