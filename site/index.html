@@ -3737,18 +3737,18 @@ function envFigureForm(e, { amount = '', per = 'month', question = false, onCanc
         budget: month.budget, envelope: e.id, month: month.month,
         ...(got.per === 'month' ? { amountCents: got.amountCents } : { basis: { amountCents: got.amountCents, per: got.per } }),
       });
-      if (envelopePage !== page) return;
+      // Committed: the list is read again even if Back was pressed meanwhile. The page,
+      // still open, is drawn once by that reload, with focus where this form says.
+      page.focusNext = done;
       await loadBudget();
       if (envelopePage !== page) return;
     } catch (ex) {
+      page.focusNext = null;
       if (envelopePage !== page) return;
       say(ex.message);
       save.disabled = false;
       err.focus({ preventScroll: true });
-      return;
     }
-    page.editing = null;
-    renderEnvelopePage({ focus: done });
   });
   return { form, control };
 }
@@ -3771,11 +3771,14 @@ function envCard(e) {
  * The open envelope's page, drawn whole from `month`. Focus goes to the
  * control `focus` names, else back to the one that had it, else the amount of
  * the question form, else the heading; it is left alone when it is somewhere
- * else (the search box) while a reload draws the page again.
+ * else (the search box) while a reload draws the page again. A save leaves the
+ * control to focus on the page (`focusNext`) for the reload's drawing to take.
  */
-function renderEnvelopePage({ focus = null } = {}) {
+function renderEnvelopePage({ focus: asked = null } = {}) {
   const page = envelopePage;
   if (!page) return;
+  const focus = asked ?? page.focusNext ?? null;
+  page.focusNext = null;
   const e = month?.envelopes?.find((x) => x.id === page.id);
   if (!e) { closeEnvelopePage({ refocus: false }); return; }
   const host = $('env-page');
@@ -3830,7 +3833,7 @@ function renderEnvelopePage({ focus = null } = {}) {
       now.el.querySelector('.ep-sec-h').scrollIntoView({ block: 'start' });
       now.slot.querySelector('.edit input')?.focus({ preventScroll: true });
     }) : null;
-    now.slot.appendChild(envLine(`${e.funded} funded`, envAdjusted(e) ? `was ${e.planned}` : 'as planned', adjust));
+    now.slot.appendChild(envLine(`${e.funded} funded`, envAdjusted(e) ? `was ${e.planned}` : e.adjustedBy ? '' : 'as planned', adjust));
   }
   body.appendChild(now.el);
 
@@ -4100,11 +4103,11 @@ function showProposal(body, proposal, trigger) {
   yes.textContent = proposal.summary;
   yes.addEventListener('click', async () => {
     yes.disabled = true;
-    // Approved on an envelope's page: once Back has been pressed, the reply draws nothing.
+    // Approved on an envelope's page: a committed change reloads the list even after Back,
+    // but a refusal that lands after Back is not drawn on a page that is gone.
     const page = envelopePage;
     try {
       await api('/api/commit', { proposalId: proposal.id });
-      if (page && envelopePage !== page) return;
       await loadBudget();
     } catch (ex) {
       if (page && envelopePage !== page) return;
