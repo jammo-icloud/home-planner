@@ -1210,7 +1210,7 @@
   .restore .effects{margin:0}
   .set-page .btn.danger[type="submit"]{background:var(--problem);border-color:var(--problem);color:var(--surface)}
   .set-err[hidden]{display:none}
-  .set-err:focus{outline:none}
+  .set-err:focus{outline:2px solid var(--focus);outline-offset:2px}
   /* Setup's five steps: the step's name, then a mark and what it is */
   .setup-grid{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-1) var(--sp-3);margin:0;align-items:baseline;width:100%}
   .setup-grid dt{color:var(--ink)}
@@ -7187,9 +7187,13 @@ async function loadSettings() {
   } finally {
     $('loading').hidden = true;
   }
-  await loadCalendars();
-  if (view === 'settings') calendarsArrived();
+  // The calendars are not waited for: the list, or a page a link opens, is drawn now,
+  // and the lines and pages that read the calendars fill in when they answer.
+  const visit = ++settingsVisit;
+  void loadCalendars().then(() => { if (view === 'settings' && visit === settingsVisit) calendarsArrived(); });
 }
+/** Counts the visits to Settings: the calendars answering for an earlier one are not drawn. */
+let settingsVisit = 0;
 
 /** Why the calendars could not be read, in the NAS's words, for the pages that need them. */
 let calProblem = null;
@@ -7419,6 +7423,7 @@ function closePage({ refocus = true } = {}) {
   settingsEditing = null;
   folderPick = null;
   restorePick = null;
+  document.removeEventListener('keydown', pageEscape);
   // A step opened from Setup goes Back to Setup, drawn again with what is chosen now, focus on the step.
   if (page?.from) {
     settingsPage = page.from;
@@ -7478,12 +7483,8 @@ function renderSettingsPage() {
   const now = node('div', 'set-now');
   fillNotes(now, it.notes);
   s.appendChild(now);
-  // Escape goes Back; a form inside that has its own Cancel takes it first.
-  s.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || e.defaultPrevented) return;
-    e.preventDefault();
-    closePage();
-  });
+  // Escape goes Back while a page is open; a form inside that has its own Cancel takes it first.
+  document.addEventListener('keydown', pageEscape);
   host.appendChild(s);
   if (!readOnlyPage(it)) {
     it.init?.();
@@ -7491,6 +7492,21 @@ function renderSettingsPage() {
   }
   if (onHouseholds()) s.scrollIntoView({ block: 'start' }); else window.scrollTo({ top: 0 });
   focusFirst(s);
+}
+
+/**
+ * Escape on the open page goes Back: from inside it, or with focus fallen to
+ * the page itself. Not from the bar above (the search box), a menu or a sheet,
+ * which have their own Escape. Listened for only while a page is open.
+ */
+function pageEscape(e) {
+  if (!settingsPage) { document.removeEventListener('keydown', pageEscape); return; }
+  if (e.key !== 'Escape' || e.defaultPrevented) return;
+  const s = settingsHost().querySelector('.set-page');
+  const t = e.target;
+  if (!s || !(t === document.body || t === document.documentElement || s.contains(t))) return;
+  e.preventDefault();
+  closePage();
 }
 
 /** Focus the page's first field, without scrolling: the one marked to start on, else the first that can be used, else the heading. */
@@ -7537,8 +7553,11 @@ function pageErr(ex, { focus = true } = {}) {
   if (!err) return false;
   err.textContent = ex?.message ?? String(ex);
   err.hidden = false;
-  if (focus) err.focus({ preventScroll: true });
-  err.scrollIntoView({ block: 'nearest' });
+  // An answer that arrives on its own neither takes focus nor moves the page.
+  if (focus) {
+    err.focus({ preventScroll: true });
+    err.scrollIntoView({ block: 'nearest' });
+  }
   return true;
 }
 function clearPageErr() {
@@ -8936,6 +8955,7 @@ function membersItem() {
       }
       const out = [rows];
       if (owns) {
+        out.push(node('h2', 'set-sub', 'Invite someone'));
         out.push(fieldsForm({
           fields: [
             { name: 'member', label: 'Their DSM account name', placeholder: 'exactly as it is on the NAS', key: 'member-invite' },
@@ -9327,14 +9347,24 @@ function connForm(r) {
   const busy = (on) => { for (const x of f.querySelectorAll('button, input')) x.disabled = on; };
   /** Post each change in turn; each answers with the page. A refusal leaves the form as typed. */
   const post = async (changes) => {
+    const page = settingsPage;
     busy(true);
+    let problem = null;
     try {
       for (const [route, body] of changes) connData = await api(`/api/connectors/${route}`, body);
     } catch (ex) {
+      problem = ex;
+    }
+    // Gone Back, or to another page, while the NAS answered: the list's line says what is set, and nothing else is drawn.
+    if (settingsPage !== page) {
+      if (!settingsPage) refreshItems([r.id]);
+      return;
+    }
+    if (problem) {
       busy(false);
       // A change made before the refusal still counts: its row says so.
       redrawConnectorRow(r.id);
-      connProblem(ex);
+      connProblem(problem);
       return;
     }
     clearPageErr();
@@ -9479,14 +9509,24 @@ function connTest(r, busy) {
   said.setAttribute('role', 'status');
   let to = null;
   const go = textBtn(r.id === 'mail' ? 'Send me a test' : 'Test', 'btn', null, async () => {
+    const page = settingsPage;
     busy(true);
     said.textContent = r.id === 'mail' ? 'Sending…' : 'Testing…';
+    let problem = null;
     try {
       connData = await api(`/api/connectors/${r.id}/test`, r.id === 'mail' ? { to: to.value.trim() } : {});
     } catch (ex) {
+      problem = ex;
+    }
+    // Gone Back, or to another page, while the test ran: its answer is not drawn there.
+    if (settingsPage !== page) {
+      if (!settingsPage && !problem) refreshItems([r.id]);
+      return;
+    }
+    if (problem) {
       said.textContent = '';
       busy(false);
-      connProblem(ex);
+      connProblem(problem);
       return;
     }
     clearPageErr();
