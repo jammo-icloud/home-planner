@@ -243,6 +243,9 @@
   .figure-form input:focus{outline:none;border-color:var(--focus)}
   .figure-form .msg{flex-basis:100%;color:var(--problem);font-size:var(--fs-small)}
   .figure-form .msg:empty{display:none}
+  .figure-form .live{margin-top:4px;font-size:var(--fs-small);color:var(--ink-soft)}
+  .figure-form .live:empty{display:none}
+  .figure-form .avgs{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
   .env-meta{font-size:var(--fs-micro);color:var(--ink-soft);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
   /* The plan of record never changes, so when this month has been adjusted both
      numbers are shown — "was $975" is the whole reason the plan is immutable. */
@@ -3307,6 +3310,50 @@ const toCents = (text) => {
   return Number.isFinite(n) ? Math.round(n * 100) : NaN;
 };
 
+/**
+ * A figure typed the way the bill is known: "1,200 a year", "250 a quarter", "40/wk".
+ * The amount is whatever toCents takes; what follows is the period, and no words at all
+ * means a month. Anything else after the amount is null, so "1200 a fortnight or so" is
+ * refused rather than guessed. Words understood (with a/an/per/each/every or / before them):
+ *   year: year, yr, y, yearly, annually, 12 months      quarter: quarter, qtr, q, quarterly, 3 months
+ *   month: month, mo, m, monthly                         week: week, wk, w, weekly
+ *   fortnight: fortnight, fortnightly, 2 or two weeks, other week, biweekly
+ *   half-year: six or 6 months, half-yearly, half year, twice a year
+ * Answers { cents, per } with per one of week, fortnight, month, quarter, half-year, year; or null.
+ */
+const FIGURE_PERS = [
+  ['year', 'years?|yrs?|y|yearly|annually|annual|12 months|twelve months'],
+  ['quarter', 'quarters?|qtr|q|quarterly|3 months|three months'],
+  ['month', 'months?|mo|m|monthly'],
+  ['fortnight', 'fortnights?|fortnightly|2 weeks|two weeks|other week|bi-?weekly'],
+  ['half-year', '6 months|six months|half-?\\s?years?|half-?yearly'],
+  ['week', 'weeks?|wks?|w|weekly'],
+].map(([per, words]) => [per, new RegExp(`^(?:(?:an?|per|each|every|/)\\s*)?(?:${words})$`)]);
+const parseFigure = (text) => {
+  const m = String(text).toLowerCase().match(/^\s*(\$?\s*(?:\d[\d,]*\.?\d*|\.\d+))\s*(.*?)\s*$/);
+  if (!m) return null;
+  const cents = toCents(m[1]);
+  if (!Number.isFinite(cents) || cents < 0) return null;
+  const rest = m[2].replace(/\s+/g, ' ');
+  if (rest === '') return { cents, per: 'month' };
+  if (rest === 'twice a year') return { cents, per: 'half-year' };
+  const hit = FIGURE_PERS.find(([, re]) => re.test(rest));
+  return hit ? { cents, per: hit[0] } : null;
+};
+
+const PER_YEAR = { week: 52, fortnight: 26, month: 12, quarter: 4, 'half-year': 2, year: 1 };
+const PER_WORDS = {
+  week: 'a week', fortnight: 'a fortnight', month: 'a month', quarter: 'a quarter',
+  'half-year': 'every six months', year: 'a year',
+};
+/** What the monthly will be, shown before saving. The server recomputes it (rounding up to the cent) from the basis it is sent. */
+const monthlyOfFigure = (cents, per) => Math.floor((cents * PER_YEAR[per] + 11) / 12);
+/** "1,200 a year": a basis as the form takes it, whole dollars bare and cents kept. */
+const basisText = (b) => {
+  const c = toCents(b.amount);
+  return `${exactDollars(c).replace(/^\$/, '').replace(/\.00$/, '')} ${PER_WORDS[b.per] ?? ''}`.trim();
+};
+
 // Which loadBudget is the latest. One that was overtaken (a step's own reload and Finish's,
 // say) must not draw over the newer one when its answer lands late.
 let budgetLoads = 0;
@@ -3479,6 +3526,8 @@ function envelopeRow(e) {
   const spent = document.createElement('span');
   spent.textContent = `${e.spent} spent`;
   meta.append(funded, spent);
+  // A figure given by the year, quarter or week keeps saying so, so a later edit starts from it.
+  if (e.basis && !e.needsFigure) meta.appendChild(node('span', 'was', `from $${basisText(e.basis)}`));
   if (toCents(e.carriedIn) !== 0) {
     const c = document.createElement('span');
     c.className = 'was';
@@ -3528,8 +3577,10 @@ function envelopeRow(e) {
   // giving each a figure is a tap per row rather than an editor per row.
   // A closed month is history, and its envelopes are not given figures from it.
   const acts = node('div', 'env-acts');
+  if (!month.closed) {
+    acts.appendChild(textBtn(e.needsFigure ? 'Set' : 'Change', 'btn small', null, () => openFigureForm(row, e)));
+  }
   if (e.needsFigure && !month.closed) {
-    acts.appendChild(textBtn('Set', 'btn small', null, () => openFigureForm(row, e)));
     const use = e.hint?.use;
     if (use) {
       const b = textBtn(use.label, 'btn small', null, async () => {
@@ -3674,10 +3725,39 @@ function openFigureForm(row, e) {
     const amount = node('input');
     amount.id = id;
     amount.name = 'amount';
-    amount.inputMode = 'decimal';
+    amount.inputMode = 'text';
     amount.autocomplete = 'off';
-    amount.placeholder = '0.00';
-    f.append(l, amount);
+    amount.placeholder = 'e.g. 1,200 a year';
+    // Starts from the figure as it was given: its yearly basis, else its monthly.
+    amount.value = e.basis ? basisText(e.basis)
+      : !e.needsFigure && Number.isFinite(toCents(e.fundedExact)) ? (toCents(e.fundedExact) / 100).toFixed(2) : '';
+    const live = node('div', 'live');
+    live.setAttribute('aria-live', 'polite');
+    const showLive = () => {
+      const typed = amount.value.trim();
+      const got = typed === '' ? null : parseFigure(typed);
+      live.textContent = typed === '' ? ''
+        : !got ? 'Say how often: a month, a year, a quarter, a fortnight or a week.'
+        : got.per === 'month' ? '' : `= ${exactDollars(monthlyOfFigure(got.cents, got.per))} a month`;
+    };
+    amount.addEventListener('input', showLive);
+    f.append(l, amount, live);
+    // Averages of the receipts: helpers that fill the field, never saves.
+    const avgs = e.hint?.averages ?? [];
+    if (avgs.length) {
+      const avgRow = node('div', 'avgs');
+      for (const a of avgs) {
+        const label = a.months === 1 ? 'Last month' : `${a.months}-month average`;
+        const b = textBtn(`${label} ${coverMoney(a.cents)}`, 'btn small', null, () => {
+          amount.value = (a.cents / 100).toFixed(2);
+          showLive();
+          amount.focus();
+        });
+        b.type = 'button';
+        avgRow.appendChild(b);
+      }
+      f.appendChild(avgRow);
+    }
     const save = node('button', 'btn primary', 'Save');
     save.type = 'submit';
     const msg = node('span', 'msg');
@@ -3687,12 +3767,14 @@ function openFigureForm(row, e) {
       ev.preventDefault();
       msg.textContent = '';
       // Empty is not a figure; 0 is.
-      const cents = amount.value.trim() === '' ? NaN : toCents(amount.value);
-      if (!Number.isFinite(cents)) { msg.textContent = 'Type a figure a month, 0 included.'; amount.focus(); return; }
+      const got = amount.value.trim() === '' ? null : parseFigure(amount.value);
+      if (!got) { msg.textContent = 'Say how often: a month, a year, a quarter, a fortnight or a week.'; amount.focus(); return; }
       save.disabled = true;
       try {
+        // A figure typed as a monthly goes as a monthly alone, which clears an old basis.
         await approveNow('set_envelope_figure', {
-          budget: month.budget, envelope: e.id, amountCents: cents, month: month.month,
+          budget: month.budget, envelope: e.id, month: month.month,
+          ...(got.per === 'month' ? { amountCents: got.cents } : { basis: { amountCents: got.cents, per: got.per } }),
         });
         await loadBudget();
       } catch (ex) {
@@ -4823,13 +4905,13 @@ $('env-new').addEventListener('click', async () => {
   panel('Add an envelope', [
     { name: 'label', label: 'Name', placeholder: 'e.g. Vehicles' },
     { name: 'group', label: 'Band', options: groups.map((g) => ({ value: g, label: g })) },
-    { name: 'template', label: 'Funded each month (leave empty to decide later)', placeholder: '0.00' },
+    { name: 'template', label: 'Funded each month (leave empty to decide later)', placeholder: 'e.g. 1,200 a year, or leave it for later' },
     { name: 'categories', label: 'Fed by (choose one or more)', options: await catOptions(), multiple: true, wide: true },
   ], (i) => {
     // Left empty, it goes without a figure and starts as Action required; a typed 0 is a figure.
     const typed = i.template.value.trim();
-    const templateCents = typed === '' ? undefined : toCents(typed);
-    if (Number.isNaN(templateCents)) throw new Error('the figure each month is a number of dollars, or empty');
+    const figure = typed === '' ? null : parseFigure(typed);
+    if (typed !== '' && !figure) throw new Error('Say the figure as dollars and how often: a month, a year, a quarter, a fortnight or a week, or leave it empty.');
     return {
       tool: 'define_envelope',
       args: {
@@ -4837,7 +4919,7 @@ $('env-new').addEventListener('click', async () => {
         envelope: i.label.value.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 16),
         label: i.label.value, group: i.group.value,
         categories: [...i.categories.selectedOptions].map((o) => o.value),
-        ...(templateCents === undefined ? {} : { templateCents }),
+        ...(!figure ? {} : figure.per === 'month' ? { templateCents: figure.cents } : { basis: { amountCents: figure.cents, per: figure.per } }),
       },
     };
   });
