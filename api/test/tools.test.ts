@@ -124,6 +124,8 @@ describe('reads answer questions in one call', () => {
     const r = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;
     const by = (id: string) => r.envelopes.find((e: any) => e.id === id);
     assert.deepEqual(by('util').basis, { amount: '1,200.00', per: 'year' });
+    assert.equal(by('util').templateExact, '$100.00');
+    assert.equal(by('daily').templateExact, '$1,525.00');
     assert.equal(by('daily').basis, null);
     // Daily life has a figure and no flag, and is still offered its receipts' averages.
     assert.equal(by('daily').needsFigure, false);

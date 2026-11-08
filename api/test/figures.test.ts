@@ -142,12 +142,22 @@ describe('averages of receipts', () => {
     });
   });
 
-  test('receipts only further back than three months give the 6-month average and nothing to use', async () => {
+  test('receipts only further back than three months offer the 6-month average to use', async () => {
     const s = await fresh([...withEnv('pets'), txn('p1', '2026-06-12', -45000, 'pets')]);
     assert.deepEqual(hint(s, 'pets'), {
       text: 'Your receipts average $450 a month over the last 6 months',
+      use: { cents: 45000, label: 'Use $450 (6-month average)' },
       averages: [{ months: 6, cents: 45000 }],
     });
+  });
+
+  test('a priced envelope with receipts keeps its pricing beside the averages', async () => {
+    const s = await fresh([...withEnv('rent'), txn('r1', '2026-10-01', -150000, 'rent')]);
+    await s.append('alex', [{ op: 'budget.locate', budget: 'placitas', why: 'setup', location: { label: 'Placitas, NM' } }]);
+    const h = hint(s, 'rent')!;
+    assert.equal(h.price, true);
+    assert.deepEqual(h.averages, [{ months: 1, cents: 150000 }, { months: 3, cents: 150000 }, { months: 6, cents: 150000 }]);
+    assert.equal(h.use!.label, 'Use $1,500 (3-month average)');
   });
 
   test('an envelope that has receipts gets the averages before its fixed text; with none it keeps it', async () => {

@@ -308,6 +308,8 @@ const getMonth: Tool = {
         left: fmt(e.available),
         carriedIn: fmt(e.carried),
         plannedExact: fmtExact(e.planned),
+        // What a new month opens it at: the figure "from this month on" starts from.
+        templateExact: fmtExact(e.envelope.template),
         fundedExact: fmtExact(e.funded),
         spentExact: fmtExact(e.activity),
         leftExact: fmtExact(e.available),

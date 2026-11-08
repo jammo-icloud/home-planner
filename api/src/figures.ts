@@ -122,18 +122,20 @@ export function hintFor(state: State, budget: Budget, env: Envelope, month: Mont
       if (mean !== null && wholeDollars(mean) > 0) averages.push({ months, cents: wholeDollars(mean) });
     }
     if (averages.length > 0) {
-      const pick = averages.find((a) => a.months === 3) ?? averages.find((a) => a.months === 1);
-      const said = pick ?? averages[averages.length - 1]!;
+      // 3-month first, then last month, then 6-month: any average there is can be taken.
+      const pick = averages.find((a) => a.months === 3) ?? averages.find((a) => a.months === 1) ?? averages[0]!;
       const where = SHOWN[env.id];
       const last = nets[0]!.spent;
       const text = where && last > 0
         ? `Last month's imports show ${fmt(wholeDollars(last))} ${where}`
-        : `Your receipts average ${fmt(said.cents)} a month over the last ${said.months === 1 ? 'month' : `${said.months} months`}`;
-      const use = pick && {
+        : `Your receipts average ${fmt(pick.cents)} a month over the last ${pick.months === 1 ? 'month' : `${pick.months} months`}`;
+      const use = {
         cents: pick.cents,
-        label: `Use ${fmt(pick.cents)} (${pick.months === 3 ? '3-month average' : 'last month'})`,
+        label: `Use ${fmt(pick.cents)} (${pick.months === 1 ? 'last month' : `${pick.months}-month average`})`,
       };
-      return { text, ...(use ? { use } : {}), averages };
+      // Averages add to pricing, never take it away.
+      const price = PRICED.has(env.id) && budget.location ? { price: true as const } : {};
+      return { text, use, ...price, averages };
     }
   }
   const fixed = FIXED[env.id];

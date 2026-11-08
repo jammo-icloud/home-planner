@@ -339,6 +339,19 @@ describe('a figure kept with its basis', () => {
     assert.equal('needsFigure' in pets, false);
   });
 
+  test("setting this month's assignment by hand keeps the basis with the template", async () => {
+    const c = await fresh(plain({ basis: YEARLY, needsFigure: true }));
+    const p = toolByName.get('set_assignment')!.run({
+      budget: 'placitas', envelope: 'carins', toCents: 4000, why: 'by hand',
+    }, c) as Proposal;
+    assert.deepEqual(p.events.map((e) => e.op), ['assign', 'envelope.define']);
+    await commit(p.id, c);
+    assert.equal(funded(c), 4000);
+    assert.equal(carins(c).template, 10000);
+    assert.equal('needsFigure' in carins(c), false);
+    assert.deepEqual(carins(c).basis, YEARLY);
+  });
+
   test('an envelope.define with a bad basis does not replay', async () => {
     for (const basis of [{ amount: -1, per: 'year' }, { amount: 1000, per: 'decade' }, { amount: 1.5, per: 'year' }, 'yearly', null]) {
       await assert.rejects(() => fresh(plain({ basis })), (e: unknown) =>
