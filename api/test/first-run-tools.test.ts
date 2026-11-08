@@ -43,7 +43,7 @@ describe('make_starter_envelopes', () => {
       { label: 'Health insurance', group: 'Insurance', category: 'healthins' },
     ]);
     assert.equal(p.summary, 'Make 3 envelopes in Placitas');
-    assert.ok(p.effects.includes('Every one starts as Action required until it has a figure'));
+    assert.ok(p.effects.includes('Every one starts without a figure until it is given one'));
     assert.ok(p.effects.includes('Home: Rent or mortgage'));
     await commit(p.id, c);
 

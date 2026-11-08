@@ -2452,7 +2452,7 @@ const makeStarterEnvelopes: Tool = {
 
     const effects = groupOrder(rows.map((r) => r.group))
       .map((g) => `${g}: ${rows.filter((r) => r.group === g).map((r) => r.label).join(', ')}`);
-    effects.push('Every one starts as Action required until it has a figure');
+    effects.push('Every one starts without a figure until it is given one');
     if (missing.categories.length || missing.rules.length) effects.push(...starterEffects(missing, true));
 
     return ctx.proposals.put({
