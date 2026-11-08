@@ -11,7 +11,8 @@ import { INCOME } from '../src/types.ts';
 import type { Envelope } from '../src/types.ts';
 import type { MonthView } from '../src/envelopes.ts';
 import { monthView } from '../src/envelopes.ts';
-import { cardFor, coverFor, hintFor, incomeSuggestion, lastMonthSpent } from '../src/figures.ts';
+import { PER_YEAR, cardFor, coverFor, hintFor, incomeSuggestion, lastMonthSpent, monthlyOf, perWord, spentOver } from '../src/figures.ts';
+import type { Per } from '../src/figures.ts';
 
 const NOW = '2026-11-04T09:00:00Z';
 
@@ -40,15 +41,19 @@ const txn = (id: string, date: string, amount: number, category: string): NewEve
 const hint = (s: Store, id: string) => hintFor(s.state, s.state.budgets.get('placitas')!, env(s, id), '2026-11');
 
 describe('hints', () => {
-  test("groceries, dining and transport offer last month's imports", async () => {
+  test("groceries, dining and transport say last month's imports, and offer the 3-month average", async () => {
     const s = await fresh([
       ...withEnv('groceries'), ...withEnv('dining'), ...withEnv('transport'),
       txn('g1', '2026-10-05', -41240, 'groceries'), txn('g2', '2026-10-20', -20000, 'groceries'),
       txn('d1', '2026-10-06', -9000, 'dining'), txn('t1', '2026-10-07', -15000, 'transport'),
-      // Not last month, so not counted.
+      // Not last month, so not in the text; in the 3-month average.
       txn('g3', '2026-09-30', -99900, 'groceries'),
     ]);
-    assert.deepEqual(hint(s, 'groceries'), { text: "Last month's imports show $612 at grocers", use: { cents: 61200, label: 'Use $612' } });
+    assert.deepEqual(hint(s, 'groceries'), {
+      text: "Last month's imports show $612 at grocers",
+      use: { cents: 80600, label: 'Use $806 (3-month average)' },
+      averages: [{ months: 1, cents: 61200 }, { months: 3, cents: 80600 }, { months: 6, cents: 80600 }],
+    });
     assert.equal(hint(s, 'dining')!.text, "Last month's imports show $90 at restaurants");
     assert.equal(hint(s, 'transport')!.text, "Last month's imports show $150 on fuel and transport");
     assert.equal(lastMonthSpent(s.state, ['groceries'], '2026-11'), 61240);
@@ -84,6 +89,82 @@ describe('hints', () => {
     for (const id of ['rent', 'tax', 'elec']) {
       assert.deepEqual(hint(s, id), { text: 'Public data for Placitas, NM can price this.', price: true });
     }
+  });
+});
+
+describe('a figure given as the bill is known', () => {
+  test('monthlyOf rounds up at the cent', () => {
+    assert.equal(monthlyOf({ amount: cents(120000), per: 'year' }), 10000);
+    // 4000 × 52 / 12 = 17333.33…: up to the next cent, and twelve of them cover the year.
+    assert.equal(monthlyOf({ amount: cents(4000), per: 'week' }), 17334);
+    assert.ok(monthlyOf({ amount: cents(4000), per: 'week' }) * 12 >= 4000 * 52);
+    assert.equal(monthlyOf({ amount: cents(25000), per: 'quarter' }), 8334);
+    assert.equal(monthlyOf({ amount: cents(100000), per: 'month' }), 100000);
+    assert.equal(monthlyOf({ amount: cents(1), per: 'year' }), 1);
+    assert.equal(monthlyOf({ amount: cents(2600), per: 'fortnight' }), 5634);
+    assert.equal(monthlyOf({ amount: cents(60000), per: 'half-year' }), 10000);
+  });
+
+  test('perWord and PER_YEAR name every period', () => {
+    assert.deepEqual(PER_YEAR, { week: 52, fortnight: 26, month: 12, quarter: 4, 'half-year': 2, year: 1 });
+    assert.deepEqual((Object.keys(PER_YEAR) as Per[]).map(perWord), ['week', 'fortnight', 'month', 'quarter', 'half year', 'year']);
+  });
+});
+
+describe('averages of receipts', () => {
+  test('spentOver averages only the months that had receipts', async () => {
+    const s = await fresh([
+      ...withEnv('pets'), ...withEnv('books'),
+      txn('p1', '2026-10-12', -30000, 'pets'),
+      // A refund counts against its month.
+      txn('p2', '2026-07-03', -10000, 'pets'), txn('p3', '2026-07-20', 2000, 'pets'),
+      // This month, and seven months back: in no window.
+      txn('p4', '2026-11-01', -99999, 'pets'), txn('p5', '2026-04-30', -99999, 'pets'),
+    ]);
+    assert.equal(spentOver(s.state, ['pets'], '2026-11', 1), 30000);
+    assert.equal(spentOver(s.state, ['pets'], '2026-11', 3), 30000);
+    // Two of the six months had receipts: the mean of those two, not a third of it.
+    assert.equal(spentOver(s.state, ['pets'], '2026-11', 6), 19000);
+    assert.equal(spentOver(s.state, ['books'], '2026-11', 6), null);
+    assert.equal(lastMonthSpent(s.state, ['pets'], '2026-11'), 30000);
+    assert.equal(lastMonthSpent(s.state, ['books'], '2026-11'), 0);
+  });
+
+  test('hintFor offers the averages to any envelope with categories, 3-month first', async () => {
+    const s = await fresh([
+      ...withEnv('pets'),
+      txn('p1', '2026-10-12', -10000, 'pets'), txn('p2', '2026-08-12', -20000, 'pets'), txn('p3', '2026-05-12', -60000, 'pets'),
+    ]);
+    assert.deepEqual(hint(s, 'pets'), {
+      text: 'Your receipts average $150 a month over the last 3 months',
+      use: { cents: 15000, label: 'Use $150 (3-month average)' },
+      averages: [{ months: 1, cents: 10000 }, { months: 3, cents: 15000 }, { months: 6, cents: 30000 }],
+    });
+  });
+
+  test('receipts only further back than three months give the 6-month average and nothing to use', async () => {
+    const s = await fresh([...withEnv('pets'), txn('p1', '2026-06-12', -45000, 'pets')]);
+    assert.deepEqual(hint(s, 'pets'), {
+      text: 'Your receipts average $450 a month over the last 6 months',
+      averages: [{ months: 6, cents: 45000 }],
+    });
+  });
+
+  test('an envelope that has receipts gets the averages before its fixed text; with none it keeps it', async () => {
+    const s = await fresh([...withEnv('homeins'), ...withEnv('carins'), txn('c1', '2026-10-01', -12000, 'carins')]);
+    assert.deepEqual(hint(s, 'homeins'), { text: "Your policy's annual premium, divided by 12." });
+    assert.equal(hint(s, 'carins')!.use!.label, 'Use $120 (3-month average)');
+  });
+
+  test('a sinking envelope gets no averages', async () => {
+    const s = await fresh([
+      ...withEnv('travel'),
+      { op: 'envelope.define', budget: 'placitas', envelope: 'travel', label: 'travel', group: 'Future',
+        match: { categories: ['travel'] }, template: cents(0), order: 0, needsFigure: true,
+        sinking: { kind: 'by', target: cents(120000), by: '2027-06' } },
+      txn('t1', '2026-10-01', -50000, 'travel'),
+    ]);
+    assert.deepEqual(hint(s, 'travel'), { text: 'A sinking fund: a yearly amount, saved by the month.' });
   });
 });
 

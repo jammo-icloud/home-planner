@@ -6,7 +6,8 @@ import { join } from 'node:path';
 
 import { cents } from '../src/money.ts';
 import { Store } from '../src/store.ts';
-import { ProposalStore, commit, toolByName } from '../src/tools.ts';
+import { ProposalStore, commit, redefine, toolByName } from '../src/tools.ts';
+import { ReplayError } from '../src/replay.ts';
 import type { Proposal, ToolContext } from '../src/tools.ts';
 import { monthView } from '../src/envelopes.ts';
 import { STARTER_RULES } from '../src/starter.ts';
@@ -247,5 +248,110 @@ describe('giving an envelope a figure', () => {
     const p = assign(c, { toCents: 4000 });
     await commit(p.id, c);
     assert.equal(funded(c), 4000);
+  });
+});
+
+describe('a figure kept with its basis', () => {
+  const plain = (extra: Record<string, unknown> = {}): NewEvent[] => [
+    { op: 'category.define', category: 'carins', label: 'Car insurance' },
+    { op: 'envelope.define', budget: 'placitas', envelope: 'carins', label: 'Car insurance', group: 'Home',
+      match: { categories: ['carins'] }, template: cents(10000), order: 0, ...extra } as NewEvent,
+    { op: 'month.open', budget: 'placitas', month: '2026-11', income: cents(640000) },
+  ];
+  const carins = (c: ToolContext) => c.store.state.budgets.get('placitas')!.envelopes.get('carins')!;
+  const figure = (c: ToolContext, args: Record<string, unknown>) =>
+    toolByName.get('set_envelope_figure')!.run({ budget: 'placitas', envelope: 'carins', ...args }, c) as Proposal;
+  const funded = (c: ToolContext) =>
+    monthView(c.store.state, 'placitas', '2026-11')!.envelopes.find((e) => e.envelope.id === 'carins')!.funded;
+  const YEARLY = { amount: cents(120000), per: 'year' as const };
+  const basisOf = (e: NewEvent): unknown => (e as { basis?: unknown }).basis;
+
+  test('redefine carries a basis, and a figure given as a monthly clears it', async () => {
+    const c = await fresh(plain({ basis: YEARLY }));
+    const env = carins(c);
+    assert.deepEqual(env.basis, YEARLY);
+    // No figure: everything is carried, the basis among it.
+    assert.deepEqual(basisOf(redefine('placitas', env, { label: 'Car' })), YEARLY);
+    // A figure without a basis is a monthly: the old yearly basis goes.
+    assert.equal('basis' in redefine('placitas', env, { figure: { template: cents(9000) } }), false);
+    // A figure with one writes it.
+    const quarterly = { amount: cents(30000), per: 'quarter' as const };
+    assert.deepEqual(basisOf(redefine('placitas', env, { figure: { template: cents(10000), basis: quarterly } })), quarterly);
+    // An envelope with none, rewritten without a figure, stays with none.
+    const { basis: _gone, ...bare } = env;
+    assert.equal('basis' in redefine('placitas', bare, { label: 'Car' }), false);
+  });
+
+  test('set_envelope_figure with a basis writes the monthly it computes and keeps the basis', async () => {
+    const c = await fresh(plain());
+    const p = figure(c, { basis: { amountCents: 120000, per: 'year' } });
+    assert.equal(p.summary, 'Car insurance: $1,200.00 a year ($100.00 a month)');
+    const define = p.events[0] as { op: string; template: number; basis?: unknown };
+    assert.equal(define.template, 10000);
+    assert.deepEqual(define.basis, YEARLY);
+    assert.deepEqual(p.events[1], { op: 'assign', budget: 'placitas', month: '2026-11', envelope: 'carins', to: 10000, why: 'gave it a figure' });
+    await commit(p.id, c);
+    assert.equal(carins(c).template, 10000);
+    assert.deepEqual(carins(c).basis, YEARLY);
+    assert.equal(funded(c), 10000);
+
+    // A week rounds up at the cent; a half year reads as words.
+    assert.equal(figure(c, { basis: { amountCents: 4000, per: 'week' } }).summary, 'Car insurance: $40.00 a week ($173.34 a month)');
+    assert.equal(figure(c, { basis: { amountCents: 60000, per: 'half-year' } }).summary, 'Car insurance: $600.00 a half year ($100.00 a month)');
+
+    // Given as a monthly, the basis goes.
+    await commit(figure(c, { amountCents: 9000 }).id, c);
+    assert.equal(carins(c).template, 9000);
+    assert.equal('basis' in carins(c), false);
+  });
+
+  test('set_envelope_figure refuses both or neither of amountCents and basis, and an unknown per', async () => {
+    const c = await fresh(plain());
+    assert.throws(() => figure(c, { amountCents: 100, basis: { amountCents: 1200, per: 'year' } }), /give amountCents or basis, not both/);
+    assert.throws(() => figure(c, {}), /a figure needs amountCents or basis/);
+    assert.throws(() => figure(c, { basis: { amountCents: 1200, per: 'decade' } }),
+      /per is one of week, fortnight, month, quarter, half-year, year/);
+    assert.throws(() => figure(c, { basis: { amountCents: -1, per: 'year' } }), /a figure is not less than nothing/);
+  });
+
+  test('define_envelope takes a basis beside templateCents', async () => {
+    const c = await fresh(plain());
+    const define = (extra: Record<string, unknown>) => toolByName.get('define_envelope')!.run({
+      budget: 'placitas', envelope: 'carins', label: 'Car insurance', categories: ['carins'], ...extra,
+    }, c) as Proposal;
+    assert.throws(() => define({ templateCents: 100, basis: { amountCents: 1200, per: 'year' } }), /give templateCents or basis, not both/);
+    await commit(define({ basis: { amountCents: 25000, per: 'quarter' } }).id, c);
+    assert.equal(carins(c).template, 8334);
+    assert.deepEqual(carins(c).basis, { amount: 25000, per: 'quarter' });
+    // A rename keeps it; a template drops it.
+    await commit(define({ label: 'Car' }).id, c);
+    assert.deepEqual(carins(c).basis, { amount: 25000, per: 'quarter' });
+    await commit(define({ templateCents: 9000 }).id, c);
+    assert.equal('basis' in carins(c), false);
+
+    await c.store.append('alex', [{ op: 'category.define', category: 'pets', label: 'Pets' }]);
+    await commit((toolByName.get('define_envelope')!.run({
+      budget: 'placitas', envelope: 'pets', label: 'Pets', categories: ['pets'], basis: { amountCents: 1200, per: 'year' },
+    }, c) as Proposal).id, c);
+    const pets = c.store.state.budgets.get('placitas')!.envelopes.get('pets')!;
+    assert.equal(pets.template, 100);
+    assert.deepEqual(pets.basis, { amount: 1200, per: 'year' });
+    assert.equal('needsFigure' in pets, false);
+  });
+
+  test('an envelope.define with a bad basis does not replay', async () => {
+    for (const basis of [{ amount: -1, per: 'year' }, { amount: 1000, per: 'decade' }, { amount: 1.5, per: 'year' }, 'yearly', null]) {
+      await assert.rejects(() => fresh(plain({ basis })), (e: unknown) =>
+        e instanceof ReplayError && /basis/.test(e.message), JSON.stringify(basis));
+    }
+  });
+
+  test('an envelope.define without basis still replays and the envelope has none', async () => {
+    const c = await fresh(plain());
+    assert.equal('basis' in carins(c), false);
+    // Read back from the log as a fresh load would.
+    const again = new Store({ path: c.store.path, now: () => new Date(NOW) });
+    await again.load();
+    assert.equal('basis' in again.state.budgets.get('placitas')!.envelopes.get('carins')!, false);
   });
 });
