@@ -1142,7 +1142,7 @@
   #settings .page-head{margin-bottom:0}
   #settings .done{display:none}
   @container page (max-width: 759px){
-    #settings .back{display:none}
+    #settings .page-head > .back{display:none}
     #settings .done{display:inline-flex}
   }
   .settings{display:grid;gap:var(--sp-7);padding-block:var(--sp-5) var(--sp-8)}
@@ -1159,29 +1159,45 @@
   .set-index a:hover{color:var(--ink)}
   .set-index a[aria-current="true"]{color:var(--ink);font-weight:var(--fw-semibold);background:var(--surface-sunken)}
   .set-body{display:grid;gap:var(--sp-9);min-width:0}
-  .set-group{display:grid}
+  .set-group{display:grid;margin:0}
   .set-group > header{display:grid;gap:4px;margin-bottom:var(--sp-3)}
-  .set-group > header .eyebrow{color:var(--ink-soft)}
+  .set-group > header .eyebrow{color:var(--ink-soft);font-size:var(--fs-micro)}
+  .set-group > header > *{margin:0}
   .set-group > .hint{margin-top:var(--sp-4)}
-  /* A row: the title in a fixed column, its status beside it, the action at the end; the form opens under the status.
-     On a phone the title and the action share the first line and the status goes full width under them. */
-  .set-row{display:grid;grid-template-columns:9.5rem minmax(0,1fr) auto;gap:var(--sp-2) var(--sp-4);align-items:start;
-    margin:0;padding-block:var(--sp-4);border-top:var(--stroke) solid var(--hair);scroll-margin-top:72px}
-  .set-row > h3{grid-column:1;grid-row:1;font-size:var(--fs-ui);font-weight:var(--fw-semibold);line-height:1.4;padding-top:6px}
-  .set-status{grid-column:2;grid-row:1;display:grid;gap:var(--sp-1);justify-items:start;min-width:0;padding-top:6px;
-    font-size:var(--fs-ui);color:var(--ink-soft);overflow-wrap:anywhere}
-  .set-status p{margin:0}
-  .set-status .seg{margin-top:-6px}
-  .set-acts{grid-column:3;grid-row:1;display:flex;flex-wrap:wrap;justify-content:flex-end;gap:var(--sp-1)}
-  .set-form{grid-column:2 / -1;grid-row:2;display:grid;gap:var(--sp-3);min-width:0}
-  .set-form .actions .btn{min-height:var(--tap)}
-  .set-form > .rowform{padding:0}
-  @container page (max-width: 759px){
-    .set-row{grid-template-columns:minmax(0,1fr) auto}
-    .set-status{grid-column:1 / -1;grid-row:2;padding-top:0}
-    .set-acts{grid-column:2}
-    .set-form{grid-column:1 / -1;grid-row:3}
-  }
+  /* The list: each row one button the width of the list, its title, a one-line status in muted text, a chevron.
+     A status that needs attention takes the caution tint. */
+  .set-list{display:grid;background:var(--surface-raised);border:var(--stroke) solid var(--line);border-radius:var(--r-card);overflow:hidden}
+  .set-item{display:grid;grid-template-columns:auto minmax(0,1fr) auto;align-items:center;gap:var(--sp-3);width:100%;
+    min-height:52px;margin:0;padding:var(--sp-2) var(--sp-3) var(--sp-2) var(--sp-4);font:inherit;font-size:var(--fs-ui);text-align:left;
+    color:var(--ink);background:none;border:0;border-top:var(--stroke) solid var(--hair);border-radius:0;cursor:pointer;scroll-margin-top:72px}
+  .set-item:first-child{border-top:0}
+  .set-item:active{background:var(--surface-sunken)}
+  .set-item:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
+  .set-item .set-t{font-weight:var(--fw-semibold);white-space:nowrap}
+  .set-item .set-s{min-width:0;text-align:right;color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .set-item .chev{flex:none;color:var(--ink-faint)}
+  .set-item.warn .set-s{color:var(--caution)}
+  /* A page: Back to the list, the row's title, what it is, the form, the slot its errors go in, then what is set. */
+  .set-page{display:grid;gap:var(--sp-4);align-content:start;width:100%;max-width:var(--measure);margin:0 auto;
+    padding-block:0 var(--sp-8);min-width:0}
+  .set-page-head{display:grid;justify-items:start;gap:var(--sp-1)}
+  .set-page-head h1{font-size:var(--fs-headline);letter-spacing:-0.02em}
+  .set-page-head h2{font-size:var(--fs-title)}
+  .set-page-head :is(h1,h2):focus{outline:none}
+  .set-line{margin:0;font-size:var(--fs-ui);color:var(--ink-soft)}
+  .set-now{display:grid;gap:var(--sp-1);justify-items:start;min-width:0;padding-top:var(--sp-3);border-top:var(--stroke) solid var(--hair);
+    font-size:var(--fs-small);color:var(--ink-soft);overflow-wrap:anywhere}
+  .set-now[hidden]{display:none}
+  .set-now p{margin:0}
+  .set-only{margin:0;padding:var(--sp-3) var(--sp-4);border-radius:var(--r-control);background:var(--surface-sunken);
+    font-size:var(--fs-ui);color:var(--ink)}
+  .set-page-body{display:grid;gap:var(--sp-3);min-width:0}
+  .set-page-body:empty{display:none}
+  .set-page-body > .rowform{padding:0}
+  .set-page-body .actions .btn{min-height:var(--tap)}
+  .set-err{margin:0}
+  .set-err[hidden]{display:none}
+  .set-err:focus{outline:none}
   /* Setup's five steps: the step's name, then a mark and what it is */
   .setup-grid{display:grid;grid-template-columns:auto minmax(0,1fr);gap:var(--sp-1) var(--sp-3);margin:0;align-items:baseline;width:100%}
   .setup-grid dt{color:var(--ink)}
@@ -1189,8 +1205,6 @@
   .setup-grid dd{margin:0;display:flex;flex-wrap:wrap;align-items:baseline;gap:0 var(--sp-2);min-width:0}
   .setup-grid .mark{flex:none;width:1em;color:var(--ink-faint)}
   .setup-grid .mark.ok{color:var(--ink)}
-  .setup-grid .link{padding:0;text-align:left;font-size:inherit}
-  .setup-grid .btn.small{padding-block:0}
   /* div.rows: the import table already answers to .rows */
   div.rows{background:var(--surface-raised);border:var(--stroke) solid var(--line);border-radius:var(--r-card);overflow:hidden}
   div.rows > *{border-top:var(--stroke) solid var(--hair)}
@@ -1268,15 +1282,12 @@
   .conn-form legend{padding:0;margin-bottom:var(--sp-1);font-size:var(--fs-small);color:var(--ink-soft)}
   .conn-form .hh-folder{font-size:var(--fs-small);color:var(--ink)}
   .conn-form .hh-folder .meta{display:block;font-size:var(--fs-micro);color:var(--ink-faint)}
-  /* On the households screen the column is a phone's width at most: each row is laid out as Settings lays it out on a phone. */
-  #hh-panel .nas{margin-top:18px}
-  #hh-panel .nas header > *{margin:0}
-  #hh-panel .set-row{grid-template-columns:minmax(0,1fr) auto}
-  #hh-panel .set-status{grid-column:1 / -1;grid-row:2;padding-top:0}
-  #hh-panel .set-acts{grid-column:2}
-  #hh-panel .set-form{grid-column:1 / -1;grid-row:3}
-  #hh-panel .nas .btn{width:auto}
-  #hh-panel .nas .actions{flex-direction:row;flex-wrap:wrap}
+  /* On the households screen, the card's full-width buttons are not the page's. */
+  #hh-panel > :is(.nas,.set-page){margin-top:18px}
+  #hh-panel .set-page{padding-bottom:0}
+  #hh-panel svg.i{width:13px;height:13px;flex:none;fill:none;stroke:currentColor;stroke-width:1.8;stroke-linecap:round;stroke-linejoin:round}
+  #hh-panel .set-page .btn{width:auto}
+  #hh-panel .set-page .actions{flex-direction:row;flex-wrap:wrap}
   .folder-pick fieldset{display:grid;gap:var(--sp-2);min-width:0;margin:0;padding:0;border:0}
   .folder-pick legend{padding:0;margin-bottom:var(--sp-1);font-size:var(--fs-small);color:var(--ink-soft)}
   .folder-pick label.pick{display:flex;margin:0;min-width:0;color:var(--ink)}
@@ -4888,6 +4899,7 @@ async function openCategories() {
 $('cat-close').addEventListener('click', () => {
   $('cat-sec').hidden = true;
   $('manage-panel').textContent = '';
+  backFromSheet();
 });
 
 $('bud-new').addEventListener('click', () => {
@@ -7226,10 +7238,11 @@ function whenRows(v) {
 // One screen in groups that say whose they are: You (how the app looks to
 // you, the calendars you check for clashes, your phone) and Household (setup,
 // members, areas, the budget, the Household calendar, guests, documents, links,
-// the backup). Each is a row: a title, a line saying what is set, and one
-// action that opens the row's form in place. Every change posts its route and
-// the screen is drawn again from the settings the route answers with, so it
-// only ever shows what the log says.
+// the backup), and This NAS for an administrator. Each is a row of a list: a
+// title and one line saying what is set. Tapping it opens that setting's own
+// page, its form at the top; Back returns to the list where it was. Every
+// change posts its route and the open page is drawn again from the settings
+// the route answers with, so it only ever shows what the log says.
 /** GET /api/settings, or the last settings route's answer; null until read. */
 let settingsData = null;
 /**
@@ -7246,14 +7259,10 @@ let documentsStatus = null;
 let softwareInfo = null;
 /** The screen Settings was opened from, which Back and Done return to. */
 let settingsFrom = 'today';
-/**
- * The row whose form is open, or null: one at a time. `{ group, row }`, with
- * `direct` when the row is only the form it opened on (its Cancel closes the
- * row) and `back`, the control that has focus once it closes.
- */
-let settingsOpen = null;
-/** Inside the open row, the part being edited, as { kind, index }, or null. */
-let settingsEdit = null;
+/** The page of Settings that is open, or null for the list: { key, group, listScroll, returnTo }. */
+let settingsPage = null;
+/** Inside the open page, the part being edited, as { kind, index }, or null. */
+let settingsEditing = null;
 /** Your calendars on the NAS (GET /api/calendars), and whether they could be read. */
 let calList = null;
 let calState = 'loading'; // 'loading' | 'ok' | 'signin' | 'failed'
@@ -7319,36 +7328,49 @@ function syncLook() {
 
 async function chooseLook(next) {
   const before = currentLook();
+  const page = settingsPage;
   // The page changes as the tile is chosen; the log is told after.
   stampLook(next);
   if (settingsData) settingsData = { ...settingsData, appearance: next };
-  renderSettings();
+  if (settingsPage === page && page?.key === 'appearance') redrawPage();
   try {
     settingsData = await api('/api/settings/appearance', next);
-    $('app-err').hidden = true;
+    if (settingsPage === page) clearPageErr();
   } catch (ex) {
     if (settingsData) settingsData = { ...settingsData, appearance: before };
     stampLook(before);
-    showProblem(ex);
+    if (settingsPage === page && page?.key === 'appearance') { redrawPage(); pageErr(ex); }
   }
-  if (view === 'settings') renderSettings();
 }
-matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => { if (view === 'settings') renderSettings(); });
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if (view === 'settings' && settingsPage?.key === 'appearance') redrawPage();
+});
+
+/** Why Settings could not be read, drawn where the list would be: Settings never writes to the screen's error box. */
+function settingsFailed(ex) {
+  // The picker is already on its way (see api()).
+  if (/^no household is open/.test(ex.message)) return;
+  const box = $('settings');
+  box.textContent = '';
+  box.append(settingsHead(), node('p', 'err set-err', `Settings could not be read: ${ex.message}`));
+}
 
 async function loadSettings() {
   $('loading').hidden = false;
-  settingsOpen = null;
-  settingsEdit = null;
+  settingsPage = null;
+  settingsEditing = null;
   folderPick = null;
   calState = 'loading';
+  calProblem = null;
   try {
     // This NAS is read beside the rest for an administrator; if it cannot be,
-    // Settings still draws, and the error box says why the group is empty.
+    // Settings still draws, and the group's own foot says why it is empty.
     const [st, plans, nas] = await Promise.all([
       api('/api/settings'), api('/api/plans?showDone=1'),
       amAdmin ? api('/api/connectors').catch((ex) => ({ problem: ex })) : null,
     ]);
     connData = nas && !nas.problem ? nas : null;
+    connUnread = nas?.problem ? `What this NAS connects to could not be read just now: ${nas.problem.message}` : null;
     connAccounts = null;
     settingsData = st;
     documentsStatus = st.documents ?? null;
@@ -7356,85 +7378,81 @@ async function loadSettings() {
     keepFilesFrom(st);
     // A shelf is a plan too; the cards already include what sits on shelves.
     areaCounts = new Map(plans.rows.map((r) => [r.area, r.planning.length + r.doing.length + r.shelves.length]));
-    renderSettings();
-    if (nas?.problem) showProblem(nas.problem);
+    renderSettingsList();
   } catch (ex) {
-    showProblem(ex);
+    settingsFailed(ex);
     return;
   } finally {
     $('loading').hidden = true;
   }
   await loadCalendars();
-  if (view === 'settings') renderSettings();
+  if (view === 'settings') calendarsArrived();
 }
 
+/** Why the calendars could not be read, in the NAS's words, for the pages that need them. */
+let calProblem = null;
 async function loadCalendars() {
   try {
     calList = (await api('/api/calendars')).calendars;
     calState = 'ok';
+    calProblem = null;
   } catch (ex) {
     calList = null;
     // A sign-in with no NAS session behind it (the sandbox, or one carried
     // across a restart) is not a failure: the calendars are off until then.
     calState = ex.status === 409 ? 'signin' : 'failed';
-    if (calState === 'failed') showProblem(new Error(`Your calendars on the NAS could not be read: ${ex.message}`));
+    calProblem = calState === 'failed' ? ex.message : null;
   }
 }
 
+/** The calendars have answered: the open page draws again if it reads them, or the list's lines that say so change in place. */
+function calendarsArrived() {
+  const reads = ['conflicts', 'hcal', 'setup'];
+  if (settingsPage) { if (reads.includes(settingsPage.key)) redrawPage(); return; }
+  refreshItems(reads);
+}
+
 /**
- * Post a settings route, keep what it answers with, and draw the screen again.
- * A refusal goes in the one error box, and the form stays open with what was typed.
- * A row holding one form closes once it saves, and focus goes back to its
- * action; a list editor stays open for the next change, until its Done.
+ * Post a settings route, keep what it answers with, and draw the open page
+ * again. A refusal goes in the page's own slot, and the form stays as it was
+ * typed. A page holding one value goes Back to the list once it saves; a list
+ * editor stays open for the next change, until its Back.
  */
 async function saveSettings(path, body, after, focus, method) {
+  const page = settingsPage;
   try {
     settingsData = await api(path, body, method);
   } catch (ex) {
-    showProblem(ex);
-    $('app-err').scrollIntoView({ block: 'nearest' });
+    if (settingsPage === page) pageErr(ex);
     return false;
   }
   keepFilesFrom(settingsData);
-  $('app-err').hidden = true;
-  settingsFocus = focus ?? (settingsEdit ? settingsOpener : null);
-  settingsEdit = null;
-  if (settingsOpen && !listRows.has(settingsOpen.row)) {
-    settingsFocus = settingsOpen.back;
-    settingsOpen = null;
-  }
+  if (settingsPage === page) settingsEditing = null;
   if (after) await after();
   renderHouseholdApps();
-  if (view === 'settings') renderSettings();
+  // Gone Back, or to another screen, while the answer was on its way: nothing here to draw.
+  if (!page || settingsPage !== page || view !== 'settings') return true;
+  clearPageErr();
+  if (pageFor(page.key, page.group)?.list) redrawPage(focus ?? settingsEditOpener);
+  else closePage();
   return true;
 }
 
-/** The row of Settings a step of Setup is also, for the steps chosen outside Setup. */
-const STEP_ROW = { folder: 'documents', calendar: 'hcal', booking: 'guests' };
-
 /**
- * Settings, at a row if one is named: `group` is you, household or nas, `row`
- * a row's key. A row this person may act on opens as its own action would and
- * comes to the top; one they may only read comes to the top closed. The zone
- * and the model are steps of Setup, so they open inside it. A group or a row
- * this person does not have (a member sent to This NAS, a key the page does not
- * know) shows Settings at the top with no error: a notice can outlive its row.
+ * Settings, at a row's page if one is named: `group` is you, household or
+ * nas, `row` a row's key (zone and model are rows of their own). The page
+ * opens as its row would, from the top. A group or a row this person does not
+ * have (a member sent to This NAS, a key the page does not know) shows the list
+ * at the top with no error: a notice can outlive its row.
  */
 async function openSettings(group, row) {
   if (view !== 'settings') await showView('settings');
-  else { settingsOpen = null; settingsEdit = null; folderPick = null; renderSettings(); }
-  if (!settingsData || !group || !row) { window.scrollTo({ top: 0 }); return; }
-  let at = row;
-  if (group === 'household' && (row === 'zone' || row === 'model')) {
-    at = 'setup';
-    if (settingsData.setup.youOwn) openRow('household', 'setup', { edit: `setup-${row}`, direct: true, back: `setup-${row}` });
-  } else {
-    const sec = document.getElementById(`set-${row}`);
-    if (!sec?.classList.contains('set-row') || sec.dataset.group !== group) at = null;
-    else sec.querySelector(`[data-key="row-${CSS.escape(row)}"][aria-expanded="false"]`)?.click();
-  }
-  const sec = at ? document.getElementById(`set-${at}`) : null;
-  if (sec) sec.scrollIntoView({ block: 'start' }); else window.scrollTo({ top: 0 });
+  else if (settingsPage) closePage({ refocus: false });
+  window.scrollTo({ top: 0 });
+  if (!settingsData || !group || !row || view !== 'settings') return;
+  const it = pageFor(row, group);
+  if (!it) return;
+  if (it.open) it.open(); else openPage(row, group, { linked: true });
 }
 const leaveSettings = () => showView(settingsFrom);
 
@@ -7446,98 +7464,294 @@ function ownerOf(c) {
   return m && m[1].toLowerCase() !== myName.toLowerCase() ? m[1] : null;
 }
 
-/** The rows whose form is a list changed a step at a time: each change saves at once, so the row stays open until Done. */
-const listRows = new Set();
+// ── the list and the page ──────────────────────────────────────────────────
+//
+// Each row of Settings is described once, as
+//   { key, title, status, attention?, line, notes?, body?, init?, list?, owner?, open? }:
+// `status` is the one line the list shows, `attention` tints it; the page shows
+// `line` (what the setting is), `notes` (what is set, in full), then `body()`,
+// its form. `init` starts what the page asks the NAS for as it opens; `list`
+// marks a page that stays open after each save; `owner` a row only the owner
+// changes, whose page says so to anyone else, with no form. `open` is a row
+// that is a sheet of its own rather than a page.
 
-/**
- * One row: title, a status line, at most one action (two only where the spec
- * names two). An action is `{ label, act?, href?, download?, opens? }`: `opens`
- * toggles the row's `form`, drawn only while `settingsOpen` names the row,
- * with `act` (if any) doing the opening; `href` is a link. `list` marks a list
- * editor, which carries Done. The group is stamped on by renderSettings and
- * read when the action is pressed.
- */
-function settingRow({ key, title, status, actions = [], form, list = false }) {
-  if (list) listRows.add(key);
-  const open = settingsOpen?.row === key;
-  const s = node('section', 'set-row');
-  s.id = `set-${key}`;
-  const h = node('h3', '', title);
-  h.id = `set-${key}-h`;
-  s.setAttribute('aria-labelledby', h.id);
-  const st = node('div', 'set-status');
-  for (const x of [status].flat()) {
-    if (x !== null && x !== undefined && x !== '') st.appendChild(typeof x === 'string' ? node('p', '', x) : x);
+/** Where Settings is drawn: its own screen, or This NAS's panel on the households screen. */
+const settingsHost = () => (onHouseholds() ? $('hh-panel') : $('settings'));
+
+/** The groups of the list, each with its rows, as the page is now. */
+function settingsGroups() {
+  if (onHouseholds()) return [nasGroup()];
+  if (!settingsData) return [];
+  const others = settingsData.members.filter((m) => m !== myName);
+  const groups = [
+    {
+      id: 'you',
+      title: 'You',
+      hint: others.length ? `Only you see these. ${listOf(others)} ${others.length === 1 ? 'keeps their' : 'keep their'} own.` : 'Only you see these.',
+      items: [appearanceItem(), conflictsItem(), phoneItem()],
+      foot: softwareLine(softwareInfo),
+    },
+    {
+      id: 'household',
+      title: 'Household',
+      hint: `${others.length === 1 ? 'You both see' : 'Everyone in the household sees'} and change${others.length === 1 ? '' : 's'} these. `
+        + "Every change goes in the household's history.",
+      items: [setupItem(), zoneItem(), modelItem(), membersItem(), areasItem(), budgetItem(), hcalItem(), guestsItem(), documentsItem(),
+        linksItem(), backupItem(), ...(settingsData.setup.youOwn && !inSandbox ? [removeItem()] : [])].filter(Boolean),
+    },
+  ];
+  // Anyone else has neither the group nor its lines in the index.
+  if (amAdmin) groups.push(nasGroup());
+  return groups;
+}
+
+/** A row by its key, with the group it is in; null for one this person does not have. */
+function pageFor(key, group) {
+  for (const g of settingsGroups()) {
+    if (group && g.id !== group) continue;
+    const it = g.items.find((x) => x.key === key);
+    if (it) return { ...it, group: g.id };
   }
-  s.append(h, st);
-  if (actions.length) {
-    const end = node('div', 'set-acts');
-    actions.forEach((a, n) => {
-      const k = n === 0 ? `row-${key}` : `row-${key}-${n}`;
-      if (a.href) {
-        const l = node('a', 'btn bare small', a.label);
-        l.href = a.href;
-        if (a.download) l.setAttribute('download', '');
-        l.dataset.key = k;
-        end.appendChild(l);
-        return;
-      }
-      const b = textBtn(a.label, 'btn bare small', k, () => {
-        if (a.opens && settingsOpen?.row === key) closeRow();
-        else if (a.act) void a.act();
-        else if (a.opens) openRow(s.dataset.group, key);
-      });
-      if (a.opens) {
-        b.setAttribute('aria-expanded', String(open));
-        if (open) b.setAttribute('aria-controls', `set-${key}-form`);
-      }
-      end.appendChild(b);
-    });
-    s.appendChild(end);
+  return null;
+}
+
+/** Settings' own head: Back to where you came from, the title, Done. */
+function settingsHead() {
+  const head = node('div', 'page-head');
+  const back = textBtn('', 'back', null, leaveSettings);
+  back.append(icon('back', 'i'), 'Back');
+  head.append(back, node('h1', '', 'Settings'), textBtn('Done', 'btn small done', null, leaveSettings));
+  return head;
+}
+
+/** One row of the list: a button the width of the list, its title, its one-line status and a chevron. */
+function settingItem(it, group) {
+  const b = node('button', `set-item${it.attention ? ' warn' : ''}`);
+  b.type = 'button';
+  b.id = `set-${it.key}`;
+  b.dataset.key = `row-${it.key}`;
+  b.dataset.group = group;
+  b.append(node('span', 'set-t', it.title), node('span', 'set-s', it.status ?? ''), icon('go', 'i sm chev'));
+  b.addEventListener('click', () => { if (it.open) it.open(); else openPage(it.key, group); });
+  return b;
+}
+
+/** A group of the list: its name, whose it is, its rows. `index`, when given, gains a line per row. */
+function groupBox(g, index) {
+  const group = node('section', 'set-group');
+  group.id = `set-g-${g.id}`;
+  const h = node('h2', 'eyebrow', g.title);
+  h.id = `set-g-${g.id}-h`;
+  group.setAttribute('aria-labelledby', h.id);
+  const gh = node('header');
+  gh.append(h, node('p', 'hint', g.hint));
+  group.appendChild(gh);
+  const list = node('div', 'set-list');
+  for (const it of g.items) {
+    const b = settingItem(it, g.id);
+    list.appendChild(b);
+    if (!index) continue;
+    const a = node('a', '', it.title);
+    a.href = `#${b.id}`;
+    a.addEventListener('click', (e) => { e.preventDefault(); b.scrollIntoView({ block: 'start', behavior: 'smooth' }); b.focus({ preventScroll: true }); });
+    index.appendChild(a);
   }
-  const body = open && form ? form() : null;
-  if (body && [body].flat().length) {
-    const f = node('div', 'set-form');
-    f.id = `set-${key}-form`;
-    f.append(...[body].flat().filter(Boolean));
-    if (list) {
-      const acts = node('div', 'actions');
-      acts.appendChild(textBtn('Done', 'btn', `row-${key}-done`, closeRow));
-      f.appendChild(acts);
-    }
-    s.appendChild(f);
+  if (g.items.length) group.appendChild(list);
+  if (g.foot) group.appendChild(node('p', 'hint', g.foot));
+  return group;
+}
+
+/** The list, drawn once each time it is shown: on the way in, and on the way Back from a page. */
+function renderSettingsList() {
+  const box = $('settings');
+  if (!settingsData) return;
+  box.textContent = '';
+  const layout = node('div', 'settings');
+  const index = node('nav', 'set-index');
+  index.setAttribute('aria-label', 'Settings sections');
+  const body = node('div', 'set-body');
+  for (const g of settingsGroups()) {
+    index.appendChild(node('div', 'eyebrow', g.title));
+    body.appendChild(groupBox(g, index));
   }
-  return s;
+  layout.append(index, body);
+  box.append(settingsHead(), layout);
+  markSettingsIndex();
+}
+
+/** The list's lines for these rows, said again in place: nothing else on the list moves. */
+function refreshItems(keys) {
+  const host = settingsHost();
+  for (const key of keys) {
+    const b = host.querySelector(`#set-${CSS.escape(key)}.set-item`);
+    const it = b ? pageFor(key, b.dataset.group) : null;
+    if (!it) continue;
+    b.querySelector('.set-s').textContent = it.status ?? '';
+    b.classList.toggle('warn', !!it.attention);
+  }
 }
 
 /**
- * Open a row, closing any other. `edit` names the part of its form to start
- * on; `direct`, that the row is only that part, so its Cancel closes the row;
- * `back`, the control focused once the row closes.
+ * Open a row's page. `linked`: opened from elsewhere (a notice, the Budget
+ * screen), so the list was never seen at a scroll: Back brings its row into view.
  */
-function openRow(group, row, { edit = null, direct = false, back = `row-${row}` } = {}) {
-  settingsOpen = { group, row, direct, back };
-  settingsOpener = back;
-  settingsEdit = edit ? { kind: edit, index: null } : null;
-  if (row !== 'documents') folderPick = null;
-  $('app-err').hidden = true;
-  redrawRows();
-}
-function closeRow() {
-  // What went wrong in the form went with it.
-  $('app-err').hidden = true;
-  settingsFocus = settingsOpen?.back ?? null;
-  settingsOpen = null;
-  settingsEdit = null;
+function openPage(key, group, { linked = false } = {}) {
+  const it = pageFor(key, group);
+  if (!it) return false;
   folderPick = null;
-  redrawRows();
+  settingsEditing = null;
+  settingsEditOpener = null;
+  settingsPage = { key, group: it.group, listScroll: linked ? null : window.scrollY, returnTo: `row-${key}` };
+  renderSettingsPage();
+  return true;
 }
 
+/**
+ * Back to the list: drawn again with what is set now, at the scroll it was
+ * left at, focus on the row that was opened.
+ */
+function closePage({ refocus = true } = {}) {
+  const page = settingsPage;
+  settingsPage = null;
+  settingsEditing = null;
+  folderPick = null;
+  if (onHouseholds()) renderNasPanel(); else renderSettingsList();
+  if (!page) return;
+  const row = settingsHost().querySelector(`[data-key="${CSS.escape(page.returnTo)}"]`);
+  if (page.listScroll === null) row?.scrollIntoView({ block: 'center' }); else window.scrollTo({ top: page.listScroll });
+  if (refocus) row?.focus({ preventScroll: true });
+}
+
+/** Whether the open page is one the person may only read. */
+const readOnlyPage = (it) => !!it.owner && !settingsData?.setup?.youOwn;
+
+function fillNotes(box, notes) {
+  box.replaceChildren(...[notes ?? []].flat().filter((x) => x !== null && x !== undefined && x !== '')
+    .map((x) => (typeof x === 'string' ? node('p', '', x) : x)));
+  box.hidden = !box.childElementCount;
+}
+
+/**
+ * The open page, drawn whole: once as it opens. A head (Back, the row's
+ * title), what the setting is, what is set, the form, and the slot its errors
+ * go in. The window goes to the top once, and focus to the first field.
+ */
+function renderSettingsPage() {
+  const page = settingsPage;
+  if (!page) return;
+  const it = pageFor(page.key, page.group);
+  if (!it) { closePage({ refocus: false }); return; }
+  const host = settingsHost();
+  host.textContent = '';
+  const s = node('section', 'set-page');
+  s.id = `set-${page.key}-page`;
+  const head = node('div', 'set-page-head');
+  const back = textBtn('', 'back set-back', 'set-back', () => closePage());
+  back.append(icon('back', 'i'), onHouseholds() ? 'This NAS' : 'Settings');
+  const h = node(onHouseholds() ? 'h2' : 'h1', '', it.title);
+  h.id = 'set-page-h';
+  h.tabIndex = -1;
+  s.setAttribute('aria-labelledby', h.id);
+  head.append(back, h);
+  s.appendChild(head);
+  if (it.line) s.appendChild(node('p', 'set-line', it.line));
+  if (readOnlyPage(it)) s.appendChild(node('p', 'set-only', `Only ${settingsData.setup.owner ?? 'the owner'} can change this.`));
+  const body = node('div', 'set-page-body');
+  s.appendChild(body);
+  const err = node('p', 'err set-err');
+  err.setAttribute('aria-live', 'polite');
+  err.tabIndex = -1;
+  err.hidden = true;
+  s.appendChild(err);
+  // What is set, in full, under the form: the form's first field stays in the top half of a phone, clear of its keyboard.
+  const now = node('div', 'set-now');
+  fillNotes(now, it.notes);
+  s.appendChild(now);
+  // Escape goes Back; a form inside that has its own Cancel takes it first.
+  s.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || e.defaultPrevented) return;
+    e.preventDefault();
+    closePage();
+  });
+  host.appendChild(s);
+  if (!readOnlyPage(it)) {
+    it.init?.();
+    if (it.body) body.replaceChildren(...[it.body()].flat().filter(Boolean));
+  }
+  if (onHouseholds()) s.scrollIntoView({ block: 'start' }); else window.scrollTo({ top: 0 });
+  focusFirst(s);
+}
+
+/** Focus the page's first field, without scrolling: the one marked to start on, else the first that can be used, else the heading. */
+function focusFirst(s) {
+  const auto = s.querySelector('.set-page-body [data-autofocus]')
+    ?? s.querySelector('.set-page-body :is(input, select, textarea):not(:disabled)');
+  const to = auto ?? s.querySelector('#set-page-h');
+  to?.focus({ preventScroll: true });
+  // A field opened to rename: what is typed replaces the old name.
+  if (auto?.tagName === 'INPUT' && auto.type === 'text' && auto.value) auto.select();
+}
+
+/**
+ * The open page's form drawn again, and nothing else: after a save, a step of
+ * a form, or an answer from the NAS. Focus stays where it was (or goes to the
+ * control `want` names); only when what had it is gone does it go to the
+ * first field, or with `auto` to a form that has just opened.
+ */
+function redrawPage(want, { auto = false } = {}) {
+  const page = settingsPage;
+  if (!page) return;
+  const s = settingsHost().querySelector('.set-page');
+  if (!s) return;
+  const it = pageFor(page.key, page.group);
+  if (!it) { closePage({ refocus: false }); return; }
+  const active = document.activeElement;
+  const had = !!active && active !== document.body && s.contains(active);
+  const onHead = active === s.querySelector('#set-page-h');
+  const keep = want ?? (had ? active.dataset?.key : null);
+  fillNotes(s.querySelector('.set-now'), it.notes);
+  const body = s.querySelector('.set-page-body');
+  body.replaceChildren(...(readOnlyPage(it) || !it.body ? [] : [it.body()].flat().filter(Boolean)));
+  const fresh = auto ? body.querySelector('[data-autofocus]') : null;
+  const back = !fresh && keep ? s.querySelector(`[data-key="${CSS.escape(keep)}"]`) : null;
+  if (fresh) focusFirst(s);
+  else if (back && !back.disabled) back.focus({ preventScroll: true });
+  else if (onHead || (had && !s.contains(active)) || document.activeElement === document.body) focusFirst(s);
+}
+
+/** A refusal in the open page's slot, in the server's words. False when no page is open to say it. */
+function pageErr(ex, { focus = true } = {}) {
+  const err = settingsHost().querySelector('.set-page .set-err');
+  if (!err) return false;
+  err.textContent = ex?.message ?? String(ex);
+  err.hidden = false;
+  if (focus) err.focus({ preventScroll: true });
+  err.scrollIntoView({ block: 'nearest' });
+  return true;
+}
+function clearPageErr() {
+  const err = settingsHost().querySelector('.set-page .set-err');
+  if (err) { err.hidden = true; err.textContent = ''; }
+}
+
+/** A sheet opened from Settings (your iPhone, the categories): where its Done comes back to. */
+let settingsSheetFrom = null;
+const sheetFromSettings = (key) => { settingsSheetFrom = view === 'settings' ? { y: window.scrollY, key } : null; };
+function backFromSheet() {
+  const from = settingsSheetFrom;
+  settingsSheetFrom = null;
+  if (!from || view !== 'settings') return;
+  window.scrollTo({ top: from.y });
+  $('settings').querySelector(`[data-key="${CSS.escape(from.key)}"]`)?.focus({ preventScroll: true });
+}
+
+/** The key of the control last pressed: Safari does not focus a button it clicks, so focus cannot say which it was. */
+let pressedKey = null;
 function textBtn(label, cls, key, act) {
   const b = node('button', cls, label);
   b.type = 'button';
   if (key) b.dataset.key = key;
-  b.addEventListener('click', act);
+  b.addEventListener('click', (e) => { pressedKey = key ?? null; return act(e); });
   return b;
 }
 function iconBtn(glyph, label, key, disabled, act) {
@@ -7556,139 +7770,101 @@ function addRow(label, key, act) {
   b.append(icon('plus'), label);
   return b;
 }
-/**
- * Where focus goes when Settings is drawn again: the control that opened a
- * form, once it closes, or the one a change names (a renamed row's own Rename,
- * the Add row after a removal). Without it focus would fall to the page.
- */
-let settingsFocus = null;
-/** The control that opened the form now open. */
-let settingsOpener = null;
+/** The control that opened the part of a page being edited: focus goes back to it on Cancel. */
+let settingsEditOpener = null;
 const editRows = (kind, index = null) => {
-  settingsOpener = document.activeElement?.dataset?.key ?? null;
-  settingsEdit = { kind, index };
-  renderSettings();
+  settingsEditOpener = pressedKey ?? document.activeElement?.dataset?.key ?? null;
+  settingsEditing = { kind, index };
+  clearPageErr();
+  redrawPage(null, { auto: true });
 };
-/** Cancel: back to the row's own form, or, for a row that is only the form, the row closed. */
+/** Cancel: back to the page as it opened, or, for a page that is only the form, Back to the list. */
 const cancelEdit = () => {
-  if (settingsOpen?.direct) { closeRow(); return; }
-  settingsEdit = null;
-  settingsFocus = settingsOpener;
-  renderSettings();
+  if (!settingsEditing) { closePage(); return; }
+  settingsEditing = null;
+  clearPageErr();
+  redrawPage(settingsEditOpener);
 };
-const editing = (kind, index = null) => settingsEdit?.kind === kind && settingsEdit.index === index;
+const editing = (kind, index = null) => settingsEditing?.kind === kind && settingsEditing.index === index;
 
-/** A row opened for editing, in place: its fields, then Save and Cancel. */
-function rowForm(fields, submitLabel, onSave) {
-  const f = node('form', 'rowform');
+/**
+ * A form on a page: its fields, any notes, then its submit and Cancel. A field
+ * is { name, label, value, placeholder, type, max, kind: 'input' (the default)
+ * | 'select' | 'textarea', options, optional, key }; a select's options are
+ * [value, text, disabled] or { group, options }. An empty field that is not
+ * optional is refused in the page's slot, focus on it. `onSave(values)` answers
+ * true once it is done, false to leave the form as typed.
+ */
+function fieldsForm({ fields, notes = [], submit = 'Save', onSave, cancel = cancelEdit, autofocus = true, cls = '' }) {
+  const f = node('form', `rowform${cls ? ` ${cls}` : ''}`);
+  // The page says what is missing, in its slot: the browser does not stop it first.
+  f.noValidate = true;
   const inputs = {};
+  const option = ([v, text, disabled]) => {
+    const o = node('option', '', text);
+    o.value = v;
+    o.disabled = !!disabled;
+    return o;
+  };
   for (const x of fields) {
     const l = node('label', '', x.label);
-    const i = node('input', 'input');
-    i.type = x.type ?? 'text';
-    i.value = x.value ?? '';
-    i.placeholder = x.placeholder ?? '';
-    i.maxLength = x.max ?? 200;
-    i.required = true;
+    let i;
+    if (x.kind === 'select') {
+      i = node('select', 'input');
+      for (const o of x.options) {
+        if (Array.isArray(o)) { i.appendChild(option(o)); continue; }
+        const g = node('optgroup');
+        g.label = o.group;
+        g.append(...o.options.map(option));
+        i.appendChild(g);
+      }
+      i.value = x.value ?? '';
+    } else if (x.kind === 'textarea') {
+      i = node('textarea', 'input');
+      i.rows = x.rows ?? 4;
+      i.maxLength = x.max ?? 1000;
+      i.value = x.value ?? '';
+      i.placeholder = x.placeholder ?? '';
+    } else {
+      i = node('input', 'input');
+      i.type = x.type ?? 'text';
+      i.value = x.value ?? '';
+      i.placeholder = x.placeholder ?? '';
+      i.maxLength = x.max ?? 200;
+    }
+    if (x.key) i.dataset.key = x.key;
+    i.addEventListener('input', () => i.removeAttribute('aria-invalid'));
     l.appendChild(i);
     f.appendChild(l);
     inputs[x.name] = i;
   }
-  Object.values(inputs)[0].dataset.autofocus = '';
+  if (autofocus) Object.values(inputs)[0].dataset.autofocus = '';
+  for (const n of notes) if (n) f.appendChild(n);
   const acts = node('div', 'actions');
-  const go = node('button', 'btn primary', submitLabel);
+  const go = node('button', 'btn primary', submit);
   go.type = 'submit';
-  acts.append(go, textBtn('Cancel', 'btn', null, cancelEdit));
+  acts.append(go, textBtn('Cancel', 'btn', null, cancel));
   f.appendChild(acts);
-  f.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelEdit(); });
+  f.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    cancel();
+  });
   f.addEventListener('submit', async (e) => {
     e.preventDefault();
+    const missing = fields.find((x) => x.kind !== 'select' && !x.optional && !inputs[x.name].value.trim());
+    if (missing) {
+      const i = inputs[missing.name];
+      i.setAttribute('aria-invalid', 'true');
+      pageErr(new Error(fields.length === 1 ? 'Fill this in first.' : `Fill in ${missing.label.toLowerCase()} first.`), { focus: false });
+      i.focus({ preventScroll: true });
+      return;
+    }
     const v = Object.fromEntries(Object.entries(inputs).map(([k, i]) => [k, i.value.trim()]));
     go.disabled = true;
-    if (!(await onSave(v))) go.disabled = false;
+    if (!(await onSave(v, inputs))) go.disabled = false;
   });
   return f;
-}
-
-function renderSettings() {
-  const box = $('settings');
-  if (!settingsData) return;
-  const keep = document.activeElement?.dataset?.key;
-  const y = window.scrollY;
-  box.textContent = '';
-
-  const head = node('div', 'page-head');
-  const back = textBtn('', 'back', null, leaveSettings);
-  back.append(icon('back', 'i'), 'Back');
-  head.append(back, node('h1', '', 'Settings'), textBtn('Done', 'btn small done', null, leaveSettings));
-
-  const others = settingsData.members.filter((m) => m !== myName);
-  const groups = [
-    {
-      id: 'you',
-      title: 'You',
-      hint: others.length ? `Only you see these. ${listOf(others)} ${others.length === 1 ? 'keeps their' : 'keep their'} own.` : 'Only you see these.',
-      rows: [appearanceRow(), conflictsRow(), phoneRow()],
-      foot: softwareLine(softwareInfo),
-    },
-    {
-      id: 'household',
-      title: 'Household',
-      hint: `${others.length === 1 ? 'You both see' : 'Everyone in the household sees'} and change${others.length === 1 ? '' : 's'} these. `
-        + "Every change goes in the household's history.",
-      rows: [setupRow(), membersRow(), areasRow(), budgetRow(), hcalRow(), guestsRow(), documentsRow(), linksRow(), backupRow(),
-        ...(settingsData.setup.youOwn && !inSandbox ? [removeRow()] : [])],
-    },
-  ];
-  // Anyone else has neither the group nor its lines in the index.
-  if (amAdmin) {
-    groups.push({
-      id: 'nas', title: 'This NAS', hint: NAS_HINT,
-      rows: (connData?.rows ?? []).map(nasRow),
-      foot: connData ? null : 'What this NAS connects to could not be read just now.',
-    });
-  }
-  const layout = node('div', 'settings');
-  const index = node('nav', 'set-index');
-  index.setAttribute('aria-label', 'Settings sections');
-  const body = node('div', 'set-body');
-  for (const g of groups) {
-    index.appendChild(node('div', 'eyebrow', g.title));
-    const group = node('div', 'set-group');
-    group.id = `set-g-${g.id}`;
-    const gh = node('header');
-    gh.append(node('div', 'eyebrow', g.title), node('p', 'hint', g.hint));
-    group.appendChild(gh);
-    for (const row of g.rows) {
-      row.dataset.group = g.id;
-      const a = node('a', '', row.querySelector('h3').textContent);
-      a.href = `#${row.id}`;
-      a.addEventListener('click', (e) => { e.preventDefault(); row.scrollIntoView({ block: 'start', behavior: 'smooth' }); });
-      index.appendChild(a);
-      group.appendChild(row);
-    }
-    if (g.foot) group.appendChild(node('p', 'hint', g.foot));
-    body.appendChild(group);
-  }
-  layout.append(index, body);
-  box.append(head, layout);
-  window.scrollTo({ top: y });
-  markSettingsIndex();
-  refocus(box, keep);
-}
-
-/**
- * Focus after the rows are drawn again: a form's first field as it opens,
- * else the control a change names, else the one that had it before.
- */
-function refocus(box, keep) {
-  const auto = box.querySelector('[data-autofocus]');
-  const want = settingsFocus ?? keep;
-  settingsFocus = null;
-  const back2 = want ? box.querySelector(`[data-key="${CSS.escape(want)}"]`) : null;
-  (auto ?? back2)?.focus({ preventScroll: !auto });
-  // A row opened to rename: what is typed replaces the old name.
-  if (auto?.tagName === 'INPUT' && auto.value) auto.select();
 }
 
 /**
@@ -7707,32 +7883,38 @@ function softwareLine(sw) {
 
 /** The index marks the row being read: the last one whose top has scrolled up past the screen's top. */
 function markSettingsIndex() {
-  const secs = [...$('settings').querySelectorAll('.set-row')];
-  // At the foot of the page the last sections never reach the top, so the last one counts as read.
+  const secs = [...$('settings').querySelectorAll('.set-body .set-item')];
+  if (!secs.length) return;
+  // At the foot of the page the last rows never reach the top, so the last one counts as read.
   const atEnd = window.innerHeight + window.scrollY >= document.documentElement.scrollHeight - 2;
   const current = atEnd ? secs.at(-1) : secs.filter((s) => s.getBoundingClientRect().top <= 120).at(-1) ?? secs[0];
   for (const a of $('settings').querySelectorAll('.set-index a')) {
     if (a.hash === `#${current?.id}`) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
   }
 }
-window.addEventListener('scroll', () => { if (view === 'settings') markSettingsIndex(); }, { passive: true });
+window.addEventListener('scroll', () => { if (view === 'settings' && !settingsPage) markSettingsIndex(); }, { passive: true });
 
-/** Appearance: System, Light or Dark as the row's own status, a press away; Colours opens the scheme tiles. */
-function appearanceRow() {
+/** Appearance: System, Light or Dark, then the scheme tiles; each choice is kept as it is pressed. */
+function appearanceItem() {
   const look = currentLook();
-  const seg = node('div', 'seg');
-  seg.setAttribute('role', 'group');
-  seg.setAttribute('aria-label', 'Light or dark');
-  for (const [m, label] of MODES) {
-    const b = textBtn(label, '', `mode-${m}`, () => { if (m !== look.mode) void chooseLook({ scheme: look.scheme, mode: m }); });
-    b.setAttribute('aria-pressed', String(m === look.mode));
-    seg.appendChild(b);
-  }
-  return settingRow({
-    key: 'appearance', title: 'Appearance', status: seg, list: true,
-    actions: [{ label: 'Colours', opens: true }],
-    form: () => schemeTiles(look),
-  });
+  const nameOf = (list, k) => list.find(([x]) => x === k)?.[1] ?? k;
+  return {
+    key: 'appearance', title: 'Appearance', list: true,
+    status: `${nameOf(MODES, look.mode)} · ${nameOf(SCHEMES, look.scheme)}`,
+    line: 'Light or dark, and the colours Home Planner is drawn in.',
+    body: () => {
+      const now = currentLook();
+      const seg = node('div', 'seg');
+      seg.setAttribute('role', 'group');
+      seg.setAttribute('aria-label', 'Light or dark');
+      for (const [m, label] of MODES) {
+        const b = textBtn(label, '', `mode-${m}`, () => { if (m !== now.mode) void chooseLook({ scheme: now.scheme, mode: m }); });
+        b.setAttribute('aria-pressed', String(m === now.mode));
+        seg.appendChild(b);
+      }
+      return [seg, ...schemeTiles(now)];
+    },
+  };
 }
 
 /** The four schemes, each tile drawn in its own colours; a choice is kept as it is pressed. */
@@ -7793,12 +7975,12 @@ const calendarsOffWords = () => (calState === 'loading' ? 'Reading your calendar
   : 'Your calendars could not be read just now.');
 function calendarsOff() {
   const p = node('div', 'unavailable');
-  p.append(icon('cal', 'i'), node('span', '', calendarsOffWords()));
+  p.append(icon('cal', 'i'), node('span', '', calProblem ? `${calendarsOffWords()} ${calProblem}` : calendarsOffWords()));
   return p;
 }
 
 /** Calendars I check: the ones read for clashes, yours and the Household one always among them. */
-function conflictsRow() {
+function conflictsItem() {
   let status = calendarsOffWords();
   if (calState === 'ok') {
     const { conflicts, household } = settingsData.calendar;
@@ -7809,12 +7991,11 @@ function conflictsRow() {
     ];
     status = names.join(' · ') || 'Not set';
   }
-  return settingRow({
-    key: 'conflicts', title: 'Calendars I check', list: true,
-    status: [status, node('p', 'hint', 'Clashes with these are flagged when you schedule.')],
-    actions: [{ label: 'Change', opens: true }],
-    form: conflictsForm,
-  });
+  return {
+    key: 'conflicts', title: 'Calendars I check', list: true, status,
+    line: 'Clashes with these are flagged when you schedule.',
+    body: conflictsForm,
+  };
 }
 
 function conflictsForm() {
@@ -7853,7 +8034,7 @@ function conflictsForm() {
     const ok = await saveSettings('/api/calendars/conflicts', {
       calendars: others.filter((_, k) => boxes[k].checked).map((c) => ({ cal_id: c.cal_id, original_cal_id: c.original_cal_id })),
     });
-    if (!ok) renderSettings();
+    if (!ok) redrawPage();
   });
   s.push(rows);
   if (!others.length) s.push(node('p', 'hint', 'No one has shared a calendar with you yet. One that is shared appears here.'));
@@ -7865,15 +8046,15 @@ function conflictsForm() {
  * profile, from what it kept in localStorage. A convenience, not a record:
  * another browser, or a cleared one, says not yet.
  */
-function phoneRow() {
+function phoneItem() {
   const at = phoneSetAt();
   const when = at ? new Date(at).toLocaleDateString(undefined, { day: 'numeric', month: 'long', year: 'numeric' }) : null;
-  return settingRow({
+  return {
     key: 'phone', title: 'Your iPhone and Mac',
-    status: [when ? `Set up on this device on ${when}` : 'Not set up on this device yet',
-      'A QR code for the Home Screen, and the Household calendar for Apple Calendar.'],
-    actions: [{ label: 'Set up ›', act: openPhoneSheet }],
-  });
+    status: when ? `Set up on this device on ${when}` : 'Not set up on this device yet',
+    // Its own sheet, already a full screen with its heading: its Done comes back to the list.
+    open: () => { sheetFromSettings('row-phone'); void openPhoneSheet(); },
+  };
 }
 
 // ── Set up your iPhone ─────────────────────────────────────────────────────
@@ -7925,7 +8106,7 @@ function closePhoneSheet(redraw = true) {
   phoneSheet = null;
   $('phone-sec').hidden = true;
   $('phone-body').textContent = '';
-  if (redraw && view === 'settings') renderSettings();
+  if (redraw) backFromSheet(); else settingsSheetFrom = null;
 }
 $('phone-close').addEventListener('click', () => closePhoneSheet());
 $('me-phone').addEventListener('click', () => void openPhoneSheet());
@@ -8104,13 +8285,13 @@ async function phoneCode() {
   }, Math.max(0, Date.parse(out.expiresAt) - Date.now()));
 }
 
-function areasRow() {
-  return settingRow({
+function areasItem() {
+  return {
     key: 'areas', title: 'Areas', list: true,
     status: settingsData.areas.join(' · ') || 'Not set',
-    actions: [{ label: 'Edit', opens: true }],
-    form: areasForm,
-  });
+    line: 'The rows of the Plan board.',
+    body: areasForm,
+  };
 }
 
 function areasForm() {
@@ -8127,12 +8308,15 @@ function areasForm() {
     if (editing('area', i)) {
       // Its own route: a rename moves the area's plans with it, which replacing the list cannot.
       // The count goes with them, so the row under its new name still says what it holds.
-      rows.appendChild(rowForm([{ name: 'name', label: 'Call it', value: a, max: 60 }], 'Rename it', (v) => {
-        if (v.name === a) { cancelEdit(); return true; }
-        return saveSettings('/api/settings/areas/rename', { from: a, to: v.name }, () => {
-          areaCounts.set(v.name, areaCounts.get(a) ?? 0);
-          areaCounts.delete(a);
-        }, `area-rename-${v.name}`);
+      rows.appendChild(fieldsForm({
+        fields: [{ name: 'name', label: 'Call it', value: a, max: 60 }], submit: 'Rename it',
+        onSave: (v) => {
+          if (v.name === a) { cancelEdit(); return true; }
+          return saveSettings('/api/settings/areas/rename', { from: a, to: v.name }, () => {
+            areaCounts.set(v.name, areaCounts.get(a) ?? 0);
+            areaCounts.delete(a);
+          }, `area-rename-${v.name}`);
+        },
       }));
       return;
     }
@@ -8156,20 +8340,21 @@ function areasForm() {
     rows.appendChild(r);
   });
   if (editing('area', -1)) {
-    rows.appendChild(rowForm([{ name: 'name', label: 'The new area', placeholder: 'e.g. Garden', max: 60 }], 'Add it',
-      (v) => save([...areas, v.name], 'area-add')));
+    rows.appendChild(fieldsForm({
+      fields: [{ name: 'name', label: 'The new area', placeholder: 'e.g. Garden', max: 60 }], submit: 'Add it',
+      onSave: (v) => save([...areas, v.name], 'area-add'),
+    }));
   } else rows.appendChild(addRow('Add an area', 'area-add', () => editRows('area', -1)));
-  return [node('p', 'hint', 'The rows of the Plan board.'), rows,
-    node('p', 'hint', "Renaming an area takes its plans with it. An area with plans in it can't be removed until they move.")];
+  return [rows, node('p', 'hint', "Renaming an area takes its plans with it. An area with plans in it can't be removed until they move.")];
 }
 
-function linksRow() {
-  return settingRow({
+function linksItem() {
+  return {
     key: 'links', title: 'Links in your menu', list: true,
     status: settingsData.links.map((l) => l.label).join(' · ') || 'Not set',
-    actions: [{ label: 'Edit', opens: true }],
-    form: linksForm,
-  });
+    line: "The household's other apps. They open in the same tab.",
+    body: linksForm,
+  };
 }
 
 function linksForm() {
@@ -8182,7 +8367,7 @@ function linksForm() {
   const rows = node('div', 'rows');
   links.forEach((l, i) => {
     if (editing('link', i)) {
-      rows.appendChild(rowForm(fields(l), 'Save', (v) => save(links.map((x, k) => (k === i ? v : x)), `link-edit-${i}`)));
+      rows.appendChild(fieldsForm({ fields: fields(l), onSave: (v) => save(links.map((x, k) => (k === i ? v : x)), `link-edit-${i}`) }));
       return;
     }
     const r = node('div', 'rowi');
@@ -8196,9 +8381,9 @@ function linksForm() {
     r.append(t, end);
     rows.appendChild(r);
   });
-  if (editing('link', -1)) rows.appendChild(rowForm(fields(null), 'Add it', (v) => save([...links, v], 'link-add')));
+  if (editing('link', -1)) rows.appendChild(fieldsForm({ fields: fields(null), submit: 'Add it', onSave: (v) => save([...links, v], 'link-add') }));
   else rows.appendChild(addRow('Add a link', 'link-add', () => editRows('link', -1)));
-  return [node('p', 'hint', "The household's other apps. They open in the same tab."), rows];
+  return [rows];
 }
 
 /**
@@ -8206,55 +8391,41 @@ function linksForm() {
  * accounts imports have seen, and what it last showed. Budget checks the funds
  * against it; what it shows can be typed here at any time.
  */
-function budgetRow() {
+function budgetItem() {
   const sv = settingsData.savings ?? { account: null, accounts: [], balance: null };
   const cats = `Categories: ${settingsData.categoriesInUse ?? 0} in use`;
   const status = sv.balance ? `${cats} · Savings shown today: ${sv.balance.exact}`
     : sv.account ? `${cats} · Savings is account ${sv.account}, with no balance yet`
     : `${cats} · No savings account chosen`;
-  return settingRow({
-    key: 'budget', title: 'Budget', status,
-    actions: [{ label: 'Edit', opens: true }],
-    form: budgetForm,
-  });
+  return {
+    key: 'budget', title: 'Budget', status, list: true,
+    line: 'The categories every budget shares, and the account the envelopes saved in Savings live in.',
+    body: budgetForm,
+  };
 }
 
 function budgetForm() {
   const sv = settingsData.savings ?? { account: null, accounts: [], balance: null };
   const rows = node('div', 'rows');
-  // The categories have their own panel, shared by every budget: this line opens it.
+  // The categories have their own sheet, shared by every budget: this line opens it.
   const cats = node('div', 'rowi');
   const ce = node('span', 'end');
-  ce.appendChild(textBtn('Edit the categories', 'btn bare small', 'budget-categories', () => void openCategories()));
+  ce.appendChild(textBtn('Edit the categories', 'btn bare small', 'budget-categories', () => {
+    sheetFromSettings('budget-categories');
+    void openCategories();
+  }));
   cats.append(node('span', '', `${plural(settingsData.categoriesInUse ?? 0, 'category', 'categories')} in use`), ce);
   rows.appendChild(cats);
   if (editing('savings')) {
-    const f = node('form', 'rowform');
-    const l = node('label', '', 'Savings is');
-    const sel = node('select', 'input');
-    const none = node('option', '', 'None');
-    none.value = '';
-    sel.appendChild(none);
-    for (const a of sv.accounts) {
-      const o = node('option', '', `Account ${a.account} · ${a.receipts} receipt${a.receipts === 1 ? '' : 's'}, latest ${dayMonth(a.last)}`);
-      o.value = a.account;
-      sel.appendChild(o);
-    }
-    sel.value = sv.account ?? '';
-    sel.dataset.autofocus = '';
-    l.appendChild(sel);
-    const go = node('button', 'btn primary', 'Use it');
-    go.type = 'submit';
-    const acts = node('div', 'actions');
-    acts.append(go, textBtn('Cancel', 'btn', null, cancelEdit));
-    f.append(l, acts);
-    f.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelEdit(); });
-    f.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      go.disabled = true;
-      if (!(await saveSettings('/api/settings/savings', { account: sel.value || null }, undefined, 'savings-choose'))) go.disabled = false;
-    });
-    rows.appendChild(f);
+    rows.appendChild(fieldsForm({
+      fields: [{
+        name: 'account', label: 'Savings is', kind: 'select', value: sv.account ?? '',
+        options: [['', 'None'], ...sv.accounts.map((a) => [a.account,
+          `Account ${a.account} · ${a.receipts} receipt${a.receipts === 1 ? '' : 's'}, latest ${dayMonth(a.last)}`])],
+      }],
+      submit: 'Use it',
+      onSave: (v) => saveSettings('/api/settings/savings', { account: v.account || null }, undefined, 'savings-choose'),
+    }));
   } else {
     const r = node('div', 'rowi');
     const t = node('span');
@@ -8276,13 +8447,16 @@ function budgetForm() {
     rows.appendChild(r);
   }
   if (sv.account && editing('savings-balance')) {
-    rows.appendChild(rowForm([{ name: 'amount', label: 'What Savings shows today, in dollars', placeholder: 'e.g. 12500.00', max: 20 }],
-      'Record it', (v) => {
+    rows.appendChild(fieldsForm({
+      fields: [{ name: 'amount', label: 'What Savings shows today, in dollars', placeholder: 'e.g. 12500.00', max: 20, type: 'text' }],
+      submit: 'Record it',
+      onSave: (v) => {
         const c = toCents(v.amount);
-        if (!Number.isFinite(c)) { showProblem(new Error('The balance is a dollar amount, like 12500.00')); return false; }
+        if (!Number.isFinite(c)) { pageErr(new Error('The balance is a dollar amount, like 12500.00')); return false; }
         return saveSettings('/api/settings/savings/balance', { cents: c, ...(chosenBudget() ? { budget: chosenBudget() } : {}) },
           undefined, 'savings-balance');
-      }));
+      },
+    }));
   } else if (sv.account) {
     rows.appendChild(addRow('Type what Savings shows today', 'savings-balance', () => editRows('savings-balance')));
   }
@@ -8293,9 +8467,9 @@ function budgetForm() {
 //
 // The owner's choices, in the order they are asked, at the head of the
 // Household group: one grid, a mark and a value per step. Every member sees
-// it; only the owner has a Change. The folder, the calendar and booking are
-// rows of their own further down, so their values go there; the zone and the
-// model are chosen here, their forms opening inside Setup.
+// it. Each step is a row of the list of its own, where it is chosen: the
+// folder is Documents, the calendar Household calendar, booking Guests and
+// booking, and the zone and the model have rows named for them.
 
 /** The order the steps are asked in, as `setup.ts` has it. */
 const SETUP_ORDER = ['folder', 'zone', 'calendar', 'booking', 'model'];
@@ -8305,75 +8479,37 @@ const SETUP_LABELS = {
 /** The server's NOT_TEAM_FOLDER (folders.ts), word for word. */
 const NOT_TEAM_FOLDER = 'A shared folder not listed here is not a Team Folder yet. Enable it in Synology Drive Admin Console, Team Folder.';
 const plural = (n, one, many = `${one}s`) => `${n} ${n === 1 ? one : many}`;
+/** Whether a step of Setup has been chosen; true for a step the household does not have. */
+const stepDone = (id) => settingsData.setup.steps.find((x) => x.id === id)?.done ?? true;
 
-/** A step's value as a link to the row it is chosen in. */
-const stepLink = (id, text) => {
-  const b = node('button', 'link', text);
-  b.type = 'button';
-  b.dataset.key = `step-${id}`;
-  b.addEventListener('click', () => void openSettings('household', STEP_ROW[id]));
-  return b;
-};
-/** The owner's Change on a step chosen inside Setup. */
-const stepChange = (id) => (settingsData.setup.youOwn
-  ? textBtn('Change', 'btn bare small', `setup-${id}`, () => openRow('household', 'setup', { edit: `setup-${id}`, direct: true, back: `setup-${id}` }))
-  : null);
-
-/** A row opened as one choice from a list, in place: the select, any notes, then Save and Cancel. */
-function selectRowForm(id, label, options, value, saved, notes, onSave) {
-  const f = node('form', 'rowform');
-  const l = node('label', '', label);
-  const sel = node('select', 'input');
-  for (const [v, text, disabled] of options) {
-    const o = node('option', '', text);
-    o.value = v;
-    o.disabled = !!disabled;
-    sel.appendChild(o);
-  }
-  sel.value = value;
-  sel.dataset.autofocus = '';
-  l.appendChild(sel);
-  f.appendChild(l);
-  for (const n of notes) f.appendChild(n);
-  const go = node('button', 'btn primary', 'Save');
-  go.type = 'submit';
-  const acts = node('div', 'actions');
-  acts.append(go, textBtn('Cancel', 'btn', null, cancelEdit));
-  f.appendChild(acts);
-  f.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelEdit(); });
-  f.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    // The value shown, already saved, is nothing to do; shown by default or from the deployment, saving it makes it the household's.
-    if (sel.value === value && saved) { cancelEdit(); return; }
-    go.disabled = true;
-    if (!(await onSave(sel.value))) go.disabled = false;
-  });
-  return f;
-}
-
-function setupRow() {
+function setupItem() {
   const su = settingsData.setup;
-  const grid = node('dl', 'setup-grid');
-  const values = { folder: folderStep, zone: zoneStep, calendar: calendarRow, booking: bookingStep, model: modelStep };
-  for (const id of SETUP_ORDER) {
-    const step = su.steps.find((x) => x.id === id);
-    if (!step) continue;
-    const dt = node('dt', '', SETUP_LABELS[id]);
-    if (su.first === id) dt.setAttribute('aria-current', 'step');
-    const dd = node('dd');
-    const mark = node('span', `mark${step.done ? ' ok' : ''}`, step.done ? '✓' : '○');
-    mark.setAttribute('aria-hidden', 'true');
-    dd.appendChild(mark);
-    for (const v of values[id](step)) if (v) dd.appendChild(typeof v === 'string' ? node('span', '', v) : v);
-    if (!step.done) dd.appendChild(node('span', 'hint', 'Not chosen yet'));
-    grid.append(dt, dd);
-  }
-  const who = su.youOwn ? 'Only you choose these. Each is also a row below.'
-    : `Only ${su.owner ?? 'the owner'} chooses these. Each is also a row below.`;
-  return settingRow({
-    key: 'setup', title: 'Setup', status: [grid, node('p', 'hint', who)],
-    form: () => (!su.youOwn ? null : editing('setup-zone') ? zoneForm() : editing('setup-model') ? modelForm() : null),
-  });
+  const steps = SETUP_ORDER.map((id) => su.steps.find((x) => x.id === id)).filter(Boolean);
+  const left = steps.filter((s) => !s.done).length;
+  return {
+    key: 'setup', title: 'Setup',
+    status: left ? `${plural(left, 'step')} to choose` : 'All chosen',
+    attention: left > 0,
+    line: 'What a new household chooses first, in the order it is asked.',
+    body: () => {
+      const grid = node('dl', 'setup-grid');
+      const values = { folder: folderStep, zone: zoneStep, calendar: calendarStep, booking: bookingStep, model: modelStep };
+      for (const step of steps) {
+        const dt = node('dt', '', SETUP_LABELS[step.id]);
+        if (su.first === step.id) dt.setAttribute('aria-current', 'step');
+        const dd = node('dd');
+        const mark = node('span', `mark${step.done ? ' ok' : ''}`, step.done ? '✓' : '○');
+        mark.setAttribute('aria-hidden', 'true');
+        dd.appendChild(mark);
+        for (const v of values[step.id]()) if (v) dd.appendChild(typeof v === 'string' ? node('span', '', v) : v);
+        if (!step.done) dd.appendChild(node('span', 'hint', 'Not chosen yet'));
+        grid.append(dt, dd);
+      }
+      const who = su.youOwn ? 'Only you choose these. Each is a row of its own in Settings.'
+        : `Only ${su.owner ?? 'the owner'} chooses these. Each is a row of its own in Settings.`;
+      return [grid, node('p', 'hint', who)];
+    },
+  };
 }
 
 /** Whether Universal Search reads the folder's pages, in words; null is asked again once a page is there. */
@@ -8383,12 +8519,24 @@ const indexedWords = (indexed) => (indexed === true ? 'Universal Search reads it
 
 function folderStep() {
   const d = settingsData.setup.documents;
-  return [stepLink('folder', d.folder ? `${d.folder.team} › ${d.folder.folder}` : 'No folder chosen')];
+  return [d.folder ? `${d.folder.team} › ${d.folder.folder}` : 'No folder chosen'];
 }
 
 function zoneStep() {
   const { zone, source } = settingsData.setup.zone;
-  return [`${zone} · ${source}`, stepChange('zone')];
+  return [`${zone} · ${source}`];
+}
+
+function zoneItem() {
+  const z = settingsData.setup.zone;
+  if (!z) return null;
+  return {
+    key: 'zone', title: 'Time zone', owner: true,
+    status: z.zone, attention: !stepDone('zone'),
+    line: "The household's days are read in this zone: when a day starts, and what is due today.",
+    notes: [`${z.zone} · ${z.source}`],
+    body: zoneForm,
+  };
 }
 
 function zoneForm() {
@@ -8396,18 +8544,20 @@ function zoneForm() {
   const known = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [];
   // The browser's list may leave out the zone in use (UTC, often): it is offered all the same.
   const zones = known.includes(zone) ? known : [zone, ...known];
-  return selectRowForm('zone', "The household's days are read in", zones.map((z) => [z, z]), zone, source === 'saved',
-    [node('p', 'note', 'Events already on the calendar keep the zone they were made in.')],
-    (v) => saveSettings('/api/settings/zone', { zone: v }, null, 'setup-zone'));
+  return fieldsForm({
+    fields: [{ name: 'zone', label: "The household's days are read in", kind: 'select', options: zones.map((z) => [z, z]), value: zone }],
+    notes: [node('p', 'note', 'Events already on the calendar keep the zone they were made in.')],
+    // The value shown, already saved, is nothing to do; shown by default or from the deployment, saving it makes it the household's.
+    onSave: (v) => (v.zone === zone && source === 'saved' ? (closePage(), true) : saveSettings('/api/settings/zone', { zone: v.zone })),
+  });
 }
 
-/** The Household calendar is chosen in its own row, further down: this step says what it is and goes there. */
-function calendarRow() {
+/** The Household calendar is chosen in its own row: this step says what it is. */
+function calendarStep() {
   const { household, target } = settingsData.calendar;
   const elsewhere = target && !sameCal(target, household);
-  const words = elsewhere ? `Plans go on ${calList?.find((c) => sameCal(c, target))?.name ?? 'another calendar'}`
-    : household ? household.name : 'No Household calendar yet';
-  return [stepLink('calendar', words)];
+  return [elsewhere ? `Plans go on ${calList?.find((c) => sameCal(c, target))?.name ?? 'another calendar'}`
+    : household ? household.name : 'No Household calendar yet'];
 }
 
 /** What Settings says once the app turned booking off for a lost calendar, until one is chosen. */
@@ -8421,14 +8571,14 @@ const aheadLine = (a) => {
 };
 
 function bookingStep() {
-  return [stepLink('booking', settingsData.booking?.on ? 'On' : 'Off')];
+  return [settingsData.booking?.on ? 'On' : 'Off'];
 }
 
 /**
  * Booking: the owner's switch, posting { on }, at the head of Guests and
  * booking. Off and unavailable, it cannot be turned on, and the reason beside
  * it says who can fix that. A refusal (something still ahead, here or in the
- * household that books) goes to the error box in the server's words.
+ * household that books) goes to the page's slot in the server's words.
  */
 function bookingSwitch() {
   const b = settingsData.booking ?? { on: false, available: false, why: '' };
@@ -8462,19 +8612,32 @@ function bookingSwitch() {
 function modelStep() {
   const m = settingsData.model;
   const listed = m.choices.find((c) => c.id === m.chosen);
-  return [listed ? listed.label : `${m.chosen}, no longer offered`, m.claudeOff ? node('span', 'hint', 'Claude is off on this NAS') : null,
-    stepChange('model')];
+  return [listed ? listed.label : `${m.chosen}, no longer offered`, m.claudeOff ? node('span', 'hint', 'Claude is off on this NAS') : null];
+}
+
+function modelItem() {
+  const m = settingsData.model;
+  if (!m) return null;
+  const listed = m.choices.find((c) => c.id === m.chosen);
+  return {
+    key: 'model', title: 'Claude model', owner: true,
+    status: listed ? listed.label : `${m.chosen}, no longer offered`, attention: !stepDone('model'),
+    line: 'The model Claude suggests envelopes with.',
+    notes: [m.claudeOff ? 'Claude is off on this NAS.' : null],
+    body: modelForm,
+  };
 }
 
 function modelForm() {
   const m = settingsData.model;
   const listed = m.choices.find((c) => c.id === m.chosen);
-  const off = m.claudeOff ? 'Claude is off on this NAS' : null;
   const options = m.choices.map((c) => [c.id, c.fromDeployment ? `${c.label} (from the deployment)` : c.label]);
   // A saved model the deployment no longer offers is still the one in use: shown, but not chosen again.
   if (!listed) options.unshift([m.chosen, `${m.chosen} (no longer offered)`, true]);
-  return selectRowForm('model', 'Suggest envelopes with', options, m.chosen, m.source === 'saved', off ? [node('p', 'hint', off)] : [],
-    (v) => saveSettings('/api/settings/model', { model: v }, null, 'setup-model'));
+  return fieldsForm({
+    fields: [{ name: 'model', label: 'Suggest envelopes with', kind: 'select', options, value: m.chosen }],
+    onSave: (v) => (v.model === m.chosen && m.source === 'saved' ? (closePage(), true) : saveSettings('/api/settings/model', { model: v.model })),
+  });
 }
 
 // ── the folder picker: a Team Folder, a folder in it, the checks ───────────
@@ -8483,37 +8646,47 @@ function modelForm() {
  * The picker while it is open, as { step: 'team' | 'folder' | 'check', busy,
  * teams, team, folders, suggested, folder (null for a new one), typed, chosen,
  * checks }. A new object on each opening, so an answer that arrives after the
- * picker was closed or opened again is dropped.
+ * page was left or the picker opened again is dropped.
  */
 let folderPick = null;
 
-/** Ask the NAS one thing for the picker, and draw it again when it answers: unless the picker has moved on since. */
-async function pickerAsk(pick, ask) {
+/**
+ * Ask the NAS one thing for the picker. While it asks, only the picker's own
+ * line says so and its button waits; the answer draws the page's form again,
+ * unless the picker (or the page) has moved on since.
+ */
+async function pickerAsk(pick, ask, words) {
   pick.busy = true;
-  renderSettings();
+  const f = $('settings').querySelector('.set-page .folder-pick');
+  if (f) {
+    const go = f.querySelector('button[type="submit"]');
+    if (go) go.disabled = true;
+    const line = f.querySelector('.busy');
+    if (line) line.textContent = words;
+  }
+  let problem = null;
   try {
     await ask();
-    if (folderPick === pick) $('app-err').hidden = true;
   } catch (ex) {
-    if (folderPick === pick) showProblem(ex);
+    problem = ex;
   }
-  if (folderPick !== pick) return;
+  if (folderPick !== pick || settingsPage?.key !== 'documents') return;
   pick.busy = false;
-  renderSettings();
+  redrawPage();
+  if (problem) pageErr(problem, { focus: false }); else clearPageErr();
 }
 
-function openFolderPicker() {
+/** The Documents page opens on the picker: the Team Folders are asked for at once. */
+function startFolderPicker() {
   const current = settingsData.setup.documents.folder;
   const pick = { step: 'team', busy: true, teams: null, team: current?.team ?? null, folders: null, suggested: '', folder: null, typed: '' };
   folderPick = pick;
-  // The Documents row is only the picker while it is open: its Cancel closes the row, and focus goes back to Change folder.
-  openRow('household', 'documents', { edit: 'setup-folder', direct: true });
-  return pickerAsk(pick, async () => {
+  void pickerAsk(pick, async () => {
     const { teams } = await api('/api/drive/team-folders');
     if (folderPick !== pick) return;
     pick.teams = teams;
     if (!teams.some((t) => t.name === pick.team && t.canWrite)) pick.team = teams.find((t) => t.canWrite)?.name ?? null;
-  });
+  }, 'Asking the NAS for its Team Folders…');
 }
 
 function pickTeam(pick) {
@@ -8526,7 +8699,7 @@ function pickTeam(pick) {
     pick.typed = got.suggested;
     pick.folder = current?.team === pick.team && got.folders.includes(current.folder) ? current.folder : null;
     pick.step = 'folder';
-  });
+  }, `Asking the NAS for the folders in ${pick.team}…`);
 }
 
 /** The folder as the server will clean it: segments trimmed, empty ones dropped. */
@@ -8534,14 +8707,20 @@ const tidyFolder = (s) => s.split('/').map((x) => x.trim()).filter(Boolean).join
 
 function checkPick(pick) {
   const folder = pick.folder ?? tidyFolder(pick.typed);
-  if (!folder) { showProblem(new Error('Name the new folder.')); return; }
+  if (!folder) {
+    const name = $('settings').querySelector('.folder-pick input[type="text"]');
+    pageErr(new Error('Name the new folder.'), { focus: !name });
+    name?.setAttribute('aria-invalid', 'true');
+    name?.focus({ preventScroll: true });
+    return;
+  }
   return pickerAsk(pick, async () => {
     const checks = await api('/api/drive/folder-check', { team: pick.team, folder });
     if (folderPick !== pick) return;
     pick.checks = checks;
     pick.chosen = folder;
     pick.step = 'check';
-  });
+  }, `Checking ${pick.team}/${folder}…`);
 }
 
 /** One choice of a radio group, in the picker's own rows. */
@@ -8559,22 +8738,24 @@ function pickChoice(group, value, label, what, checked, disabled) {
   return { label: l, input: i };
 }
 
-/** "Where documents live", opened in place: the step the picker is on. */
+/** "Where documents live", the Documents page's form: the step the picker is on, and its line while it asks the NAS. */
 function folderPicker() {
   const pick = folderPick;
   const f = node('form', 'rowform folder-pick');
-  f.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelEdit(); });
+  const busy = node('p', 'note busy');
+  busy.setAttribute('role', 'status');
   const acts = node('div', 'actions');
   const go = node('button', 'btn primary');
   go.type = 'submit';
   go.disabled = pick.busy;
-  const back = (to) => textBtn('Back', 'btn', null, () => { pick.step = to; $('app-err').hidden = true; renderSettings(); });
-  const cancel = textBtn('Cancel', 'btn', null, () => { folderPick = null; cancelEdit(); });
+  const back = (to) => textBtn('Back', 'btn', null, () => { pick.step = to; clearPageErr(); redrawPage(); });
+  const cancel = textBtn('Cancel', 'btn', null, () => closePage());
 
   if (!pick.teams) {
-    f.appendChild(node('p', 'note', pick.busy ? 'Asking the NAS for its Team Folders…' : 'The Team Folders could not be read.'));
+    busy.textContent = pick.busy ? 'Asking the NAS for its Team Folders…' : 'The Team Folders could not be read.';
+    f.appendChild(busy);
     if (!pick.busy) {
-      const again = textBtn('Try again', 'btn primary', null, openFolderPicker);
+      const again = textBtn('Try again', 'btn primary', null, () => { clearPageErr(); startFolderPicker(); redrawPage(); });
       again.dataset.autofocus = '';
       acts.appendChild(again);
     }
@@ -8601,7 +8782,7 @@ function folderPicker() {
     set.appendChild(node('p', 'hint', NOT_TEAM_FOLDER));
     go.textContent = 'Next';
     go.disabled = pick.busy || !pick.team;
-    f.addEventListener('submit', (e) => { e.preventDefault(); if (pick.team) void pickTeam(pick); });
+    f.addEventListener('submit', (e) => { e.preventDefault(); if (pick.team && !pick.busy) void pickTeam(pick); });
     acts.append(go, cancel);
   } else if (pick.step === 'folder') {
     set.appendChild(node('legend', '', `A folder in ${pick.team}`));
@@ -8621,13 +8802,13 @@ function folderPicker() {
       fresh.input.checked = true;
       fresh.input.dispatchEvent(new Event('change', { bubbles: true }));
     });
-    name.addEventListener('input', () => { pick.typed = name.value; });
+    name.addEventListener('input', () => { pick.typed = name.value; name.removeAttribute('aria-invalid'); });
     fresh.input.addEventListener('change', () => { pick.folder = null; });
     fresh.label.querySelector('.name').appendChild(name);
     if (pick.folder === null) firstFocus(fresh.input);
     set.appendChild(fresh.label);
     go.textContent = 'Check it';
-    f.addEventListener('submit', (e) => { e.preventDefault(); void checkPick(pick); });
+    f.addEventListener('submit', (e) => { e.preventDefault(); if (!pick.busy) void checkPick(pick); });
     acts.append(go, back('team'), cancel);
   } else {
     const c = pick.checks;
@@ -8649,134 +8830,110 @@ function folderPicker() {
       e.preventDefault();
       if (c.problems.length) return;
       go.disabled = true;
+      busy.textContent = 'Saving…';
       const ok = await saveSettings('/api/settings/documents', { team: pick.team, folder: pick.chosen }, async () => {
-        folderPick = null;
         // Whether briefings and answers go to Drive is only asked by the full read, and the folder has just changed it.
-        try { documentsStatus = (await api('/api/settings')).documents ?? documentsStatus; } catch { /* the line under Attachments catches up on the next visit */ }
-      }, 'setup-folder');
-      if (!ok) go.disabled = false;
+        try { documentsStatus = (await api('/api/settings')).documents ?? documentsStatus; } catch { /* the line under Documents catches up on the next visit */ }
+      });
+      if (!ok) { go.disabled = false; busy.textContent = ''; }
     });
     const backBtn = back('folder');
     if (go.disabled) backBtn.dataset.autofocus = '';
     acts.append(go, backBtn, cancel);
   }
-  f.append(set, acts);
+  f.append(set, busy, acts);
   return f;
 }
 
 /** The Household calendar: which it is and who shares it; which calendar the household uses is the owner's to change. */
-function hcalRow() {
+function hcalItem() {
   const { household, target } = settingsData.calendar;
   const others = settingsData.members.filter((m) => m !== myName);
-  const status = [household
-    ? `${household.name}, on the NAS${others.length ? `, shared with ${listOf(others)}` : ''}` : 'No Household calendar yet'];
-  if (target && !sameCal(target, household)) {
-    status.push(node('p', 'hint', `Plans go on ${calList?.find((c) => sameCal(c, target))?.name ?? 'another calendar'}, chosen instead of the Household calendar.`));
-  }
-  const owns = settingsData.setup.youOwn;
-  return settingRow({
-    key: 'hcal', title: 'Household calendar', status,
-    actions: owns ? [{ label: 'Change', opens: true }] : [],
-    form: owns ? hcalForm : null,
-  });
+  const elsewhere = target && !sameCal(target, household);
+  const elsewhereName = calList?.find((c) => sameCal(c, target))?.name ?? 'another calendar';
+  const notes = [household
+    ? `${household.name}, on the NAS${others.length ? `, shared with ${listOf(others)}` : ''}.` : 'No Household calendar yet.'];
+  if (elsewhere) notes.push(`Plans go on ${elsewhereName}, chosen instead of the Household calendar.`);
+  return {
+    key: 'hcal', title: 'Household calendar', owner: true,
+    status: elsewhere ? `Plans go on ${elsewhereName}` : household ? household.name : 'No Household calendar yet',
+    attention: !household && !elsewhere,
+    line: "Where plans' due dates and blocks go, and the only calendar the shared briefing reads.",
+    notes,
+    body: hcalForm,
+  };
 }
 
+/**
+ * The owner's form: which calendar plans go on, as one select. The calendar in
+ * use first, then any other you can write to (the Household calendar first
+ * when plans go elsewhere), then a new Household calendar to replace it with,
+ * or to create when there is none. Renaming it is beneath.
+ */
 function hcalForm() {
-  const s = [node('p', 'hint', "Where plans' due dates and blocks go, and the only calendar the shared briefing reads.")];
   const { household, target } = settingsData.calendar;
-  const reach = calState === 'ok';
+  if (calState !== 'ok') return [calendarsOff()];
   const after = () => loadCalendars();
-  const rows = node('div', 'rows');
-  const calRow = (glyph, name, meta, end) => {
-    const r = node('div', 'rowi');
-    r.appendChild(icon(glyph, `i lg${glyph === 'home' ? ' house' : ''}`));
-    const t = node('span');
-    t.append(node('b', '', name), node('span', 'meta', meta));
-    r.appendChild(t);
-    if (end) r.appendChild(end);
-    rows.appendChild(r);
-  };
-  // A calendar chosen instead of the Household one is where plans go.
   const elsewhere = target && !sameCal(target, household);
-  if (elsewhere) {
-    calRow('cal', calList?.find((c) => sameCal(c, target))?.name ?? 'Another calendar',
-      'Plans go here, chosen instead of the Household calendar');
+  const current = elsewhere ? calList.find((c) => sameCal(c, target)) ?? null : household;
+  // The Household calendar first: a replaced one stays on the NAS under the same name.
+  const usable = calList.filter((c) => c.privilege === 'RW' && !sameCal(c, target ?? household))
+    .sort((x, y) => Number(y.isHousehold) - Number(x.isHousehold));
+  const options = [];
+  if (current) options.push(['current', elsewhere ? current.name : `${current.name} (the Household calendar)`]);
+  if (!household) options.push(['create', 'A new Household calendar, made now']);
+  if (usable.length) {
+    options.push({ group: 'Use another calendar', options: usable.map((c) => [c.cal_id, c.isHousehold ? `${c.name} (the Household calendar)` : c.name]) });
   }
-  if (household && editing('hcal-name')) {
-    rows.appendChild(rowForm([{ name: 'name', label: 'Call it', value: household.name, max: 100 }], 'Rename it',
-      (v) => saveSettings('/api/calendars/household/name', { name: v.name }, after)));
-  } else if (household) {
+  if (household) options.push(['replace', 'A new Household calendar, in place of this one']);
+  const note = node('p', 'note');
+  const say = (v) => {
+    note.textContent = v === 'replace'
+      ? `A new Household calendar will be created, and plans' dates go on it from now. ${household.name} is left on the NAS as it is, with everything already on it.`
+      : v === 'create' ? "A new calendar on the NAS, shared with everyone in the household. Plans' dates go on it from now."
+      : v === 'current' ? '' : 'It is shared with everyone in the household first, if it is yours and not shared yet.';
+    note.hidden = !note.textContent;
+  };
+  const renaming = !!household && editing('hcal-name');
+  const f = fieldsForm({
+    fields: [{ name: 'cal', label: 'Plans go on', kind: 'select', options,
+      value: current ? 'current' : !household ? 'create' : usable[0]?.cal_id ?? 'replace' }],
+    notes: [note], autofocus: !renaming,
+    onSave: (v) => {
+      if (v.cal === 'current') { closePage(); return true; }
+      if (v.cal === 'create') return saveSettings('/api/calendars/household', {}, after);
+      if (v.cal === 'replace') return saveSettings('/api/calendars/household', { replace: true }, after);
+      const c = usable.find((x) => x.cal_id === v.cal);
+      return saveSettings('/api/calendars/target', { cal_id: c.cal_id, original_cal_id: c.original_cal_id }, after);
+    },
+  });
+  const sel = f.querySelector('select');
+  sel.dataset.key = 'hcal-target';
+  sel.addEventListener('change', () => say(sel.value));
+  say(sel.value);
+
+  const s = [f];
+  if (!household) return s;
+  const rows = node('div', 'rows');
+  if (renaming) {
+    rows.appendChild(fieldsForm({
+      fields: [{ name: 'name', label: 'Call it', value: household.name, max: 100 }], submit: 'Rename it',
+      onSave: (v) => (v.name === household.name ? (cancelEdit(), true) : saveSettings('/api/calendars/household/name', { name: v.name }, after)),
+    }));
+  } else {
     const names = settingsData.members.map(nameIn);
     const shared = names.length < 2 ? 'shared with no one else yet'
       : `shared with ${listOf(names)}, ${names.length === 2 ? 'both' : 'all'} can edit`;
-    const end = reach ? node('span', 'end') : null;
-    end?.appendChild(textBtn('Rename', 'btn bare small', 'hcal-rename', () => editRows('hcal-name')));
-    calRow('home', household.name, `Made by ${nameIn(household.by)} · ${shared}`, end);
-  } else {
-    calRow('home', 'No Household calendar yet', "Plans' dates have nowhere to go until there is one.");
+    const r = node('div', 'rowi');
+    r.appendChild(icon('home', 'i lg house'));
+    const t = node('span');
+    t.append(node('b', '', household.name), node('span', 'meta', `The Household calendar · made by ${nameIn(household.by)} · ${shared}`));
+    const end = node('span', 'end');
+    end.appendChild(textBtn('Rename', 'btn bare small', 'hcal-rename', () => editRows('hcal-name')));
+    r.append(t, end);
+    rows.appendChild(r);
   }
   s.push(rows);
-  // Only the owner sees this form: the row is theirs to change.
-  if (!reach) { s.push(calendarsOff()); return s; }
-
-  if (editing('target')) {
-    // The Household calendar first: a replaced one stays on the NAS under the same name.
-    const usable = calList.filter((c) => c.privilege === 'RW' && !sameCal(c, target ?? household))
-      .sort((x, y) => Number(y.isHousehold) - Number(x.isHousehold));
-    const f = node('form', 'rowform');
-    const l = node('label', '', 'Plans go on');
-    const sel = node('select', 'input');
-    for (const c of usable) {
-      const o = node('option', '', c.isHousehold ? `${c.name} (the Household calendar)` : c.name);
-      o.value = c.cal_id;
-      sel.appendChild(o);
-    }
-    sel.dataset.autofocus = '';
-    l.appendChild(sel);
-    const go = node('button', 'btn primary', 'Use it');
-    go.type = 'submit';
-    go.disabled = !usable.length;
-    const acts = node('div', 'actions');
-    acts.append(go, textBtn('Cancel', 'btn', null, cancelEdit));
-    f.append(l, node('p', 'note', 'It is shared with everyone in the household first, if it is yours and not shared yet.'), acts);
-    if (!usable.length) f.replaceChildren(node('p', 'note', 'You have no other calendar you can write to.'), acts);
-    f.addEventListener('submit', async (e) => {
-      e.preventDefault();
-      const c = usable.find((x) => x.cal_id === sel.value);
-      go.disabled = true;
-      if (!(await saveSettings('/api/calendars/target', { cal_id: c.cal_id, original_cal_id: c.original_cal_id }, after))) go.disabled = false;
-    });
-    s.push(f);
-    return s;
-  }
-
-  if (editing('replace')) {
-    const f = node('div', 'rowform');
-    f.appendChild(node('p', 'note', `A new Household calendar will be created, and plans' dates go on it from now. `
-      + `${household.name} is left on the NAS as it is, with everything already on it.`));
-    const acts = node('div', 'actions');
-    const go = textBtn('Create a new one', 'btn primary', 'hcal-replace-go', async () => {
-      go.disabled = true;
-      if (!(await saveSettings('/api/calendars/household', { replace: true }, after))) go.disabled = false;
-    });
-    go.dataset.autofocus = '';
-    acts.append(go, textBtn('Keep this one', 'btn', null, cancelEdit));
-    f.appendChild(acts);
-    s.push(f);
-    return s;
-  }
-
-  const acts = node('div', 'actions');
-  if (!household) {
-    acts.appendChild(textBtn('Create the Household calendar', 'btn primary', 'hcal-create', async (e) => {
-      const b = e.currentTarget;
-      b.disabled = true;
-      if (!(await saveSettings('/api/calendars/household', {}, after))) b.disabled = false;
-    }));
-  }
-  acts.appendChild(textBtn('Use another calendar', 'btn', 'hcal-target', () => editRows('target')));
-  if (household) acts.appendChild(textBtn('Replace it', 'btn', 'hcal-replace', () => editRows('replace')));
-  s.push(acts);
   return s;
 }
 
@@ -8787,16 +8944,16 @@ function hcalForm() {
 const bookingOffWords = (g) => g.words || (/^[A-Z_]+$/.test(g.why) ? 'Booking is off until an administrator sets it up under Settings › This NAS.'
   : /^[A-Z_]+ /.test(g.why) ? `Booking is off: ${g.why}.` : `Booking is off here: ${g.why || 'not set up'}.`);
 
-function guestsRow() {
+function guestsItem() {
   const g = settingsData.guests ?? { on: false, why: '' };
   const b = settingsData.booking ?? {};
-  const status = [`${plural(g.list?.length ?? 0, 'guest')} on the list · Booking ${b.on ? 'on' : 'off'}`];
-  if (!b.on && b.needsAddress) status.push(node('p', 'hint', 'Needs the booking address set under This NAS before it can go on.'));
-  return settingRow({
-    key: 'guests', title: 'Guests and booking', status, list: true,
-    actions: [{ label: 'Edit', opens: true }],
-    form: guestsForm,
-  });
+  return {
+    key: 'guests', title: 'Guests and booking', list: true,
+    status: `${plural(g.list?.length ?? 0, 'guest')} on the list · Booking ${b.on ? 'on' : 'off'}`,
+    line: 'Who may ask to stay, and the note a guest is sent once a stay is confirmed.',
+    notes: [!b.on && b.needsAddress ? 'Needs the booking address set under This NAS before it can go on.' : null],
+    body: guestsForm,
+  };
 }
 
 /** The owner's booking switch, then who may ask to stay and the arrival note; with booking off, why. */
@@ -8826,8 +8983,10 @@ function guestsForm() {
   const rows = node('div', 'rows');
   g.list.forEach((x, i) => {
     if (editing('guest-remove', i)) {
-      rows.appendChild(rowForm([{ name: 'why', label: `Why ${x.name} is coming off the list`, placeholder: 'Moved away' }], 'Remove',
-        (v) => saveSettings(`/api/guests/${encodeURIComponent(x.email)}`, { why: v.why }, null, 'guest-add', 'DELETE')));
+      rows.appendChild(fieldsForm({
+        fields: [{ name: 'why', label: `Why ${x.name} is coming off the list`, placeholder: 'Moved away' }], submit: 'Remove',
+        onSave: (v) => saveSettings(`/api/guests/${encodeURIComponent(x.email)}`, { why: v.why }, null, 'guest-add', 'DELETE'),
+      }));
       return;
     }
     const r = node('div', 'rowi');
@@ -8841,18 +9000,28 @@ function guestsForm() {
   });
   if (!g.list.length && !editing('guest', -1)) rows.appendChild(node('p', 'rowi hint', 'Nobody yet. Add the friends and family who may ask to stay.'));
   if (editing('guest', -1)) {
-    rows.appendChild(rowForm([
-      { name: 'email', label: 'Email', type: 'email', placeholder: 'name@example.com' },
-      { name: 'name', label: 'Name', placeholder: 'The Parks', max: 100 },
-      { name: 'why', label: 'How you know them', placeholder: 'The neighbours' },
-    ], 'Add', (v) => saveSettings('/api/guests', v, null, 'guest-add')));
+    rows.appendChild(fieldsForm({
+      fields: [
+        { name: 'email', label: 'Email', type: 'email', placeholder: 'name@example.com' },
+        { name: 'name', label: 'Name', placeholder: 'The Parks', max: 100 },
+        { name: 'why', label: 'How you know them', placeholder: 'The neighbours' },
+      ],
+      submit: 'Add',
+      onSave: (v) => saveSettings('/api/guests', v, null, 'guest-add'),
+    }));
   } else rows.appendChild(addRow('Add a guest', 'guest-add', () => editRows('guest', -1)));
   s.push(rows);
 
   // How a guest gets in: sent with each confirmation, after the dates, and nowhere before it.
   const arrival = node('div', 'rows');
-  if (editing('guest-arrival')) arrival.appendChild(arrivalForm(g.arrival ?? ''));
-  else {
+  if (editing('guest-arrival')) {
+    // Empty clears it.
+    arrival.appendChild(fieldsForm({
+      fields: [{ name: 'text', label: 'Arrival note', kind: 'textarea', value: g.arrival ?? '', placeholder: 'The address, the gate code, where to park', optional: true }],
+      notes: [node('p', 'note', 'Sent in each confirmation email, after the dates. A guest never sees it before then. Leave it empty to send nothing.')],
+      onSave: (v) => saveSettings('/api/guests/arrival', { text: v.text }, null, 'guest-arrival'),
+    }));
+  } else {
     const r = node('div', 'rowi');
     const t = node('span', '', 'Arrival note');
     const said = node('span', 'meta', g.arrival || 'None yet. Guests are told you will send the address and how to get in.');
@@ -8867,76 +9036,83 @@ function guestsForm() {
   return s;
 }
 
-/** The arrival note, opened in place: the address and how to get in, for every confirmation. Empty clears it. */
-function arrivalForm(text) {
-  const f = node('form', 'rowform');
-  const l = node('label', '', 'Arrival note');
-  const t = node('textarea', 'input');
-  t.rows = 4;
-  t.maxLength = 1000;
-  t.value = text;
-  t.placeholder = 'The address, the gate code, where to park';
-  t.dataset.autofocus = '';
-  l.appendChild(t);
-  f.append(l, node('p', 'note', 'Sent in each confirmation email, after the dates. A guest never sees it before then. Leave it empty to send nothing.'));
-  const acts = node('div', 'actions');
-  const go = node('button', 'btn primary', 'Save');
-  go.type = 'submit';
-  acts.append(go, textBtn('Cancel', 'btn', null, cancelEdit));
-  f.appendChild(acts);
-  f.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancelEdit(); });
-  f.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    go.disabled = true;
-    if (!(await saveSettings('/api/guests/arrival', { text: t.value.trim() }, null, 'guest-arrival'))) go.disabled = false;
-  });
-  return f;
-}
-
 /**
  * Documents: the folder in Synology Drive briefings, answers and cards' files
- * go to, and whether cards keep files; Change folder opens the picker, the
- * owner's alone.
+ * go to, and whether cards keep files. The page is the picker, the owner's alone.
  */
-function documentsRow() {
+function documentsItem() {
   const d = settingsData.setup.documents;
   const a = settingsData.attachments ?? { on: false };
-  const status = [d.folder ? `${d.folder.team} › ${d.folder.folder} on Synology Drive · Cards keep files ${a.on ? 'on' : 'off'}` : 'No folder chosen'];
-  if (d.left) status.push(node('p', 'hint', `Moving ${plural(d.left, 'document')} to it.`));
-  if (!a.on && a.why) status.push(node('p', 'hint', a.why));
-  if (documentsStatus && !documentsStatus.on && documentsStatus.why) status.push(node('p', 'hint', documentsStatus.why));
-  const owns = settingsData.setup.youOwn;
-  return settingRow({
-    key: 'documents', title: 'Documents', status,
-    actions: owns ? [{ label: 'Change folder', opens: true, act: openFolderPicker }] : [],
-    form: owns ? () => (editing('setup-folder') && folderPick ? folderPicker() : null) : null,
-  });
+  const notes = [d.folder ? `${d.folder.team} › ${d.folder.folder} on Synology Drive. Cards keep files ${a.on ? 'on' : 'off'}.` : 'No folder chosen.'];
+  if (d.left) notes.push(`Moving ${plural(d.left, 'document')} to it.`);
+  if (!a.on && a.why) notes.push(a.why);
+  if (documentsStatus && !documentsStatus.on && documentsStatus.why) notes.push(documentsStatus.why);
+  return {
+    key: 'documents', title: 'Documents', owner: true,
+    status: d.folder ? `${d.folder.team} › ${d.folder.folder}` : 'No folder chosen',
+    attention: !d.folder,
+    line: "The folder in Synology Drive that briefings, answers and cards' files go to.",
+    notes,
+    init: startFolderPicker,
+    body: () => (folderPick ? folderPicker() : null),
+  };
 }
 
 /** Members: who is in the household, the owner marked; only the owner invites someone. */
-function membersRow() {
+function membersItem() {
   const owner = settingsData.setup.owner;
-  return settingRow({
-    key: 'members', title: 'Members',
+  return {
+    key: 'members', title: 'Members', list: true,
     status: settingsData.members.map((m) => (m === owner ? `${m} (owner)` : m)).join(' · '),
-    actions: settingsData.setup.youOwn ? [{ label: 'Invite someone', act: inviteSomeone }] : [],
-  });
+    line: settingsData.setup.youOwn ? 'Who is in the household. Only you invite someone.'
+      : `Who is in the household. Only ${owner ?? 'the owner'} invites someone.`,
+    body: () => {
+      const rows = node('div', 'rows');
+      for (const m of settingsData.members) {
+        const r = node('div', 'rowi');
+        const t = node('span', '', m);
+        if (m === owner) t.appendChild(node('span', 'meta', 'Owner'));
+        r.appendChild(t);
+        rows.appendChild(r);
+      }
+      const out = [rows];
+      if (settingsData.setup.youOwn) {
+        const acts = node('div', 'actions');
+        acts.appendChild(textBtn('Invite someone', 'btn', 'members-invite', inviteSomeone));
+        out.push(acts);
+      }
+      return out;
+    },
+  };
 }
 
-function backupRow() {
-  return settingRow({
-    key: 'backup', title: 'Backup', status: "The household's log, everything it has decided.",
-    actions: [{ label: 'Download', href: '/api/backup', download: true }, { label: 'Restore…', act: takeFromBackup }],
-  });
+function backupItem() {
+  return {
+    key: 'backup', title: 'Backup', list: true, status: '',
+    line: "The household's log, everything it has decided.",
+    body: () => {
+      const acts = node('div', 'actions');
+      const dl = node('a', 'btn', 'Download');
+      dl.href = '/api/backup';
+      dl.setAttribute('download', '');
+      dl.dataset.key = 'backup-download';
+      acts.append(dl, textBtn('Restore…', 'btn', 'backup-restore', takeFromBackup));
+      return [acts];
+    },
+  };
 }
 
 /** Remove this household: the owner's alone, last in the group, and for good. */
-function removeRow() {
-  return settingRow({
-    key: 'remove', title: 'Remove this household',
-    status: 'Everything in it goes, for everyone in it, for good. A backup from the row above is the only way back.',
-    actions: [{ label: 'Remove…', act: removeHousehold }],
-  });
+function removeItem() {
+  return {
+    key: 'remove', title: 'Remove this household', list: true, status: '',
+    line: 'Everything in it goes, for everyone in it, for good. A backup from Backup is the only way back.',
+    body: () => {
+      const acts = node('div', 'actions');
+      acts.appendChild(textBtn('Remove…', 'btn danger', 'remove-go', removeHousehold));
+      return [acts];
+    },
+  };
 }
 
 function removeHousehold() {
@@ -8990,45 +9166,71 @@ let connIds = 0;
 
 /** The households screen is up: This NAS is drawn there, under its buttons, rather than in Settings. */
 const onHouseholds = () => $('app').hidden;
-/** The error box of the screen the rows are on. */
-const rowsErr = () => (onHouseholds() ? $('hh-err') : $('app-err'));
-/** Draw the rows again where they are. */
-const redrawRows = () => (onHouseholds() ? renderNasPanel() : renderSettings());
+/** Why This NAS could not be read when Settings was, said at the foot of its group. */
+let connUnread = null;
 
-/** A refusal, in the server's words, in the one error box. */
-function connProblem(ex) {
-  const err = rowsErr();
-  if (err === $('app-err')) showProblem(ex);
-  else { err.textContent = ex.message; err.hidden = false; }
+/** A refusal, in the server's words: in the open page's slot, or, with no page open on the households screen, in its error box. */
+function connProblem(ex, opts) {
+  if (pageErr(ex, opts)) return;
+  if (!onHouseholds()) return;
+  const err = $('hh-err');
+  err.textContent = ex.message;
+  err.hidden = false;
   err.scrollIntoView({ block: 'nearest' });
 }
 
-/** A row's status: its state as a chip, then its line and where its value comes from. */
+/** A row's status on its page: its state as a chip, then its line and where its value comes from. */
 const nasStatus = (r) => [
   node('span', `chip ${r.state}`, CONNECTOR_STATES[r.state] ?? r.state),
   // A line that ends a sentence loses its full stop before the source.
   `${r.line.replace(/\.$/, '')} · ${r.source}`,
 ];
 
-/** One row of This NAS. Drive has nothing to set, so it shows; Who may sign in asks the NAS for its accounts as it opens. */
-function nasRow(r) {
-  const action = { label: r.id === 'drive' ? 'Show' : 'Change', opens: true };
-  if (r.id === 'sign-in') action.act = () => { void loadAccounts(); openRow('nas', r.id); };
-  return settingRow({ key: r.id, title: CONNECTOR_NAMES[r.id] ?? r.id, status: nasStatus(r), actions: [action], form: () => connForm(r) });
+/** What each row of This NAS is, said under its page's title. */
+const CONNECTOR_LINES = {
+  claude: 'The key Home Planner asks Claude with.',
+  drive: "Where each household's documents are kept. Nothing to set here.",
+  calendar: "DSM's address from outside the house, for phones and Apple Calendar.",
+  mail: 'How Home Planner sends email, such as a guest’s confirmation.',
+  booking: 'Where guests open the booking page.',
+  'sign-in': 'The DSM accounts that may sign in to Home Planner.',
+  pricing: 'The keys for the Census and EIA price sources.',
+};
+
+function nasGroup() {
+  return {
+    id: 'nas', title: 'This NAS', hint: NAS_HINT,
+    items: (connData?.rows ?? []).map(nasItem),
+    foot: connData ? null : connUnread ?? 'What this NAS connects to could not be read just now.',
+  };
 }
 
-/** A row's status drawn again in place, after a test or a save refused halfway: the form under it keeps what is typed. */
+/** One row of This NAS. Who may sign in asks the NAS for its accounts as its page opens. */
+function nasItem(r) {
+  return {
+    key: r.id, title: CONNECTOR_NAMES[r.id] ?? r.id,
+    status: CONNECTOR_STATES[r.state] ?? r.state,
+    attention: r.state === 'broken',
+    line: CONNECTOR_LINES[r.id] ?? null,
+    notes: nasStatus(r),
+    init: r.id === 'sign-in' ? () => void loadAccounts() : null,
+    body: () => connForm(connData.rows.find((x) => x.id === r.id) ?? r),
+  };
+}
+
+/** A row's status said again on its page, after a test or a save refused halfway: the form under it keeps what is typed. */
 function redrawConnectorRow(id) {
   const r = connData.rows.find((x) => x.id === id);
-  const st = (onHouseholds() ? $('hh-panel') : $('settings')).querySelector(`#set-${CSS.escape(id)} .set-status`);
-  if (r && st) st.replaceChildren(...nasStatus(r).map((x) => (typeof x === 'string' ? node('p', '', x) : x)));
+  const now = settingsPage?.key === id ? settingsHost().querySelector('.set-page .set-now') : null;
+  if (r && now) fillNotes(now, nasStatus(r));
 }
 
 /** This NAS on the households screen, for an administrator who is in no household yet and still has the NAS to set up. */
 async function loadNasPanel() {
   const box = $('hh-panel');
   $('hh-err').hidden = true;
-  settingsOpen = null;
+  settingsPage = null;
+  settingsEditing = null;
   connData = null;
   connAccounts = null;
   // The last household's Settings must not keep a second set of these rows' ids.
@@ -9046,37 +9248,35 @@ async function loadNasPanel() {
 }
 $('hh-connectors').addEventListener('click', () => void loadNasPanel());
 
+/** This NAS's list in the households screen's panel, or the page open from it: the same rows and pages as Settings. */
 function renderNasPanel() {
   const box = $('hh-panel');
   if (!connData) return;
-  const keep = document.activeElement?.dataset?.key;
+  if (settingsPage) { renderSettingsPage(); return; }
   box.textContent = '';
-  const group = node('div', 'set-group nas');
-  const gh = node('header');
-  gh.append(node('div', 'h', 'This NAS'), node('p', 'hint', NAS_HINT));
-  group.appendChild(gh);
-  for (const r of connData.rows) {
-    const row = nasRow(r);
-    row.dataset.group = 'nas';
-    group.appendChild(row);
-  }
-  box.appendChild(group);
-  refocus(box, keep);
+  const g = groupBox(nasGroup(), null);
+  g.classList.add('nas');
+  box.appendChild(g);
 }
 
 /** The DSM accounts for Who may sign in. Without a DSM session behind this sign-in (a 409) the names are typed instead. */
 async function loadAccounts() {
+  const page = settingsPage;
   connAccounts = null;
   let got;
+  let problem = null;
   try {
     got = await api('/api/connectors/accounts');
   } catch (ex) {
     got = { typed: ex.status === 409 ? ex.message : null };
-    if (ex.status !== 409) connProblem(ex);
+    if (ex.status !== 409) problem = ex;
   }
-  if (settingsOpen?.row !== 'sign-in') return;
+  // Gone Back, or to another page, while the NAS answered: nothing is drawn.
+  if (settingsPage !== page || page?.key !== 'sign-in') return;
   connAccounts = got;
-  redrawRows();
+  redrawPage();
+  // An answer that arrives on its own does not take focus from the field.
+  if (problem) connProblem(problem, { focus: false });
 }
 
 /** A field of a row's form. A secret is a password field, always empty, with set or not set beside it. */
@@ -9113,7 +9313,6 @@ function connForm(r) {
   const f = node('form', 'rowform conn-form');
   // The server says what is wrong with a value, in words: the browser does not stop it first.
   f.noValidate = true;
-  f.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeRow(); });
   const fm = r.form ?? {};
   const acts = node('div', 'actions');
   const busy = (on) => { for (const x of f.querySelectorAll('button, input')) x.disabled = on; };
@@ -9129,8 +9328,8 @@ function connForm(r) {
       connProblem(ex);
       return;
     }
-    rowsErr().hidden = true;
-    closeRow();
+    clearPageErr();
+    closePage();
   };
   const routes = CONNECTOR_ROUTES[r.id] ?? [];
   /** The changes Save posts, as [route, body] pairs; none for a form with nothing to save yet. */
@@ -9146,7 +9345,7 @@ function connForm(r) {
       f.appendChild(p);
     }
     f.appendChild(node('p', 'note', 'Drive is reached at the address in Home Planner’s deployment. Each owner chooses their household’s folder in Settings.'));
-    const close = textBtn('Close', 'btn', null, closeRow);
+    const close = textBtn('Close', 'btn', null, () => closePage());
     close.dataset.autofocus = '';
     acts.appendChild(close);
     f.appendChild(acts);
@@ -9159,16 +9358,17 @@ function connForm(r) {
     // A saved key left empty is kept; with none saved, the server says it is needed.
     changesOf = () => (key.value.trim() || fm.key !== 'set' ? [['claude', { value: key.value }]] : []);
   } else if (r.id === 'calendar' || r.id === 'booking') {
+    const [l, addr] = r.id === 'calendar'
+      ? connField('The NAS’s public address', fm.address, { type: 'url', placeholder: 'https://nas.example.com:5001' })
+      : connField('The booking page’s address', fm.address, { type: 'url', placeholder: 'https://book.example.com' });
+    f.appendChild(l);
+    // Under the field, so the field opens in the top half of a phone, clear of its keyboard.
     if (r.id === 'calendar') {
       const hint = node('p', 'hint');
       hint.append("DSM's own address from outside the house, with its port, such as ", node('code', '', 'https://nas.example.com:5001'),
         ". Not the planner's address and not the LAN one. It is the server Apple Calendar is given, and where 'Open in Synology Calendar' goes.");
       f.appendChild(hint);
     }
-    const [l, addr] = r.id === 'calendar'
-      ? connField('The NAS’s public address', fm.address, { type: 'url', placeholder: 'https://nas.example.com:5001' })
-      : connField('The booking page’s address', fm.address, { type: 'url', placeholder: 'https://book.example.com' });
-    f.appendChild(l);
     changesOf = () => [[routes[0], { value: addr.value.trim() }]];
   } else if (r.id === 'mail') {
     const [lh, host] = connField('Host', fm.host, { placeholder: 'smtp.example.com' });
@@ -9243,7 +9443,7 @@ function connForm(r) {
   if (r.id !== 'sign-in') acts.appendChild(textBtn('Turn off', 'btn', null, () => void post(routes.map((x) => [x, { off: true }]))));
   acts.append(
     textBtn('Use the deployment’s', 'btn', null, () => void post(routes.map((x) => [x, { clear: true }]))),
-    textBtn('Cancel', 'btn', null, closeRow),
+    textBtn('Cancel', 'btn', null, () => closePage()),
   );
   f.appendChild(acts);
   if (r.id === 'mail' || r.id === 'claude') f.appendChild(connTest(r, busy));
@@ -9253,7 +9453,7 @@ function connForm(r) {
     if (!changesOf) return;
     const changes = changesOf();
     // A saved key left empty: nothing to change.
-    if (!changes.length) { closeRow(); return; }
+    if (!changes.length) { closePage(); return; }
     void post(changes);
   });
   return f;
@@ -9280,7 +9480,7 @@ function connTest(r, busy) {
       connProblem(ex);
       return;
     }
-    rowsErr().hidden = true;
+    clearPageErr();
     busy(false);
     redrawConnectorRow(r.id);
     said.textContent = connData.rows.find((x) => x.id === r.id)?.line ?? '';
@@ -10167,6 +10367,8 @@ const pageWords = () => (view === 'settings' ? 'Settings' : todayText);
 
 async function showView(next) {
   if (next === 'settings' && view !== 'settings') settingsFrom = view;
+  // Leaving Settings closes its page: an answer still on its way draws nothing.
+  if (next !== 'settings') { settingsPage = null; settingsEditing = null; folderPick = null; settingsSheetFrom = null; }
   view = next;
   markTabs();
   closeMenus();
@@ -10242,6 +10444,7 @@ function showHouseholds(state) {
   $('households').hidden = false;
   $('hh-err').hidden = true;
   $('hh-panel').textContent = '';
+  settingsPage = null;
   $('hh-admin').hidden = !state.admin;
   $('hh-connectors').hidden = !state.admin;
 
