@@ -24,8 +24,8 @@ import { byMonthly, everyMonthly, everyWords, goalFor, savingsCheck, shortDay, s
 import { incomeFor, project, sourcesFor } from './income.ts';
 import { lookUp, placeForZip } from './local.ts';
 import { groupKind, groupOrder, missingStarter } from './starter.ts';
-import { cardFor, coverFor, hintFor } from './figures.ts';
-import type { Cover, Hint } from './figures.ts';
+import { cardFor, coverFor, hintFor, monthlyOf, perWord } from './figures.ts';
+import type { Basis, Cover, Hint } from './figures.ts';
 import type { MissingStarter } from './starter.ts';
 import { board, card } from './plans.ts';
 import { SEARCH_KINDS, searchHousehold, searchKind, searchWords } from './search.ts';
@@ -48,10 +48,10 @@ import {
 } from './booking.ts';
 import type { BookingMail } from './booking.ts';
 import {
-  DRIFT_CHOICES, emailKey, isEmail, isGuest, isSpend, monthOf, monthKey, MONTHS_SHORT, partsOf, slug, SPLIT, TRANSFER, INCOME, zoneOf,
+  DRIFT_CHOICES, emailKey, isEmail, isGuest, isSpend, monthOf, monthKey, MONTHS_SHORT, partsOf, PERS, slug, SPLIT, TRANSFER, INCOME, zoneOf,
 } from './types.ts';
 import type {
-  Actor, Assignment, BudgetId, BudgetLocation, Day, DriftChoice, Envelope, Event, Match, Month, Plan, PlanState, SinkingEstimate, SinkingGoal, SplitPart, State, Txn,
+  Actor, Assignment, BudgetId, BudgetLocation, Day, DriftChoice, Envelope, Event, Match, Month, Per, Plan, PlanState, SinkingEstimate, SinkingGoal, SplitPart, State, Txn,
 } from './types.ts';
 import type { Store, NewEvent } from './store.ts';
 
@@ -209,6 +209,26 @@ const num = (v: unknown, name: string): number => {
   return n;
 };
 const money = (v: unknown, name: string): Cents => cents(Math.round(num(v, name)));
+/** A figure as the bill is known, `{ amountCents, per }`, read from a tool's arguments. */
+const basisArg = (v: unknown): Basis => {
+  if (typeof v !== 'object' || v === null) throw new ToolError('basis is { amountCents, per }');
+  const b = v as { amountCents?: unknown; per?: unknown };
+  const amount = money(b.amountCents, 'basis.amountCents');
+  if (amount < 0) throw new ToolError('a figure is not less than nothing');
+  if (!PERS.includes(b.per as Per)) throw new ToolError(`per is one of ${PERS.join(', ')}`);
+  return { amount, per: b.per as Per };
+};
+/** The same basis as the input schema describes it. */
+const BASIS_INPUT = {
+  type: 'object',
+  properties: {
+    amountCents: { type: 'number', description: 'The amount, in cents, once every `per`.' },
+    per: { type: 'string', enum: PERS },
+  },
+  required: ['amountCents', 'per'],
+};
+/** "$1,200.00 a year": a basis in words. */
+const basisWords = (b: Basis): string => `${fmtExact(b.amount)} a ${perWord(b.per)}`;
 
 export { ToolError };
 
@@ -288,6 +308,8 @@ const getMonth: Tool = {
         left: fmt(e.available),
         carriedIn: fmt(e.carried),
         plannedExact: fmtExact(e.planned),
+        // What a new month opens it at: the figure "from this month on" starts from.
+        templateExact: fmtExact(e.envelope.template),
         fundedExact: fmtExact(e.funded),
         spentExact: fmtExact(e.activity),
         leftExact: fmtExact(e.available),
@@ -298,7 +320,13 @@ const getMonth: Tool = {
         // Action required while no figure has been given, with what could help give one.
         needsFigure: e.envelope.needsFigure === true,
         source: e.envelope.source ?? null,
-        hint: e.envelope.needsFigure && budgetRow ? hintView(hintFor(state, budgetRow, e.envelope, month)) : null,
+        // The figure as it was given, when it was not given as a monthly: exact dollars, no sign.
+        basis: e.envelope.basis
+          ? { amount: fmtExact(e.envelope.basis.amount).replace('$', ''), per: e.envelope.basis.per }
+          : null,
+        // For every envelope with categories, so a figure can be changed from its receipts.
+        hint: budgetRow && (e.envelope.needsFigure || e.envelope.match.categories.length > 0)
+          ? hintView(hintFor(state, budgetRow, e.envelope, month)) : null,
         // Short only once it has a figure: a flagged envelope shows Action required, never Short.
         short: e.envelope.needsFigure ? null : shortView(coverFor(state, snap.view, e.envelope.id, ctx.today)),
         // Saved in Savings: what it holds so far is what is left in it.
@@ -334,15 +362,17 @@ const getMonth: Tool = {
 
 /**
  * An envelope.define that rewrites `env` with `change`, carrying every field it does not
- * name (needsFigure, source and sinking among them). `figure` means a number was given:
- * the template becomes it, the flag goes, and the source becomes `figure.source` (none when absent).
+ * name (needsFigure, source, basis and sinking among them). `figure` means a number was given:
+ * the template becomes it, the flag goes, and the source and basis become `figure.source` and
+ * `figure.basis` (none when absent: a figure given as a monthly drops an old yearly basis).
  */
 export function redefine(budget: BudgetId, env: Envelope, change: {
   label?: string; group?: string; match?: Match; rollover?: boolean; sinking?: SinkingGoal | null;
-  figure?: { template: Cents; source?: string };
+  figure?: { template: Cents; source?: string; basis?: Basis };
 } = {}): NewEvent {
   const sinking = change.sinking === undefined ? env.sinking : change.sinking;
   const source = change.figure ? change.figure.source : env.source;
+  const basis = change.figure ? change.figure.basis : env.basis;
   return {
     op: 'envelope.define', budget, envelope: env.id,
     label: change.label ?? env.label, group: change.group ?? env.group,
@@ -351,6 +381,7 @@ export function redefine(budget: BudgetId, env: Envelope, change: {
     ...(sinking !== undefined ? { sinking } : {}),
     ...(env.needsFigure && !change.figure ? { needsFigure: true as const } : {}),
     ...(source !== undefined ? { source } : {}),
+    ...(basis !== undefined ? { basis } : {}),
   };
 }
 
@@ -1025,12 +1056,16 @@ const setAssignment: Tool = {
       summary: `Set ${e.envelope.label} to ${fmtExact(to)}`,
       effects,
       // A figure set by hand is a figure, so the flag goes. The template is unchanged and is still
-      // the public-data figure, so its source stays with it.
+      // the public-data figure, so its source (and any basis) stays with it.
       events: [
         { op: 'assign', budget, month, envelope, to, why },
         ...(e.envelope.needsFigure
           ? [redefine(budget, e.envelope, {
-            figure: { template: e.envelope.template, ...(e.envelope.source !== undefined ? { source: e.envelope.source } : {}) },
+            figure: {
+              template: e.envelope.template,
+              ...(e.envelope.source !== undefined ? { source: e.envelope.source } : {}),
+              ...(e.envelope.basis !== undefined ? { basis: e.envelope.basis } : {}),
+            },
           })] : []),
       ],
     }, new Date(`${ctx.today}T00:00:00Z`).toISOString());
@@ -1414,7 +1449,8 @@ const defineEnvelope: Tool = {
   description:
     'Propose adding an envelope, or changing one — its name, which categories feed it, ' +
     'or what the template funds it at. Changing an envelope changes only this budget\'s ' +
-    'reading of the ledger; the receipts underneath are untouched.',
+    'reading of the ledger; the receipts underneath are untouched. A figure known by the year, ' +
+    'quarter, fortnight or week can be given as `basis` instead of templateCents, and the monthly is worked out from it.',
   kind: 'write',
   input: {
     type: 'object',
@@ -1428,6 +1464,7 @@ const defineEnvelope: Tool = {
         type: 'number',
         description: 'What a new month opens it at. Leaving it out keeps the figure the envelope has; a new envelope then starts with no figure.',
       },
+      basis: { ...BASIS_INPUT, description: 'The figure as the bill is known, in place of templateCents; it is kept with the envelope.' },
       rollover: { type: 'boolean' },
     },
     required: ['budget', 'envelope', 'label', 'categories'],
@@ -1455,8 +1492,11 @@ const defineEnvelope: Tool = {
     }
 
     const existing = b.envelopes.get(id);
-    const given = args['templateCents'] === undefined || args['templateCents'] === null
-      ? null : money(args['templateCents'], 'templateCents');
+    const hasTemplate = args['templateCents'] !== undefined && args['templateCents'] !== null;
+    const hasBasis = args['basis'] !== undefined && args['basis'] !== null;
+    if (hasTemplate && hasBasis) throw new ToolError('give templateCents or basis, not both');
+    const basis = hasBasis ? basisArg(args['basis']) : undefined;
+    const given = basis ? monthlyOf(basis) : hasTemplate ? money(args['templateCents'], 'templateCents') : null;
     if (given !== null && given < 0) throw new ToolError('a figure is not less than nothing');
     const group = typeof args['group'] === 'string' && args['group'] ? args['group'] : existing?.group ?? 'Everyday';
     const rollover = typeof args['rollover'] === 'boolean' ? args['rollover'] : existing?.rollover ?? true;
@@ -1465,13 +1505,17 @@ const defineEnvelope: Tool = {
     // With a template the define is a figure (flag and source go); without one an existing
     // envelope keeps all three, and a new one starts at nothing, flagged as having no figure.
     const event: NewEvent = existing
-      ? redefine(budget, existing, { label, group, match, rollover, ...(given !== null ? { figure: { template: given } } : {}) })
+      ? redefine(budget, existing, {
+        label, group, match, rollover, ...(given !== null ? { figure: { template: given, ...(basis ? { basis } : {}) } } : {}),
+      })
       : {
         op: 'envelope.define', budget, envelope: id, label, group, match,
         template: given ?? cents(0), rollover, order: b.envelopes.size,
         ...(given === null ? { needsFigure: true as const } : {}),
+        ...(basis ? { basis } : {}),
       };
-    const figureWords = given !== null ? `funded at ${fmtExact(given)} a month`
+    const figureWords = given !== null
+      ? `funded at ${fmtExact(given)} a month${basis ? `, from ${basisWords(basis)}` : ''}`
       : existing ? (existing.needsFigure ? 'still with no figure' : `funded at ${fmtExact(existing.template)} a month`)
       : 'with no figure yet';
 
@@ -2425,17 +2469,20 @@ const setEnvelopeFigure: Tool = {
     "Propose giving an envelope its figure: what a month opens it at from now on, and this month's " +
     'funding set to the same. A figure, zero included, is the only thing that clears an envelope\'s ' +
     'Action required, and it drops any source the old figure had. `month` is YYYY-MM and defaults to ' +
-    'the current month; when it is not open or is closed only the template is written. Returns a proposal.',
+    'the current month; when it is not open or is closed only the template is written. A figure known by the ' +
+    'year, quarter, fortnight or week is given as `basis` instead of amountCents: the monthly is worked out ' +
+    'from it and the basis is kept, while a figure given as amountCents drops any basis. Returns a proposal.',
   kind: 'write',
   input: {
     type: 'object',
     properties: {
       budget: { type: 'string' },
       envelope: { type: 'string' },
-      amountCents: { type: 'number', description: 'The figure a month, in cents. Zero is allowed.' },
+      amountCents: { type: 'number', description: 'The figure a month, in cents. Zero is allowed. Give this or basis.' },
+      basis: { ...BASIS_INPUT, description: 'The figure as the bill is known, e.g. { amountCents: 120000, per: "year" }. Give this or amountCents.' },
       month: { type: 'string', description: 'YYYY-MM. Defaults to this month.' },
     },
-    required: ['budget', 'envelope', 'amountCents'],
+    required: ['budget', 'envelope'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
@@ -2445,19 +2492,26 @@ const setEnvelopeFigure: Tool = {
     const id = str(args['envelope'], 'envelope');
     const env = b.envelopes.get(id);
     if (!env) throw new ToolError(`no envelope ${id}`, 404);
-    const amount = money(args['amountCents'], 'amountCents');
+    const hasAmount = args['amountCents'] !== undefined && args['amountCents'] !== null;
+    const hasBasis = args['basis'] !== undefined && args['basis'] !== null;
+    if (hasAmount && hasBasis) throw new ToolError('give amountCents or basis, not both');
+    if (!hasAmount && !hasBasis) throw new ToolError('a figure needs amountCents or basis');
+    const basis = hasBasis ? basisArg(args['basis']) : undefined;
+    const amount = basis ? monthlyOf(basis) : money(args['amountCents'], 'amountCents');
     if (amount < 0) throw new ToolError('a figure is not less than nothing');
     const month = typeof args['month'] === 'string' && args['month'] ? args['month'] : monthOf(ctx.today);
     const plan = state.months.get(monthKey(budget, month));
     const open = plan !== undefined && !plan.closed;
 
-    const events: NewEvent[] = [redefine(budget, env, { figure: { template: amount } })];
+    const events: NewEvent[] = [redefine(budget, env, { figure: { template: amount, ...(basis ? { basis } : {}) } })];
     if (open) events.push({ op: 'assign', budget, month, envelope: id, to: amount, why: 'gave it a figure' });
     return ctx.proposals.put({
       tool: 'set_envelope_figure', who: ctx.who,
-      summary: `${env.label}: ${fmtExact(amount)} a month`,
+      summary: basis
+        ? `${env.label}: ${basisWords(basis)} (${fmtExact(amount)} a month)`
+        : `${env.label}: ${fmtExact(amount)} a month`,
       effects: [
-        `From this month on: ${env.label} is planned at ${fmtExact(amount)} a month`,
+        `From this month on: ${env.label} is planned at ${fmtExact(amount)} a month${basis ? `, from ${basisWords(basis)}` : ''}`,
         open ? `${env.label} is funded at ${fmtExact(amount)} in ${month}`
           : 'This month is not open or is closed, so only the months to come change',
       ],

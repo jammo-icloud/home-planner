@@ -30,6 +30,7 @@ import {
   monthKey,
   moveKey,
   PAGE_FIELDS,
+  PERS,
   planShaped,
   REQUIRES_WHY,
   sameCalendar,
@@ -43,7 +44,7 @@ import {
 import type {
   AccountBalance, Actor, Adjustment, Appearance, Appointment, Assignment, Budget, BudgetLocation, CalendarLink, CalendarRef, Category,
   DocRef, DocumentsFolder, DocumentsState, Drift, Envelope, Event, EventOf, EnvelopeId, EventId, Guest, MonthPlan, MoveFile, Offer, PageDrift,
-  Plan, PlanId, Prediction, Rule, State, Stay, SplitPart, StayBlock, Settings, Txn,
+  Per, Plan, PlanId, Prediction, Rule, State, Stay, SplitPart, StayBlock, Settings, Txn,
 } from './types.ts';
 
 export class ReplayError extends Error {
@@ -314,6 +315,13 @@ export function validate(e: Event): void {
     }
     if (e.source !== undefined && (typeof e.source !== 'string' || e.source.length < 1 || e.source.length > 200)) {
       throw new ReplayError("an envelope's source is a line of up to 200 characters", e);
+    }
+    if (e.basis !== undefined) {
+      const b: unknown = e.basis;
+      const x = (typeof b === 'object' && b !== null ? b : {}) as { amount?: unknown; per?: unknown };
+      if (!wholeCents(x.amount) || !PERS.includes(x.per as Per)) {
+        throw new ReplayError(`an envelope's basis is whole cents once a ${PERS.join(', ')}`, e);
+      }
     }
   }
   validateSinking(e);
@@ -1071,6 +1079,7 @@ function fold(d: Draft, e: Event): void {
         // From this event only: a define that leaves them out is how a figure clears them.
         ...(e.needsFigure ? { needsFigure: true as const } : {}),
         ...(e.source !== undefined ? { source: e.source } : {}),
+        ...(e.basis !== undefined ? { basis: { amount: e.basis.amount, per: e.basis.per } } : {}),
       };
       // Absent leaves it as it was; null makes it ordinary again. A sinking
       // envelope always rolls over: money kept for later that vanished at the

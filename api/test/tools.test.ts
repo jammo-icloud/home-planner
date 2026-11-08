@@ -111,6 +111,33 @@ describe('reads answer questions in one call', () => {
     assert.deepEqual(r.groups, ['Home', 'Food', 'House', 'People']);
   });
 
+  test('get_month answers basis as exact dollars and hint for every envelope with categories', async () => {
+    const c = await ctx();
+    await c.store.append('system', [
+      { op: 'envelope.define', budget: 'harbor', envelope: 'util', label: 'Utilities', group: 'House',
+        match: { categories: ['electricity'] }, template: parseDollars('100.00'), rollover: false, order: 1,
+        basis: { amount: parseDollars('1200.00'), per: 'year' } },
+      { op: 'txn.add', txns: [
+        { id: 'j1', date: '2026-07-05', payee: 'VALLEY MARKET #101', amount: parseDollars('-600.00'), dedupeKey: 'j1', category: 'groceries' },
+      ] },
+    ]);
+    const r = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;
+    const by = (id: string) => r.envelopes.find((e: any) => e.id === id);
+    assert.deepEqual(by('util').basis, { amount: '1,200.00', per: 'year' });
+    assert.equal(by('util').templateExact, '$100.00');
+    assert.equal(by('daily').templateExact, '$1,525.00');
+    assert.equal(by('daily').basis, null);
+    // Daily life has a figure and no flag, and is still offered its receipts' averages.
+    assert.equal(by('daily').needsFigure, false);
+    assert.deepEqual(by('daily').hint, {
+      text: 'Your receipts average $600 a month over the last 3 months',
+      use: { cents: 60000, label: 'Use $600 (3-month average)', exact: '$600.00' },
+      averages: [{ months: 1, cents: 60000 }, { months: 3, cents: 60000 }, { months: 6, cents: 60000 }],
+    });
+    // Utilities' receipts are all this month's: nothing to average yet.
+    assert.equal(by('util').hint, null);
+  });
+
   test('get_month covers "how are we doing"', async () => {
     const c = await ctx();
     const r = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;

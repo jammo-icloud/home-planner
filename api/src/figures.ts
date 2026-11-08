@@ -10,10 +10,29 @@ import { ZERO, add, cents, fmt } from './money.ts';
 import type { Cents } from './money.ts';
 import { incomeFor, sourcesFor } from './income.ts';
 import { PRICED } from './starter.ts';
-import { INCOME, isSpend, monthOf, partsOf, prevMonth } from './types.ts';
-import type { Budget, BudgetId, CategoryId, Day, Envelope, EnvelopeId, Month, State } from './types.ts';
+import { INCOME, PER_YEAR, isSpend, monthOf, partsOf, prevMonth } from './types.ts';
+import type { Basis, Budget, BudgetId, CategoryId, Day, Envelope, EnvelopeId, Month, Per, State } from './types.ts';
 import type { MonthView } from './envelopes.ts';
 import { donors, monthClock } from './analytics.ts';
+
+export { PER_YEAR };
+export type { Basis, Per };
+
+/**
+ * The monthly a figure given as the bill is known becomes. Rounded up at the cent,
+ * as a sinking fund's monthly is, so twelve months never fall short of the year.
+ * The only place this arithmetic lives: the server works the monthly out from the
+ * basis it is given rather than taking one alongside it.
+ */
+export function monthlyOf(b: Basis): Cents {
+  return cents(Math.ceil((b.amount * PER_YEAR[b.per]) / 12));
+}
+
+const PER_WORD: Readonly<Record<Per, string>> = {
+  week: 'week', fortnight: 'fortnight', month: 'month', quarter: 'quarter', 'half-year': 'half year', year: 'year',
+};
+/** How a period reads after "a": "a week", "a half year". */
+export const perWord = (per: Per): string => PER_WORD[per];
 
 export interface Hint {
   readonly text: string;
@@ -21,24 +40,53 @@ export interface Hint {
   readonly use?: { readonly cents: Cents; readonly label: string };
   /** Public data for the budget's place can price this envelope. */
   readonly price?: true;
+  /** What its receipts averaged over the last 1, 3 and 6 months, in whole dollars; only the windows that had any. */
+  readonly averages?: readonly { readonly months: 1 | 3 | 6; readonly cents: Cents }[];
 }
 
 /**
- * Net money out of `categories` in the month before `month`. Refunds count against
- * it, and a split receipt counts by its parts, as the month's own spending does.
+ * Net money out of `categories` in each of the `n` months before `month`, the latest
+ * first, and whether any receipt landed in it at all. Refunds count against it, and a
+ * split receipt counts by its parts, as the month's own spending does.
  */
-export function lastMonthSpent(state: State, categories: readonly CategoryId[], month: Month): Cents {
-  const last = prevMonth(month);
-  let out = ZERO;
+function monthsBefore(state: State, categories: readonly CategoryId[], month: Month, n: number): { spent: Cents; any: boolean }[] {
+  const months: Month[] = [];
+  for (let m = prevMonth(month); months.length < n; m = prevMonth(m)) months.push(m);
+  const out = months.map(() => ({ spent: ZERO, any: false }));
   for (const t of state.txns.values()) {
-    if (monthOf(t.date) !== last) continue;
+    const i = months.indexOf(monthOf(t.date));
+    if (i < 0) continue;
     for (const p of partsOf(t)) {
       if (!isSpend(p.category) || !categories.includes(p.category)) continue;
-      out = add(out, cents(-p.amount));
+      out[i] = { spent: add(out[i]!.spent, cents(-p.amount)), any: true };
     }
   }
   return out;
 }
+
+/** Net money out of `categories` in the month before `month`. */
+export function lastMonthSpent(state: State, categories: readonly CategoryId[], month: Month): Cents {
+  return monthsBefore(state, categories, month, 1)[0]!.spent;
+}
+
+/** The mean of the months among `nets` that had any receipt; null when none did. */
+function meanOfSeen(nets: readonly { spent: Cents; any: boolean }[]): Cents | null {
+  const seen = nets.filter((m) => m.any);
+  if (seen.length === 0) return null;
+  return cents(Math.round(seen.reduce((sum, m) => sum + m.spent, 0) / seen.length));
+}
+
+/**
+ * What `categories` spent a month, on average, over the last `months` months before
+ * `month`. Only the months that had receipts count: a household that imported two of
+ * the last six gets the average of those two, not a third of it. Null with none.
+ */
+export function spentOver(state: State, categories: readonly CategoryId[], month: Month, months: 1 | 3 | 6): Cents | null {
+  return meanOfSeen(monthsBefore(state, categories, month, months));
+}
+
+const WINDOWS = [1, 3, 6] as const;
+const wholeDollars = (c: Cents): Cents => cents(Math.round(c / 100) * 100);
 
 // Where last month's receipts are said to have been spent, for the three envelopes
 // the imports can speak for.
@@ -58,15 +106,37 @@ const FIXED: Readonly<Record<string, string>> = {
   gifts: 'A sinking fund: a yearly amount, saved by the month.',
 };
 
-/** What to say beside an envelope that has no figure. Keyed by the envelope's id, which a starter envelope shares with its category. */
+/**
+ * What to say beside an envelope, to help give it a figure. Keyed by the envelope's id,
+ * which a starter envelope shares with its category. An envelope with receipts is
+ * offered their averages; a sinking one never is, its spending being lumpy by design.
+ */
 export function hintFor(state: State, budget: Budget, env: Envelope, month: Month): Hint | null {
-  const where = SHOWN[env.id];
-  if (where) {
-    const spent = lastMonthSpent(state, env.match.categories, month);
-    if (spent <= 0) return null;
-    // Whole dollars, as fmt rounds, so the figure taken is the one the text shows.
-    const whole = cents(Math.round(spent / 100) * 100);
-    return { text: `Last month's imports show ${fmt(whole)} ${where}`, use: { cents: whole, label: `Use ${fmt(whole)}` } };
+  const categories = env.match.categories;
+  if (!env.sinking && categories.length > 0) {
+    const nets = monthsBefore(state, categories, month, 6);
+    const averages: { months: 1 | 3 | 6; cents: Cents }[] = [];
+    for (const months of WINDOWS) {
+      const mean = meanOfSeen(nets.slice(0, months));
+      // Whole dollars, as fmt rounds, so the figure taken is the one the text shows.
+      if (mean !== null && wholeDollars(mean) > 0) averages.push({ months, cents: wholeDollars(mean) });
+    }
+    if (averages.length > 0) {
+      // 3-month first, then last month, then 6-month: any average there is can be taken.
+      const pick = averages.find((a) => a.months === 3) ?? averages.find((a) => a.months === 1) ?? averages[0]!;
+      const where = SHOWN[env.id];
+      const last = nets[0]!.spent;
+      const text = where && last > 0
+        ? `Last month's imports show ${fmt(wholeDollars(last))} ${where}`
+        : `Your receipts average ${fmt(pick.cents)} a month over the last ${pick.months === 1 ? 'month' : `${pick.months} months`}`;
+      const use = {
+        cents: pick.cents,
+        label: `Use ${fmt(pick.cents)} (${pick.months === 1 ? 'last month' : `${pick.months}-month average`})`,
+      };
+      // Averages add to pricing, never take it away.
+      const price = PRICED.has(env.id) && budget.location ? { price: true as const } : {};
+      return { text, use, ...price, averages };
+    }
   }
   const fixed = FIXED[env.id];
   if (fixed) return { text: fixed };

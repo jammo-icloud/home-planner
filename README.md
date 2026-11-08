@@ -45,6 +45,11 @@ reminders, never decisions, and go once the thing is set.
   suggests an envelope from the payee names and envelope names only, never
   amounts, dates or accounts. A suggestion stays a suggestion until a person
   accepts it, and accepting one offers to remember it as a rule.
+- **Figures the way the bill is known.** An envelope's figure can be typed as
+  "1,200 a year", "250 a quarter" or "40 a week"; the form shows the monthly it
+  becomes before saving, and the row keeps the basis ("from $1,200 a year") so
+  a later edit starts from it. An envelope with categories can also take its
+  figure from the average of its last one, three or six months of receipts.
 - **Several budgets, compared.** A budget can carry a place, and Compare sets
   budgets side by side.
 

@@ -160,7 +160,17 @@ export interface Envelope {
   readonly needsFigure?: true;
   /** Where the figure came from when public data gave it, one line of up to 200 characters. Absent when a person chose it. */
   readonly source?: string;
+  /** The figure as the bill is known ("$1,200 a year"); the template is the monthly it becomes. Absent when it was given as a monthly. */
+  readonly basis?: Basis;
 }
+
+/** How often a figure given as the bill is known comes round. */
+export type Per = 'week' | 'fortnight' | 'month' | 'quarter' | 'half-year' | 'year';
+export const PERS: readonly Per[] = ['week', 'fortnight', 'month', 'quarter', 'half-year', 'year'];
+/** How many of each period come round in a year. */
+export const PER_YEAR: Readonly<Record<Per, number>> = { week: 52, fortnight: 26, month: 12, quarter: 4, 'half-year': 2, year: 1 };
+/** A figure as it was given: an amount in cents, once every `per`. */
+export interface Basis { readonly amount: Cents; readonly per: Per }
 
 /**
  * What a sinking envelope saves toward. `every`: its categories' estimates
@@ -335,6 +345,8 @@ export type Event = Meta &
          */
         needsFigure?: true;
         source?: string;
+        /** The figure as it was given, when not as a monthly; carried and cleared as `source` is. */
+        basis?: Basis;
       }
     /**
      * A category's estimate, set or cleared on its own. `category.define`
