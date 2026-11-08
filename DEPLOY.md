@@ -1050,7 +1050,7 @@ the place it refuses rather than inventing a figure.
 
 **All four screens are built** — Today, Budget, Import and Compare. A budget with
 no envelopes opens as a walkthrough of income, envelopes and pricing, and an
-envelope without a figure is marked Action required. Activity is
+envelope without a figure says No figure yet. Activity is
 part of Today's thread now. The old
 standalone planner is preserved at `/planner.html`, but it reads `budget.jsonl`
 off disk, which the API no longer serves, so it is a historical artefact.

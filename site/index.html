@@ -38,7 +38,7 @@
     padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
   h1,h2,h3{font-weight:600;letter-spacing:-.015em;margin:0}
   .wrap{max-width:720px;margin:0 auto;padding:0 20px}
-  .num,.env-left,.toassign .v,.totals .v,.env-meta{font-variant-numeric:tabular-nums}
+  .num,.toassign .v,.totals .v{font-variant-numeric:tabular-nums}
   [hidden]{display:none !important}
   /* Anything typed into is 16px, or iOS zooms the page on focus. Class rules below
      say the same; this catches the inputs the script builds with no class of their own. */
@@ -130,19 +130,6 @@
 
   .band{margin-top:26px}
   .band h2{font-size:var(--fs-body);font-weight:600;letter-spacing:-.01em;margin:0 0 8px}
-  .env{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--r-card);
-    padding:13px 15px;box-shadow:var(--e-1);margin-bottom:7px}
-  .env-head{display:flex;justify-content:space-between;align-items:baseline;gap:12px;cursor:pointer}
-  .env-name{font-size:var(--fs-ui);font-weight:500}
-  .env-left{font-size:var(--fs-body);font-weight:600;white-space:nowrap}
-  .env-left.over{color:var(--problem)}
-  /* An envelope with no figure yet: warm behind it, and the chip where its figure would be. */
-  .env.needs-figure{background:var(--figure-row)}
-  /* An envelope gone under: red behind it and round it, the chip says by how much,
-     and the cover card sits under it. */
-  .env.short,.list > .env.short{background:var(--short-row);border:1px solid var(--short-row-line)}
-  .list > .env.short + .env{border-top:none}
-  .chip.short{color:var(--short-chip-ink);background:var(--short-chip);border-color:transparent;flex:none}
   .cover{margin-top:11px;padding:12px 13px;border-radius:var(--r-control);background:var(--surface-raised);
     border:1px solid var(--short-row-line)}
   /* In the page's card the block is part of it: a rule above, no box of its own. */
@@ -161,16 +148,9 @@
   .cover-note{font-size:var(--fs-micro);color:var(--ink-faint);margin:6px 0 0}
   .cover .msg{color:var(--problem);font-size:var(--fs-small);margin:8px 0 0}
   .cover .msg:empty{display:none}
-  /* Scrolled to from the card: its name lands below the sticky bar, not under it. */
-  .env{scroll-margin-top:72px}
   .chip.figure{color:var(--figure-chip-ink);background:var(--figure-chip);border-color:transparent;flex:none}
   .chip.source{color:var(--source-chip-ink);background:var(--source-chip);border-color:transparent;
     white-space:normal;height:auto;min-height:22px;padding:4px 7px;line-height:1.3;overflow-wrap:anywhere}
-  .env-sub{margin-top:5px}
-  .env-hint{font-size:var(--fs-small);color:var(--ink-soft);margin:4px 0 0}
-  .env-acts{display:flex;gap:6px;flex-wrap:wrap;margin-top:9px}
-  .figure-form{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:13px}
-  .figure-form .f{flex:1 1 140px;min-width:0}
 
   /* Budget's rows: one button per envelope, the name over its bar, the amount over one small line, a chevron.
      No figure is warm behind it, short is red; nothing in a row opens in place. */
@@ -193,7 +173,7 @@
 
   /* An envelope's page: the Settings page frame, then the card and the sections under it. */
   .ep{scroll-margin-top:72px}
-  .ep-body{display:grid;gap:var(--sp-6);min-width:0}
+  .ep-body{display:grid;gap:var(--sp-5);min-width:0}
   .ep-card{display:grid;gap:var(--sp-3);padding:var(--sp-4);background:var(--surface-raised);
     border:var(--stroke) solid var(--line);border-radius:var(--r-card);box-shadow:var(--e-1)}
   .ep-big{margin:0;font-size:var(--fs-headline);font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
@@ -207,15 +187,17 @@
   .ep-sec{display:grid;gap:var(--sp-2);min-width:0}
   .ep-sec[hidden]{display:none}
   /* Scrolled to the top for a form: the heading lands below the sticky bar, the field clear of a phone's keyboard. */
-  .ep-sec-h{margin:0;font-size:var(--fs-ui);font-weight:600;color:var(--ink);scroll-margin-top:72px}
+  .ep-sec-h{margin:0;font-size:var(--fs-small);font-weight:600;text-transform:uppercase;letter-spacing:.02em;
+    color:var(--ink-faint);scroll-margin-top:72px}
   /* A phone's bar is two rows, the search box under the screens: the heading clears that too. */
   @container page (max-width: 759px){ .ep,.ep-sec-h{scroll-margin-top:100px} }
   .ep-sec-h:focus{outline:none}
   .ep-sec-h .count{margin-left:var(--sp-1);padding:0;background:none;border:0;border-radius:0;box-shadow:none;
     font-weight:500;color:var(--ink-faint)}
-  .ep-line{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--sp-3);margin:0;font-size:var(--fs-body)}
-  .ep-t{display:grid;gap:2px;min-width:0}
-  .ep-t .was{font-size:var(--fs-small)}
+  .ep-line{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:center;gap:var(--sp-3);margin:0;padding:12px 14px;
+    background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--e-1)}
+  .ep-t{display:grid;gap:2px;min-width:0;font-size:var(--fs-ui);font-weight:600}
+  .ep-t .was{font-size:var(--fs-small);font-weight:400;color:var(--ink-soft)}
   .ep-form{display:grid;gap:var(--sp-3);min-width:0}
   .ep-q{margin:0;font-size:var(--fs-title);font-weight:600}
   .ep-acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
@@ -309,8 +291,6 @@
     .walk-state{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
     .walk-row select{max-width:50%}
   }
-  .figure-form .msg{flex-basis:100%;color:var(--problem);font-size:var(--fs-small)}
-  .figure-form .msg:empty{display:none}
   .figure{flex:1 1 100%;min-width:0}
   .figure label{display:block;font-size:var(--fs-micro);font-weight:500;color:var(--ink-soft);margin-bottom:4px}
   .figure .figure-box{display:grid;grid-template-columns:auto 1fr auto;align-items:stretch;
@@ -335,7 +315,6 @@
     border:1px solid var(--line-strong);border-radius:var(--r-control);padding:5px 10px;cursor:pointer}
   .chip-btn[aria-pressed="true"]{background:var(--accent-tint);border-color:var(--accent-line)}
   .figure-hint{margin:6px 0 0;font-size:var(--fs-small);color:var(--ink-faint)}
-  .env-meta{font-size:var(--fs-micro);color:var(--ink-soft);margin-top:3px;display:flex;gap:10px;flex-wrap:wrap}
   /* The plan of record never changes, so when this month has been adjusted both
      numbers are shown — "was $975" is the whole reason the plan is immutable. */
   .was{color:var(--ink-faint)}
@@ -356,7 +335,6 @@
   .imp-bal{margin-top:16px}
   .imp-bal p{margin:0;flex-basis:100%}
 
-  .env-body{margin-top:13px;padding-top:13px;border-top:1px solid var(--hair)}
   .edit{display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end}
   .edit .f{flex:1;min-width:110px}
   .edit label{display:block;font-size:var(--fs-micro);font-weight:500;color:var(--ink-soft);margin-bottom:4px}
@@ -394,7 +372,6 @@
   /* ── receipts inside an envelope ───────────────────────────────────── */
   .tie{display:flex;justify-content:space-between;font-size:var(--fs-micro);padding:7px 0;
     border-top:1px solid var(--hair);font-variant-numeric:tabular-nums}
-  .tie.total{font-weight:600;color:var(--ink)}
   .tie .p{color:var(--ink-soft);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;padding-right:10px}
   .tie .a{display:flex;gap:8px;align-items:center;white-space:nowrap}
   .tie .btn,.tie-edit .btn{padding:3px 9px;font-size:var(--fs-micro)}
@@ -403,9 +380,6 @@
   .tie-edit select{font:inherit;font-size:var(--fs-input);padding:4px 6px;max-width:100%;
     border:1px solid var(--line-strong);border-radius:8px;background:var(--surface-raised);color:var(--ink)}
   .tie-edit .row{display:flex;gap:8px;flex-wrap:wrap}
-  .tieout{font-size:var(--fs-micro);margin-top:8px;padding:8px 10px;border-radius:9px}
-  .tieout.ok{background:var(--good-tint);color:var(--good)}
-  .tieout.bad{background:var(--problem-tint);color:var(--problem)}
 
   table.rows td:first-child{white-space:nowrap}
 
@@ -640,15 +614,8 @@
 
   /* ── grouped lists: one surface per group, rows between hairlines ─────── */
   .list{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--e-1);overflow:hidden}
-  .list > .env,.list > .act{border:none;border-radius:0;box-shadow:none;margin:0;border-top:1px solid var(--hair)}
+  .list > .act{border:none;border-radius:0;box-shadow:none;margin:0;border-top:1px solid var(--hair)}
   .list > :first-child{border-top:none}
-  .env-head:focus-visible{outline-offset:4px;border-radius:6px}
-  /* Says the row opens, and turns when it has. */
-  .env-head::after{content:'';flex:none;align-self:center;width:6px;height:6px;margin:0 2px 3px 0;
-    border-right:1.5px solid var(--ink-faint);border-bottom:1.5px solid var(--ink-faint);
-    transform:rotate(45deg);transition:transform .15s}
-  .env-head[aria-expanded="true"]::after{transform:rotate(225deg);margin:3px 2px 0 0}
-  .env-head .env-left,.env-head .chip.figure,.env-head .chip.short{margin-left:auto}
 
   /* ── what changed, and what to do next ─────────────────────────────── */
   .prompt{background:var(--surface-raised);border:1px solid var(--line);border-left:3px solid var(--accent);
@@ -3867,11 +3834,11 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
     if (s) {
       const goal = sinkGoalWords(s);
       each.slot.replaceChildren(envLine(goal ? `${s.monthly} a month toward ${goal}` : 'No estimates yet', '',
-        open ? textBtn('Change', 'btn small', 'change', () => openGoal('change')) : null));
+        open ? textBtn('Change', 'btn bare', 'change', () => openGoal('change')) : null));
       return;
     }
     if (e.needsFigure && !open) { each.slot.replaceChildren(envLine('No figure yet', '', null)); return; }
-    const change = open ? textBtn('Change', 'btn small', 'change', () => {
+    const change = open ? textBtn('Change', 'btn bare', 'change', () => {
       page.editing = 'figure';
       const amt = e.basis?.amount ?? e.templateExact;
       const { form, control } = envFigureForm(e, {
@@ -3896,7 +3863,7 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
   if (e.needsFigure) {
     now.slot.appendChild(envLine(spentWords(e), open ? 'Nothing funded yet. Give it a figure first.' : 'Nothing funded.', null));
   } else {
-    const adjust = open ? textBtn('Adjust', 'btn small', 'adjust', () => openFundingPage()) : null;
+    const adjust = open ? textBtn('Adjust', 'btn bare', 'adjust', () => openFundingPage()) : null;
     now.slot.appendChild(envLine(`${e.funded} funded`, envAdjusted(e) ? `was ${e.planned}` : e.adjustedBy ? '' : 'as planned', adjust));
   }
   body.appendChild(now.el);
@@ -4953,7 +4920,7 @@ function walkEnvelopesStep(fr) {
   if (walkDraft?.budget === fr.budget) return walkDraft.el;
   const el = node('div', 'walk-env');
   el.append(node('h2', '', 'Envelopes'),
-    node('p', 'walk-lead', 'Start with these envelopes. Most households need most of these. Untick what you do not, rename anything, and add your own at the end. Every one starts as Action required until it has a figure.'));
+    node('p', 'walk-lead', 'Start with these envelopes. Most households need most of these. Untick what you do not, rename anything, and add your own at the end. Every one starts without a figure until it is given one.'));
   const rows = [];
   let n = 0;
   const go = node('button', 'btn primary');
@@ -4985,7 +4952,7 @@ function walkEnvelopesStep(fr) {
       pick.value = fr.groups.at(-1)?.name ?? '';
       r.appendChild(pick);
     } else {
-      r.appendChild(priced ? node('span', 'chip source', 'priced in step 3') : node('span', 'chip figure', 'Action required'));
+      r.appendChild(priced ? node('span', 'chip source', 'priced in step 3') : node('span', 'chip figure', 'No figure yet'));
     }
     parent.appendChild(r);
     rows.push({ box, name, group: () => (pick ? pick.value : group), category });
@@ -5013,7 +4980,7 @@ function walkEnvelopesStep(fr) {
   acts.appendChild(go);
   const msg = walkMsg();
   el.append(acts, msg,
-    node('p', 'walk-foot', "Public data for the household's location prices rent, property tax and electricity. Each figure comes with its source and lands as that envelope's monthly plan. Everything else stays Action required until you type a number, and the budget says how much is still unassigned."));
+    node('p', 'walk-foot', "Public data for the household's location prices rent, property tax and electricity. Each figure comes with its source and lands as that envelope's monthly plan. Everything else has no figure until you give it one, and the budget says how much is still unassigned."));
 
   go.addEventListener('click', async () => {
     go.disabled = true;
@@ -5584,11 +5551,11 @@ $('bud-archive').addEventListener('click', () => {
   }));
 });
 
-// ── receipts: the check that an envelope's number is true ──────────────────
+// ── receipts: what actually went in and out of an envelope ─────────────────
 //
-// The Budget list is how envelopes are set. Opening one is the other question
-// entirely: what actually went in and out, and do the receipts add up to the
-// number on the front. If they do not, the number is a claim rather than a fact.
+// The Budget list is how envelopes are set; an envelope's page lists its
+// receipts under the card that states what is left. Only the list is drawn
+// here: the card above already says what was carried in, funded and spent.
 async function showReceipts(body, e) {
   const page = envelopePage;
   const box = document.createElement('div');
@@ -5648,28 +5615,6 @@ async function showReceipts(body, e) {
         open = { row, close: editReceipt(row, t, options, () => { open = null; }) };
       });
     }
-
-    // Stated as an equation on purpose. The point is not the total, it is that
-    // you can see the total is made of these particular receipts.
-    const sum = document.createElement('div');
-    sum.className = 'tie total';
-    const l = document.createElement('span');
-    l.textContent = 'Spent from this envelope';
-    const r = document.createElement('span');
-    r.textContent = result.spentExact;
-    sum.append(l, r);
-    box.appendChild(sum);
-
-    const tie = document.createElement('div');
-    const ties = toCents(result.carriedInExact) + toCents(result.fundedExact)
-      - toCents(result.spentExact) === toCents(result.leftExact);
-    tie.className = `tieout ${ties ? 'ok' : 'bad'}`;
-    tie.textContent = ties
-      ? `${result.carriedInExact} carried in + ${result.fundedExact} funded `
-        + `− ${result.spentExact} spent = ${result.leftExact} left`
-      : `These receipts do not add up to ${result.leftExact}. Something is wrong — `
-        + 'do not trust this envelope.';
-    box.appendChild(tie);
   } catch (ex) {
     if (gone()) return;
     box.textContent = ex.message;
