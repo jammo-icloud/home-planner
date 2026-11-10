@@ -290,7 +290,7 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
   /** Where a row opens, for the ops that name something to open. */
   const openOf = (e: Event, lane: Lane): Open | undefined => {
     switch (e.op) {
-      case 'assign': case 'envelope.define': return { budget: e.budget, envelope: e.envelope };
+      case 'assign': case 'envelope.define': case 'bill.set': case 'bill.remove': return { budget: e.budget, envelope: e.envelope };
       case 'move': return { budget: e.budget, envelope: e.to };
       case 'calendar.appointment': case 'calendar.appointment.change':
         // An all-day start is a bare date; read as an instant it lands a day early west of UTC.

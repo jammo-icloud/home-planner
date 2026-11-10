@@ -20,7 +20,7 @@ export function laneOf(e: Event | NewEventShape, state: Pick<State, 'pageDrifts'
   switch (e.op) {
     case 'assign': case 'move': case 'income.set': case 'month.open': case 'month.close': case 'month.discard':
     case 'txn.add': case 'txn.categorize': case 'txn.split': case 'txn.remove': case 'rule.add': case 'rule.remove':
-    case 'envelope.define': case 'envelope.remove': case 'envelopes.model':
+    case 'envelope.define': case 'envelope.remove': case 'envelopes.model': case 'bill.set': case 'bill.remove':
     case 'budget.create': case 'budget.rename': case 'budget.locate': case 'budget.archive':
     case 'category.define': case 'category.archive': case 'category.sinking':
     case 'income.source.define': case 'income.source.remove':
