@@ -259,3 +259,34 @@ test("the people bar presses Everyone when the pressed member has nothing in vie
   assert.match(b, /people\.some\(\(p\) => p\.key === threadData\.who\)/, 'pressed is a member only when among the people shown');
   assert.doesNotMatch(b, /pressPerson\(null\)/, 'the choice is not cleared');
 });
+
+describe('after the final review', () => {
+  const today = REGIONS.today;
+  test('a pressed person who has left is let go before Today or search sends who', () => {
+    assert.match(between(script, 'function livePerson(', 'const peopleOrder'), /!members\.includes\(personPressed\)\) pressPerson\(null\)/);
+    assert.match(between(today, 'function threadParams(', 'async function loadThread('), /livePerson\(\) !== null\) q\.set\('who'/);
+    assert.match(between(today, 'async function askRecord(', 'function markWords('), /livePerson\(\) !== null\) q\.set\('who'/);
+    assert.doesNotMatch(between(today, 'function threadParams(', 'async function loadThread('), /personPressed !== null\) q\.set/);
+  });
+  test('the members changing lets a pressed person who left go', () => {
+    assert.match(between(script, 'async function changeMembers(', 'function membersItem('), /members = out\.members;\s*livePerson\(\);/);
+  });
+  test("today's card calls the day empty only when nothing is in it, and says what is narrowed inside the card", () => {
+    const card = between(today, 'function dayCard(', 'const KINDS');
+    assert.match(card, /!entries\.length && today && row\.total === 0\) body\.appendChild\(node\('p', 'quiet', 'Nothing yet today\./);
+    assert.match(card, /section\.appendChild\(node\('p', 'empty-line', none\)\)/);
+    assert.doesNotMatch(between(today, 'function renderToday(', 'function todayEscape('), /emptyLine\(\)/);
+  });
+  test('a search answered as everyone shows Everyone pressed', () => {
+    const b = script.slice(script.indexOf('function drawRecord('), script.indexOf('function drawRecord(') + 1200);
+    assert.match(b, /out\.who === 'everyone' && personPressed !== null/);
+    assert.match(b, /b\.dataset\.key === 'person:everyone'/);
+  });
+  test('a draw leaves Ask Claude and the composer note alone while a question is out or a result is held', () => {
+    const draw = between(today, 'function renderToday(', 'function todayEscape(');
+    assert.match(draw, /if \(!sayBusy\) \$\('ask-claude'\)\.disabled = !claudeOn;/);
+    assert.match(draw, /if \(!sayBusy && !sayHeld\) sayDefault\(\);/);
+    const ask = between(today, 'async function askClaude(', "$('composer').addEventListener");
+    assert.match(ask, /sayBusy\+\+;[\s\S]*sayBusy--;/);
+  });
+});

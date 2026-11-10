@@ -2436,6 +2436,14 @@ function restorePerson() {
   try { kept = sessionStorage.getItem('hp.person'); } catch { /* storage blocked */ }
   pressPerson(kept !== null && members.includes(kept) ? kept : null);
 }
+/**
+ * The person to send with a read: a pressed name that is no longer a member is let go first (the routes refuse it),
+ * so Today and search never ask for someone taken out elsewhere. null is Everyone.
+ */
+function livePerson() {
+  if (personPressed !== null && members.length && !members.includes(personPressed)) pressPerson(null);
+  return personPressed;
+}
 /** The household's members as the people bar lists them: you first, then the rest in the household's order. */
 const peopleOrder = () => [myName, ...members.filter((m) => m !== myName)];
 function chip(cls, text, glyph) {
@@ -2767,7 +2775,7 @@ function threadParams(extra = {}) {
   const q = new URLSearchParams();
   if (chosenBudget()) q.set('budget', chosenBudget());
   if (todayKind !== 'all') q.set('lane', todayKind);
-  if (personPressed !== null) q.set('who', personPressed);
+  if (livePerson() !== null) q.set('who', personPressed);
   if (todayThrough !== null) q.set('through', todayThrough);
   if (daysOpen.size) q.set('open', [...daysOpen].join(','));
   for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== null) q.set(k, v);
@@ -2880,6 +2888,8 @@ function dayCard(row) {
   section.dataset.day = row.day;
   section.setAttribute('aria-labelledby', `dayhead-${row.day}`);
   const h = node('h3', 'day-h');
+  // A today with nothing under what is pressed says so in its card, above the briefing; a busy day is never called empty.
+  const none = today && row.count === 0 ? emptyLine() : '';
   const btn = node('button', 'day-open hit');
   btn.type = 'button';
   btn.id = `dayhead-${row.day}`;
@@ -2902,6 +2912,7 @@ function dayCard(row) {
   btn.addEventListener('click', () => void pressDay(row.day));
   h.appendChild(btn);
   section.appendChild(h);
+  if (none) section.appendChild(node('p', 'empty-line', none));
   if (!open) {
     const closedStrip = today ? yoursStrip() : null;
     if (closedStrip) section.appendChild(closedStrip);
@@ -2924,7 +2935,7 @@ function dayCard(row) {
     body.appendChild(n);
   }
   if (strip) body.appendChild(strip);
-  if (!entries.length && today) body.appendChild(node('p', 'quiet', 'Nothing yet today. Ask Claude something, or leave a note.'));
+  if (!entries.length && today && row.total === 0) body.appendChild(node('p', 'quiet', 'Nothing yet today. Ask Claude something, or leave a note.'));
   section.appendChild(body);
   return section;
 }
@@ -3016,8 +3027,7 @@ function renderToday() {
   renderWaiting();
   const zero = { day: today, count: 0, total: 0, waiting: 0, fresh: 0, by: [] };
   const todayRow = days.find((d) => d.day === today) ?? zero;
-  const none = todayRow.count === 0 ? emptyLine() : '';
-  $('day-today').replaceChildren(...(none ? [node('p', 'empty-line', none)] : []), dayCard(todayRow));
+  $('day-today').replaceChildren(dayCard(todayRow));
   const earlier = days.filter((d) => d.day !== today && d.count > 0);
   if (todaySort === 'oldest') earlier.reverse();
   $('earlier-days').replaceChildren(...earlier.map(dayCard));
@@ -3041,8 +3051,9 @@ function renderToday() {
   sort.addEventListener('click', flipSort);
   $('earlier-sort').replaceChildren(sort);
   $('earlier').hidden = earlier.length === 0 && !threadData.before && !left;
-  $('ask-claude').disabled = !claudeOn;
-  $('say-note').textContent = claudeOn ? 'Goes into today' : "Claude isn't set up on this server. Notes still work.";
+  // A redraw while a question is out, or over what the composer last said, leaves the composer as it is.
+  if (!sayBusy) $('ask-claude').disabled = !claudeOn;
+  if (!sayBusy && !sayHeld) sayDefault();
   watchLastRow();
 }
 
@@ -3184,7 +3195,7 @@ async function askRecord(words) {
   const asked = ++recordAsked;
   const q = new URLSearchParams({ q: words });
   if (todayKind !== 'all') q.set('lane', todayKind);
-  if (personPressed !== null) q.set('who', personPressed);
+  if (livePerson() !== null) q.set('who', personPressed);
   let out;
   try {
     out = await api(`/api/search?${q}`);
@@ -3282,6 +3293,8 @@ function drawRecord(words, out) {
   elsewhere.hidden = true;
   end.textContent = '';
   if (!out) { line.textContent = 'The search could not be done just now.'; return; }
+  // No match under the person pressed is answered as everyone's: the bar shows Everyone pressed, the choice kept.
+  if (out.who === 'everyone' && personPressed !== null) $('t-people').querySelectorAll('[aria-pressed]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.key === 'person:everyone')));
   const entries = Array.isArray(out.entries) ? out.entries : [];
   const other = Array.isArray(out.elsewhere) ? out.elsewhere : [];
   line.textContent = '';
@@ -4319,6 +4332,11 @@ function adjustForm(card, row, o, moved = false) {
 
 // A send lands in today under All or its own kind; a card that was shut opens, and the new row is brought into view,
 // unless a person other than the viewer is pressed, where it would not show: then the slot says where it went.
+/** Questions out to Claude, and whether the composer's note holds a word (a result or a refusal) the next draw must not wipe. */
+let sayBusy = 0;
+let sayHeld = false;
+const sayDefault = () => { $('say-note').textContent = claudeOn ? 'Goes into today' : "Claude isn't set up on this server. Notes still work."; };
+$('say').addEventListener('input', () => { if (sayHeld) { sayHeld = false; sayDefault(); } });
 async function afterSend(id, lane) {
   if (todayKind !== 'all' && todayKind !== lane) todayKind = 'all';
   todayShut = false;
@@ -4326,6 +4344,7 @@ async function afterSend(id, lane) {
   const note = $('say-note');
   if (personPressed !== null && personPressed !== myName) {
     note.textContent = 'Left in today. It shows under Everyone.';
+    sayHeld = true;
     return;
   }
   const row = $('days').querySelector(`[data-event="${CSS.escape(String(id))}"]`);
@@ -4341,16 +4360,21 @@ async function askClaude(text, trigger) {
   const say = $('say');
   const note = $('say-note');
   if (trigger) trigger.disabled = true;
+  sayBusy++;
+  sayHeld = false;
   $('ask-claude').disabled = true;
   note.textContent = 'Asking Claude…';
   try {
     const r = await api('/api/thread/ask', { question: text, budget: chosenBudget() || null });
     if (!trigger) say.value = '';
     await afterSend(r.question.id, 'claude');
-    if (r.error) note.textContent = `Claude couldn't answer: ${r.error}`;
+    if (r.error) { note.textContent = `Claude couldn't answer: ${r.error}`; sayHeld = true; }
   } catch (ex) {
     note.textContent = ex.message;
+    sayHeld = true;
   } finally {
+    sayBusy--;
+    if (!sayBusy && !sayHeld) sayDefault();
     $('ask-claude').disabled = !claudeOn;
     if (trigger) trigger.disabled = false;
   }
@@ -4373,6 +4397,7 @@ $('leave-note').addEventListener('click', async () => {
     await afterSend(r.event.id, 'notes');
   } catch (ex) {
     $('say-note').textContent = ex.message;
+    sayHeld = true;
   } finally {
     $('leave-note').disabled = false;
   }
@@ -11632,6 +11657,7 @@ async function changeMembers(method, body, focus, said) {
   }
   settingsData = { ...settingsData, members: out.members };
   members = out.members;
+  livePerson();
   if (settingsPage !== page) return true;
   membersSaid = said;
   settingsEditing = null;
@@ -13226,6 +13252,7 @@ function forgetHousehold() {
   $('setup-notes').textContent = '';
   $('say').value = '';
   $('say-note').textContent = '';
+  sayHeld = false;
 
   // Budget: a load still out draws nothing; the month, the walkthrough's place and the categories go.
   budgetLoads++;
