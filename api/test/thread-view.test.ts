@@ -188,6 +188,33 @@ describe('the thread', () => {
       assert.equal(removal.waits, true);
     });
 
+    test('a guest\'s booking card carries their name; savings and release cards are the app\'s with no author', async () => {
+      const c = await ctx();
+      await c.store.append('alice', { op: 'guest.allow', email: 'linh@example.com', name: 'Linh', why: 'school' } as never);
+      const g = await raw(c, 'approve_booking', { email: 'linh@example.com', name: 'Linh', arrive: '2026-09-10', depart: '2026-09-12', people: 1 },
+        { kind: 'booking', ref: null }, 'guest:linh@example.com');
+      const s = await raw(c, 'savings_short', { budget: 'harbor', account: 'a' }, { kind: 'savings', ref: null }, 'alice');
+      const r = await raw(c, 'release_stay', { stay: 'zz' }, { kind: 'booking', ref: 'yy' }, 'alice');
+      const all = await entries(c, 'bob');
+      assert.equal(card(all, g.id).name, 'Linh');
+      for (const id of [s.id, r.id]) {
+        assert.equal(card(all, id).app, true);
+        assert.equal(authorOf(card(all, id)), null);
+      }
+    });
+
+    test('a move opens its destination envelope, a booking block its first day', async () => {
+      const c = await ctx();
+      await c.store.append('alice', { op: 'move', budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amount: parseDollars('5.00'), why: 'x' } as never);
+      await c.store.append('alice', { op: 'booking.block', from: '2026-09-01', to: '2026-09-03', why: 'us' } as never);
+      await c.store.append('alice', { op: 'envelope.define', budget: 'harbor', envelope: 'fun', label: 'Fun', group: 'People',
+        match: { categories: ['groceries'] }, template: parseDollars('50.00'), order: 2 } as never);
+      const opens = (await entries(c)).filter((e) => e.kind === 'change').map((e) => (e as Extract<ThreadEntry, { kind: 'change' }>).open);
+      assert.ok(opens.some((o) => o && 'envelope' in o && o.envelope === 'food' && o.budget === 'harbor'));
+      assert.ok(opens.some((o) => o && 'envelope' in o && o.envelope === 'fun'));
+      assert.ok(opens.some((o) => o && 'calendar' in o && o.calendar === '2026-09-01'));
+    });
+
     test('a drift card is the app\'s, with no author', async () => {
       const c = await ctx();
       const CAL = { cal_id: '/alice/hh/', original_cal_id: '/alice/hh/' };
