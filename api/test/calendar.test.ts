@@ -21,6 +21,7 @@ import {
 } from '../src/synology.ts';
 import type { DsmFetch } from '../src/synology.ts';
 import { markClashes } from '../src/calendar-view.ts';
+import { ownerOf } from '../src/calendar-view.ts';
 import { checkDrift, checkDriftNowAndThen, eventFor, todayEvents, freeSlotsNear, syncBlock, syncDue, unsyncAll, unsyncBlock, weekEvents, wellFormed } from '../src/calendar.ts';
 import { addBlock, removePlan, setDue, updatePlan } from '../src/plan-edits.ts';
 import { notOnCalendar, toPlace } from '../src/plan-rules.ts';
@@ -1557,6 +1558,24 @@ describe('due dates and blocks become events', () => {
     const week = await weekEvents(c, { start: '2026-11-02', end: '2026-11-09' });
     assert.equal(week.unavailable, undefined);
     assert.deepEqual(week.missed, ['Bob']);
+  });
+
+  test("each event says whose calendar it is on: the viewer's, nobody's for the Household, a member's for a checked one", async () => {
+    const c = await setup();
+    await c.store.append('alice', { op: 'member.add', member: 'casey', why: 'a housemate' });
+    await bobHasPT(c, '10:00', '11:00');
+    const day = await todayEvents(c);
+    const all = [...day.today, ...day.tomorrow];
+    for (const e of all.filter((x) => x.calendar === 'mine')) assert.equal(e.owner, 'alice');
+    for (const e of all.filter((x) => x.calendar === 'household')) assert.equal(e.owner, null);
+    const week = await weekEvents(c, { start: '2026-11-02', end: '2026-11-09' });
+    assert.equal(week.events.find((e) => e.summary === 'PT')!.owner, 'bob');
+    // A calendar whose id begins with a member's name is that member's, in any case; a stranger's is nobody's.
+    const state = c.store.state;
+    assert.equal(ownerOf({ cal_id: '/casey/home/', original_cal_id: '/casey/home/' }, state), 'casey');
+    assert.equal(ownerOf({ cal_id: '/Casey/home/', original_cal_id: '/Casey/home/' }, state), 'casey');
+    assert.equal(ownerOf({ cal_id: '/alice/casey/', original_cal_id: '/casey/home/' }, state), 'casey', 'the original id is the owner\'s');
+    assert.equal(ownerOf({ cal_id: '/dana/home/', original_cal_id: '/dana/home/' }, state), null);
   });
 
   test("a partner's calendar is the partner's, though your account lists it under an id of your own", async () => {

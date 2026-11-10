@@ -13,7 +13,7 @@ import { NeedsDsm, SessionLost, SynologyError, listEvents, requireSid } from './
 import type { CalEvent, DsmFetch } from './synology.ts';
 import type { ToolContext } from './tools.ts';
 import { isDay, sameCalendar, visibleTo, zoneOf } from './types.ts';
-import type { CalendarLink, CalendarRef, Day, EventId, PlanId } from './types.ts';
+import type { Actor, CalendarLink, CalendarRef, Day, EventId, PlanId, State } from './types.ts';
 
 /** Whose calendar an event is on, as the viewer sees it: their own, the household's, or one they chose to check. */
 export type EventSource = 'mine' | 'household' | 'partner';
@@ -26,6 +26,8 @@ export type EventSource = 'mine' | 'household' | 'partner';
 export type ViewerEvent = CalEvent & {
   readonly calendar: EventSource;
   readonly label: string;
+  /** Whose calendar it is: the viewer for their own, null for the Household's, a member for one they check, else null. */
+  readonly owner: Actor | null;
   readonly plan?: { readonly id: PlanId; readonly title: string };
 };
 
@@ -43,11 +45,12 @@ export async function viewerEvents(ctx: ToolContext, range: { from: number; to: 
   const sid = requireSid(ctx);
   const state = ctx.store.state;
   const listing = await listingFor(sid, f);
-  const cals: (CalendarRef & { calendar: EventSource; label: string })[] = [];
+  const cals: (CalendarRef & { calendar: EventSource; label: string; owner: Actor | null })[] = [];
   const add = (c: CalendarRef | null | undefined, calendar: EventSource, label: string) => {
     const seen = c ? listing.as(c) : null;
     if (seen && !cals.some((o) => sameCalendar(o, seen))) {
-      cals.push({ cal_id: seen.cal_id, original_cal_id: seen.original_cal_id, calendar, label });
+      const owner = calendar === 'mine' ? ctx.who : calendar === 'household' ? null : ownerOf(seen, state);
+      cals.push({ cal_id: seen.cal_id, original_cal_id: seen.original_cal_id, calendar, label, owner });
     }
   };
   add(listing.calendars.find((c) => c.isDefault), 'mine', `${capital(ctx.who)}'s calendar`);
@@ -77,7 +80,7 @@ export async function viewerEvents(ctx: ToolContext, range: { from: number; to: 
       if (!Number.isFinite(e.dtstart) || !Number.isFinite(e.dtend)) continue;
       const plan = Number.isInteger(e.evt_id) ? plans.get(e.evt_id) : undefined;
       out.push({ ...e, cal_id: e.cal_id || cal.cal_id, original_cal_id: e.original_cal_id || cal.original_cal_id,
-        calendar: cal.calendar, label: cal.label, ...(plan ? { plan } : {}) });
+        calendar: cal.calendar, label: cal.label, owner: cal.owner, ...(plan ? { plan } : {}) });
     }
   }
   return { events: out.sort((a, b) => a.dtstart - b.dtstart || a.dtend - b.dtend), missed };
@@ -89,8 +92,15 @@ export async function viewerEvents(ctx: ToolContext, range: { from: number; to: 
  * The original id is the owner's whatever the account lists a shared calendar
  * under, so it is read first (a sharee's alias begins with the sharee's name).
  */
-const ownedBy = (c: CalendarRef, who: string): boolean =>
-  /^\/([^/]+)\//.exec(c.original_cal_id || c.cal_id)?.[1]?.toLowerCase() === who.toLowerCase();
+const accountOf = (c: CalendarRef): string | undefined =>
+  /^\/([^/]+)\//.exec(c.original_cal_id || c.cal_id)?.[1]?.toLowerCase();
+const ownedBy = (c: CalendarRef, who: string): boolean => accountOf(c) === who.toLowerCase();
+
+/** The member whose calendar this is, by the account its id begins with (case aside); null when that is no member. */
+export function ownerOf(c: CalendarRef, state: State): Actor | null {
+  const account = accountOf(c);
+  return account === undefined ? null : [...state.members].find((m) => m.toLowerCase() === account) ?? null;
+}
 
 /**
  * Today's calendar rail: today's events, tomorrow's, or why neither can be

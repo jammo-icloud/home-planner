@@ -757,7 +757,7 @@
      sits in the thread after the day's briefing; from 1040px it is its own
      sticky column beside the thread, so the two never interleave. */
   .today-main{min-width:0}
-  .yours{display:grid;gap:var(--sp-5);align-content:start;margin:0;padding:var(--sp-4);background:var(--surface-raised);
+  .yours{display:none;gap:var(--sp-5);align-content:start;margin:0;padding:var(--sp-4);background:var(--surface-raised);
     border:var(--stroke) solid var(--line);border-radius:var(--r-card)}
   .yours > .eyebrow{display:flex;align-items:center;gap:6px}
   .yours > .eyebrow .who{width:16px;height:16px;font-size:var(--fs-nano)}
@@ -784,7 +784,7 @@
     #app:has(#briefing:not([hidden])) .wrap{max-width:var(--page)}
     .today{display:grid;grid-template-columns:minmax(0,var(--measure)) minmax(240px,300px);column-gap:var(--sp-8);
       justify-content:center;align-items:start}
-    .today > .yours{position:sticky;top:var(--sp-5);padding:0;background:none;border:0;border-radius:0}
+    .today > .yours{display:grid;position:sticky;top:var(--sp-5);padding:0;background:none;border:0;border-radius:0}
   }
 
   /* ── plan: from docs/superpowers/design/components.css ─────────────── */
@@ -1517,6 +1517,25 @@
   .ent-sentence{color:var(--ink-soft)}
   .ent > .card{box-shadow:none;grid-column:1 / -1;margin-top:0}
   .ent-tail{grid-column:3 / -1;min-width:0}
+  .yours-strip{display:grid;gap:var(--sp-1);padding:var(--sp-3) var(--sp-4);background:var(--surface);
+    border-block:var(--stroke) solid var(--hair)}
+  .yours-strip .eyebrow{display:flex;align-items:center;gap:var(--sp-2)}
+  .yours-strip .eyebrow .who{width:var(--disc-small);height:var(--disc-small);font-size:var(--fs-nano)}
+  .strip-row{display:grid;grid-template-columns:var(--disc-small) minmax(0,1fr) auto;align-items:center;gap:var(--sp-2);
+    width:100%;min-height:var(--tap);padding:0;font:inherit;font-size:var(--fs-small);color:var(--ink);text-align:left;
+    background:none;border:0;border-top:var(--stroke) solid var(--hair);cursor:pointer}
+  .strip-row:focus-visible{outline:var(--stroke-heavy) solid var(--focus);outline-offset:var(--stroke-heavy);border-radius:var(--r-inner)}
+  .strip-row > svg.i:first-child{color:var(--ink-faint)}
+  .strip-row .chev{color:var(--ink-faint)}
+  .strip-text{display:grid;min-width:0}
+  .strip-main{display:flex;align-items:center;gap:var(--sp-2);min-width:0}
+  .strip-main .t{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+  .strip-main .v{margin-left:auto;flex:none;display:inline-flex;gap:var(--sp-1);align-items:center;color:var(--ink-soft);
+    font-weight:var(--fw-medium);white-space:nowrap;font-variant-numeric:tabular-nums}
+  .strip-main .v.over{color:var(--problem)}
+  .strip-main .who{width:var(--disc-small);height:var(--disc-small);font-size:var(--fs-nano)}
+  .strip-more{font-size:var(--fs-micro);color:var(--ink-soft)}
+  @container page (min-width: 1040px){ .yours-strip{display:none} }
   .ent > .card.offer.provisional{margin-top:0}
   .ent > .card.is-decided{border:0;background:none;padding:0;grid-column:3 / -1}
   .ent > .card.is-decided h3{font-size:var(--fs-small);font-weight:var(--fw-medium)}
@@ -2479,6 +2498,16 @@ function claudeDisc() {
   return d;
 }
 
+/** The Household calendar as a source: its own shade, with a house, named by the calendar's name. */
+function householdDisc(label) {
+  const d = node('span', 'who household');
+  d.appendChild(icon('home'));
+  d.title = label;
+  d.setAttribute('role', 'img');
+  d.setAttribute('aria-label', label);
+  return d;
+}
+
 /** A lane as its icon: Budget a wallet, Calendar a calendar, Plans a board, Claude the mark, Notes a speech bubble. */
 function laneIcon(lane) {
   if (lane === 'claude') return icon('mark', 'i');
@@ -2916,7 +2945,7 @@ async function loadThread(opts = {}) {
     if (rails) {
       renderYours(rails);
       renderSetupNotes(rails.setup ?? [], rails.budget ?? []);
-    }
+    } else if (!opts.quiet) yoursRails = null;
     // A day opened while this read was out was not in its `open`: its rows, read by pressDay, are kept.
     const held = new Map(dayRows);
     dayRows.clear();
@@ -3026,7 +3055,11 @@ function dayCard(row) {
   btn.addEventListener('click', () => void pressDay(row.day));
   h.appendChild(btn);
   section.appendChild(h);
-  if (!open) return section;
+  if (!open) {
+    const closedStrip = today ? yoursStrip() : null;
+    if (closedStrip) section.appendChild(closedStrip);
+    return section;
+  }
 
   const body = node('div', 'list day-body');
   body.id = `daybody-${row.day}`;
@@ -3034,12 +3067,16 @@ function dayCard(row) {
   const entries = [...all.filter((x) => x.kind === 'briefing'), ...all.filter((x) => x.kind !== 'briefing')];
   const ctx = todayCtx();
   const fresh = firstFresh();
+  // Yours sits in today's card under its briefing, before the first row that is not one.
+  let strip = today ? yoursStrip() : null;
   for (const e of entries) {
+    if (strip && e.kind !== 'briefing') { body.appendChild(strip); strip = null; }
     if (e.id === fresh) body.appendChild(node('div', 'tnew', 'New since you last looked'));
     const n = entryNode(e, ctx);
     n.dataset.event = e.id;
     body.appendChild(n);
   }
+  if (strip) body.appendChild(strip);
   if (!entries.length && today) body.appendChild(node('p', 'quiet', 'Nothing yet today. Ask Claude something, or leave a note.'));
   section.appendChild(body);
   return section;
@@ -3131,7 +3168,7 @@ const yoursEl = $('yours');
 /** A rail's row: something to the left (a source, perhaps), its name, and a value on the right. */
 function railRow(lead, text, value, open, valueCls = '') {
   const li = node('li');
-  const b = node('button');
+  const b = node('button', 'hit');
   b.type = 'button';
   if (lead) b.appendChild(lead);
   b.appendChild(node('span', 't', text));
@@ -3145,16 +3182,9 @@ function railRow(lead, text, value, open, valueCls = '') {
 
 /** Whose calendar an event is on: yours solid, another member's a ring, the Household's a house. */
 function sourceDisc(e) {
-  if (e.calendar === 'household') {
-    const d = node('span', 'who household');
-    d.appendChild(icon('home'));
-    d.title = e.label;
-    d.setAttribute('role', 'img');
-    d.setAttribute('aria-label', e.label);
-    return d;
-  }
+  if (e.calendar === 'household') return householdDisc(e.label);
   // The calendar's own name, on the title and the accessible name alike, so the two never disagree.
-  const d = memberDisc(e.calendar === 'mine' ? myName : (otherMember() ?? e.label));
+  const d = memberDisc(e.owner ?? e.label);
   d.title = e.label;
   d.setAttribute('aria-label', e.label);
   return d;
@@ -3175,34 +3205,49 @@ function railBody(id, ...children) {
   body.append(...children);
 }
 
-function calendarRail(cal) {
+/** What Yours was last read as (GET /api/today), kept for the phone's strip; null until one lands, and when the read fails. */
+let yoursRails = null;
+
+/** A rail as the desk draws it: its rows, then its line. */
+function drawRail(id, { rows, line }) {
+  const out = [];
+  if (rows.length) {
+    const list = node('ul');
+    for (const r of rows) list.appendChild(railRow(r.lead, r.text, r.value, r.open, r.valueCls));
+    out.push(list);
+  }
+  if (line) out.push(line);
+  railBody(id, ...out);
+}
+
+/** The calendar's rows, and the line under them (what could not be read, why none can, or that nothing is on). */
+function calendarRows(cal) {
   // The household's today and tomorrow, as the server read them.
   const today = todayKey();
   const tomorrow = addDayKey(today, 1);
   const weekday = keyWords(tomorrow, { weekday: 'short' });
-  const list = node('ul');
   const open = (e) => (e.plan ? openCard(e.plan.id) : showView('calendar'));
-  for (const e of cal.today) list.appendChild(railRow(sourceDisc(e), e.summary || 'Busy', eventWhen(e, today, ''), () => open(e)));
-  for (const e of cal.tomorrow) list.appendChild(railRow(sourceDisc(e), e.summary || 'Busy', eventWhen(e, tomorrow, weekday), () => open(e)));
-  const out = [];
-  if (list.children.length) out.push(list);
-  if (cal.missed?.length) out.push(node('p', 'none', `${listOf(cal.missed)} could not be read just now.`));
+  const rows = [];
+  for (const e of cal.today) rows.push({ lead: sourceDisc(e), text: e.summary || 'Busy', value: eventWhen(e, today, ''), valueCls: '', open: () => open(e) });
+  for (const e of cal.tomorrow) rows.push({ lead: sourceDisc(e), text: e.summary || 'Busy', value: eventWhen(e, tomorrow, weekday), valueCls: '', open: () => open(e) });
+  const parts = [];
+  if (cal.missed?.length) parts.push(node('p', 'none', `${listOf(cal.missed)} could not be read just now.`));
   if (cal.unavailable) {
     // Not an error: nothing went wrong here, the calendars are simply out of reach.
     const why = node('p', 'unavailable');
     why.append(icon('cal', 'i'), node('span', '', cal.unavailable.charAt(0).toUpperCase() + cal.unavailable.slice(1) + '.'));
-    out.push(why);
-  } else if (!list.children.length) {
-    out.push(node('p', 'none', 'Nothing on your calendars today or tomorrow.'));
+    parts.push(why);
+  } else if (!rows.length) {
+    parts.push(node('p', 'none', 'Nothing on your calendars today or tomorrow.'));
   }
-  railBody('rail-cal', ...out);
+  const line = parts.length ? document.createDocumentFragment() : null;
+  line?.append(...parts);
+  return { rows, line };
 }
 
-/** A plan's chips, in brief: who asked, when it is due, how long in Doing. */
+/** A plan's chips, in brief: when it is due, how long in Doing. Who asked is the card's to say. */
 function railChips(c) {
   const chips = node('span', 'chips');
-  if (c.asked?.to === myName) chips.appendChild(chip('asked', `${c.owner} asked`));
-  else if (c.asked) chips.appendChild(chip('asked', `asked ${c.asked.to}`));
   if (c.due) chips.appendChild(chip('due', dueText(c.due), 'cal'));
   if (c.notOnCalendar) chips.appendChild(chip('off', 'not on the calendar'));
   if (showsClock(c)) chips.appendChild(staleChip(c.daysInState));
@@ -3210,31 +3255,72 @@ function railChips(c) {
   return chips;
 }
 
-function plansRail(plans) {
-  if (!plans.length) return railBody('rail-plans', node('p', 'none', 'Nothing of yours is due this week, or in Doing.'));
-  const list = node('ul');
-  for (const c of plans) list.appendChild(railRow(null, c.title, railChips(c), () => openCard(c.id)));
-  railBody('rail-plans', list);
+function planRows(plans) {
+  const rows = plans.map((c) => ({ lead: null, text: c.title, value: railChips(c), valueCls: '', open: () => openCard(c.id) }));
+  return { rows, line: rows.length ? null : node('p', 'none', 'Nothing of yours is due this week, or in Doing.') };
 }
 
-function moneyRail(money) {
-  if (!money) return railBody('rail-money', node('p', 'none', 'No budget has this month open yet.'));
-  const list = node('ul');
+function moneyRailRows(money) {
+  if (!money) return { rows: [], line: node('p', 'none', 'No budget has this month open yet.') };
   const open = () => showView('budget');
-  list.appendChild(railRow(null, 'To assign', money.toAssign, open));
+  const rows = [{ lead: null, text: 'To assign', value: money.toAssign, valueCls: '', open }];
   // The server says what is left, or how far over: the page reads neither as a number.
   for (const l of money.low) {
-    list.appendChild(railRow(null, l.label, l.over ? `${l.over} over` : `${l.left} left`, open, l.over ? 'over' : ''));
+    rows.push({ lead: null, text: l.label, value: l.over ? `${l.over} over` : `${l.left} left`, valueCls: l.over ? 'over' : '', open });
   }
-  railBody('rail-money', list);
+  return { rows, line: null };
 }
 
+function calendarRail(cal) { drawRail('rail-cal', calendarRows(cal)); }
+function plansRail(plans) { drawRail('rail-plans', planRows(plans)); }
+function moneyRail(money) { drawRail('rail-money', moneyRailRows(money)); }
+
 function renderYours(r) {
+  yoursRails = r;
   $('yours-me').textContent = (myName || '?').slice(0, 1).toUpperCase();
   calendarRail(r.calendar);
   plansRail(r.plans);
   moneyRail(r.money);
   yoursEl.hidden = false;
+}
+
+/**
+ * Yours on a phone: in today's card under the briefing, one button a rail (its lane's icon, its first row as the desk
+ * draws it, then how many more), each opening that rail's screen. Under a kind it keeps that kind's rail; under Claude
+ * and Notes it is absent; with no rails read it is left out. From 1040px the column beside the days is Yours instead.
+ */
+function yoursStrip() {
+  if (!yoursRails) return null;
+  const r = yoursRails;
+  const all = [['calendar', 'calendar', calendarRows(r.calendar)], ['plans', 'plan', planRows(r.plans)], ['budget', 'budget', moneyRailRows(r.money)]];
+  const kept = all.filter(([lane]) => todayKind === 'all' || todayKind === lane);
+  if (!kept.length) return null;
+  const strip = node('div', 'yours-strip');
+  const briefed = (dayRows.get(threadData?.today) ?? []).some((x) => x.kind === 'briefing');
+  const head = node('div', 'eyebrow');
+  head.append(memberDisc(myName), briefed ? 'Yours · what the briefing was written from' : 'Yours');
+  strip.appendChild(head);
+  for (const [lane, view, { rows, line }] of kept) {
+    const b = node('button', 'strip-row hit');
+    b.type = 'button';
+    const main = node('span', 'strip-main');
+    if (rows.length) {
+      const [first] = rows;
+      if (first.lead) main.appendChild(first.lead);
+      const v = node('span', `v ${first.valueCls}`.trim());
+      v.append(first.value);
+      main.append(node('span', 't', first.text), v);
+    } else {
+      main.appendChild(node('span', 't', line?.textContent ?? ''));
+    }
+    const text = node('span', 'strip-text');
+    text.appendChild(main);
+    if (rows.length > 1) text.appendChild(node('span', 'strip-more', `and ${rows.length - 1} more`));
+    b.append(laneIcon(lane), text, icon('go', 'i sm chev'));
+    b.addEventListener('click', () => { void showView(view); });
+    strip.appendChild(b);
+  }
+  return strip;
 }
 
 function unsortedItem(count) {
@@ -12902,6 +12988,7 @@ function forgetHousehold() {
   lastRowWatch?.disconnect();
   lastRowWatch = null;
   yoursEl.hidden = true;
+  yoursRails = null;
   $('yours-me').textContent = '';
   for (const body of yoursEl.querySelectorAll('.rail-body')) body.textContent = '';
   for (const id of ['day-today', 'earlier-days', 't-kinds', 't-people', 't-waiting', 'today-day']) $(id).textContent = '';
