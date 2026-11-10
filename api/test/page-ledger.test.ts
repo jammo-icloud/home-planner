@@ -85,6 +85,13 @@ const ADDED: readonly Line[] = [
   ['area', "'Nothing planned yet'"], ['area', 'on the board'], ['area', "'/api/settings/areas/rename'"],
   ['area', "'/api/settings/areas/move'"], ['area', "'/api/settings/areas/remove'"], ['area', "id: 'area-page-h'"],
   ['P3', "focus: 'done'"], ['P3', "'Done', 'done'"], ['P3', 'pm-done'],
+  // Goals on the board (Task 13): the goal row, what a pressed goal changes, and the foot that renames or removes it.
+  ['goals', "'All goals'"], ['goals', 'function pressGoal('], ['goals', 'function goalFoot('], ['goals', "'Toward '"], ['goals', "'toward '"], ['goals', ' toward it'],
+  ['goals', 'toward this goal'], ['goals', "'Rename this goal'"], ['goals', "'Remove this goal'"], ['goals', 'Both act on all '],
+  ['goals', 'The new name goes on all '], ['goals', 'Rename it on '], ['goals', "'Leave the plans as they are'"],
+  ['goals', 'The goal ends here: it leaves the filter row. Putting the same words on a plan later starts it again.'],
+  ['goals', "'Remove the goal'"], ['goals', '/api/goals/rename'], ['goals', '/api/goals/remove'],
+  ['goals', '#plan-goals button', 'css'],
   // Leaving a household (a switch, the picker, sign-out) goes through onlyToday, which empties every screen first and
   // moves the turn on, so no read still out from the household left can draw into the next one.
   ['switch', 'function onlyToday() {\n  forgetHousehold();', 'page'], ['switch', 'function forgetHousehold() {\n  householdTurn++;', 'page'],

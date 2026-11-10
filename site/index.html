@@ -950,7 +950,18 @@
   .list > .add-form{padding:var(--sp-3) var(--sp-4);border-top:var(--stroke) solid var(--hair)}
   #plan-areas > .add-row{margin-top:0;min-height:var(--tap)}
   /* Room under a form that opened near the bottom, so its field can be scrolled into the top half of a phone. */
-  #plan-board:has(#plan-areas form){padding-bottom:50vh}
+  #plan-board:has(#plan-areas form, #plan-foot form, #plan-foot .ep-review){padding-bottom:50vh}
+  /* The goal row: .filters' chips in one row that scrolls sideways, no scrollbar. The chips are 30px and the row has
+     room above and below them, so their 44px hit areas (.hit) are not clipped by the scroller. A pressed chip is
+     .filters' ink-filled pill; its flag takes the chip's ink. */
+  #plan-goals{flex-wrap:nowrap;position:relative;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+    padding:7px 0;margin:calc(var(--sp-5) * -1 + 7px) 0 var(--sp-3)}
+  #plan-goals::-webkit-scrollbar{display:none}
+  #plan-goals button{flex:none;min-height:30px;white-space:nowrap}
+  #plan-goals button span.flag{color:inherit;max-width:none}
+  #plan-goals button span.flag > span{overflow:visible;text-overflow:clip}
+  #plan-foot:not(:empty){margin-top:var(--sp-6)}
+  #plan-foot .ep-foot > form,#plan-foot .ep-foot > .ep-review{flex:1 1 100%;min-width:0}
   /* desk at 1040: the areas are columns that wrap, each the same card, "A new area" a solid column at the end */
   @container page (min-width: 1040px){
     #plan-areas{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--sp-5);align-items:start}
@@ -6956,8 +6967,10 @@ async function loadCompare() {
 // the card (or the board) again: the screen only ever shows what the log says.
 /** The last board read (GET /api/plans): what renderPlan drew, and what the add forms read whose and toward what. */
 let planData = null;
-/** The goal pressed in the goal row, Plan's own and not shared: null for none. */
+/** The goal pressed in the goal row, Plan's own and not shared: null for none. Cleared by forgetBoard, so a household switch and sign-out drop it. */
 let planGoal = null;
+/** One sentence the next draw of the board says in its quiet line and then lets go: "New roof is off 4 plans." */
+let boardSaid = '';
 /** An area's own page while it stands in the board's place; null while the board shows. */
 let areaPage = null;
 let cardId = null;
@@ -6970,6 +6983,8 @@ function forgetBoard() {
   planFetch++;
   boardEpoch++;
   planData = null;
+  planGoal = null;
+  boardSaid = '';
   // What was drawn of it goes too, so the next household's Plan or card never shows it while its own is read.
   for (const id of ['plan-count', 'plan-people', 'plan-goals', 'plan-foot', 'plan-card']) $(id).textContent = '';
   $('plan-quiet').hidden = true;
@@ -7313,7 +7328,7 @@ const orList = (names) => (names.length < 2 ? names.join('') : `${names.slice(0,
 /**
  * The board, read whole for the person pressed (and the goal). The route says whose it answered: a person with
  * nothing in view is answered as everyone's, and the kept choice is left as it is. A reply that lands after the
- * screen changed, or once an area's page is open, draws nothing.
+ * screen changed, or once an area's page is open, draws nothing; true when this read drew.
  */
 async function loadBoard() {
   const mine = ++planFetch;
@@ -7323,11 +7338,17 @@ async function loadBoard() {
     if (planGoal) q.set('goal', planGoal);
     const b = await api(`/api/plans?${q}`);
     // A newer read (another person pressed, the tab left and come back to, a household switched) has the say.
-    if (mine !== planFetch) return;
+    if (mine !== planFetch) return false;
     planData = b;
-    if (view === 'plan' && areaPage === null) renderPlan(b);
+    // The answer says which goal this is, in its stored spelling: null when none by that name exists any more
+    // (renamed or removed elsewhere), and then All goals reads pressed.
+    planGoal = b.goal;
+    if (view !== 'plan' || areaPage !== null) return false;
+    renderPlan(b);
+    return true;
   } catch (ex) {
     if (mine === planFetch && view === 'plan') showProblem(ex);
+    return false;
   } finally {
     if (mine === planFetch) $('loading').hidden = true;
   }
@@ -7335,29 +7356,80 @@ async function loadBoard() {
 
 /**
  * The head's one line, counted from the rows in view: "12 plans in 4 areas · 5 doing", "bob's · 4 plans in 3 areas".
- * With nothing open it counts what is finished, "No plans open · 3 done"; the invitation is only for a household
- * with no plans at all, finished ones included.
+ * Under a goal it is "Toward New roof · 4 plans in 2 areas · 2 doing · 1 done": there the plans and areas count the
+ * done rows too (a goal's finished plans are in view), and every figure is read off `rows[].plans` and `rows[].done`.
+ * With nothing open and no goal it counts what is finished, "No plans open · 3 done"; the invitation is only for a
+ * household with no plans at all, finished ones included.
  */
 function planCountLine(b) {
   const open = b.rows.flatMap((r) => r.plans);
-  const areas = b.rows.filter((r) => r.plans.length).length;
-  const doing = open.filter((c) => c.state === 'doing').length;
+  const finished = b.rows.flatMap((r) => r.done);
   const person = b.who !== 'everyone';
-  // Under a person, their finished plans in view; with no filter, every area's.
-  const done = b.rows.reduce((n, r) => n + (person ? r.done.length : r.all.done), 0);
-  if (!open.length && !done && !person && b.goal === null) return 'Nothing is planned yet. Anything the household means to do goes here.';
-  const count = open.length
-    ? `${plansWord(open.length)} in ${areas} area${areas === 1 ? '' : 's'}${doing ? ` · ${doing} doing` : ''}`
-    : done ? `No plans open · ${done} done` : 'No plans';
-  return person ? `${b.who === myName ? 'Yours' : `${b.who}'s`} · ${count}` : count;
+  const goal = b.goal !== null;
+  const doing = open.filter((c) => c.state === 'doing').length;
+  // Under a goal or a person, the finished plans in view; with no filter, every area's.
+  const done = person || goal ? finished.length : b.rows.reduce((n, r) => n + r.all.done, 0);
+  const who = person ? (b.who === myName ? 'Yours' : `${b.who}'s`) : null;
+  if (!open.length && !done && !person && !goal) return 'Nothing is planned yet. Anything the household means to do goes here.';
+  let count;
+  if (goal) {
+    const n = open.length + finished.length;
+    const areas = b.rows.filter((r) => r.plans.length || r.done.length).length;
+    count = n ? `${plansWord(n)} in ${areas} area${areas === 1 ? '' : 's'}${doing ? ` · ${doing} doing` : ''}${done ? ` · ${done} done` : ''}` : 'No plans';
+  } else {
+    const areas = b.rows.filter((r) => r.plans.length).length;
+    count = open.length
+      ? `${plansWord(open.length)} in ${areas} area${areas === 1 ? '' : 's'}${doing ? ` · ${doing} doing` : ''}`
+      : done ? `No plans open · ${done} done` : 'No plans';
+  }
+  const toward = goal ? `${person ? 'toward ' : 'Toward '}${b.goal}` : null;
+  return [who, toward, count].filter(Boolean).join(' · ');
 }
 
-/** Under a person, the areas left out because nothing of theirs is in them: "Nothing of bob's in People or Trips." */
+/**
+ * Under a person or a goal, the areas left out because nothing is in them: "Nothing of bob's in People or Trips.",
+ * "Nothing toward this goal in People or Trips yet.", "Nothing of bob's toward this goal in People or Trips."
+ */
 function planQuietLine(b) {
-  if (b.who === 'everyone') return '';
+  const person = b.who !== 'everyone';
+  const goal = b.goal !== null;
+  if (!person && !goal) return '';
   const left = b.rows.filter((r) => !r.plans.length && !r.done.length).map((r) => r.area);
   if (!left.length) return '';
-  return `Nothing of ${b.who === myName ? 'yours' : `${b.who}'s`} in ${orList(left)}.`;
+  const whose = person ? ` of ${b.who === myName ? 'yours' : `${b.who}'s`}` : '';
+  return `Nothing${whose}${goal ? ' toward this goal' : ''} in ${orList(left)}${goal && !person ? ' yet' : ''}.`;
+}
+
+/**
+ * The goal row: "All goals", then a chip per goal in the answer's order (alphabetical), each with the flag and its whole
+ * label, in one row that scrolls sideways to the pressed one. Not drawn while the household has no goal.
+ */
+function goalRow(b) {
+  const host = $('plan-goals');
+  host.hidden = !b.goals.length;
+  host.textContent = '';
+  if (host.hidden) return;
+  let on = null;
+  for (const g of [null, ...b.goals]) {
+    const chipBtn = node('button', 'hit');
+    chipBtn.type = 'button';
+    chipBtn.dataset.key = g ? `goal:${g.goal}` : 'goals:all';
+    const pressed = g ? g.goal === b.goal : b.goal === null;
+    chipBtn.setAttribute('aria-pressed', String(pressed));
+    if (g) chipBtn.appendChild(goalFlag(g.goal)); else chipBtn.textContent = 'All goals';
+    chipBtn.addEventListener('click', () => pressGoal(g ? g.goal : null));
+    if (pressed) on = chipBtn;
+    host.appendChild(chipBtn);
+  }
+  // Into view inside the row only: the page itself does not move.
+  if (on) host.scrollLeft = Math.max(0, on.offsetLeft - (host.clientWidth - on.offsetWidth) / 2);
+}
+
+/** Press a goal chip (null for All goals): the goal is Plan's own, and the board is read again for it. */
+function pressGoal(goal) {
+  if (goal === planGoal) return;
+  planGoal = goal;
+  void loadBoard();
 }
 
 /**
@@ -7366,6 +7438,10 @@ function planQuietLine(b) {
  */
 function renderPlan(b) {
   const person = b.who !== 'everyone';
+  const underGoal = b.goal !== null;
+  // A chip or a foot button that had focus is put away with the redraw: focus goes back on its twin.
+  const had = document.activeElement;
+  const hadKey = had && ($('plan-goals').contains(had) || $('plan-foot').contains(had)) ? had.dataset.key ?? null : null;
   $('plan-count').textContent = planCountLine(b);
 
   // Pressed is the answer's who, never the kept choice: when the route fell back, Everyone reads pressed.
@@ -7384,6 +7460,8 @@ function renderPlan(b) {
     });
   }
 
+  goalRow(b);
+
   const box = $('plan-areas');
   // The quiet line is drawn among the areas, after the last and before "A new area": on the desk it spans the grid.
   const quietLine = $('plan-quiet');
@@ -7391,7 +7469,7 @@ function renderPlan(b) {
   // A plan added under another member is theirs; under yourself it is yours anyway.
   const owner = person && b.who !== myName ? b.who : null;
   b.rows.forEach((r, i) => {
-    if (person && !r.plans.length && !r.done.length) return;
+    if ((person || underGoal) && !r.plans.length && !r.done.length) return;
     const sec = node('section', 'area');
     const h = node('h2', 'area-head');
     h.id = `area-h-${i}`;
@@ -7400,32 +7478,40 @@ function renderPlan(b) {
     head.type = 'button';
     head.dataset.key = `area:${r.area}`;
     // An area with no open plan at all says so, under a person too (drawn there for a done one of theirs).
-    const count = !r.all.plans ? 'No plans' : person ? `${r.plans.length} of ${plansWord(r.all.plans)}`
+    const count = underGoal ? `${r.plans.length + r.done.length} toward it` : !r.all.plans ? 'No plans' : person ? `${r.plans.length} of ${plansWord(r.all.plans)}`
       : `${plansWord(r.all.plans)}${r.all.doing ? ` · ${r.all.doing} doing` : ''}`;
     head.append(node('span', 'area-name', r.area), node('span', 'count', count), icon('go', 'i sm chev'));
     head.addEventListener('click', () => openArea(r.area));
     h.appendChild(head);
 
     const list = node('div', 'list');
-    for (const c of r.plans) list.appendChild(planRow(c));
+    for (const c of r.plans) list.appendChild(planRow(c, { underGoal }));
     list.appendChild(addPlanRow(r.area, { owner, goal: b.goal, after: loadBoard }));
-    if (r.done.length) {
+    if (r.done.length && underGoal && !r.plans.length) {
+      // Nothing open toward the goal here: its finished plans are the area's rows, in place of the fold.
+      for (const c of r.done) list.appendChild(planRow(c, { underGoal }));
+    } else if (r.done.length) {
       const fold = node('button', 'erow fold hit');
       fold.type = 'button';
       fold.dataset.key = `done:${r.area}`;
-      fold.setAttribute('aria-label', `${r.done.length} done in ${r.area}`);
-      fold.append(stateGlyph('done', { small: true }), node('span', 'erow-name', `${r.done.length} done`), icon('go', 'i sm chev'));
+      const doneWords = underGoal ? `${r.done.length} done toward this goal` : `${r.done.length} done`;
+      fold.setAttribute('aria-label', `${doneWords} in ${r.area}`);
+      fold.append(stateGlyph('done', { small: true }), node('span', 'erow-name', doneWords), icon('go', 'i sm chev'));
       fold.addEventListener('click', () => openArea(r.area, { focus: 'done' }));
       list.appendChild(fold);
     }
     sec.append(h, list);
     box.appendChild(sec);
   });
-  const quiet = planQuietLine(b);
+  // What the last change said ("New roof is off 4 plans.") goes first, once; then what the filter leaves out.
+  const quiet = [boardSaid, planQuietLine(b)].filter(Boolean).join(' ');
+  boardSaid = '';
   quietLine.textContent = quiet;
   quietLine.hidden = !quiet;
   box.appendChild(quietLine);
-  if (b.goal === null) box.appendChild(newAreaRow());
+  if (!underGoal) box.appendChild(newAreaRow());
+  goalFoot(b);
+  if (hadKey) $('plan-board').querySelector(`[data-key="${CSS.escape(hadKey)}"]`)?.focus({ preventScroll: true });
 }
 
 /**
@@ -7544,7 +7630,7 @@ function boardForm(row, { cls, label, placeholder, max, notes, post, after, focu
 }
 
 /** Focus on a board's control by its key, once the board is drawn again; on the count line when it is not drawn. */
-const focusBoard = (key, how) => ($('plan-areas').querySelector(`[data-key="${CSS.escape(key)}"]`) ?? $('plan-count')).focus(how);
+const focusBoard = (key, how) => ($('plan-board').querySelector(`[data-key="${CSS.escape(key)}"]`) ?? $('plan-count')).focus(how);
 
 // The board's one Escape: it cancels a form open on it, focus back on the row that opened it. An area's page has its own.
 $('plan-board').addEventListener('keydown', (ev) => {
@@ -7553,21 +7639,21 @@ $('plan-board').addEventListener('keydown', (ev) => {
 });
 
 /**
- * An area's add row: "A new plan in House", and ", for bob" with another member pressed. Pressed, it opens a form
- * where it was; a plan made there lands in the area, bob's under bob, and focus comes back to the add row.
+ * An area's add row: "A new plan in House", and ", for bob" with another member pressed, ", toward this goal" under
+ * a goal. Pressed, it opens a form where it was; a plan made there lands in the area, bob's under bob, and focus comes back to the add row.
  */
 function addPlanRow(area, { owner = null, goal = null, after }) {
   const row = node('button', 'erow add');
   row.type = 'button';
   row.dataset.key = `add:${area}`;
-  const where = owner ? `, for ${owner}` : '';
+  const where = `${owner ? `, for ${owner}` : ''}${goal ? ', toward this goal' : ''}`;
   row.setAttribute('aria-label', `A new plan in ${area}${where}`);
   const words = node('span', 'erow-name', 'A new plan');
   words.appendChild(node('span', 'add-where', ` in ${area}${where}`));
   row.append(icon('plus', 'i add-plus'), words);
   row.addEventListener('click', () => boardForm(row, {
     cls: 'ep-form add-form', label: 'The new plan', placeholder: 'e.g. Fix the fence gate', max: 200,
-    notes: owner ? [`It will be ${owner}'s.`] : [],
+    notes: owner ? [`It will be ${owner}'s${goal ? `, toward ${goal}` : ''}.`] : goal ? [`It will be toward ${goal}.`] : [],
     post: (title) => api('/api/plans', { title, area, ...(owner ? { owner } : {}), ...(goal ? { goal } : {}) }),
     after, focusKey: () => `add:${area}`,
   }));
@@ -7595,6 +7681,132 @@ function newAreaRow() {
     focusKey: (area) => `area:${area}`,
   }));
   return row;
+}
+
+/**
+ * The foot of a board filtered to a goal: "Rename this goal", "Remove this goal" and one line saying how many plans
+ * they act on (figures from the goal's entry in the answer's `goals`, so they count plans in any state). Each opens
+ * where the buttons were; Cancel and Escape (the board's one Escape, `cancelOpen`) bring them back with focus on the
+ * one pressed. A committed change reads the board again whatever the member has pressed meanwhile, and every step
+ * checks it is still this household's board; the form of a goal that was renamed or removed elsewhere is refused by
+ * the server in the fold's words and stays open with what was typed.
+ */
+function goalFoot(b) {
+  const foot = $('plan-foot');
+  foot.textContent = '';
+  const g = b.goal === null ? null : b.goals.find((x) => x.goal === b.goal);
+  if (!g) return;
+  const epoch = boardEpoch;
+  const box = node('div', 'ep-foot');
+  // Plans in any state carry it; "done ones included" only when some are done.
+  const rename = textBtn('Rename this goal', 'link hit', 'goal-rename', () => openRename());
+  const remove = textBtn('Remove this goal', 'link danger hit', 'goal-remove', () => openRemove());
+  const both = g.plans === 1 ? 'Both act on the 1 plan that carries it' : `Both act on all ${g.plans} plans that carry it`;
+  const line = node('p', 'set-line', `${both}${g.done ? ', done ones included' : ''}.`);
+  box.append(rename, remove, line);
+  foot.appendChild(box);
+
+  /** Put the buttons back where the form was, focus on the one that opened it. */
+  const back = (key) => {
+    box.replaceChildren(rename, remove, line);
+    box.querySelector(`[data-key="${key}"]`)?.focus({ preventScroll: true });
+  };
+  /** The write is committed: only a board of this household is read again, and the form is put away if that read did not draw. */
+  const committed = async (open, key) => {
+    if (epoch !== boardEpoch) return;
+    if (!(await loadBoard()) && open.isConnected) back(key);
+  };
+
+  const openRename = () => {
+    const input = node('input');
+    input.maxLength = 60;
+    input.autocomplete = 'off';
+    input.value = g.goal;
+    const { err, say } = epErr();
+    const cancel = node('button', 'btn', 'Cancel');
+    cancel.type = 'button';
+    const go = node('button', 'btn primary', `Rename it on ${plansWord(g.plans)}`);
+    go.type = 'submit';
+    const acts = node('div', 'ep-acts');
+    acts.append(cancel, go);
+    const form = node('form', 'ep-form');
+    const hint = g.plans === 1 ? 'The new name goes on the 1 plan that carries it.' : `The new name goes on all ${g.plans} plans that carry it.`;
+    form.append(epField('Call it', input, node('p', 'note', hint)), err, acts);
+    const close = () => back('goal-rename');
+    cancel.addEventListener('click', close);
+    cancelMark(cancel, close);
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      // As the fold tidies it: inner runs of space made one, so the new name is found again as written.
+      const to = input.value.trim().replace(/\s+/g, ' ');
+      if (!to) { say('Give it a name'); input.focus(); return; }
+      say('');
+      go.disabled = true;
+      try {
+        await api('/api/goals/rename', { from: g.goal, to });
+      } catch (ex) {
+        if (epoch !== boardEpoch || !form.isConnected) return;
+        go.disabled = false;
+        say(ex.message);
+        input.focus();
+        return;
+      }
+      if (epoch !== boardEpoch) return;
+      // Pressed on the new name, unless another goal was pressed while the write was out.
+      if (planGoal === g.goal) planGoal = to;
+      await committed(form, 'goal-rename');
+      const a = document.activeElement;
+      if (onBoard(epoch) && planGoal !== null && (!a || a === document.body)) focusBoard(`goal:${planGoal}`, { preventScroll: true });
+    });
+    box.replaceChildren(form);
+    placeForm(input);
+  };
+
+  const openRemove = () => {
+    const h = node('h2', 'ep-sec-h', 'This will');
+    h.tabIndex = -1;
+    const ul = node('ul', 'effects');
+    const take = node('li', '', 'Take ');
+    take.append(node('strong', '', g.goal), ` off ${plansWord(g.plans)}${g.done ? `, ${g.done} of them done` : ''}`);
+    ul.append(take, node('li', '', 'Leave the plans as they are'));
+    const small = node('p', 'set-line', 'The goal ends here: it leaves the filter row. Putting the same words on a plan later starts it again.');
+    const { err, say } = epErr();
+    const cancel = node('button', 'btn', 'Cancel');
+    cancel.type = 'button';
+    const go = node('button', 'btn primary', 'Remove the goal');
+    go.type = 'button';
+    const acts = node('div', 'ep-acts');
+    acts.append(cancel, go);
+    const review = node('div', 'ep-review');
+    review.append(h, ul, small, err, acts);
+    const close = () => back('goal-remove');
+    cancel.addEventListener('click', close);
+    cancelMark(cancel, close);
+    go.addEventListener('click', async () => {
+      if (go.disabled) return;
+      say('');
+      go.disabled = true;
+      let answer;
+      try {
+        answer = await api('/api/goals/remove', { goal: g.goal });
+      } catch (ex) {
+        if (epoch !== boardEpoch || !review.isConnected) return;
+        go.disabled = false;
+        say(ex.message);
+        err.focus({ preventScroll: true });
+        return;
+      }
+      if (epoch !== boardEpoch) return;
+      if (planGoal === g.goal) planGoal = null;
+      // Said in the quiet line of the board this read draws, if it is the board that is showing.
+      if (onBoard(epoch)) boardSaid = `${g.goal} is off ${plansWord(answer.plans)}.`;
+      await committed(review, 'goal-remove');
+      const a = document.activeElement;
+      if (onBoard(epoch) && (!a || a === document.body)) focusBoard('goals:all', { preventScroll: true });
+    });
+    box.replaceChildren(review);
+    placeForm(h);
+  };
 }
 
 // ── the card ──
