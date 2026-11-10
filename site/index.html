@@ -538,29 +538,6 @@
      what a narrow bar leaves it and the household and the day ellipsize */
   .top-inner > .menu.me{display:flex;flex:0 1 auto}
   .pill.member .name{display:none}
-  /* The search box, and its hits hanging from its end edge like a menu. Typed
-     into, so 16px at every width. */
-  .top-inner > .search{position:relative;flex:0 1 240px;min-width:120px}
-  .search input{width:100%;min-height:36px;font:inherit;font-size:var(--fs-input);padding:5px 12px;
-    border:var(--stroke) solid var(--line-strong);border-radius:var(--r-control);background:var(--surface-raised);color:var(--ink)}
-  .search input::placeholder{color:var(--ink-faint)}
-  .search input:focus{outline:none;border-color:var(--focus)}
-  .search-list{position:absolute;top:calc(100% + 10px);right:0;z-index:30;width:min(440px,calc(100vw - 32px));
-    max-height:min(70vh,520px);overflow-y:auto;padding:6px;background:var(--surface-overlay);
-    border:var(--stroke) solid var(--line);border-radius:14px;box-shadow:var(--e-3)}
-  .search-list ul{list-style:none;margin:0;padding:0}
-  .search-list ul:empty{display:none}
-  .search-hit{padding:8px 10px;border-radius:9px;cursor:pointer}
-  .search-hit:hover,.search-hit[aria-selected="true"]{background:var(--accent-tint)}
-  /* the one the arrows are on carries a shape too, so it reads in Graphite */
-  .search-hit[aria-selected="true"]{box-shadow:inset 3px 0 0 var(--accent)}
-  .search-hit .head{display:flex;align-items:baseline;gap:var(--sp-2);min-width:0}
-  .search-hit .kind{flex:none;font-size:var(--fs-micro);font-weight:var(--fw-medium);padding:1px 7px;
-    border-radius:var(--r-chip);background:var(--surface-sunken);color:var(--ink-soft)}
-  .search-hit .t{min-width:0;font-size:var(--fs-ui);font-weight:var(--fw-medium);color:var(--ink);
-    white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .search-hit .hint{margin:2px 0 0;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
-  #search-notes p{margin:0;padding:6px 10px}
   /* The four screens, in the top bar at every width. On the desk each tab is
      its label and the chosen one is underlined by the accent, a shape, so
      Graphite reads too. */
@@ -575,17 +552,14 @@
   .tabs-top svg.lu{display:none}
   /* Desk: the tabs first, the household and you at the right. */
   @container page (min-width: 760px){
-    .top-inner > .search{margin-left:auto}
     .pill.member .name{display:block}
   }
   /* Phone: each tab as its icon (its label kept for a screen reader), and you,
      with the household and the day under your disc. Each target is at least 40
      wide and the bar's height. */
   @container page (max-width: 759px){
-    /* two rows: the screens and you; then the search box, the
-       width of the page */
+    /* the screens and you */
     .top-inner{gap:var(--sp-2);row-gap:0;flex-wrap:wrap}
-    .top-inner > .search{order:2;flex:1 1 100%;min-width:0;padding-bottom:var(--sp-2)}
     /* from nothing, so the bar never wraps it onto a row of its own: it takes
        what the tabs leave, and the household and the day ellipsize in it */
     .top-inner > .menu.me{flex:1 1 0;justify-content:flex-end}
@@ -1464,7 +1438,8 @@
   }
 
   /* ── today: day cards ── */
-  .today-title{display:grid;gap:var(--sp-1);margin-bottom:var(--sp-4)}
+  .today-head{display:flex;align-items:flex-start;justify-content:space-between;gap:var(--sp-3);margin-bottom:var(--sp-4)}
+  .today-title{display:grid;gap:var(--sp-1);min-width:0}
   .today-title p{margin:0;font-size:var(--fs-small);color:var(--ink-soft)}
   #days{display:grid;gap:var(--sp-3)}
   #day-today,#earlier-days{display:grid;gap:var(--sp-3)}
@@ -1557,6 +1532,38 @@
   #t-waiting h2{margin:0 0 var(--sp-2);font-size:var(--fs-title);font-weight:var(--fw-semibold)}
   #t-waiting .provisional{padding:0}
   #t-waiting .rowi{width:100%;text-align:left;font:inherit;color:var(--ink);background:none;border:0;cursor:pointer}
+  /* ── the search in Today's head ── */
+  .t-search{align-items:center;gap:var(--sp-2);min-width:0;flex:1}
+  .t-search-box{position:relative;display:block;flex:1;min-width:0}
+  .t-search input{width:100%;min-height:var(--control);font:inherit;font-size:var(--fs-input);padding:var(--sp-1) var(--tap) var(--sp-1) var(--sp-3);
+    border:var(--stroke) solid var(--line-strong);border-radius:var(--r-control);background:var(--surface-raised);color:var(--ink);
+    -webkit-appearance:none;appearance:none}
+  .t-search input::placeholder{color:var(--ink-faint)}
+  .t-search input::-webkit-search-cancel-button{-webkit-appearance:none;display:none}
+  .t-search input:focus-visible{outline:var(--stroke-heavy) solid var(--focus);outline-offset:0}
+  #t-search-clear{position:absolute;right:var(--sp-2);top:50%;transform:translateY(-50%);display:grid;place-items:center;
+    width:var(--disc);height:var(--disc);padding:0;color:var(--ink-soft);background:none;border:0;border-radius:50%;cursor:pointer}
+  #t-search-clear[hidden]{display:none}
+  #t-search-btn{flex:none;display:inline-grid;place-items:center}
+  @container page (max-width: 1039px){
+    .t-search{display:none}
+    .today-head.searching .today-title,.today-head.searching #t-search-btn{display:none}
+    .today-head.searching .t-search{display:flex}
+  }
+  @container page (min-width: 1040px){
+    #t-search-btn,#t-search-cancel{display:none}
+    .t-search{display:flex;flex:0 1 calc(var(--tap) * 7)}
+  }
+  #t-results{display:none}
+  .searching-record #t-results{display:grid;gap:var(--sp-3)}
+  .searching-record .home-banner,.searching-record #setup-notes,.searching-record #t-waiting,.searching-record #days,.searching-record #composer{display:none}
+  #t-results-line,#t-results-end{margin:0;font-size:var(--fs-small);color:var(--ink-soft)}
+  #t-results-line b{color:var(--ink);font-weight:var(--fw-semibold)}
+  #t-results-days{display:grid;gap:var(--sp-3)}
+  .day-plain{margin:0;display:grid;gap:var(--sp-1);padding:var(--sp-2) 0}
+  #t-results mark{background:var(--mark-fill);color:var(--ink);font-weight:var(--fw-semibold)}
+  #t-elsewhere h2{margin:0 0 var(--sp-2);font-size:var(--fs-title);font-weight:var(--fw-semibold)}
+  #t-elsewhere .rowi{width:100%;text-align:left;font:inherit;color:var(--ink);background:none;border:0;cursor:pointer}
   /* ── end of today ── */
 </style>
 </head>
@@ -1611,18 +1618,6 @@
       <!-- The screens in the top bar: labels on the desk, icons on a phone. The
            tab buttons are made from TABS. -->
       <nav class="tabs-top" id="tabs-top" aria-label="Screens"></nav>
-      <!-- One search over the household: plans, the briefings, Claude's answers,
-           the files on cards and the thread. Its hits hang under it; the arrows
-           move through them with the focus kept in the box. -->
-      <div class="search" id="search">
-        <label class="visually-hidden" for="search-q">Search the household</label>
-        <input type="search" id="search-q" placeholder="Search the household" autocomplete="off" spellcheck="false"
-          role="combobox" aria-autocomplete="list" aria-expanded="false" aria-controls="search-hits" />
-        <div class="search-list" id="search-list" hidden>
-          <ul id="search-hits" role="listbox" aria-label="Found in the household"></ul>
-          <div id="search-notes" aria-live="polite"></div>
-        </div>
-      </div>
       <!-- One menu, under you: who is signed in, the household and the day
            under your name, Settings, the other households, and the way out. -->
       <div class="menu me">
@@ -1687,7 +1682,19 @@
          change made directly. Newest at the bottom, beside the reply box. -->
     <div id="briefing" class="today" hidden>
       <div class="today-main">
-      <header class="today-head" id="today-head"><div class="today-title"><h1>Today</h1><p id="today-day"></p></div></header>
+      <header class="today-head" id="today-head">
+        <div class="today-title"><h1>Today</h1><p id="today-day"></p></div>
+        <!-- One search over the household, in Today's head: a button on a phone, the field itself from 1040px. -->
+        <button type="button" class="btn hit" id="t-search-btn" aria-label="Search the household"></button>
+        <div class="t-search search" id="t-search">
+          <label class="visually-hidden" for="t-search-q">Search the household</label>
+          <span class="t-search-box">
+            <input type="search" id="t-search-q" placeholder="Search the household" autocomplete="off" spellcheck="false" />
+            <button type="button" class="hit" id="t-search-clear" aria-label="Clear" hidden></button>
+          </span>
+          <button type="button" class="link hit" id="t-search-cancel">Cancel</button>
+        </div>
+      </header>
       <!-- Shown by homeBanner when the page was opened from the Home Screen QR. -->
       <section class="home-banner" id="home-banner" aria-labelledby="home-banner-h" hidden>
         <h2 id="home-banner-h">Put Home Planner on your Home Screen</h2>
@@ -1707,6 +1714,13 @@
       <div id="days">
         <div id="day-today"></div>
         <section id="earlier" aria-labelledby="earlier-h" hidden><div class="earlier-head"><h2 id="earlier-h">Earlier</h2><span id="earlier-sort"></span></div><div id="earlier-top"></div><div id="earlier-days"></div><p id="left-out" aria-live="polite" hidden></p><div id="earlier-more"></div></section>
+      </div>
+      <!-- What a search found, in the place of the days. -->
+      <div id="t-results">
+        <p id="t-results-line" aria-live="polite"></p>
+        <div id="t-results-days"></div>
+        <section id="t-elsewhere" hidden></section>
+        <p id="t-results-end"></p>
       </div>
       <form class="composer" id="composer">
         <label class="visually-hidden" for="say">Ask Claude, or leave a note</label>
@@ -2025,176 +2039,6 @@ setupMenu('budget-menu-btn', 'budget-menu');
 // Yours opens on its first pane, whichever was showing when it closed.
 setupMenu('me-menu-btn', 'me-menu', () => { $('me-main').hidden = false; $('me-switch').hidden = true; });
 
-// ── search ──────────────────────────────────────────────────────────────────
-//
-// One box over the household: asked 250ms after the typing stops, once there
-// are two letters, and only the latest question's answer is drawn, so one that
-// comes back late never replaces a newer one. The focus stays in the box; the
-// arrows move through the hits, Enter opens one, Escape closes the list.
-const SEARCH_KINDS = { plan: 'Plan', briefing: 'Briefing', answer: 'Answer', file: 'File', thread: 'Thread' };
-const searchBox = $('search-q');
-const searchList = $('search-list');
-const searchHits = $('search-hits');
-const searchNotes = $('search-notes');
-let searchTimer = 0;
-/** Counts the questions asked; an answer to any but the last is dropped. */
-let searchAsked = 0;
-let searchFound = [];
-let searchAt = -1;
-/** The words the list drawn answers: changing them closes it until their own answer comes. */
-let searchFor = '';
-
-function searchClose() {
-  searchList.hidden = true;
-  searchBox.setAttribute('aria-expanded', 'false');
-  searchBox.removeAttribute('aria-activedescendant');
-}
-function searchOpen() {
-  if (!searchHits.children.length && !searchNotes.children.length) return;
-  searchList.hidden = false;
-  searchBox.setAttribute('aria-expanded', 'true');
-  if (searchAt >= 0) searchMark(searchAt);
-}
-/** Nothing to show: the list emptied, and anything still on its way dropped. */
-function searchClear() {
-  clearTimeout(searchTimer);
-  searchAsked++;
-  searchFound = [];
-  searchAt = -1;
-  searchFor = '';
-  searchHits.textContent = '';
-  searchNotes.textContent = '';
-  searchClose();
-}
-/** A household switch starts with an empty box. */
-function searchReset() {
-  searchBox.value = '';
-  searchClear();
-}
-function searchMark(i) {
-  searchAt = i;
-  [...searchHits.children].forEach((li, j) => li.setAttribute('aria-selected', String(j === i)));
-  const li = searchHits.children[i];
-  if (li) {
-    searchBox.setAttribute('aria-activedescendant', li.id);
-    li.scrollIntoView({ block: 'nearest' });
-  } else searchBox.removeAttribute('aria-activedescendant');
-}
-function searchDraw(words, found, notes) {
-  searchFor = words;
-  searchFound = found;
-  searchAt = -1;
-  searchHits.textContent = '';
-  searchNotes.textContent = '';
-  found.forEach((h, i) => {
-    const li = node('li', 'search-hit');
-    li.id = `search-hit-${i}`;
-    li.setAttribute('role', 'option');
-    li.setAttribute('aria-selected', 'false');
-    const head = node('div', 'head');
-    head.append(node('span', 'kind', SEARCH_KINDS[h.kind] ?? h.kind), node('span', 't', h.title));
-    li.appendChild(head);
-    if (h.passage) li.appendChild(node('p', 'hint', h.passage));
-    li.addEventListener('click', () => { void searchGo(h); });
-    searchHits.appendChild(li);
-  });
-  for (const line of notes) searchNotes.appendChild(node('p', 'hint', line));
-  searchClose();
-  // An answer that comes once the box is left waits for the box to be focused again.
-  if (document.activeElement === searchBox) searchOpen();
-}
-async function searchAsk(words) {
-  const asked = ++searchAsked;
-  let out;
-  try {
-    out = await api(`/api/search?q=${encodeURIComponent(words)}`);
-  } catch {
-    if (asked === searchAsked) searchDraw(words, [], ['The search could not be done just now.']);
-    return;
-  }
-  if (asked !== searchAsked) return;
-  const hits = Array.isArray(out.hits) ? out.hits : [];
-  const notes = [];
-  if (!hits.length) notes.push('Nothing in the household matches that.');
-  if (out.documents === 'not searched') notes.push('Sign in again to search briefings, answers and files too.');
-  searchDraw(words, hits, notes);
-}
-/**
- * Where a hit leads, by its kind first: a plan to its card, a file to itself,
- * a briefing to Today at it (or at its day's), an answer or the thread's words
- * to Today at the entry. Today reads a month further up for an older one; one it
- * still does not show is said under the hits, with the list left open.
- */
-async function searchGo(h) {
-  const o = h.open ?? {};
-  let at = null;
-  switch (h.kind) {
-    case 'plan':
-      if (o.plan) { searchClose(); await openCard(o.plan); }
-      return;
-    case 'file':
-      if (o.file) {
-        searchClose();
-        window.open(planPath(o.file.plan, `/files/${encodeURIComponent(o.file.name)}`), '_blank', 'noopener');
-      }
-      return;
-    case 'briefing':
-      at = o.event ? { event: o.event } : o.day ? { day: o.day } : null;
-      break;
-    case 'answer':
-    case 'thread':
-      at = o.event ? { event: o.event } : null;
-      break;
-  }
-  if (!at) return;
-  if (await openTodayAt(at)) { searchClose(); return; }
-  searchSay("Today doesn't show that one as it is filtered now.");
-  searchBox.focus();
-  searchOpen();
-}
-/** A line under the hits, said once. */
-function searchSay(line) {
-  if ([...searchNotes.children].some((n) => n.textContent === line)) return;
-  searchNotes.appendChild(node('p', 'hint', line));
-}
-searchBox.addEventListener('input', () => {
-  const words = searchBox.value.trim();
-  if (words.length < 2) { searchClear(); return; }
-  if (words !== searchFor) searchClose();
-  clearTimeout(searchTimer);
-  searchTimer = setTimeout(() => { void searchAsk(words); }, 250);
-});
-searchBox.addEventListener('focus', () => { if (searchFor && searchBox.value.trim() === searchFor) searchOpen(); });
-searchBox.addEventListener('keydown', (ev) => {
-  // Only the list for the words in the box: one for words since changed is not offered.
-  const n = searchBox.value.trim() === searchFor ? searchFound.length : 0;
-  if (ev.key === 'Escape') {
-    // Nothing asked or on its way opens the list again after Escape.
-    clearTimeout(searchTimer);
-    searchAsked++;
-    // Open, Escape closes the list and keeps the words; closed, the box clears itself as usual.
-    if (!searchList.hidden) { ev.preventDefault(); searchClose(); }
-  } else if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
-    const words = searchBox.value.trim();
-    if (!n) {
-      // Words Escape stopped from being asked are asked now.
-      if (words.length >= 2 && words !== searchFor) { ev.preventDefault(); clearTimeout(searchTimer); void searchAsk(words); }
-      return;
-    }
-    ev.preventDefault();
-    if (searchList.hidden) { searchOpen(); searchMark(ev.key === 'ArrowDown' ? 0 : n - 1); return; }
-    if (ev.key === 'ArrowDown') searchMark((searchAt + 1) % n);
-    else searchMark(searchAt < 0 ? n - 1 : (searchAt - 1 + n) % n);
-  } else if (ev.key === 'Enter') {
-    if (searchList.hidden || !n) return;
-    ev.preventDefault();
-    void searchGo(searchFound[Math.max(searchAt, 0)]);
-  }
-});
-// A hit is pressed without taking the focus from the box, so the list is still there for the click.
-searchList.addEventListener('mousedown', (ev) => ev.preventDefault());
-$('search').addEventListener('focusout', (ev) => { if (!$('search').contains(ev.relatedTarget)) searchClose(); });
-
 /** "2026-10" as "October". */
 const monthLong = (m) => new Date(`${m}-01T12:00:00`).toLocaleDateString(undefined, { month: 'long' });
 
@@ -2465,6 +2309,8 @@ function icon(name, cls = 'i sm') {
 // The top bar's tabs on a phone, the plan states and the goal's flag: icons from Lucide (lucide.dev, ISC licence),
 // copied as they are.
 const LUCIDE = {
+  search: '<path d="m21 21-4.34-4.34"/><circle cx="11" cy="11" r="8"/>',
+  x: '<path d="M18 6 6 18"/><path d="m6 6 12 12"/>',
   'circle-dashed': '<path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/>',
   'circle-check': '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
   flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
@@ -2784,6 +2630,7 @@ function clockAt(iso) { return clockOf(Date.parse(iso) / 1000); }
  * is let go. True when it was found; false when no day shows it.
  */
 async function openTodayAt(target) {
+  todaySearchReset();
   const turn = householdTurn;
   todayKind = 'all';
   await showView('today');
@@ -3105,6 +2952,7 @@ $('t-kinds').addEventListener('click', (ev) => {
 });
 function pressKind(kind) {
   todayKind = kind;
+  if (searchActive()) void askRecord(searchWords());
   void loadThread({ quiet: true });
 }
 
@@ -3121,7 +2969,7 @@ function drawPeople() {
   if (host.hidden) { host.textContent = ''; return; }
   peopleBar(host, {
     label: 'Whose', pressed, noun: 'entry', plural: 'entries',
-    onPress: (key) => { pressPerson(key); void loadThread({ quiet: true }); },
+    onPress: (key) => { pressPerson(key); if (searchActive()) void askRecord(searchWords()); void loadThread({ quiet: true }); },
     people,
   });
   if (had) host.querySelector(`[data-key="${CSS.escape(had)}"]`)?.focus({ preventScroll: true });
@@ -3221,6 +3069,7 @@ function todayEscape(ev) {
   if (view !== 'today' || ev.key !== 'Escape' || ev.isComposing || ev.defaultPrevented) return;
   if (ev.target.closest?.('#cat-sec, #phone-sec')) return;
   if (cancelOpen($('days'))) ev.preventDefault();
+  if (leaveSearch()) ev.preventDefault();
 }
 document.addEventListener('keydown', todayEscape);
 
@@ -3268,13 +3117,221 @@ function watchLastRow() {
   const last = $('day-today').querySelector('.day-body')?.lastElementChild;
   if (!last) return;
   lastRowWatch = new IntersectionObserver((seen) => {
-    const reading = view === 'today' && todayKind === 'all' && threadData?.who === 'everyone';
+    const reading = view === 'today' && todayKind === 'all' && threadData?.who === 'everyone' && !searchActive();
     if (!seen.some((x) => x.isIntersecting) || !reading) return;
     if (!threadData.last || threadData.last === threadData.newSince) return;
     threadData.newSince = threadData.last;
     void api('/api/briefing/read', { upTo: threadData.last }).catch(() => {});
   });
   lastRowWatch.observe(last);
+}
+
+// ── one search, in Today's head ─────────────────────────────────────────────
+//
+// Two letters in the field and the days give way to what the record holds for them, as day cards; a kind or a person
+// pressed asks again. Asked 250ms after the typing stops, and only the latest question's answer is drawn.
+const searchField = $('t-search-q');
+let recordTimer = 0;
+/** Counts the questions asked; an answer to any but the last is dropped. */
+let recordAsked = 0;
+
+const searchWords = () => searchField.value.trim();
+/** True while two letters or more are in the field: the days are in the results' place. */
+function searchActive() { return searchWords().length >= 2; }
+
+/** The days put back: the results emptied, and anything still on its way dropped. */
+function putDaysBack() {
+  clearTimeout(recordTimer);
+  recordAsked++;
+  $('briefing').classList.remove('searching-record');
+  $('t-results-line').textContent = '';
+  $('t-results-days').textContent = '';
+  $('t-elsewhere').textContent = '';
+  $('t-elsewhere').hidden = true;
+  $('t-results-end').textContent = '';
+}
+
+/**
+ * Search left: the field emptied, the timer and a late answer let go, the phone's field closed with focus back on its
+ * button. Whether there was anything to leave, so Escape does only one thing.
+ */
+function leaveSearch() {
+  const head = $('today-head');
+  const phone = head.classList.contains('searching');
+  const did = searchField.value !== '' || phone || $('briefing').classList.contains('searching-record');
+  const focused = $('t-search').contains(document.activeElement);
+  putDaysBack();
+  searchField.value = '';
+  $('t-search-clear').hidden = true;
+  head.classList.remove('searching');
+  if (phone && focused) $('t-search-btn').focus({ preventScroll: true });
+  return did;
+}
+/** A household switch starts with an empty field. */
+function todaySearchReset() { leaveSearch(); }
+
+$('t-search-btn').appendChild(lucide('search'));
+$('t-search-clear').appendChild(lucide('x'));
+$('t-search-btn').addEventListener('click', () => {
+  $('today-head').classList.add('searching');
+  searchField.focus();
+});
+$('t-search-cancel').addEventListener('click', () => { leaveSearch(); });
+$('t-search-clear').addEventListener('click', () => {
+  searchField.value = '';
+  $('t-search-clear').hidden = true;
+  putDaysBack();
+  searchField.focus();
+});
+$('t-search-q').addEventListener('input', () => {
+  const words = searchWords();
+  $('t-search-clear').hidden = searchField.value === '';
+  clearTimeout(recordTimer);
+  recordAsked++;
+  if (words.length < 2) { putDaysBack(); return; }
+  $('briefing').classList.add('searching-record');
+  if (!$('t-results-days').children.length) $('t-results-line').textContent = 'Searching…';
+  recordTimer = setTimeout(() => { void askRecord(words); }, 250);
+});
+
+async function askRecord(words) {
+  const asked = ++recordAsked;
+  const q = new URLSearchParams({ q: words });
+  if (todayKind !== 'all') q.set('lane', todayKind);
+  if (personPressed !== null) q.set('who', personPressed);
+  let out;
+  try {
+    out = await api(`/api/search?${q}`);
+  } catch {
+    if (asked !== recordAsked) return;
+    drawRecord(words, null);
+    return;
+  }
+  if (asked !== recordAsked) return;
+  drawRecord(words, out);
+}
+
+/** Every occurrence of `words`, in any case, wrapped in `mark`: text nodes only, so nothing but text is ever touched. */
+function markWords(el, words) {
+  const want = words.trim().toLowerCase();
+  if (!want) return;
+  const texts = [];
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  for (let n = walk.nextNode(); n; n = walk.nextNode()) texts.push(n);
+  for (const t of texts) {
+    const text = t.nodeValue;
+    const lower = text.toLowerCase();
+    let at = lower.indexOf(want);
+    if (at < 0) continue;
+    const frag = document.createDocumentFragment();
+    let from = 0;
+    while (at >= 0) {
+      if (at > from) frag.append(text.slice(from, at));
+      frag.append(node('mark', '', text.slice(at, at + want.length)));
+      from = at + want.length;
+      at = lower.indexOf(want, from);
+    }
+    if (from < text.length) frag.append(text.slice(from));
+    t.replaceWith(frag);
+  }
+}
+
+/** One result row: the row's own words, the passage a later word of it matched, and a way to its day. */
+function resultRow(e, words) {
+  const { row, text } = entShell(e);
+  const sub = (line) => text.appendChild(node('span', 'ent-sub', line));
+  if (e.kind === 'briefing') {
+    text.appendChild(node('b', '', e.headline));
+    if (e.passage) sub(e.passage);
+  } else if (e.kind === 'note' || e.kind === 'ask') {
+    text.append(byWord(e), e.kind === 'note' ? ' left a note' : ' asked Claude');
+    text.appendChild(node('p', 'ent-words', e.text));
+    if (e.kind === 'ask' && e.passage) sub(`Claude answered: ${e.passage}`);
+    else if (e.passage) sub(e.passage);
+  } else if (e.kind === 'card') {
+    if (!e.app) text.append(byWord(e), ' suggested ');
+    text.appendChild(node('b', '', e.offer.summary));
+    if (e.passage) sub(e.passage);
+  } else if (e.kind === 'change') {
+    if (e.hand) handedText(text, e);
+    else if (e.event) eventText(text, e);
+    else text.append(byWord(e), ` ${e.what}`);
+    if (e.why) text.appendChild(node('span', 'ent-why', `“${e.why}”`));
+    if (e.passage) sub(e.passage);
+  } else {
+    text.appendChild(node('b', '', e.offer.summary));
+  }
+  markWords(text, words);
+  const link = rowLink('Show in its day', () => { todaySearchReset(); void openTodayAt({ event: e.id }); });
+  text.appendChild(node('div', 'ent-actions')).appendChild(link);
+  return row;
+}
+
+/** A day's plain head over its matches: the day's name, then "2 of 7 entries". */
+function resultDay(d, entries, words) {
+  const section = node('section', 'day');
+  section.dataset.day = d.day;
+  const h = node('h3', 'day-plain');
+  const first = node('span', 'day-first');
+  if (d.day === todayKey()) first.textContent = 'Today';
+  else {
+    const [weekday, date] = dayParts(d.day);
+    first.append(node('b', '', weekday), ' ', node('small', '', date));
+  }
+  h.append(first, node('span', 'day-second', d.count === d.total ? `${d.count} ${d.count === 1 ? 'entry' : 'entries'}` : `${d.count} of ${d.total} entries`));
+  const body = node('div', 'list day-body');
+  for (const e of entries) body.appendChild(resultRow(e, words));
+  section.append(h, body);
+  return section;
+}
+
+/** What the record answered, or null when the question could not be asked. */
+function drawRecord(words, out) {
+  const line = $('t-results-line');
+  const days = $('t-results-days');
+  const elsewhere = $('t-elsewhere');
+  const end = $('t-results-end');
+  days.textContent = '';
+  elsewhere.textContent = '';
+  elsewhere.hidden = true;
+  end.textContent = '';
+  if (!out) { line.textContent = 'The search could not be done just now.'; return; }
+  const entries = Array.isArray(out.entries) ? out.entries : [];
+  const other = Array.isArray(out.elsewhere) ? out.elsewhere : [];
+  line.textContent = '';
+  if (!entries.length && !other.length) line.textContent = 'Nothing in the household matches that.';
+  else if (entries.length) line.append(node('b', '', String(entries.length)), ` in the record for “${words}” · newest first`);
+  for (const d of out.days ?? []) {
+    const mine = entries.filter((e) => e.day === d.day);
+    if (mine.length) days.appendChild(resultDay(d, mine, words));
+  }
+  if (other.length) {
+    elsewhere.hidden = false;
+    elsewhere.appendChild(node('h2', '', `Elsewhere · ${other.length}`));
+    const box = node('div', 'list');
+    for (const h of other) {
+      const b = node('button', 'rowi hit');
+      b.type = 'button';
+      const text = node('span', '', h.title);
+      if (h.kind === 'file') {
+        text.appendChild(node('span', 'meta', `A file on ${h.on ?? 'a plan'}`));
+        b.addEventListener('click', () => {
+          window.open(planPath(h.open.file.plan, `/files/${encodeURIComponent(h.open.file.name)}`), '_blank', 'noopener');
+        });
+      } else {
+        text.appendChild(node('span', 'meta', h.passage ? `A plan · “${h.passage}”` : 'A plan'));
+        b.addEventListener('click', () => { if (h.open.plan) void openCard(h.open.plan); });
+      }
+      markWords(text, words);
+      const endBox = node('span', 'end');
+      endBox.appendChild(icon('go', 'i sm chev'));
+      b.append(text, endBox);
+      box.appendChild(b);
+    }
+    elsewhere.appendChild(box);
+  }
+  end.textContent = out.capped ? 'Showing the newest 100. Add a word to narrow it.' : 'Searched every day since the record began.';
+  if (out.documents === 'not searched') end.append(' ', 'Sign in again to search briefings, answers and files too.');
 }
 
 // ── Yours: the rails under the briefing ─────────────────────────────────────
@@ -13219,8 +13276,8 @@ function forgetHousehold() {
   $('me-apps').textContent = '';
   $('me-apps').hidden = true;
 
-  // The search box and its hits.
-  searchReset();
+  // The search in Today's head, and what it found.
+  todaySearchReset();
 }
 
 // Several requests in flight can all meet the same 409; only the first sends the page to the picker.
@@ -13426,7 +13483,7 @@ async function enterApp() {
   if (turn !== householdTurn) return null;
   householdLabel = who.household?.label ?? null;
   docHousehold = `${who.sandbox ? 'sandbox' : 'nas'}:${who.who}:${who.household?.id ?? ''}`;
-  searchReset();
+  todaySearchReset();
   // A code is the household's it was made in: the sheet does not stay open across a switch.
   closePhoneSheet(false);
   // Today's date at once, from this device; the briefing replaces it with the

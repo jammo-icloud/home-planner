@@ -159,6 +159,8 @@ const ADDED: readonly Line[] = [
   ['T14', "Claude · the day's briefing", 'today'], ['T14', 'Claude · briefing for ', 'today'], ['T14', '.day .claude', 'css'], ['T15', 'Briefing · written without Claude', 'today'], ['T16', "'headline'", 'today'], ['T17', 'Read the whole briefing', 'today'], ['T18', 'Reading the briefing…', 'today'],
   // Kinds, people, empty days and the earlier months (Task 12).
   ['T4', 'const KINDS = ', 'today'], ['T4', "['all', 'All']", 'today'], ['T4', "['notes', 'Notes']", 'today'], ['T4', 'function pressKind(', 'today'], ['T4', "label: 'Whose'", 'today'], ['T4', "plural: 'entries'", 'today'], ['T4', '.filters.kinds', 'css'], ['T6', '`Show ${', 'today'], ['T6', 'function showMonth(', 'today'], ['sort', 'function flipSort(', 'today'], ['sort', "'Newest first'", 'today'], ['sort', "'Oldest first'", 'today'], ['sort', "'arrow-up-down':", 'shared'], ['empty', 'function emptyLine(', 'today'], ['empty', 'Nothing under ${', 'today'], ['left', 'and are left out.', 'today'], ['left', 'and is left out.', 'today'], ['bar', 'plural', 'shared'],
+  ['T97', 'id="t-search-q"', 'todayMarkup'], ['T97', 'id="t-search-btn"', 'todayMarkup'], ['T97', 'Search the household', 'todayMarkup'], ['T98', 'setTimeout(() => { void askRecord(words); }, 250)', 'today'], ['T98', 'if (asked !== recordAsked) return;', 'today'], ['T99', 'in the record for', 'today'], ['T99', 'Claude answered: ', 'today'], ['T99', 'function markWords(', 'today'], ['T101', 'if (leaveSearch()) ev.preventDefault();', 'today'], ['T102', "'Show in its day'", 'today'], ['T102', "'_blank', 'noopener'", 'today'], ['T107', 'function todaySearchReset(', 'today'], ['S23', 'todaySearchReset();', 'page'], ['S3', "$('t-search-q').addEventListener", 'today'],
+  ['srch', 'Elsewhere · ', 'today'], ['srch', 'A plan · ', 'today'], ['srch', 'A file on ', 'today'], ['srch', 'Searched every day since the record began.', 'today'], ['srch', 'Showing the newest 100. Add a word to narrow it.', 'today'], ['srch', 'function searchActive(', 'today'], ['srch', '  search: \'<path', 'shared'], ['srch', '  x: \'<path', 'shared'], ['mark', '--mark-fill', 'css'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
@@ -188,6 +190,7 @@ const GONE: readonly Line[] = [
   ['T21', "node('div', 'turn')", 'today'], ['T21', "'msg member'", 'today'], ['S32', 'dataset.kind = e.kind', 'today'],
   ['T82', 'placeYours', 'page'], ['T92', 'asked ${c.asked.to}', 'page'], ['T92', '${c.owner} asked', 'page'], ['S9', 'otherMember() ?? e.label', 'today'],
   ['T17', 'Read all of it', 'page'], ['spec', "'msg claude'", 'today'], ['spec', "node('div', 'bubble'", 'today'],
+  ['T97', 'id="search"', 'page'], ['T97', 'id="search-q"', 'page'], ['T97', 'id="search-list"', 'page'], ['T100', 'function searchMark(', 'page'], ['T106', 'function searchSay(', 'page'], ['T106', "Today doesn't show that one", 'page'], ['T108', 'function searchOpen(', 'page'], ['T99', 'function searchDraw(', 'page'], ['T102', 'function searchGo(', 'page'], ['spec', 'SEARCH_KINDS', 'page'], ['spec', 'function searchClose(', 'page'], ['spec', 'searchClear(', 'page'], ['spec', 'searchReset(', 'page'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
@@ -196,7 +199,7 @@ const DRAWN_LATER: readonly string[] = [];
 describe('the page ledger', () => {
   test('every id the script reaches for at load is in the markup', () => {
     const ids = new Set([...script.matchAll(/^\S.*?\$\('([\w-]+)'\)/gm)].map((m) => m[1]!));
-    assert.ok(ids.size >= 10, 'the pattern still finds the top-level lookups');
+    assert.ok(ids.size >= 8, 'the pattern still finds the top-level lookups');
     assert.deepEqual([...ids].filter((id) => !markup.includes(`id="${id}"`) && !DRAWN_LATER.includes(id)), []);
   });
   test('the regions the entries are searched in are found', () => {
