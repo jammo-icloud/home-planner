@@ -12,13 +12,32 @@
  */
 
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile, rename } from 'node:fs/promises';
-import { existsSync } from 'node:fs';
+import { constants, existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { Store } from './store.ts';
 import { scopeOf } from './restore.ts';
-import { CONFIG_OPS } from './types.ts';
+import { CONFIG_OPS, SYSTEM } from './types.ts';
 import type { Actor, Event } from './types.ts';
+
+/**
+ * Turn a log's shelves into goals, if it still has one: true when it wrote the line.
+ *
+ * The one write no member asked for, so the log is copied beside itself first,
+ * to `<log>.before-0.7.0`, and never over a copy already there: that copy is
+ * the log as it was before any retirement, and an older build opens it. A copy
+ * that cannot be made throws, and nothing is written; the caller's open fails.
+ */
+export async function retireShelves(store: Store, copy: typeof copyFile = copyFile): Promise<boolean> {
+  if (![...store.state.plans.values()].some((p) => !p.removed && p.parent !== null)) return false;
+  try {
+    await copy(store.path, `${store.path}.before-0.7.0`, constants.COPYFILE_EXCL);
+  } catch (err) {
+    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+  }
+  await store.append(SYSTEM, { op: 'shelves.retire' });
+  return true;
+}
 
 export interface HouseholdInfo {
   readonly id: string;
@@ -121,6 +140,8 @@ export class Households {
       store.close();
       return store;
     }
+    // Before any request reads it. A throw here is the open failing, loudly.
+    await retireShelves(store);
     this.#open.set(id, store);
     return store;
   }
@@ -140,6 +161,7 @@ export class Households {
     const store = new Store({ path: this.path(id) });
     await store.load();
     await store.append(who, { op: 'household.claim', label });
+    await retireShelves(store);
     this.#open.set(id, store);
     return { id, store };
   }
@@ -196,6 +218,7 @@ export class Households {
       summary.push('The copy chooses its own folder for documents and starts with booking off: '
         + 'no two households share a folder, and friends book with one household at a time.');
     }
+    await retireShelves(store);
     this.#open.set(id, store);
     return { id, store, summary };
   }

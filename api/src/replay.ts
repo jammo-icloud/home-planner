@@ -271,6 +271,8 @@ export function validate(e: Event): void {
   // The app itself writes two of the household's choices and no others. A seed
   // wrote facts as `system` long before these ops, so only these five are limited.
   if (e.who === SYSTEM && CONFIG_OPS.has(e.op) && !systemMay(e)) throw new ReplayError(`system cannot ${e.op}`, e);
+  // The one change no member asks for: the app writes it when it opens a log that still has a shelf.
+  if (e.op === 'shelves.retire' && e.who !== SYSTEM) throw new ReplayError('shelves.retire is written by system', e);
   if (e.op === 'guests.booking' && e.calendarGone !== undefined && (e.who !== SYSTEM || e.on !== false || e.calendarGone !== true)) {
     throw new ReplayError('calendarGone is written by system, when it turns booking off', e);
   }
@@ -1061,9 +1063,10 @@ function applyTo(d: Draft, e: Event): void {
   d.count += 1;
 
   // What every plan's page showed, for the ops that can change one: a plan
-  // line, or an area renamed under its plans. A copy of the map, not of the
-  // plans; the fold replaces a plan it changes, so the old object is the old view.
-  const before = planShaped(e.op) || e.op === 'areas.rename' ? new Map(d.plans) : null;
+  // line, an area renamed under its plans, or the shelves retired. A copy of
+  // the map, not of the plans; the fold replaces a plan it changes, so the old
+  // object is the old view.
+  const before = planShaped(e.op) || e.op === 'areas.rename' || e.op === 'shelves.retire' ? new Map(d.plans) : null;
   fold(d, e);
   if (before) markPages(d, e, before);
 }
@@ -1616,13 +1619,8 @@ function fold(d: Draft, e: Event): void {
     case 'plan.create': {
       if (d.plans.has(e.plan)) throw new ReplayError(`there is already a plan ${e.plan}`, e);
       refuseUnknownArea(d, e.area, e);
-      if (e.parent !== undefined) {
-        // Two levels and no more: a shelf of plans, never a shelf of shelves.
-        const parent = livePlan(d, e.parent, e);
-        if (parent.parent !== null) throw new ReplayError('plans go two levels deep, no more', e);
-        // A shelf sits in one row, so everything on it sits there too.
-        if (e.area !== parent.area) throw new ReplayError("an item lives in its shelf's area", e);
-      }
+      // A shelf, in a line from before they were retired: its plan must be there.
+      if (e.parent !== undefined) livePlan(d, e.parent, e);
       d.plans.set(e.plan, {
         id: e.plan, title: e.title, area: e.area, parent: e.parent ?? null,
         state: 'planning', stateAt: e.at, owner: e.who, goal: null, ownerSince: e.at, ownerFrom: null, asked: null,
@@ -1637,11 +1635,6 @@ function fold(d: Draft, e: Event): void {
     case 'plan.set': {
       const p = livePlan(d, e.plan, e);
       if (e.area !== undefined) refuseUnknownArea(d, e.area, e);
-      // An item moves only with its shelf; on its own it would need a new shelf,
-      // and nothing re-parents a plan yet. Naming the area it already has is no move.
-      if (e.area !== undefined && p.parent !== null && e.area !== p.area) {
-        throw new ReplayError("an item lives in its shelf's area", e);
-      }
       d.plans.set(p.id, {
         ...p,
         ...(e.title !== undefined ? { title: e.title } : {}),
@@ -1662,8 +1655,6 @@ function fold(d: Draft, e: Event): void {
 
     case 'plan.state': {
       const p = livePlan(d, e.plan, e);
-      // A shelf is where its plans are, never what stage they are at.
-      if (hasLiveChildren(d, p.id)) throw new ReplayError(`${p.title} is a shelf; its plans have states, it does not`, e);
       // Saying the same state again does not restart the clock.
       if (p.state === e.state) return;
       d.plans.set(p.id, { ...p, state: e.state, stateAt: e.at });
@@ -1730,6 +1721,28 @@ function fold(d: Draft, e: Event): void {
       return;
     }
 
+    case 'shelves.retire': {
+      // Each shelf, in the log's order, becomes a goal named for it, on it and on
+      // its plans, except where one already carries a goal. Then nothing sits under
+      // anything. A removed plan is history, and keeps what it was.
+      const live = [...d.plans.values()].filter((p) => !p.removed);
+      for (const shelf of live) {
+        const under = live.filter((c) => c.parent === shelf.id);
+        if (under.length === 0) continue;
+        const label = shelfGoal(d.plans.get(shelf.id)!.title);
+        const goal = goalSpelling(d.plans.values(), label) ?? label;
+        for (const { id } of [shelf, ...under]) {
+          const p = d.plans.get(id)!;
+          if (p.goal === null) d.plans.set(id, { ...p, goal });
+        }
+      }
+      for (const { id } of live) {
+        const p = d.plans.get(id)!;
+        if (p.parent !== null) d.plans.set(id, { ...p, parent: null });
+      }
+      return;
+    }
+
     case 'plan.checklist': {
       const p = livePlan(d, e.plan, e);
       d.plans.set(p.id, { ...p, checklist: e.items.map((i) => ({ id: i.id, text: i.text, done: i.done })) });
@@ -1788,8 +1801,6 @@ function fold(d: Draft, e: Event): void {
 
     case 'plan.remove': {
       const p = livePlan(d, e.plan, e);
-      // Removing a shelf would orphan its plans; they go first, by name.
-      if (hasLiveChildren(d, p.id)) throw new ReplayError(`${p.title} still has plans on it`, e);
       // A removed plan cannot be taken on, so an open ask on it lapses; nor
       // changed, so every card still waiting to change it lapses too.
       lapseAsk(d, { ...p, removed: true }, e);
@@ -2106,8 +2117,13 @@ function lapseOffers(d: Draft, id: PlanId, e: Event): void {
   }
 }
 
-const hasLiveChildren = (d: Draft, id: PlanId): boolean =>
-  [...d.plans.values()].some((c) => c.parent === id && !c.removed);
+/**
+ * The goal a shelf becomes: its title by the goal rule, cut to the goal's 60
+ * characters. Never refused: a title is never blank, and what the cut leaves
+ * is trimmed again, so the label is one `goalLabel` would leave as it is.
+ */
+const shelfGoal = (title: string): string =>
+  title.trim().replace(/\s+/g, ' ').slice(0, PLAN_LIMITS.goal).trimEnd();
 
 function refuseUnknownArea(d: Draft, area: string, e: Event): void {
   if (!d.areas.includes(area)) throw new ReplayError(`"${area}" is not one of this household's areas`, e);

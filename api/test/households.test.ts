@@ -5,13 +5,22 @@ import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { Households, adoptSingleLog, isValidId, slugify } from '../src/households.ts';
-import { parseBackup, planRestore, eventsToApply, scopeOf } from '../src/restore.ts';
+import { Households, adoptSingleLog, isValidId, retireShelves, slugify } from '../src/households.ts';
+import { apply } from '../src/replay.ts';
+import { newerBackup, parseBackup, planRestore, eventsToApply, scopeOf } from '../src/restore.ts';
 import { parseDollars } from '../src/money.ts';
 import { Store } from '../src/store.ts';
 import type { Event } from '../src/types.ts';
 
 const dir = async () => join(await mkdtemp(join(tmpdir(), 'pb-hh-')), 'households');
+
+/** A household of bob's that alice, who made the plans in the backup, is a member of. */
+const fresh = async () => {
+  const hh = new Households(await dir());
+  const made = await hh.create('bob', 'Fresh');
+  await made.store.append('bob', { op: 'member.add', member: 'alice', why: 'the plans are hers' });
+  return made;
+};
 
 /** A household with facts, a budget and a month — one of each band. */
 async function furnished(store: Awaited<ReturnType<Households['open']>>) {
@@ -728,14 +737,6 @@ describe('plans and settings in a backup', () => {
     return readFile(store.path, 'utf8');
   };
 
-  /** A household of bob's that alice, who made the plans in the backup, is a member of. */
-  const fresh = async () => {
-    const hh = new Households(await dir());
-    const made = await hh.create('bob', 'Fresh');
-    await made.store.append('bob', { op: 'member.add', member: 'alice', why: 'the plans are hers' });
-    return made;
-  };
-
   test('a plan handed to someone who is not a member here is named, and nothing is restored', async () => {
     const hh = new Households(await dir());
     const source = await hh.create('alice', 'Rivera');
@@ -850,6 +851,72 @@ describe('plans and settings in a backup', () => {
     assert.deepEqual(plan.collisions, []);
     await empty.store.adopt(eventsToApply(plan));
     assert.equal(empty.store.state.calendar.household!.cal_id, 'cal-2');
+  });
+});
+
+describe('a log with shelves is retired when it is opened', () => {
+  const shelved = async () => {
+    const hh = new Households(await dir());
+    const made = await hh.create('alice', 'Rivera');
+    await made.store.append('alice', [{ op: 'plan.create', plan: 'kitchen', title: 'Kitchen refresh', area: 'House' },
+      { op: 'plan.create', plan: 'hinge', title: 'Fix the hinge', area: 'House', parent: 'kitchen' }]);
+    return { hh, ...made, before: await readFile(made.store.path, 'utf8') };
+  };
+  const linesOf = async (path: string) => (await readFile(path, 'utf8')).trim().split('\n').map((l) => JSON.parse(l));
+  test('the first open copies the log beside itself and appends one line from system; the next does neither', async () => {
+    const { hh, id, store, before } = await shelved();
+    const opened = await new Households(hh.dir).open(id);              // another process
+    assert.equal(await readFile(`${store.path}.before-0.7.0`, 'utf8'), before);
+    const lines = await linesOf(store.path);
+    assert.deepEqual([lines.length, lines.at(-1).op, lines.at(-1).who], [before.trim().split('\n').length + 1, 'shelves.retire', 'system']);
+    assert.equal(opened.state.plans.get('hinge')!.goal, 'Kitchen refresh');
+    await new Households(hh.dir).open(id);
+    assert.equal((await linesOf(store.path)).length, lines.length);
+    assert.equal(await readFile(`${store.path}.before-0.7.0`, 'utf8'), before);   // never overwritten
+  });
+  test('a copy that cannot be made fails loudly and appends nothing; a copy already there stands; no shelf, no line and no copy', async () => {
+    const { hh, store, before } = await shelved();
+    const failing = (code: string) => async () => { throw Object.assign(new Error(code), { code }); };
+    await assert.rejects(retireShelves(store, failing('EACCES')), /EACCES/);
+    assert.equal(await readFile(store.path, 'utf8'), before);
+    assert.deepEqual([await retireShelves(store, failing('EEXIST')), await retireShelves(store)], [true, false]);
+    const plain = (await hh.create('alice', 'Elsewhere')).store;
+    await plain.append('alice', { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' });
+    assert.equal(await retireShelves(plain), false);
+    await assert.rejects(readFile(`${plain.path}.before-0.7.0`), /ENOENT/);
+  });
+});
+
+describe('a backup made by 0.7.0', () => {
+  test('restores into a fresh household, and reads cleanly against its own', async () => {
+    const source = await new Households(await dir()).create('alice', 'Rivera');
+    await source.store.append('alice', [{ op: 'member.add', member: 'bob', why: 'my partner' }, { op: 'areas.add', area: 'Garden' },
+      { op: 'plan.create', plan: 'beds', title: 'Dig the beds', area: 'Garden' }, { op: 'plan.hand', plan: 'beds', to: 'bob', why: 'your spade' },
+      { op: 'plan.goal', plan: 'beds', goal: 'New garden' }, { op: 'plan.create', plan: 'kitchen', title: 'Kitchen refresh', area: 'House' },
+      { op: 'plan.create', plan: 'hinge', title: 'Fix the hinge', area: 'House', parent: 'kitchen' }]);
+    assert.equal(await retireShelves(source.store), true);
+    await source.store.append('bob', { op: 'goal.rename', from: 'Kitchen refresh', to: 'Kitchen' });
+    const backup = parseBackup(await readFile(source.store.path, 'utf8'));
+    assert.deepEqual([backup.skipped, backup.unknown], [[], []]);
+    const { store } = await fresh();                                               // bob's, with alice a member
+    const plan = planRestore(store.state, backup, ['settings', 'plans']);
+    assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);       // system is no outsider
+    await store.adopt(eventsToApply(plan));
+    const beds = store.state.plans.get('beds')!;
+    assert.deepEqual([beds.owner, beds.ownerFrom, beds.goal, store.state.plans.get('hinge')!.goal, store.state.hands.size], ['bob', 'alice', 'New garden', 'Kitchen', 1]);
+    const own = planRestore(source.store.state, backup, ['settings']);
+    assert.deepEqual([own.collisions, own.missingPrerequisites], [[], []]);
+    assert.doesNotThrow(() => apply(source.store.state, own.take));                 // an area already there changes nothing
+  });
+  test('a backup holding an op this build does not know is refused whole, never read as if the line were absent', () => {
+    const line = (e: object) => JSON.stringify({ at: '2026-12-01T09:00:00.000Z', who: 'alice', ...e });
+    const claim = line({ id: 'x1', op: 'household.claim', label: 'Home' });
+    const backup = parseBackup([claim, line({ id: 'x2', op: 'bill.set', budget: 'b' }), line({ id: 'x3', op: 'bill.set', budget: 'b' }),
+      line({ id: 'x4', op: 'bill.remove', budget: 'b' })].join('\n'));
+    assert.deepEqual(backup.skipped.slice(0, 2), ['line 2: unknown op bill.set', 'line 3: unknown op bill.set']);
+    assert.deepEqual(backup.unknown, ['bill.set', 'bill.remove']);
+    assert.equal(newerBackup(backup), 'This backup was made by a newer Home Planner. It holds bill.set and bill.remove, which this version cannot read.');
+    assert.equal(newerBackup(parseBackup(claim)), null);
   });
 });
 

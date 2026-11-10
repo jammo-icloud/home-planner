@@ -859,6 +859,7 @@ export function describe(
     case 'plan.goal': what = e.goal ? `set ${plan(e.plan)} toward ${e.goal}` : `took the goal off ${plan(e.plan)}`; break;
     case 'goal.rename': what = `renamed the goal ${e.from} to ${e.to}`; break;
     case 'goal.remove': what = `removed the goal ${e.goal}`; break;
+    case 'shelves.retire': what = 'retired the shelves into goals'; break;
     case 'plan.checklist': what = `updated the checklist on ${plan(e.plan)}`; break;
     case 'plan.attach': what = `attached ${e.name} to ${plan(e.plan)}`; break;
     case 'plan.detach': what = `took ${e.path.split('/').pop() || e.path} off ${plan(e.plan)}`; break;

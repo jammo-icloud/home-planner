@@ -53,7 +53,7 @@ export function scopeOf(e: Event): Scope {
     // The board: every plan and everything on its card. Needs nothing else.
     case 'plan.create': case 'plan.set': case 'plan.state':
     case 'plan.ask': case 'plan.ask.accept': case 'plan.ask.decline': case 'plan.hand':
-    case 'plan.goal': case 'goal.rename': case 'goal.remove':
+    case 'plan.goal': case 'goal.rename': case 'goal.remove': case 'shelves.retire':
     case 'plan.checklist': case 'plan.attach': case 'plan.detach':
     case 'plan.contact.link': case 'plan.contact.unlink':
     case 'plan.due': case 'plan.block': case 'plan.unblock': case 'plan.remove':
@@ -78,6 +78,8 @@ export interface ParsedBackup {
   readonly counts: Readonly<Record<Scope, number>>;
   /** Lines that were not usable events. Never silently dropped. */
   readonly skipped: readonly string[];
+  /** Ops this build does not know, each once, in the order the backup first has them. */
+  readonly unknown: readonly string[];
   readonly label: string | null;
   readonly owner: string | null;
 }
@@ -85,6 +87,7 @@ export interface ParsedBackup {
 export function parseBackup(text: string): ParsedBackup {
   const events: Event[] = [];
   const skipped: string[] = [];
+  const unknown = new Set<string>();
   let label: string | null = null;
   let owner: string | null = null;
 
@@ -94,6 +97,13 @@ export function parseBackup(text: string): ParsedBackup {
     if (!raw) continue;
     let e: Event;
     try { e = JSON.parse(raw) as Event; } catch { skipped.push(`line ${i + 1}: not JSON`); continue; }
+    // An op with no band here is one a newer build wrote: the backup is not this build's to read.
+    const op: unknown = typeof e === 'object' && e !== null ? (e as { op?: unknown }).op : undefined;
+    if (typeof op === 'string' && scopeOf(e) === undefined) {
+      skipped.push(`line ${i + 1}: unknown op ${op}`);
+      unknown.add(op);
+      continue;
+    }
     try { validate(e); } catch (err) { skipped.push(`line ${i + 1}: ${(err as Error).message}`); continue; }
     if (e.op === 'household.claim') { label = e.label; owner = e.who; }
     events.push(e);
@@ -101,7 +111,18 @@ export function parseBackup(text: string): ParsedBackup {
 
   const counts = { facts: 0, budgets: 0, months: 0, people: 0, thread: 0, settings: 0, plans: 0, bookings: 0 } as Record<Scope, number>;
   for (const e of events) counts[scopeOf(e)]++;
-  return { events, counts, skipped, label, owner };
+  return { events, counts, skipped, unknown: [...unknown], label, owner };
+}
+
+/**
+ * Why a backup is refused whole, or null: it holds ops a newer build wrote.
+ * Read without those lines it would restore as something it never was.
+ */
+export function newerBackup(b: ParsedBackup): string | null {
+  if (b.unknown.length === 0) return null;
+  const ops = b.unknown.length === 1 ? b.unknown[0]!
+    : `${b.unknown.slice(0, -1).join(', ')} and ${b.unknown.at(-1)!}`;
+  return `This backup was made by a newer Home Planner. It holds ${ops}, which this version cannot read.`;
 }
 
 export interface Collision {
@@ -227,6 +248,8 @@ export function planRestore(
       if (e.op === 'household.claim') members.add(e.who);
       else if (e.op === 'member.add') members.add(e.member);
       else if (e.op === 'member.remove') members.delete(e.member);
+      // The app's own line, written by system, which the fold takes from no one else: nobody to add.
+      else if (e.op === 'shelves.retire') continue;
       else if (scopeOf(e) === 'plans') {
         outside(e.who, 'made');
         if (e.op === 'plan.ask') outside(e.to, 'asked');
@@ -313,6 +336,8 @@ export function planRestore(
         livePlans.set(e.plan, e.area);
         for (const [id, parent] of parents) if (parent === e.plan && livePlans.has(id)) livePlans.set(id, e.area);
       } else if (e.op === 'plan.remove') livePlans.delete(e.plan);
+      // After the retirement no plan sits under another, so none moves with one.
+      else if (e.op === 'shelves.retire') parents.clear();
       if (e.op === 'plan.create' && e.parent !== undefined) parents.set(e.plan, e.parent);
       const area = wanted.has('plans') && (e.op === 'plan.create' || e.op === 'plan.set') ? e.area : undefined;
       if (area === undefined || areas.includes(area) || said.has(area)) continue;

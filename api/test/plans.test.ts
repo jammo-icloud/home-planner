@@ -13,7 +13,7 @@ import { board, card, goalsOf } from '../src/plans.ts';
 import { thread } from '../src/thread.ts';
 import { attach, attachmentPath, PLANNER_ROOT, readAttachment } from '../src/attachments.ts';
 import { describe as describeEvent, ProposalStore, ToolError } from '../src/tools.ts';
-import { householdDay, householdZone } from '../src/types.ts';
+import { SYSTEM, householdDay, householdZone } from '../src/types.ts';
 import type { Event, NewEventShape, Op } from '../src/types.ts';
 import { chooseFolderIn } from './folder.ts';
 
@@ -79,25 +79,6 @@ test('a plan is created in planning, owned by its creator, in a known area', asy
 
   // Claude proposes plans; it never writes one.
   assert.throws(() => replay([{ id: 'c1', at: NOW, who: 'claude', ...create('p3') } as Event]), refused(/claude cannot plan\.create/));
-});
-
-test('two levels and no more', async () => {
-  const { s } = await store();
-  await s.append('alice', create('p1'));
-  await s.append('alice', create('p2', { parent: 'p1' }));
-  assert.equal(s.state.plans.get('p2')!.parent, 'p1');
-  await assert.rejects(s.append('alice', create('p3', { parent: 'p2' })), refused(/two levels/));
-  await assert.rejects(s.append('alice', create('p4', { parent: 'nope' })), refused(/no such plan/));
-  assert.ok(!s.state.plans.has('p3'));
-});
-
-test('a shelf has no state', async () => {
-  const { s } = await store();
-  await s.append('alice', [create('p1'), create('p2', { parent: 'p1' })]);
-  await assert.rejects(s.append('alice', { op: 'plan.state', plan: 'p1', state: 'doing' }), refused(/shelf/));
-  // Its plans have states of their own.
-  await s.append('alice', { op: 'plan.state', plan: 'p2', state: 'doing' });
-  assert.equal(s.state.plans.get('p2')!.state, 'doing');
 });
 
 test('entering doing stamps stateAt; done leaves the board', async () => {
@@ -178,17 +159,6 @@ test('declining returns it with the reason, owner unchanged', async () => {
   // And it can be asked again.
   await s.append('alice', { op: 'plan.ask', plan: 'p1', to: 'bob', why: 'after December then' });
   assert.equal(s.state.plans.get('p1')!.asked?.to, 'bob');
-});
-
-test('removing a shelf with live children is refused', async () => {
-  const { s } = await store();
-  await s.append('alice', [create('p1'), create('p2', { parent: 'p1' })]);
-  await assert.rejects(s.append('alice', { op: 'plan.remove', plan: 'p1', why: 'tidy' }), refused(/still has plans/));
-  assert.equal(s.state.plans.get('p1')!.removed, false);
-  assert.equal(s.state.plans.get('p2')!.parent, 'p1', 'the child is not orphaned');
-  await s.append('alice', { op: 'plan.remove', plan: 'p2', why: 'not needed' });
-  await s.append('alice', { op: 'plan.remove', plan: 'p1', why: 'empty now' });
-  assert.equal(s.state.plans.get('p1')!.removed, true);
 });
 
 test('a removed plan is kept but marked, and cannot be edited', async () => {
@@ -419,6 +389,38 @@ describe('the fold owns the plan rules', () => {
     assert.equal(s.state.thread.offers.get(due!.id)?.replacedBy, removal!.id);
     assert.equal(s.state.thread.offers.get(item!.id)?.status, 'replaced', 'a new item for its shelf too');
     assert.equal(s.state.thread.offers.get(other!.id)?.status, 'open', 'cards on other plans are left alone');
+  });
+});
+
+describe('shelves are retired', () => {
+  test('old shelf lines still fold, and only a parent that is no live plan is refused', async () => {
+    const { s } = await store();
+    await s.append('alice', [{ op: 'areas.set', areas: ['House', 'Garden'] }, create('p1'), create('p2', { parent: 'p1' }),
+      create('p3', { parent: 'p2' }), create('p4', { parent: 'p1', area: 'Garden' }), { op: 'plan.state', plan: 'p1', state: 'doing' },
+      { op: 'plan.set', plan: 'p2', area: 'Garden' }, { op: 'plan.set', plan: 'p1', area: 'Garden' }]);
+    assert.equal(s.state.plans.get('p3')!.area, 'Garden');                 // plans under a plan still move with it
+    await s.append('alice', { op: 'plan.remove', plan: 'p1', why: 'done with it' });
+    await assert.rejects(s.append('alice', create('p5', { parent: 'nope' })), refused(/no such plan: nope/));
+  });
+  test('one line from system turns each shelf into a goal on it and on its plans', async () => {
+    const { s } = await store();
+    const plan = (id: string) => s.state.plans.get(id)!;
+    await s.append('alice', [create('kitchen', { title: 'Kitchen refresh' }), create('hinge', { parent: 'kitchen' }), create('tap', { parent: 'kitchen' }),
+      create('gone', { parent: 'kitchen' }), { op: 'plan.remove', plan: 'gone', why: 'not needed' }, create('alone'),
+      { op: 'plan.goal', plan: 'tap', goal: 'Summer trip' }, { op: 'plan.state', plan: 'hinge', state: 'doing' },
+      create('long', { title: 'A'.repeat(70) }), create('long1', { parent: 'long' }),            // the label is cut to its first 60
+      create('roof', { title: 'new  ROOF' }), create('roof1', { parent: 'roof' }), create('c'), { op: 'plan.goal', plan: 'c', goal: 'New roof' }]);
+    await assert.rejects(s.append('alice', { op: 'shelves.retire' }), refused(/shelves\.retire is written by system/));
+    const [retired] = await s.append(SYSTEM, { op: 'shelves.retire' });
+    assert.deepEqual(['kitchen', 'hinge', 'tap', 'alone', 'long1', 'roof', 'roof1'].map((id) => plan(id).goal),
+      ['Kitchen refresh', 'Kitchen refresh', 'Summer trip', null, 'A'.repeat(60), 'New roof', 'New roof']);   // a goal that matches gives its spelling
+    assert.deepEqual([...s.state.plans.values()].filter((p) => !p.removed && p.parent !== null), []);
+    assert.deepEqual([plan('hinge').state, plan('kitchen').owner, scopeOf(retired!)], ['doing', 'alice', 'plans']);
+    assert.deepEqual([...s.state.plans.values()].filter((p) => p.pageEvent === retired!.id).map((p) => p.id).sort(), ['hinge', 'long1', 'roof1', 'tap']);
+    await s.append('alice', { op: 'plan.state', plan: 'kitchen', state: 'doing' });         // an ordinary plan now
+    await s.append('bob', { op: 'goal.rename', from: 'Kitchen refresh', to: 'Kitchen' });   // later goal lines win on every replay
+    assert.equal(replay(eventsOf(s)).plans.get('hinge')!.goal, 'Kitchen');
+    assert.ok(!(await thread(s, { who: 'bob', budget: null })).entries.some((e) => e.id === retired!.id));
   });
 });
 
@@ -773,16 +775,6 @@ describe('board and card', () => {
 });
 
 describe('rulings', () => {
-  test('an item lives in its shelf\'s area', async () => {
-    const { s } = await store();
-    await s.append('alice', create('shelf', { area: 'House' }));
-    await assert.rejects(s.append('alice', create('a', { parent: 'shelf', area: 'Trips' })),
-      refused(/an item lives in its shelf's area/));
-    assert.ok(!s.state.plans.has('a'));
-    await s.append('alice', create('a', { parent: 'shelf', area: 'House' }));
-    assert.equal(s.state.plans.get('a')!.area, 'House');
-  });
-
   test('moving a shelf to another area takes its live plans with it', async () => {
     const { s } = await store();
     await s.append('alice', [create('shelf'), create('a', { parent: 'shelf' }), create('b', { parent: 'shelf' }),
@@ -819,18 +811,6 @@ describe('rulings', () => {
     assert.equal(s.state.thread.offers.get(offeredCard!.id)?.status, 'replaced');
     // Now hers to hand on.
     await s.append('alice', { op: 'plan.state', plan: 'mine', state: 'doing' });
-  });
-
-  test('an item cannot leave its shelf\'s area on its own', async () => {
-    const { s } = await store();
-    await s.append('alice', [create('shelf'), create('a', { parent: 'shelf' }), create('loose')]);
-    await assert.rejects(s.append('alice', { op: 'plan.set', plan: 'a', area: 'Trips' }),
-      refused(/an item lives in its shelf's area/));
-    assert.equal(s.state.plans.get('a')!.area, 'House');
-    // Saying the area it already has is no move at all, and a plan with no shelf moves freely.
-    await s.append('alice', { op: 'plan.set', plan: 'a', area: 'House', title: 'Hinges' });
-    await s.append('alice', { op: 'plan.set', plan: 'loose', area: 'Trips' });
-    assert.equal(s.state.plans.get('loose')!.area, 'Trips');
   });
 
   test('a plan that passes to the remover comes with no open ask', async () => {

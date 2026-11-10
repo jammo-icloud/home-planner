@@ -574,7 +574,7 @@ export type Event = Meta &
     //
     // The household's to-do board. Not money, so a member's edit is written
     // directly; Claude reaches the same ops only by offering them.
-    /** A new plan, in planning, owned by whoever made it. `parent` makes it part of a shelf. */
+    /** A new plan, in planning, owned by whoever made it. `parent` puts it on a shelf, until `shelves.retire`. */
     | { op: 'plan.create'; plan: PlanId; title: string; area: string; parent?: PlanId }
     /** Fields given are changed; fields left out are left alone. */
     | {
@@ -600,6 +600,11 @@ export type Event = Meta &
     | { op: 'goal.rename'; from: string; to: string }
     /** Every live plan carrying the goal has none. */
     | { op: 'goal.remove'; goal: string }
+    /**
+     * Written by `system` alone, when a log that still has a shelf is opened: each shelf's
+     * title becomes a goal on it and on its plans, and no plan sits under another after it.
+     */
+    | { op: 'shelves.retire' }
     /** Replaced whole. */
     | { op: 'plan.checklist'; plan: PlanId; items: readonly ChecklistItem[] }
     /** Keyed by path: attaching the same path again replaces it. */
@@ -612,7 +617,7 @@ export type Event = Meta &
     /** Time set aside for it, keyed by block id. */
     | { op: 'plan.block'; plan: PlanId; block: string; start: string; end: string }
     | { op: 'plan.unblock'; plan: PlanId; block: string; why: string }
-    /** Kept, and marked. A shelf with live plans on it cannot be removed. */
+    /** Kept, and marked. */
     | { op: 'plan.remove'; plan: PlanId; why: string }
     // ─── a plan on the calendar ─────────────────────────────────────────────
     //

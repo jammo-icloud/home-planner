@@ -185,13 +185,13 @@ import { extname, join, normalize, resolve as resolvePath } from 'node:path';
 
 import { Store } from './store.ts';
 import type { NewEvent } from './store.ts';
-import { Households, adoptSingleLog, isValidId } from './households.ts';
+import { Households, adoptSingleLog, isValidId, retireShelves } from './households.ts';
 import { isAdministrator, listAccounts } from './accounts.ts';
 import { connectors, lastSavedBy, loadConnectors, recordTest, resolvedEnv, saveConnector, sourceOf } from './connectors.ts';
 import type { Change, MailValue, SavedKey } from './connectors.ts';
 import { connectorsView, needsAdmin, ROW_NAME } from './connectors-view.ts';
 import { teamFolders } from './drive.ts';
-import { parseBackup, planRestore, eventsToApply } from './restore.ts';
+import { newerBackup, parseBackup, planRestore, eventsToApply } from './restore.ts';
 import type { Scope } from './restore.ts';
 import {
   AuthError, GuestSessions, OtpRequired, Sessions, checkWithDsm, clearedCookie, clearedGuestCookie, guestCookie,
@@ -1273,7 +1273,10 @@ export async function start(
   // locally" cannot mean "reads somebody's budget".
   const bypass = localBypassUser();
   const devStore = bypass ? new Store({ path: DEV_LOG_PATH }) : null;
-  if (devStore) await devStore.load();
+  if (devStore) {
+    await devStore.load();
+    await retireShelves(devStore);
+  }
 
   const all = await households.list();
   console.log(`[budget] ${all.length} household${all.length === 1 ? '' : 's'} in ${households.dir}`);
@@ -1851,6 +1854,9 @@ export async function start(
       const body = (await readBody(req)) as { content?: string; scopes?: string[] };
       if (!body.content?.trim()) throw new ToolError('that file is empty');
       const backup = parseBackup(body.content);
+      // Refused whole, before anything is worked out: read without its newer lines it would be a different household.
+      const newer = newerBackup(backup);
+      if (newer) throw new ToolError(newer, 400);
       const scopes = (body.scopes ?? ['facts', 'budgets', 'months']) as Scope[];
       const active = await activeStore(session, households, devStore);
       const plan = planRestore(active.state, backup, scopes);
@@ -1872,6 +1878,8 @@ export async function start(
         { content?: string; scopes?: string[]; asNewHousehold?: string };
       if (!body.content?.trim()) throw new ToolError('that file is empty');
       const backup = parseBackup(body.content);
+      const newer = newerBackup(backup);
+      if (newer) throw new ToolError(newer, 400);
 
       // A whole backup becomes a household of its own, owned by whoever holds
       // the file. Nothing is ever written over what is already there.
@@ -1891,6 +1899,8 @@ export async function start(
       // Adopted, not appended: these events already happened, and the person
       // pressing the button is not the person who spent the money.
       await active.adopt(events);
+      // A backup from before 0.7.0 brings its shelves back; they are retired before any request reads them.
+      await retireShelves(active);
       // planRestore takes no folder; should one ever come through, the registry knows it at once.
       if (session.household) rememberDocuments(session.household, active.state.documents);
       return json(res, 200, { restored: events.length, into: session.household, summary: plan.summary });
