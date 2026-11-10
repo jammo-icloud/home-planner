@@ -1573,6 +1573,8 @@
   .erow.cal.landed{background:var(--accent-tint)}
   .erow.cal.landed .cal-when,.erow.cal.landed .cal-sub{color:var(--ink-soft)}
   .erow.cal.add,.erow.cal.add .cal-slot{color:var(--accent-ink)}
+  /* The focus ring outranks every state outline above (0,4,0, later), so a keyboard user always sees the row that has focus. */
+  .erow.cal[class]:focus-visible{outline:2px solid var(--focus);outline-offset:-2px}
   .erow.cal .mk-h{display:inline-block;width:var(--mark);height:var(--mark);background:repeating-linear-gradient(135deg,var(--line-strong) 0 var(--stroke),transparent var(--stroke) var(--sp-1))}
   .cal-now{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--sp-5);padding:0 var(--sp-4);font-size:var(--fs-micro);font-weight:var(--fw-semibold);color:var(--accent-ink)}
   .cal-now::after{content:'';flex:1;height:var(--stroke-heavy);background:var(--accent)}
@@ -13193,7 +13195,7 @@ const calCardHost = () => $('cal-card');
 const KIND_WORDS = { due: 'DUE', autopay: 'AUTO PAY', payby: 'PAY BY', bill: 'BILL', paid: 'PAID' };
 
 /** A card row: a button when it opens something (`open` takes the row), else a div. `when` is [top, under, boldTop]. */
-function calRow({ cls = '', when = [], slot, title, sub, figure, words, key, open = null, state, plan }) {
+function calRow({ cls = '', when = [], slot, title, sub, figure, figCls = '', words, key, open = null, state, plan }) {
   const el = node(open ? 'button' : 'div', `erow cal${open ? ' hit' : ''}${cls ? ` ${cls}` : ''}`);
   if (open) el.type = 'button'; else if (words) el.setAttribute('role', 'group');
   if (words) el.setAttribute('aria-label', words);
@@ -13212,7 +13214,7 @@ function calRow({ cls = '', when = [], slot, title, sub, figure, words, key, ope
   const sb = node('span', 'cal-sub');
   if (sub !== undefined) sb.append(...[].concat(sub));
   if (sb.childNodes.length) l.appendChild(sb);
-  el.append(w, slotBox, l, node('span', 'cal-fig', figure ?? ''));
+  el.append(w, slotBox, l, node('span', `cal-fig${figCls ? ` ${figCls}` : ''}`, figure ?? ''));
   if (open) {
     el.appendChild(icon('go', 'i sm chev'));
     el.addEventListener('click', () => { void open(el); });
@@ -13252,7 +13254,7 @@ function moneyRow(m) {
   const base = { slot: laneIcon('budget'), title: m.label, words: moneyWords(m),
     open: () => openBudgetAt(m.budget, m.envelope, m.kind === 'short' && m.over ? 'cover' : 'bills') };
   if (m.kind === 'short') {
-    return calRow({ ...base, when: [KIND_WORDS[m.billKind], dayShort(m.billDay)], figure: m.over ? `${m.over} over` : `${m.left} left`,
+    return calRow({ ...base, when: [KIND_WORDS[m.billKind], dayShort(m.billDay)], figure: m.over ? `${m.over} over` : `${m.left} left`, figCls: 'cal-short',
       sub: m.bills > 1 ? `${m.bills} bills, about ${m.about}` : `${m.name}, about ${m.about}` });
   }
   if (m.kind === 'paid') return calRow({ ...base, cls: 'paid', when: [KIND_WORDS.paid], sub: m.name, figure: m.amount });

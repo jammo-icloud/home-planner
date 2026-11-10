@@ -133,4 +133,15 @@ describe('the card', () => {
     assert.equal(f.visitNeedsEveryone(D, '9', d, ALL), 'absent');
     assert.equal(f.visitNeedsEveryone(D, 'gate', on([due('doing')]), off('plans')), true);
   });
+  test('a short money row draws its figure in the problem colour, and a focused row keeps its focus ring over any state outline', () => {
+    assert.match(page, /figure: m\.over \? `\$\{m\.over\} over` : `\$\{m\.left\} left`, figCls: 'cal-short'/);
+    assert.match(page, /\.cal-short\{color:var\(--problem\)\}/);
+    const css = page.slice(page.indexOf('.erow.cal{grid-template-columns'));
+    const ring = css.indexOf('.erow.cal[class]:focus-visible{outline:2px solid var(--focus)');
+    assert.ok(ring > 0, 'a focus rule at 0,4,0 for calendar rows');
+    for (const state of ['.erow.cal.due{', '.erow.cal.due[data-state="done"]{', '.erow.cal.proposed{', '.erow.cal.drift{', '.erow.cal.clash{']) {
+      const at = css.indexOf(state);
+      assert.ok(at > 0 && at < ring, `${state} comes before the focus ring`);
+    }
+  });
 });
