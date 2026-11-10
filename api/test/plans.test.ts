@@ -434,7 +434,7 @@ describe('board and card', () => {
   const TODAY = '2026-10-29';
   const names = (cards: { id: string }[]) => cards.map((c) => c.id);
   const view = (s: Store, o: Partial<Parameters<typeof board>[2]> = {}) =>
-    board(s.state, eventsOf(s), { who: 'alice', filter: 'both', today: TODAY, ...o });
+    board(s.state, eventsOf(s), { who: 'everyone', today: TODAY, ...o }).rows;
   const row = (s: Store, area: string, o: Partial<Parameters<typeof board>[2]> = {}) =>
     view(s, o).find((r) => r.area === area)!;
 
@@ -460,67 +460,20 @@ describe('board and card', () => {
     await s.append('alice', [create('p1', { area: 'House' }), create('p2', { area: 'Yard' })]);
     const rows = view(s);
     assert.deepEqual(rows.map((r) => r.area), ['Yard', 'House', 'Car']);
-    assert.deepEqual(names(rows[0]!.planning), ['p2']);
-    assert.deepEqual(names(rows[1]!.planning), ['p1']);
-    assert.deepEqual([rows[2]!.planning, rows[2]!.doing, rows[2]!.shelves], [[], [], []]);
+    assert.deepEqual(names(rows[0]!.plans), ['p2']);
+    assert.deepEqual(names(rows[1]!.plans), ['p1']);
+    assert.deepEqual([rows[2]!.plans, rows[2]!.done, rows[2]!.all], [[], [], { plans: 0, doing: 0, done: 0 }]);
   });
 
   test('areas with no plans are rows: a household with no plans at all still lists every area, empty', async () => {
     const { s } = await store();
     await s.append('alice', { op: 'areas.set', areas: ['House', 'Garden'] });
     assert.equal(s.state.plans.size, 0);
-    for (const filter of ['both', 'mine', 'theirs'] as const) {
-      const rows = view(s, { filter });
-      assert.deepEqual(rows.map((r) => r.area), ['House', 'Garden'], `the ${filter} filter lists every area`);
-      for (const r of rows) assert.deepEqual([r.planning, r.doing, r.shelves], [[], [], []]);
+    for (const who of ['everyone', 'alice', 'casey']) {
+      const rows = view(s, { who });
+      assert.deepEqual(rows.map((r) => r.area), ['House', 'Garden'], `pressing ${who} lists every area`);
+      for (const r of rows) assert.deepEqual([r.plans, r.done], [[], []]);
     }
-  });
-
-  test('a child sits in its area as a card, under a shelf that counts its children', async () => {
-    const { s } = await store();
-    await s.append('alice', [
-      create('shelf', { title: 'Kitchen' }),
-      create('a', { parent: 'shelf' }), create('b', { parent: 'shelf' }),
-      create('loose'),
-    ]);
-    await s.append('alice', { op: 'plan.state', plan: 'b', state: 'doing' });
-    const r = row(s, 'House');
-    assert.deepEqual(r.shelves, [{ id: 'shelf', title: 'Kitchen', count: 2 }]);
-    assert.deepEqual(names(r.planning), ['a', 'loose'], 'the shelf is not a card; its plans are');
-    assert.deepEqual(names(r.doing), ['b']);
-    assert.equal(r.planning[0]!.parent, 'shelf');
-  });
-
-  test('done leaves the board unless asked for, and a removed plan is never shown', async () => {
-    const { s } = await store();
-    await s.append('alice', [create('shelf'), create('a', { parent: 'shelf' }), create('b', { parent: 'shelf' }), create('c')]);
-    await s.append('alice', [
-      { op: 'plan.state', plan: 'a', state: 'done' },
-      { op: 'plan.remove', plan: 'c', why: 'not needed' },
-    ]);
-    assert.deepEqual(names(row(s, 'House').planning), ['b']);
-    assert.deepEqual(row(s, 'House').doing, []);
-    assert.equal(row(s, 'House').shelves[0]!.count, 1, 'a finished plan is off the shelf, as it is off the board');
-    const all = row(s, 'House', { showDone: true });
-    assert.deepEqual(names(all.planning), ['b']);
-    assert.deepEqual(all.doing.map((c) => [c.id, c.state]), [['a', 'done']], 'with only two columns, done sits with doing, marked');
-    assert.equal(all.shelves[0]!.count, 2);
-    assert.ok(![...names(all.planning), ...names(all.doing)].includes('c'), 'removed, even with showDone');
-  });
-
-  test('mine is what I own or have been asked to take; theirs is the rest of the live plans', async () => {
-    const { s } = await store();
-    await s.append('alice', [create('a'), create('b'), create('c'), create('gone')]);
-    await s.append('bob', create('d'));
-    await s.append('alice', { op: 'plan.ask', plan: 'b', to: 'bob', why: 'you know the gate' });
-    await s.append('alice', { op: 'plan.remove', plan: 'gone', why: 'x' });
-    const ids = (who: string, filter: 'both' | 'mine' | 'theirs') =>
-      names(row(s, 'House', { who, filter }).planning).sort();
-    assert.deepEqual(ids('bob', 'mine'), ['b', 'd'], 'the plan I was asked to take is mine to answer');
-    assert.deepEqual(ids('bob', 'theirs'), ['a', 'c']);
-    assert.deepEqual(ids('alice', 'mine'), ['a', 'b', 'c']);
-    assert.deepEqual(ids('alice', 'theirs'), ['d']);
-    assert.deepEqual(ids('alice', 'both'), ['a', 'b', 'c', 'd']);
   });
 
   test('only Doing has a clock: Planning and done carry no age, on the board or the card', async () => {
@@ -529,13 +482,10 @@ describe('board and card', () => {
     at('2026-11-20T09:00:00.000Z');
     await s.append('alice', [{ op: 'plan.state', plan: 'p2', state: 'doing' }, { op: 'plan.state', plan: 'p2', state: 'done' }]);
     const later = '2026-12-31';
-    assert.equal(row(s, 'House', { today: later }).planning[0]!.daysInState, null, 'weeks in Planning, and no age');
+    assert.equal(row(s, 'House', { today: later }).plans[0]!.daysInState, null, 'weeks in Planning, and no age');
     assert.equal(card(s.state, eventsOf(s), 'p1', { who: 'alice', today: later }).daysInState, null);
-    assert.equal(row(s, 'House', { today: later, showDone: true }).doing[0]!.daysInState, null, 'done has stopped');
+    assert.equal(row(s, 'House', { today: later }).done[0]!.daysInState, null, 'done has stopped');
     assert.equal(card(s.state, eventsOf(s), 'p2', { who: 'alice', today: later }).daysInState, null);
-    // A shelf's items in Planning say nothing either.
-    await s.append('alice', create('p3', { parent: 'p1' }));
-    assert.deepEqual(card(s.state, eventsOf(s), 'p1', { who: 'alice', today: later }).children.map((c) => c.daysInState), [null]);
   });
 
   test('daysInState is whole days since the plan entered Doing, and 0 on the day', async () => {
@@ -543,7 +493,7 @@ describe('board and card', () => {
     await s.append('alice', create('p1'));
     at('2026-10-29T23:30:00.000Z');
     await s.append('alice', { op: 'plan.state', plan: 'p1', state: 'doing' });
-    const days = (today: string) => row(s, 'House', { today }).doing[0]!.daysInState;
+    const days = (today: string) => row(s, 'House', { today }).plans[0]!.daysInState;
     assert.equal(days('2026-10-29'), 0);
     assert.equal(days('2026-11-01'), 3);
     assert.equal(days('2026-10-20'), 0, 'a clock behind the log never reads negative');
@@ -565,9 +515,9 @@ describe('board and card', () => {
     at('2026-10-29T05:30:00.000Z');
     await s.append('alice', { op: 'plan.state', plan: 'p1', state: 'doing' });
     const tz = 'America/Denver';
-    assert.equal(row(s, 'House', { today: '2026-10-29', tz }).doing[0]!.daysInState, 1);
+    assert.equal(row(s, 'House', { today: '2026-10-29', tz }).plans[0]!.daysInState, 1);
     assert.equal(card(s.state, eventsOf(s), 'p1', { who: 'alice', today: '2026-10-29', tz }).daysInState, 1);
-    assert.equal(row(s, 'House', { today: '2026-10-28', tz }).doing[0]!.daysInState, 0, '0 on the local day');
+    assert.equal(row(s, 'House', { today: '2026-10-28', tz }).plans[0]!.daysInState, 0, '0 on the local day');
   });
 
   test('one way to read a day: the zone given or the deployment\'s, trimmed, and UTC without either', () => {
@@ -594,7 +544,7 @@ describe('board and card', () => {
     at('2026-10-29T05:30:00.000Z');
     await s.append('alice', { op: 'plan.state', plan: 'p1', state: 'doing' });
     const days = () => [
-      row(s, 'House', { today: '2026-10-29' }).doing[0]!.daysInState,
+      row(s, 'House', { today: '2026-10-29' }).plans[0]!.daysInState,
       card(s.state, eventsOf(s), 'p1', { who: 'alice', today: '2026-10-29' }).daysInState,
     ];
     const was = process.env['TZ'];
@@ -606,7 +556,7 @@ describe('board and card', () => {
       delete process.env['TZ'];
       assert.deepEqual(days(), [0, 0]);
       process.env['TZ'] = 'America/Denver';
-      assert.equal(row(s, 'House', { today: '2026-10-29', tz: 'UTC' }).doing[0]!.daysInState, 0, 'a zone given wins');
+      assert.equal(row(s, 'House', { today: '2026-10-29', tz: 'UTC' }).plans[0]!.daysInState, 0, 'a zone given wins');
     } finally {
       if (was === undefined) delete process.env['TZ']; else process.env['TZ'] = was;
     }
@@ -622,16 +572,16 @@ describe('board and card', () => {
       { op: 'plan.block', plan: 'p1', block: 'k1', start: '2026-11-14T09:00:00.000Z', end: '2026-11-14T11:00:00.000Z' },
       { op: 'plan.ask', plan: 'p1', to: 'bob', why: 'you know the gate' },
     ]);
-    const c = row(s, 'House').planning[0]!;
+    const c = row(s, 'House').plans[0]!;
     assert.deepEqual(c, {
-      id: 'p1', title: 'Fix the gate', area: 'House', parent: null, state: 'planning', owner: 'alice',
+      id: 'p1', title: 'Fix the gate', area: 'House', goal: null, state: 'planning', owner: 'alice',
       asked: { to: 'bob', at: NOW, why: 'you know the gate' },
       chips: ['waiting on quote'], due: '2026-11-15',
       blocks: [{ id: 'k1', start: '2026-11-14T09:00:00.000Z', end: '2026-11-14T11:00:00.000Z' }],
       envelope: { budget: 'harbor', envelope: 'house', label: 'House upkeep', left: '$65' },
       daysInState: null, hasResearch: false,
       // Its due date has no event: set here with no NAS behind it.
-      notOnCalendar: true,
+      notOnCalendar: true, doneAt: null,
     });
   });
 
@@ -639,7 +589,7 @@ describe('board and card', () => {
     const { s } = await withBudget();
     await s.append('alice', create('p1'));
     await s.append('alice', { op: 'plan.set', plan: 'p1', envelope: { budget: 'harbor', envelope: 'house' } });
-    const left = (today: string) => row(s, 'House', { today }).planning[0]!.envelope;
+    const left = (today: string) => row(s, 'House', { today }).plans[0]!.envelope;
     assert.equal(left('2026-10-29')?.left, '$65');
     assert.equal(left('2026-11-02'), null, 'November is not open, so nothing is made up for it');
     await s.append('alice', { op: 'plan.set', plan: 'p1', envelope: null });
@@ -650,7 +600,7 @@ describe('board and card', () => {
     const { s } = await store();
     await s.append('alice', [create('p1'), create('p2')]);
     const [q] = await s.append('alice', { op: 'thread.ask', question: 'What would a gate hinge cost?', budget: null, plan: 'p1' });
-    const has = () => Object.fromEntries(row(s, 'House').planning.map((c) => [c.id, c.hasResearch]));
+    const has = () => Object.fromEntries(row(s, 'House').plans.map((c) => [c.id, c.hasResearch]));
     assert.deepEqual(has(), { p1: false, p2: false }, 'a question is not research until it is answered');
     await s.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'About $40.', tools: [], model: 'm', plan: 'p1' });
     assert.deepEqual(has(), { p1: true, p2: false });
@@ -699,21 +649,6 @@ describe('board and card', () => {
     assert.equal(card(s.state, eventsOf(s), 'p1', { who: 'alice', today: '2026-11-02' }).money, null);
   });
 
-  test('card() puts a plan on its shelf and a shelf over its plans', async () => {
-    const { s } = await store();
-    await s.append('alice', [create('shelf', { title: 'Kitchen' }), create('a', { parent: 'shelf' }),
-      create('b', { parent: 'shelf' }), create('c', { parent: 'shelf' })]);
-    await s.append('alice', [{ op: 'plan.state', plan: 'b', state: 'doing' }, { op: 'plan.state', plan: 'c', state: 'done' }]);
-    await s.append('alice', { op: 'plan.remove', plan: 'a', why: 'x' });
-    const shelf = card(s.state, eventsOf(s), 'shelf', { who: 'alice', today: TODAY });
-    assert.equal(shelf.shelf, null);
-    assert.deepEqual(shelf.children.map((c) => [c.id, c.state]), [['b', 'doing'], ['c', 'done']],
-      'every live plan on the shelf, done ones included, removed ones not');
-    const b = card(s.state, eventsOf(s), 'b', { who: 'alice', today: TODAY });
-    assert.deepEqual(b.shelf, { id: 'shelf', title: 'Kitchen' });
-    assert.deepEqual(b.children, []);
-  });
-
   test('card() brings together the research, the notes between us, and the history', async () => {
     const { s, at } = await store();
     await s.append('alice', [create('p1', { title: 'Fix the gate' }), create('p2')]);
@@ -746,6 +681,66 @@ describe('board and card', () => {
       ['alice', 'moved Fix the gate to doing'],
     ], 'oldest first, only this plan\'s events');
     assert.equal(v.history[0]!.at, NOW);
+  });
+
+  /** House and Money. alice: p1 (Planning), p2 (Doing), p5 (done), all toward New roof. bob: p3 (Doing), and p4 in Money toward New roof. casey: nothing. */
+  async function roofBoard() {
+    const { s } = await store();
+    await s.append('alice', [{ op: 'member.add', member: 'casey', why: 'moved in' }, { op: 'areas.set', areas: ['House', 'Money'] },
+      create('p1'), create('p2'), create('p3'), create('p4', { area: 'Money' }), create('p5'),
+      ...['p1', 'p2', 'p4', 'p5'].map((plan): NewEventShape => ({ op: 'plan.goal', plan, goal: 'New roof' })),
+      { op: 'plan.state', plan: 'p2', state: 'doing' }, { op: 'plan.state', plan: 'p3', state: 'doing' }, { op: 'plan.state', plan: 'p5', state: 'done' },
+      { op: 'plan.hand', plan: 'p3', to: 'bob' }, { op: 'plan.hand', plan: 'p4', to: 'bob' }]);
+    const see = (o: { who: string; goal?: string | null }) => board(s.state, eventsOf(s), { today: '2026-10-29', tz: 'UTC', ...o });
+    return { s, see };
+  }
+  const ids = (cards: readonly { id: string }[]) => cards.map((c) => c.id);
+  test("everyone: every area, open plans Doing first then in the log's order, done apart, the counts beside", async () => {
+    const { see } = await roofBoard();
+    const b = see({ who: 'everyone' });
+    assert.deepEqual([b.who, b.goal, b.areas], ['everyone', null, ['House', 'Money']]);
+    assert.deepEqual(b.rows.map((r) => [r.area, r.all, ids(r.plans), ids(r.done)]), [
+      ['House', { plans: 3, doing: 2, done: 1 }, ['p2', 'p3', 'p1'], ['p5']], ['Money', { plans: 1, doing: 0, done: 0 }, ['p4'], []]]);
+    assert.deepEqual(b.members, [{ member: 'alice', plans: 2 }, { member: 'bob', plans: 2 }]);
+    assert.deepEqual(b.goals, [{ goal: 'New roof', plans: 4, done: 1 }]);
+    const p5 = b.rows[0]!.done[0]!;
+    assert.deepEqual([p5.goal, p5.doneAt, 'parent' in p5, b.rows[0]!.plans[0]!.doneAt], ['New roof', NOW, false, null]);
+  });
+  test('a member: strictly what they own, even when that is nothing; an old ask puts nothing in their view', async () => {
+    const { s, see } = await roofBoard();
+    const bob = see({ who: 'bob' });
+    assert.deepEqual([bob.who, bob.rows.map((r) => ids(r.plans)), bob.rows[0]!.all], ['bob', [['p3'], ['p4']], { plans: 3, doing: 2, done: 1 }]);
+    await s.append('alice', { op: 'plan.ask', plan: 'p1', to: 'casey', why: 'you offered' });
+    const casey = see({ who: 'casey' });
+    assert.deepEqual([casey.who, casey.rows.flatMap((r) => [...r.plans, ...r.done])], ['casey', []]);
+    assert.deepEqual(casey.members, [{ member: 'alice', plans: 2 }, { member: 'bob', plans: 2 }]);    // the counts ignore who is pressed
+    assert.equal(see({ who: 'everyone' }).rows[0]!.plans.find((c) => c.id === 'p1')!.asked!.to, 'casey');   // the briefing still reads it
+  });
+  test('a goal: its stored spelling, done plans counted, members with none left out; a goal nobody has filters nothing', async () => {
+    const { see } = await roofBoard();
+    const g = see({ who: 'everyone', goal: 'new roof' });
+    assert.equal(g.goal, 'New roof');
+    assert.deepEqual(g.rows.map((r) => [ids(r.plans), ids(r.done)]), [[['p2', 'p1'], ['p5']], [['p4'], []]]);
+    assert.deepEqual(g.members, [{ member: 'alice', plans: 3 }, { member: 'bob', plans: 1 }]);
+    assert.deepEqual(see({ who: 'bob', goal: 'New roof' }).rows.map((r) => ids(r.plans)), [[], ['p4']]);
+    const none = see({ who: 'everyone', goal: 'Old roof' });
+    assert.deepEqual([none.goal, none.rows[0]!.plans.length], [null, 3]);
+  });
+  test('done plans are listed newest first, and a removed plan is never shown or counted', async () => {
+    const { s, at } = await store();
+    await s.append('alice', [create('a'), create('b'), create('c')]);
+    await s.append('alice', { op: 'plan.state', plan: 'a', state: 'done' });
+    at('2026-10-30T09:00:00.000Z');
+    await s.append('alice', [{ op: 'plan.state', plan: 'b', state: 'done' }, { op: 'plan.remove', plan: 'c', why: 'not needed' }]);
+    const r = row(s, 'House');
+    assert.deepEqual([ids(r.plans), ids(r.done), r.all], [[], ['b', 'a'], { plans: 0, doing: 0, done: 2 }]);
+  });
+  test('the card carries its owner fields and every goal, and no shelf', async () => {
+    const { s } = await roofBoard();
+    const v = card(s.state, eventsOf(s), 'p3', { who: 'alice', today: '2026-10-29', tz: 'UTC' });
+    assert.deepEqual([v.owner, v.ownerFrom, v.ownerSince, v.createdBy, v.goal], ['bob', 'alice', NOW, 'alice', null]);
+    assert.deepEqual([v.goals, v.shelf, v.children], [[{ goal: 'New roof', plans: 4, done: 1 }], null, []]);
+    assert.ok(v.history.some((h) => h.what === 'handed Plan p3 to bob'));
   });
 
   test('an unknown plan is a 404, and so is a removed one', async () => {

@@ -165,7 +165,7 @@ describe('settings on the sandbox, with no DSM behind it', () => {
     assert.deepEqual(r.json.areas, ['House', 'Yard'], 'answers with the settings view');
     const board = await call(tester, 'GET', '/api/plans');
     const yard = board.json.rows.find((row: any) => row.area === 'Yard');
-    assert.ok(yard.planning.some((c: any) => c.id === made.json.plan.id), 'the plan moved with its area');
+    assert.ok(yard.plans.some((c: any) => c.id === made.json.plan.id), 'the plan moved with its area');
   });
 
   test('a rename to a used name, from a missing one, or to nothing is a 400 that says why', async () => {

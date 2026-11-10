@@ -7856,8 +7856,6 @@ let settingsEditing = null;
 /** Your calendars on the NAS (GET /api/calendars), and whether they could be read. */
 let calList = null;
 let calState = 'loading'; // 'loading' | 'ok' | 'signin' | 'failed'
-/** How many plans each area holds, done ones included: an area is removable only when it holds none. */
-let areaCounts = new Map();
 
 const SCHEMES = [['quartz', 'Quartz'], ['lapis', 'Lapis'], ['iolite', 'Iolite'], ['graphite', 'Graphite']];
 const MODES = [['match', 'System'], ['light', 'Light'], ['dark', 'Dark']];
@@ -7955,8 +7953,8 @@ async function loadSettings() {
   try {
     // This NAS is read beside the rest for an administrator; if it cannot be,
     // Settings still draws, and the group's own foot says why it is empty.
-    const [st, plans, nas] = await Promise.all([
-      api('/api/settings'), api('/api/plans?showDone=1'),
+    const [st, nas] = await Promise.all([
+      api('/api/settings'),
       amAdmin ? api('/api/connectors').catch((ex) => ({ problem: ex })) : null,
     ]);
     connData = nas && !nas.problem ? nas : null;
@@ -7966,8 +7964,6 @@ async function loadSettings() {
     documentsStatus = st.documents ?? null;
     softwareInfo = st.software ?? softwareInfo;
     keepFilesFrom(st);
-    // A shelf is a plan too; the cards already include what sits on shelves.
-    areaCounts = new Map(plans.rows.map((r) => [r.area, r.planning.length + r.doing.length + r.shelves.length]));
     renderSettingsList();
   } catch (ex) {
     settingsFailed(ex);
@@ -8090,7 +8086,7 @@ function settingsGroups() {
       title: 'Household',
       hint: `${others.length === 1 ? 'You both see' : 'Everyone in the household sees'} and change${others.length === 1 ? '' : 's'} these. `
         + "Every change goes in the household's history.",
-      items: [setupItem(), zoneItem(), modelItem(), membersItem(), areasItem(), budgetItem(), hcalItem(), guestsItem(), documentsItem(),
+      items: [setupItem(), zoneItem(), modelItem(), membersItem(), budgetItem(), hcalItem(), guestsItem(), documentsItem(),
         linksItem(), backupItem(), ...(settingsData.setup.youOwn && !inSandbox ? [removeItem()] : [])].filter(Boolean),
     },
   ];
@@ -8909,69 +8905,6 @@ async function phoneCode() {
     area.textContent = '';
     area.append(node('p', '', 'This code has expired.'), textBtn('Make a new code', 'btn small', 'phone-new', () => void phoneCode()));
   }, Math.max(0, Date.parse(out.expiresAt) - Date.now()));
-}
-
-function areasItem() {
-  return {
-    key: 'areas', title: 'Areas', list: true,
-    status: settingsData.areas.join(' · ') || 'Not set',
-    line: 'The rows of the Plan board.',
-    body: areasForm,
-  };
-}
-
-function areasForm() {
-  const areas = settingsData.areas;
-  const save = (list, focus) => saveSettings('/api/settings/areas', { areas: list }, undefined, focus);
-  const moved = (i, by) => {
-    const list = [...areas];
-    const [a] = list.splice(i, 1);
-    list.splice(i + by, 0, a);
-    return list;
-  };
-  const rows = node('div', 'rows');
-  areas.forEach((a, i) => {
-    if (editing('area', i)) {
-      // Its own route: a rename moves the area's plans with it, which replacing the list cannot.
-      // The count goes with them, so the row under its new name still says what it holds.
-      rows.appendChild(fieldsForm({
-        fields: [{ name: 'name', label: 'Call it', value: a, max: 60 }], submit: 'Rename it',
-        onSave: (v) => {
-          if (v.name === a) { cancelEdit(); return true; }
-          return saveSettings('/api/settings/areas/rename', { from: a, to: v.name }, () => {
-            areaCounts.set(v.name, areaCounts.get(a) ?? 0);
-            areaCounts.delete(a);
-          }, `area-rename-${v.name}`);
-        },
-      }));
-      return;
-    }
-    const n = areaCounts.get(a) ?? 0;
-    const r = node('div', 'rowi');
-    const t = node('span', '', a);
-    t.appendChild(node('span', 'meta', n === 0 ? 'No plans' : n === 1 ? '1 plan' : `${n} plans`));
-    const end = node('span', 'end');
-    // Any area can be renamed: its plans go with it. Only an empty one can be
-    // removed, since the log refuses to drop an area that still holds plans.
-    end.appendChild(textBtn('Rename', 'btn bare small', `area-rename-${a}`, () => editRows('area', i)));
-    if (n === 0 && areas.length > 1) {
-      end.appendChild(textBtn('Remove', 'btn bare small danger', `area-remove-${a}`, () => save(areas.filter((_, k) => k !== i), 'area-add')));
-    }
-    // The order is the board's, top to bottom.
-    end.append(
-      iconBtn('up', `Move ${a} up`, `area-up-${a}`, i === 0, () => save(moved(i, -1))),
-      iconBtn('down', `Move ${a} down`, `area-down-${a}`, i === areas.length - 1, () => save(moved(i, 1))),
-    );
-    r.append(t, end);
-    rows.appendChild(r);
-  });
-  if (editing('area', -1)) {
-    rows.appendChild(fieldsForm({
-      fields: [{ name: 'name', label: 'The new area', placeholder: 'e.g. Garden', max: 60 }], submit: 'Add it',
-      onSave: (v) => save([...areas, v.name], 'area-add'),
-    }));
-  } else rows.appendChild(addRow('Add an area', 'area-add', () => editRows('area', -1)));
-  return [rows, node('p', 'hint', "Renaming an area takes its plans with it. An area with plans in it can't be removed until they move.")];
 }
 
 function linksItem() {
@@ -10825,7 +10758,7 @@ function whenWords(e) {
 /** The plans a new event can be for: those in Planning and Doing. A plan is optional, so a board that cannot be read is no plans. */
 async function eventPlans() {
   try {
-    return (await api('/api/plans')).rows.flatMap((r) => [...r.planning, ...r.doing]).map((c) => ({ id: c.id, title: c.title, area: c.area }));
+    return (await api('/api/plans')).rows.flatMap((r) => r.plans).map((c) => ({ id: c.id, title: c.title, area: c.area }));
   } catch { return []; }
 }
 

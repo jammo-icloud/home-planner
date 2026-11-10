@@ -890,8 +890,8 @@ describe('due dates and blocks become events', () => {
     assert.deepEqual(notOnCalendar(gate(c)), { due: true, blocks: [blockId] });
     const view = planCard(c.store.state, await c.store.since(null), 'gate', { who: 'alice', today: '2026-10-29', tz: ZONE });
     assert.deepEqual(view.notOnCalendar, { due: true, blocks: [blockId] });
-    const rail = board(c.store.state, await c.store.since(null), { who: 'alice', filter: 'mine', today: '2026-10-29', tz: ZONE })
-      .flatMap((r) => [...r.planning, ...r.doing]).find((x) => x.id === 'gate')!;
+    const rail = board(c.store.state, await c.store.since(null), { who: 'alice', today: '2026-10-29', tz: ZONE }).rows
+      .flatMap((r) => r.plans).find((x) => x.id === 'gate')!;
     assert.equal(rail.notOnCalendar, true);
 
     calls.length = 0;

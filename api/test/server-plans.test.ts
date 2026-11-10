@@ -139,7 +139,21 @@ describe('the plan routes', () => {
     assert.equal(b.status, 200);
     assert.ok(b.json.areas.includes('House'));
     const house = b.json.rows.find((row: any) => row.area === 'House');
-    assert.ok(house.planning.some((c: any) => c.id === r.json.plan.id));
+    assert.ok(house.plans.some((c: any) => c.id === r.json.plan.id));
+  });
+
+  test("GET /api/plans answers the whole board by who and goal, and refuses an older page's words", async () => {
+    assert.equal((await call('alice', 'POST', '/api/members', { member: 'casey', why: 'moved in' })).status, 200);
+    const all = await call('alice', 'GET', '/api/plans');
+    assert.deepEqual([all.status, all.json.who, Object.keys(all.json).sort()], [200, 'everyone', ['areas', 'goal', 'goals', 'members', 'rows', 'who']]);
+    assert.equal((await call('alice', 'GET', '/api/plans?who=alice')).json.who, 'alice');
+    assert.equal((await call('alice', 'GET', '/api/plans?who=casey')).json.who, 'everyone');     // only the route falls back
+    assert.equal((await call('alice', 'GET', '/api/plans?who=everyone&goal=Nothing')).json.goal, null);
+    assert.equal((await call('alice', 'GET', '/api/plans?who=dana')).status, 400);
+    for (const old of ['filter=mine', 'showDone=1']) {
+      const r = await call('alice', 'GET', `/api/plans?${old}`);
+      assert.deepEqual([r.status, r.json.error], [400, 'Home Planner has been updated. Reload.']);
+    }
   });
 
   test('a plan is made for someone, toward a goal, in one write; a shelf is refused', async () => {
@@ -394,13 +408,6 @@ describe('the plan routes', () => {
     assert.equal((await call('alice', 'POST', `/api/plans/${id}/ask-to-take`,
       { question: 'Who does slate roofs?' })).status, 410, 'the old route is closed, whatever it is sent');
     assert.equal((await call('alice', 'GET', `/api/plans/${id}`)).json.asked, null, 'nothing was asked');
-  });
-
-  test('the board filters, and refuses a filter it does not know', async () => {
-    const r = await call('bob', 'GET', '/api/plans?filter=mine&showDone=1');
-    assert.equal(r.status, 200);
-    assert.ok(Array.isArray(r.json.rows));
-    assert.equal((await call('bob', 'GET', '/api/plans?filter=everyone')).status, 400);
   });
 
   test('removing needs a reason; a removed plan is gone from the card route', async () => {

@@ -3413,28 +3413,35 @@ const savingsShort: Tool = {
 const listPlans: Tool = {
   name: 'list_plans',
   description:
-    "The household's board: a row per area, each with its shelves (and how many items they hold) " +
-    'and its plans in Planning and Doing — who owns each, any open ask, chips, due date, the ' +
-    'envelope it is paid from and what is left in it, and, for a plan in Doing only, how many days it ' +
-    'has been there. Nothing in Planning has an age, and a finished plan has none: daysInState is null ' +
-    'for both, so never say how long something has waited to be started. ' +
+    "The household's board: a row per area, each with its open plans (Doing first, then Planning) and its " +
+    'finished ones apart. Each plan has who owns it, the one goal it is toward if any, any open ask left over ' +
+    'from before, chips, due date, the envelope it is paid from and what is left in it, and, for a plan in ' +
+    'Doing only, how many days it has been there. Nothing in Planning has an age, and a finished plan has ' +
+    'none: daysInState is null for both, so never say how long something has waited to be started. ' +
+    "Each row's `all` counts the whole area whatever you filtered. The answer also lists the household's " +
+    'goals (each with how many plans are toward it and how many are done) and how many plans each member owns. ' +
     'Use it to find a plan and its id before suggesting anything about one.',
   kind: 'read',
   input: {
     type: 'object',
     properties: {
-      filter: {
-        type: 'string', enum: ['both', 'mine', 'theirs'],
-        description: 'mine: what the person you are speaking to owns or has been asked to take. Default both.',
+      who: {
+        type: 'string',
+        description: 'A member: only the plans they own, and nothing at all if they own none. Default everyone.',
       },
-      showDone: { type: 'boolean', description: 'Include finished plans. Default false.' },
+      goal: {
+        type: 'string',
+        description: 'A goal, in any case: only the plans toward it, finished ones included. A goal nobody has filters nothing.',
+      },
     },
   },
   async run(args, ctx) {
-    const f = args['filter'];
-    const filter = f === 'mine' || f === 'theirs' ? f : 'both';
-    return board(ctx.store.state, await ctx.store.since(null),
-      { who: ctx.who, filter, today: ctx.today, showDone: args['showDone'] === true });
+    const who = args['who'];
+    if (who !== undefined && who !== 'everyone' && (typeof who !== 'string' || !ctx.store.state.members.has(who))) {
+      throw new ToolError('who must be a member of this household, or everyone');
+    }
+    const goal = typeof args['goal'] === 'string' && args['goal'].trim() ? args['goal'].trim() : null;
+    return board(ctx.store.state, await ctx.store.since(null), { who: who ?? 'everyone', goal, today: ctx.today });
   },
 };
 
@@ -3442,8 +3449,8 @@ const getPlan: Tool = {
   name: 'get_plan',
   description:
     "Everything on one plan's card: notes, checklist with item ids, chips, people, due date and " +
-    'time set aside, its shelf or its items, the money it means for its envelope, what you found ' +
-    'for it before, what the members said to each other about it, and its history.',
+    'time set aside, the goal it is toward (and every goal the household has), the money it means for its ' +
+    'envelope, what you found for it before, what the members said to each other about it, and its history.',
   kind: 'read',
   input: {
     type: 'object',

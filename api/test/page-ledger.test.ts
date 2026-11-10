@@ -66,7 +66,11 @@ const ADDED: readonly Line[] = [
   ['S33', '.st-doing{', 'css'], ['bar', 'span.flag{', 'css'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
-const GONE: readonly Line[] = [['S8', 'whoDisc(', 'page']];
+const GONE: readonly Line[] = [
+  ['S8', 'whoDisc(', 'page'],
+  // Areas leave Settings: the editor, the counts that gated its Remove, and the read of the whole board that fed them.
+  ['S16', '/api/plans?showDone=1', 'page'], ['spec', 'areaCounts', 'page'], ['spec', 'areasItem', 'page'], ['spec', 'areasForm', 'page'],
+];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = [];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
 const DRAWN_LATER: readonly string[] = [];

@@ -738,6 +738,20 @@ describe('one briefing for the household', () => {
     assert.doesNotMatch(plans, /coast trip/, 'due after the week is not news');
   });
 
+  test("the plans block reads every member's plans, a third member's and a plan handed on included, whoever it is for", async () => {
+    const { store } = await household();
+    await store.append('alice', [
+      { op: 'member.add', member: 'casey', why: 'moved in' },
+      { op: 'plan.create', plan: 'fence', title: 'Mend the fence', area: 'House' },
+      { op: 'plan.due', plan: 'fence', due: '2026-08-12' },
+      { op: 'plan.hand', plan: 'fence', to: 'casey' },
+    ]);
+    for (const who of ['alice', 'bob', 'casey']) {
+      const { text } = await householdFacts(store, opts({ sid: null, who }));
+      assert.match(text.slice(text.indexOf('\nPLANS\n'), text.indexOf('HOUSEHOLD CALENDAR')), /Mend the fence.*casey's/s, who);
+    }
+  });
+
   test('a plan still being thought about is never given an age', async () => {
     const { store } = await household();
     const { text } = await householdFacts(store, opts({ sid: null }));

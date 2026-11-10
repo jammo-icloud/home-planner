@@ -11,14 +11,14 @@ import { fmt } from './money.ts';
 import { monthView } from './envelopes.ts';
 import { ToolError } from './errors.ts';
 import { describe } from './tools.ts';
-import { notOnCalendar, sameGoal } from './plan-rules.ts';
+import { goalSpelling, notOnCalendar, sameGoal } from './plan-rules.ts';
 import { householdDay, householdZone, monthOf, visibleTo } from './types.ts';
 import type {
   Actor, BudgetId, Block, Day, EnvelopeId, Event, EventId, Offer, Plan, PlanId, PlanState, State,
 } from './types.ts';
 
 export interface BoardCard {
-  id: PlanId; title: string; area: string; parent: PlanId | null; state: PlanState; owner: Actor; asked: Plan['asked'];
+  id: PlanId; title: string; area: string; goal: string | null; state: PlanState; owner: Actor; asked: Plan['asked'];
   chips: readonly string[]; due: Day | null; blocks: readonly Block[];
   envelope: { budget: BudgetId; envelope: EnvelopeId; label: string; left: string } | null;
   /** Whole days in Doing. Null in Planning and once done: the clock only runs in Doing. */
@@ -27,13 +27,30 @@ export interface BoardCard {
   hasResearch: boolean;
   /** Its due date or a block is kept on the plan but not yet on the calendar. */
   notOnCalendar: boolean;
+  /** When a finished plan was finished (`stateAt`); null while it is open. */
+  doneAt: string | null;
 }
 
+/**
+ * One area. `plans` and `done` are what the board's filters leave of it; `all`
+ * counts the whole area and ignores both filters: its open plans (Planning and
+ * Doing), those in Doing, and the finished ones.
+ */
 export interface BoardRow {
   area: string;
-  shelves: { id: PlanId; title: string; count: number }[];
-  planning: BoardCard[];
-  doing: BoardCard[];
+  all: { plans: number; doing: number; done: number };
+  plans: BoardCard[];
+  done: BoardCard[];
+}
+
+/** The board whole: every area, who is pressed, the goal in its stored spelling (null for none), and the counts beside. */
+export interface Board {
+  who: Actor | 'everyone';
+  goal: string | null;
+  areas: string[];
+  rows: BoardRow[];
+  members: { member: Actor; plans: number }[];
+  goals: { goal: string; plans: number; done: number }[];
 }
 
 /**
@@ -43,8 +60,12 @@ export interface BoardRow {
  */
 export interface CardView extends Omit<Plan, 'page' | 'pageEvent'> {
   page: { path: string } | null;
-  shelf: { id: PlanId; title: string } | null;
-  children: BoardCard[];
+  /** Shelves are retired into goals: always null, kept so an older reader finds the field. */
+  shelf: null;
+  /** Always empty, for the same reason. */
+  children: [];
+  /** Every goal the household has, as the board lists them. */
+  goals: { goal: string; plans: number; done: number }[];
   /** As on the board: whole days in Doing, and null anywhere else. */
   daysInState: number | null;
   money: { label: string; left: string; estimate: string | null; monthsAtFunding: number | null } | null;
@@ -95,12 +116,13 @@ const researchedPlans = (events: readonly Event[]): Set<PlanId> => {
 function cardOf(state: State, p: Plan, today: Day, tz: string, researched: ReadonlySet<PlanId>): BoardCard {
   const money = envelopeFigures(state, p, today);
   return {
-    id: p.id, title: p.title, area: p.area, parent: p.parent, state: p.state, owner: p.owner, asked: p.asked,
+    id: p.id, title: p.title, area: p.area, goal: p.goal, state: p.state, owner: p.owner, asked: p.asked,
     chips: p.chips, due: p.due, blocks: p.blocks,
     envelope: p.envelope && money ? { budget: p.envelope.budget, envelope: p.envelope.envelope, label: money.label, left: money.left } : null,
     daysInState: doingFor(p, today, tz),
     hasResearch: researched.has(p.id),
     notOnCalendar: (({ due, blocks }) => due || blocks.length > 0)(notOnCalendar(p)),
+    doneAt: p.state === 'done' ? p.stateAt : null,
   };
 }
 
@@ -121,45 +143,56 @@ export function goalsOf(state: State): { goal: string; plans: number; done: numb
 }
 
 /**
- * One row per area, in the household's order. A plan with live plans under it
- * is a shelf and is listed as one, with how many it holds; it is never a card.
- * The cards are the plans that have a state: each sits in its own area's row,
- * in the column it is in. `done` leaves the board unless asked for, and then
- * shows in `doing` with its state as `done`. `tz` is the household's zone,
+ * The board, whole: one row per area, in the household's order, whatever the
+ * filters leave in it. `who` keeps what that member owns, strictly: an open
+ * ask puts nothing in their view, and a member who owns nothing gets nothing
+ * (it is the route that falls back to everyone, not this). `goal`, when it
+ * names a goal (ignoring case), keeps the plans carrying it and is answered in
+ * its stored spelling; a goal nobody has filters nothing and is answered as
+ * null. `plans` are the open plans in view, Doing first and then in the log's
+ * order; `done` the finished ones in view, newest first. `members` counts each
+ * member's cards in view ignoring `who` (open ones, and under a goal the done
+ * ones too), leaving out a member with none. `tz` is the household's zone,
  * which `today` is a day in; the deployment's TZ when not given.
  */
 export function board(
   state: State,
   events: readonly Event[],
-  o: { who: Actor; filter: 'both' | 'mine' | 'theirs'; today: Day; showDone?: boolean; tz?: string },
-): BoardRow[] {
+  o: { who: Actor | 'everyone'; goal?: string | null; today: Day; tz?: string },
+): Board {
   const plans = live(state);
-  const shelfIds = new Set(plans.flatMap((p) => p.parent ? [p.parent] : []));
   const researched = researchedPlans(events);
-  const shown = (p: Plan) => o.showDone || p.state !== 'done';
-  const mine = (p: Plan) => p.owner === o.who || p.asked?.to === o.who;
+  const tz = householdZone(o.tz);
+  const goal = o.goal ? goalSpelling(plans, o.goal) : null;
+  const onGoal = (p: Plan) => goal === null || (p.goal !== null && sameGoal(p.goal, goal));
+  const byWho = (p: Plan) => o.who === 'everyone' || p.owner === o.who;
+  const cardFor = (p: Plan) => cardOf(state, p, o.today, tz, researched);
+  const areas = state.settings.areas;
 
-  return state.settings.areas.map((area) => ({
-    area,
-    shelves: plans.filter((s) => s.area === area && shelfIds.has(s.id))
-      .map((s) => ({ id: s.id, title: s.title, count: plans.filter((c) => c.parent === s.id && shown(c)).length })),
-    ...(() => {
-      const cards = plans
-        .filter((p) => p.area === area && !shelfIds.has(p.id) && shown(p))
-        .filter((p) => o.filter === 'both' || (o.filter === 'mine') === mine(p))
-        .map((p) => cardOf(state, p, o.today, householdZone(o.tz), researched));
-      // There is no third column: a finished plan, when asked for, sits with the doing, marked by its state.
-      return { planning: cards.filter((c) => c.state === 'planning'), doing: cards.filter((c) => c.state !== 'planning') };
-    })(),
-  }));
+  const rows = areas.map((area): BoardRow => {
+    const here = plans.filter((p) => p.area === area);
+    const open = here.filter((p) => p.state !== 'done');
+    const seen = here.filter((p) => byWho(p) && onGoal(p));
+    return {
+      area,
+      all: { plans: open.length, doing: open.filter((p) => p.state === 'doing').length, done: here.length - open.length },
+      plans: [...seen.filter((p) => p.state === 'doing'), ...seen.filter((p) => p.state === 'planning')].map(cardFor),
+      done: seen.filter((p) => p.state === 'done').sort((x, y) => y.stateAt.localeCompare(x.stateAt)).map(cardFor),
+    };
+  });
+
+  const inView = plans.filter((p) => areas.includes(p.area) && onGoal(p) && (p.state !== 'done' || goal !== null));
+  const members = [...state.members].map((member) => ({ member, plans: inView.filter((p) => p.owner === member).length }))
+    .filter((m) => m.plans > 0);
+
+  return { who: o.who, goal, areas: [...areas], rows, members, goals: goalsOf(state) };
 }
 
-/** Everything about one plan: itself, its shelf or its plans, its money, what Claude found, what was said, what happened. */
+/** Everything about one plan: itself, its goals, its money, what Claude found, what was said, what happened. */
 export function card(state: State, events: readonly Event[], id: PlanId, o: { who: Actor; today: Day; tz?: string }): CardView {
   const p = state.plans.get(id);
   if (!p || p.removed) throw new ToolError(`no such plan: ${id}`, 404);
 
-  const parent = p.parent ? state.plans.get(p.parent) : undefined;
   const researched = researchedPlans(events);
   const figures = envelopeFigures(state, p, o.today);
   const estimate = p.estimate;
@@ -187,8 +220,9 @@ export function card(state: State, events: readonly Event[], id: PlanId, o: { wh
   return {
     ...plan,
     page: page ? { path: page.doc.path } : null,
-    shelf: parent ? { id: parent.id, title: parent.title } : null,
-    children: live(state).filter((c) => c.parent === id).map((c) => cardOf(state, c, o.today, householdZone(o.tz), researched)),
+    shelf: null,
+    children: [],
+    goals: goalsOf(state),
     daysInState: doingFor(p, o.today, householdZone(o.tz)),
     money, research, between, history,
     notOnCalendar: notOnCalendar(p),

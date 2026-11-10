@@ -548,7 +548,7 @@ const dayWords = (day: Day): string =>
  * is the one that runs in Doing. Due and overdue are facts, not reproaches.
  */
 function plansBlock(state: State, events: readonly Event[], who: Actor, today: Day, tz: string): Gathered['plans'] {
-  const cards = board(state, events, { who, filter: 'both', today, tz }).flatMap((r) => [...r.planning, ...r.doing]);
+  const cards = board(state, events, { who: 'everyone', today, tz }).rows.flatMap((r) => r.plans);
   const weekOut = addDays(today, 7);
   const where = (c: BoardCard) => `${c.area}, ${c.state === 'doing' ? 'in Doing' : 'in Planning'}, ${c.owner}'s`;
   const overdue = cards.filter((c) => c.due !== null && c.due < today).sort((a, b) => a.due!.localeCompare(b.due!));

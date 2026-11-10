@@ -17,7 +17,7 @@
  *   POST /api/thread/adjust         your own version of a card
  *   POST /api/thread/seen           you have looked at a flagged change
  *   POST /api/briefing/read         advance the caller's read cursor
- *   GET  /api/plans                 the board: a row per area (?filter=both|mine|theirs&showDone=1)
+ *   GET  /api/plans                 the board whole: a row per area (?who=<member>|everyone&goal=<label>)
  *   POST /api/plans                 make a plan { title, area, owner?, goal? }; a member's plan edits are written, not proposed
  *   POST /api/goals/rename          { from, to }: every plan carrying the goal takes the new name; { plans }
  *   POST /api/goals/remove          { goal }: it comes off every plan carrying it; { plans }
@@ -904,14 +904,14 @@ const PLANS_AHEAD_DAYS = 7;
 const LOW_ENVELOPES = 5;
 
 /**
- * The plans rail: the viewer's live cards and those asked of them (the
- * board's "mine"), that are due within the week, overdue, or in Doing. Due
+ * The plans rail: the viewer's own open cards (the board, pressed on them,
+ * strictly), that are due within the week, overdue, or in Doing. Due
  * dates first, soonest first; then the rest of Doing, longest in it first.
  */
 function plansRail(ctx: ToolContext, events: Parameters<typeof board>[1], tz: string): BoardCard[] {
   const until = addDays(ctx.today, PLANS_AHEAD_DAYS);
-  return board(ctx.store.state, events, { who: ctx.who, filter: 'mine', today: ctx.today, tz })
-    .flatMap((r) => [...r.planning, ...r.doing])
+  return board(ctx.store.state, events, { who: ctx.who, today: ctx.today, tz }).rows
+    .flatMap((r) => r.plans)
     .filter((c) => (c.due !== null && c.due <= until) || c.state === 'doing')
     .sort((a, b) => (a.due ?? '9999').localeCompare(b.due ?? '9999') || (b.daysInState ?? 0) - (a.daysInState ?? 0));
 }
@@ -2917,13 +2917,20 @@ export async function start(
     // Not money, so a member's edit is written directly. Every route here uses
     // the ctx built above, so membership has already been checked.
     if (path === '/api/plans' && req.method === 'GET') {
-      const f = url.searchParams.get('filter') || 'both';
-      if (f !== 'both' && f !== 'mine' && f !== 'theirs') throw new ToolError('filter must be both, mine or theirs');
-      const showDone = ['1', 'true'].includes(url.searchParams.get('showDone') ?? '');
-      return json(res, 200, {
-        rows: board(active.state, await active.since(null), { who, filter: f, today: ctx.today, showDone, tz }),
-        areas: active.state.settings.areas,
-      });
+      // An older page's words are refused whole, so it reloads rather than reads a board it cannot draw.
+      if (url.searchParams.has('filter') || url.searchParams.has('showDone')) throw new ToolError(STALE, 400);
+      const pressed = url.searchParams.get('who') || 'everyone';
+      if (pressed !== 'everyone' && !active.state.members.has(pressed)) {
+        throw new ToolError('who must be a member of this household, or everyone');
+      }
+      const goal = url.searchParams.get('goal') || null;
+      const events = await active.since(null);
+      const seen = board(active.state, events, { who: pressed, goal, today: ctx.today, tz });
+      // Only here does a member with nothing in view fall back to everyone, and the answer says so.
+      const empty = !seen.rows.some((r) => r.plans.length > 0 || r.done.length > 0);
+      return json(res, 200, pressed !== 'everyone' && empty
+        ? board(active.state, events, { who: 'everyone', goal, today: ctx.today, tz })
+        : seen);
     }
 
     if (path === '/api/plans' && req.method === 'POST') {

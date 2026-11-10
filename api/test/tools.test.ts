@@ -754,7 +754,7 @@ describe('plan tools', () => {
     assert.deepEqual(props('update_plan'), ['plan', 'title', 'area', 'chips', 'notes', 'estimateCents', 'envelope']);
     assert.deepEqual(props('answer_ask'), ['plan', 'answer', 'why']);
     assert.equal(toolByName.get('list_plans')?.kind, 'read');
-    assert.deepEqual(props('list_plans'), ['filter', 'showDone']);
+    assert.deepEqual(props('list_plans'), ['who', 'goal']);
     assert.equal(toolByName.get('get_plan')?.kind, 'read');
     assert.deepEqual(toolByName.get('get_plan')!.input['required'], ['plan']);
   });
@@ -907,21 +907,24 @@ describe('plan tools', () => {
 
   test('list_plans reads the board and get_plan the card', async () => {
     const c = await planCtx();
-    const rows = await call('list_plans', {}, c) as {
-      area: string; shelves: { id: string; count: number }[]; planning: { id: string; daysInState: number | null }[];
-    }[];
-    const house = rows.find((r) => r.area === 'House')!;
+    type Seen = { who: string; goal: string | null; rows: { area: string; plans: { id: string; daysInState: number | null }[] }[] };
+    const all = await call('list_plans', {}, c) as Seen;
+    const house = all.rows.find((r) => r.area === 'House')!;
     // The only clock is Doing's, and Claude is told so: nothing in Planning has an age to bring up.
-    assert.deepEqual(house.planning.map((p) => p.daysInState), [null, null]);
+    assert.deepEqual(house.plans.map((p) => p.daysInState), [null, null, null]);
     assert.match(toolByName.get('list_plans')!.description, /for a plan in Doing only/);
     assert.match(toolByName.get('list_plans')!.description, /daysInState is null/);
-    assert.deepEqual(house.shelves.map((s) => [s.id, s.count]), [['p1', 1]]);
-    assert.deepEqual(house.planning.map((p) => p.id), ['p2', 'p3']);
-    const mine = await call('list_plans', { filter: 'mine' }, { ...c, who: 'bob' }) as typeof rows;
-    assert.deepEqual(mine.flatMap((r) => r.planning), []);
-    const card = await call('get_plan', { plan: 'p1' }, c) as { title: string; children: { id: string }[] };
-    assert.equal(card.title, 'Kitchen');
-    assert.deepEqual(card.children.map((x) => x.id), ['p2']);
+    assert.deepEqual(house.plans.map((p) => p.id), ['p1', 'p2', 'p3']);
+    assert.equal(all.who, 'everyone');
+    await c.store.append('alice', [{ op: 'member.add', member: 'casey', why: 'moved in' }, { op: 'plan.hand', plan: 'p3', to: 'bob' }]);
+    const bob = await call('list_plans', { who: 'bob' }, c) as Seen;
+    assert.equal(bob.who, 'bob');
+    assert.deepEqual(bob.rows.flatMap((r) => r.plans.map((p) => p.id)), ['p3']);
+    const casey = await call('list_plans', { who: 'casey' }, c) as Seen;
+    assert.deepEqual(casey.rows.flatMap((r) => r.plans), [], 'strict: a member with nothing gets nothing');
+    const card = await call('get_plan', { plan: 'p1' }, c) as { title: string; shelf: null; children: unknown[]; goals: unknown[] };
+    assert.deepEqual([card.title, card.shelf, card.children, card.goals], ['Kitchen', null, [], []]);
+    for (const name of ['list_plans', 'get_plan']) assert.doesNotMatch(toolByName.get(name)!.description, /shelf|shelves|asked to take/i, name);
   });
 });
 
