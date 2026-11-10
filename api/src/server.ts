@@ -39,8 +39,9 @@
  *   POST /api/plans/:id/attach      one file, as multipart/form-data, onto the NAS and the card
  *   GET  /api/plans/:id/files/:name that file, read from the NAS with your session
  *   DELETE /api/plans/:id/files/:name take it off the card, with a reason (it stays on the NAS)
- *   GET  /api/search?q=&kind=       plans, briefings, answers and files by words in them (Drive, with your session),
- *                                   and the thread; { hits, documents: 'searched' | 'not searched' }; 400 under two letters
+ *   GET  /api/search?q=&lane=&who=  the record by words in it: day cards of the entries that match (Drive's briefings and
+ *                                   answers with your session), and plans and files elsewhere; { who, days, entries, capped,
+ *                                   elsewhere, documents: 'searched' | 'not searched' }; 400 under two letters
  *   GET  /api/contacts?q=           the household's address book on the NAS, filtered by name
  *   GET  /api/contacts/:id          one person in it, for their phone number on a card
  *   POST /api/contacts              propose adding someone to it (a card; the NAS is asked once it is approved)
@@ -217,7 +218,7 @@ import { note, askInThread } from './conversation.ts';
 import { board, card } from './plans.ts';
 import { PAGE_RETRY_MS, schedulePages } from './pages.ts';
 import { moveFailures } from './moves.ts';
-import { searchHousehold, searchKind, searchWords } from './search.ts';
+import { searchRecord, searchWords } from './search.ts';
 import type { BoardCard } from './plans.ts';
 import {
   addBlock, answerAsk, createPlan, handPlan, linkContact, putOnCalendar, removeBlock, removePlan, removeGoal, renameGoal, setChecklist,
@@ -2916,8 +2917,8 @@ export async function start(
     // `documents: 'not searched'`, never a failure.
     if (path === '/api/search' && req.method === 'GET') {
       const words = searchWords(url.searchParams.get('q'));
-      const kind = searchKind(url.searchParams.get('kind'));
-      return json(res, 200, await searchHousehold(ctx, words, kind));
+      const q = threadQuery(url, active.state);
+      return json(res, 200, await searchRecord(ctx, words, q.base));
     }
 
     // ── contacts: the household's address book, on the NAS ───────────────────

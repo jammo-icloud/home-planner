@@ -417,22 +417,25 @@ describe('the thread routes', () => {
       assert.equal(short.status, 400, q);
       assert.equal(short.json.error, 'search for at least two letters');
     }
-    const unknown = await call('GET', '/api/search?q=gate&kind=thread');
-    assert.equal(unknown.status, 400);
-    assert.match(unknown.json.error, /kind/);
+    const thread = await call('GET', '/api/search?q=gate&kind=thread');
+    assert.equal(thread.status, 200, JSON.stringify(thread.json));
+    for (const bad of ['lane=money', 'who=nobody']) {
+      const r = await call('GET', `/api/search?q=gate&${bad}`);
+      assert.equal(r.status, 400, bad);
+    }
 
     const made = await call('POST', '/api/plans', { title: 'Mend the garden gate', area: 'House' });
     assert.equal(made.status, 200, JSON.stringify(made.json));
     const r = await call('GET', '/api/search?q=gate');
     assert.equal(r.status, 200, JSON.stringify(r.json));
-    assert.equal(r.json.hits[0].kind, 'plan');
-    assert.equal(r.json.hits[0].open.plan, made.json.plan.id);
-    assert.equal(r.json.hits[0].title, 'Mend the garden gate');
+    assert.equal(r.json.elsewhere[0].kind, 'plan');
+    assert.equal(r.json.elsewhere[0].open.plan, made.json.plan.id);
+    assert.equal(r.json.elsewhere[0].title, 'Mend the garden gate');
     // The sandbox has no NAS session: the documents were not looked in.
     assert.equal(r.json.documents, 'not searched');
-    const files = await call('GET', '/api/search?q=gate&kind=file');
-    assert.equal(files.status, 200);
-    assert.deepEqual(files.json.hits, []);
+    assert.equal(r.json.who, 'everyone');
+    assert.equal(r.json.capped, false);
+    assert.ok(Array.isArray(r.json.days) && Array.isArray(r.json.entries));
   });
 });
 

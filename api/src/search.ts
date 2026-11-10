@@ -20,6 +20,9 @@
 // sends: not in a URL, a log line or a file.
 
 import { currentDoc, householdFolder } from './docs.ts';
+import { build, counted, daysOf, ordered } from './thread.ts';
+import type { DayRow, ThreadEntry } from './thread.ts';
+import type { Lane } from './lanes.ts';
 import { search } from './drive.ts';
 import type { DriveFile } from './drive.ts';
 import { ToolError } from './errors.ts';
@@ -28,7 +31,7 @@ import { SynologyError } from './synology.ts';
 import type { DsmFetch } from './synology.ts';
 import type { ToolContext } from './tools.ts';
 import { visibleTo } from './types.ts';
-import type { Day, Event, EventId, EventOf, PlanId, State } from './types.ts';
+import type { Actor, Day, Event, EventId, EventOf, PlanId, State } from './types.ts';
 
 export type SearchKind = 'plan' | 'briefing' | 'answer' | 'file' | 'thread';
 /** What may be asked for. A thread hit comes back only when no kind is asked for. */
@@ -148,8 +151,10 @@ function driveHit(state: State, index: ReturnType<typeof threadIndex>, item: Dri
   return { kind: 'file', title: name, passage, open: { file: { plan: plan.id, name } } };
 }
 
-/** Drive's hits, in Drive's order; null when Drive was not, or could not be, asked. */
-async function fromDrive(ctx: ToolContext, words: string, events: readonly Event[], f?: DsmFetch): Promise<SearchHit[] | null> {
+/** Drive's hits, in Drive's order, and whether Drive answered as many as it was asked for; null when Drive was not, or could not be, asked. */
+async function fromDrive(
+  ctx: ToolContext, words: string, events: readonly Event[], f?: DsmFetch,
+): Promise<{ hits: SearchHit[]; atLimit: boolean } | null> {
   const home = householdFolder(ctx.store.state);
   if (home === null || !ctx.sid || !ctx.household) return null;
   let items: DriveFile[];
@@ -170,7 +175,7 @@ async function fromDrive(ctx: ToolContext, words: string, events: readonly Event
     const hit = driveHit(ctx.store.state, index, item, item.display_path.slice(prefix.length));
     if (hit) hits.push(hit);
   }
-  return hits;
+  return { hits, atLimit: items.length >= DRIVE_LIMIT };
 }
 
 /**
@@ -232,9 +237,116 @@ export async function searchHousehold(
   const only = searchKind(kind);
   const events = await ctx.store.since(null);
   const drive = await fromDrive(ctx, asked, events, f);
-  const found = drive ?? [];
+  const found = drive?.hits ?? [];
   const drivePlans = new Set(found.filter((h) => h.kind === 'plan').map((h) => h.open.plan));
   const log = fromLog(ctx, asked, events).filter((h) => h.kind !== 'plan' || !drivePlans.has(h.open.plan));
   const hits = [...found, ...log].filter((h) => only === undefined || h.kind === only).slice(0, SEARCH_MAX);
   return { hits, documents: drive === null ? 'not searched' : 'searched' };
+}
+
+/** The most rows the record's search keeps: the newest. */
+export const RECORD_MAX = 100;
+
+export interface RecordResults {
+  /** Who is pressed; everyone when the person asked had no match. */
+  who: Actor | 'everyone';
+  /** Newest day first; only days with a match. */
+  days: DayRow[];
+  /** The matching entries, in `ordered`'s order. */
+  entries: (ThreadEntry & { passage?: string })[];
+  /** More matched than are shown. */
+  capped: boolean;
+  /** Plans and files, which are not days. */
+  elsewhere: (SearchHit & { on?: string })[];
+  documents: 'searched' | 'not searched';
+}
+
+/** The words an entry is searched by, the one it shows first; a match in a later one earns a passage. */
+function textsOf(e: ThreadEntry): string[] {
+  switch (e.kind) {
+    case 'note': return [e.text];
+    case 'ask': return [e.text, ...(e.answer ? [e.answer.text] : [])];
+    case 'briefing': return [e.headline, ...(e.body ? [e.body] : [])];
+    case 'change': return [e.what, ...(e.why ? [e.why] : []), ...(e.flag?.removed ? [e.flag.removed.payee] : [])];
+    case 'card': return [e.offer.summary, ...e.offer.effects, ...(e.offer.why ? [e.offer.why] : []), ...(e.ask?.why ? [e.ask.why] : [])];
+    case 'decision': return [];
+  }
+}
+
+/** The passage of an entry's match: the answer's opening for a question found in itself, the words around the match otherwise. */
+function passageOf(e: ThreadEntry, words: string): string | undefined {
+  const texts = textsOf(e);
+  const at = texts.findIndex((t) => has(t, words));
+  if (at < 0) return undefined;
+  if (e.kind === 'ask') {
+    if (!e.answer) return undefined;
+    return at === 0 ? around(e.answer.text, '') : around(e.answer.text, words);
+  }
+  return at === 0 ? undefined : around(texts[at]!, words);
+}
+
+/**
+ * Search the record for `words`: the entries whose words match, as day cards
+ * (newest `RECORD_MAX`, the day's numbers counting only matches), and the
+ * plans and files they are not. Drive's briefings and answers join the
+ * entries they are the words of.
+ */
+export async function searchRecord(
+  ctx: ToolContext, words: string, o: { lane?: Lane; person?: Actor | 'everyone' }, f?: DsmFetch,
+): Promise<RecordResults> {
+  const asked = searchWords(words);
+  const events = await ctx.store.since(null);
+  const state = ctx.store.state;
+  const all = ordered(build(events, state, ctx.who));
+  const drive = await fromDrive(ctx, asked, events, f);
+
+  const passages = new Map<EventId, string>();
+  const matched = new Set<EventId>();
+  for (const e of all) {
+    if (e.kind !== 'decision' && textsOf(e).some((t) => has(t, asked))) matched.add(e.id);
+  }
+  // Drive's words for a briefing or an answer: they join the entry that shows it, and replace its own passage.
+  const answerOf = new Map<EventId, ThreadEntry>();
+  for (const e of all) if (e.kind === 'ask' && e.answer) answerOf.set(e.answer.id, e);
+  const byId = new Map(all.map((e) => [e.id, e] as const));
+  for (const h of drive?.hits ?? []) {
+    if ((h.kind !== 'briefing' && h.kind !== 'answer') || !h.open.event) continue;
+    const entry = h.kind === 'briefing' ? byId.get(h.open.event) : answerOf.get(h.open.event);
+    if (!entry || (h.kind === 'briefing' && entry.kind !== 'briefing')) continue;
+    matched.add(entry.id);
+    passages.set(entry.id, h.passage);
+  }
+
+  const lane = o.lane;
+  const window = { from: '0000-01-01', to: '9999-12-31', ...(lane ? { lane } : {}) };
+  let person: Actor | 'everyone' = o.person ?? 'everyone';
+  // A person with no match falls back to everyone, as the day list does.
+  if (person !== 'everyone' && !daysOf(all, state, ctx.who, { ...window, who: person, only: matched }).some((d) => d.count > 0)) {
+    person = 'everyone';
+  }
+
+  const shown = all.filter((e) => matched.has(e.id) && counted(e, lane, person));
+  // The newest are kept; within a day they stay morning to night.
+  const newest = shown.map((e, i) => ({ e, i }))
+    .sort((a, b) => (a.e.day < b.e.day ? 1 : a.e.day > b.e.day ? -1 : 0) || (a.e.at < b.e.at ? 1 : a.e.at > b.e.at ? -1 : 0) || b.i - a.i)
+    .slice(0, RECORD_MAX).map((x) => x.e.id);
+  const kept = new Set(newest);
+  const entries = shown.filter((e) => kept.has(e.id)).map((e) => {
+    const passage = passages.get(e.id) ?? passageOf(e, asked);
+    return passage === undefined ? e : { ...e, passage };
+  });
+  const capped = shown.length > RECORD_MAX || (drive?.atLimit ?? false);
+  const days = daysOf(all, state, ctx.who, { ...window, who: person, only: kept }).filter((d) => d.count > 0);
+
+  let elsewhere: (SearchHit & { on?: string })[] = [];
+  if (lane === undefined || lane === 'plans') {
+    const found = (drive?.hits ?? []).filter((h) => h.kind === 'plan' || h.kind === 'file');
+    const driven = new Set(found.filter((h) => h.kind === 'plan').map((h) => h.open.plan));
+    const log = fromLog(ctx, asked, events).filter((h) => h.kind === 'plan' && !driven.has(h.open.plan));
+    elsewhere = [...found, ...log].slice(0, SEARCH_MAX).map((h) => {
+      const title = h.kind === 'file' && h.open.file ? state.plans.get(h.open.file.plan)?.title : undefined;
+      return title === undefined ? h : { ...h, on: title };
+    });
+  }
+  return { who: person, days, entries, capped, elsewhere, documents: drive === null ? 'not searched' : 'searched' };
 }

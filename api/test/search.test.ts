@@ -5,15 +5,17 @@ import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
+import { parseDollars } from '../src/money.ts';
 import { Store } from '../src/store.ts';
 import { ProposalStore } from '../src/tools.ts';
 import type { ToolContext } from '../src/tools.ts';
+import { build } from '../src/thread.ts';
 import { followOn } from '../src/pages.ts';
 import { briefingFile, renderAnswerPage, renderBriefingPage, writeDoc } from '../src/docs.ts';
 import { offer } from '../src/offers.ts';
 import { uploadFile } from '../src/synology.ts';
 import type { DsmFetch } from '../src/synology.ts';
-import { SEARCH_KINDS, SEARCH_MAX, searchHousehold } from '../src/search.ts';
+import { RECORD_MAX, SEARCH_KINDS, SEARCH_MAX, searchHousehold, searchRecord } from '../src/search.ts';
 import type { SearchHit } from '../src/search.ts';
 import { fakeNas } from './fake-nas.ts';
 import type { FakeNas } from './fake-nas.ts';
@@ -316,5 +318,166 @@ describe('search across the household', () => {
     const ctx = member(await fresh(), { sid: null });
     await assert.rejects(() => searchHousehold(ctx, ' a ', undefined, nas.via), /search for at least two letters/);
     await assert.rejects(() => searchHousehold(ctx, 'gate', 'thread' as never, nas.via), /kind/);
+  });
+
+  // The record's search, on the same fake NAS: its folders are made once.
+  const recordMember = (s: Store, o: { sid?: string | null; who?: string } = {}): ToolContext => ({
+    store: s, who: o.who ?? 'alice', today: DAY, proposals: new ProposalStore(), sid: o.sid === undefined ? sid : o.sid, household: 'h1',
+  });
+  const ids = (r: { entries: { id: string }[] }): string[] => r.entries.map((e) => e.id);
+  const raw = async (s: Store, by: string, args: Record<string, unknown>, over: Record<string, unknown> = {}) => {
+    const [o] = await s.append(by, { op: 'proposal.offer', tool: 'move_money', args, summary: 'Dinner', effects: [], events: [],
+      budget: null, month: null, envelopes: [], fingerprint: '', prompt: { kind: 'member', ref: null }, ...over } as never);
+    return o!;
+  };
+
+  test('each of a note, question, answer, briefing, change, removed payee and a card is found', async () => {
+    const s = await fresh({ folder: false });
+    await s.append('alice', [
+      { op: 'category.define', category: 'groceries', label: 'Groceries' },
+      { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
+      { op: 'txn.add', txns: [{ id: 't1', date: DAY, payee: 'Quokka Market', amount: parseDollars('-1.00'), dedupeKey: 't1', category: null }] },
+    ]);
+    const [note] = await s.append('bob', { op: 'thread.note', text: 'Wombat is on the list.', budget: null });
+    const [ask] = await s.append('alice', { op: 'thread.ask', question: 'Is the numbat fed?', budget: null });
+    await s.append('claude', { op: 'thread.answer', replyTo: ask!.id, text: 'Yes, the numbat ate.', tools: [], model: 'm' });
+    const [brief] = await s.append('claude', { op: 'thread.briefing', day: DAY, source: 'household', budget: null,
+      headline: 'Bilby week', body: 'Quiet.', writtenBy: 'claude' });
+    const [change] = await s.append('alice', { op: 'plan.create', plan: 'wallaby', title: 'Wallaby fence', area: 'House' });
+    await s.append('bob', { op: 'txn.remove', txn: 't1', why: 'dupe' });
+    const card = await raw(s, 'bob', {}, { summary: 'Move to the dingo fund', effects: ['Kookaburra goes up'] });
+    const ctx = recordMember(s, { sid: null });
+    const find = async (w: string) => (await searchRecord(ctx, w, {}, nas.via)).entries;
+    assert.deepEqual((await find('wombat')).map((e) => e.id), [note!.id]);
+    assert.deepEqual((await find('numbat')).map((e) => e.id), [ask!.id]);
+    assert.deepEqual((await find('bilby')).map((e) => e.id), [brief!.id]);
+    assert.ok((await find('wallaby')).some((e) => e.id === change!.id));
+    assert.deepEqual((await find('quokka')).map((e) => e.kind), ['change']);
+    assert.deepEqual((await find('dingo')).map((e) => e.id), [card.id]);
+    assert.deepEqual((await find('kookaburra')).map((e) => e.id), [card.id]);
+  });
+
+  test('a day of three entries, two matching, says so', async () => {
+    const s = await fresh({ folder: false });
+    await s.append('alice', { op: 'thread.note', text: 'Platypus one', budget: null });
+    await s.append('bob', { op: 'thread.note', text: 'Platypus two', budget: null });
+    await s.append('bob', { op: 'thread.note', text: 'Something else', budget: null });
+    const r = await searchRecord(recordMember(s, { sid: null }), 'platypus', {}, nas.via);
+    assert.equal(r.days.length, 1);
+    assert.equal(r.days[0]!.count, 2);
+    const sameDay = build(await s.since(null), s.state, 'alice').filter((e) => e.day === DAY).length;
+    assert.equal(r.days[0]!.total, sameDay);
+    assert.ok(sameDay >= 3);
+    assert.equal(r.entries.length, 2);
+    assert.equal(r.capped, false);
+    assert.equal(r.documents, 'not searched');
+  });
+
+  test('a question found in its answer shows the match; found in the question, the answer opens', async () => {
+    const s = await fresh({ folder: false });
+    const [ask] = await s.append('alice', { op: 'thread.ask', question: 'When does the sweep come?', budget: null });
+    await s.append('claude', { op: 'thread.answer', replyTo: ask!.id, text: 'The chimney sweep comes on Friday morning, early.', tools: [], model: 'm' });
+    const ctx = recordMember(s, { sid: null });
+    const inAnswer = await searchRecord(ctx, 'friday', {}, nas.via);
+    assert.match(inAnswer.entries[0]!.passage ?? '', /Friday morning/);
+    const inQuestion = await searchRecord(ctx, 'when does', {}, nas.via);
+    assert.match(inQuestion.entries[0]!.passage ?? '', /^The chimney sweep/);
+  });
+
+  test('a briefing and an answer kept only in Drive are joined, with its passage; a replaced briefing is dropped', async () => {
+    const s = await fresh();
+    const ctx = recordMember(s);
+    const old = await writeDoc(ctx, ['today', briefingFile(DAY, 'household', null)], renderBriefingPage({
+      day: DAY, source: 'household', budget: null, writtenBy: 'claude', headline: 'Old week', body: 'Bleed the radiators.',
+    }), nas.via);
+    const [o] = await s.append('claude', { op: 'thread.briefing', day: DAY, source: 'household', budget: null, headline: 'Old week', doc: old!, writtenBy: 'claude' });
+    const doc = await writeDoc(ctx, ['today', briefingFile(DAY, 'budget', 'harbor')], renderBriefingPage({
+      day: DAY, source: 'budget', budget: 'harbor', writtenBy: 'claude', headline: 'Cold week', body: 'Bleed the radiators before Thursday.',
+    }), nas.via);
+    const [b] = await s.append('claude', { op: 'thread.briefing', day: DAY, source: 'budget', budget: null, headline: 'Cold week', doc: doc!, writtenBy: 'claude', replaces: o!.id });
+    const question = 'When does the sweep come?';
+    const [asked] = await s.append('alice', { op: 'thread.ask', question, budget: null });
+    const answer = await writeDoc(ctx, ['answers', `${asked!.id}.md`], renderAnswerPage({
+      replyTo: asked!.id, plan: null, model: 'm', question, text: 'The chimney sweep comes on Friday morning.', tools: [],
+    }), nas.via);
+    await s.append('claude', { op: 'thread.answer', replyTo: asked!.id, text: 'Sweep: Friday', tools: [], model: 'm', doc: answer! });
+
+    const r = await searchRecord(ctx, 'radiators', {}, nas.via);
+    assert.equal(r.documents, 'searched');
+    assert.deepEqual(ids(r), [b!.id]);
+    assert.match(r.entries[0]!.passage ?? '', /radiators/);
+    const f = await searchRecord(ctx, 'friday', {}, nas.via);
+    assert.deepEqual(ids(f), [asked!.id]);
+    assert.match(f.entries[0]!.passage ?? '', /Friday/);
+  });
+
+  test('a hundred and one notes cap at a hundred; Drive filling its answer caps too', async () => {
+    const s = await fresh({ folder: false });
+    await s.append('alice', Array.from({ length: 101 }, (_, i) => ({ op: 'thread.note' as const, text: `Zebra ${i}`, budget: null })));
+    const r = await searchRecord(recordMember(s, { sid: null }), 'zebra', {}, nas.via);
+    assert.equal(RECORD_MAX, 100);
+    assert.equal(r.entries.length, 100);
+    assert.equal(r.capped, true);
+    assert.equal(r.days[0]!.count, 100);
+    assert.ok(r.entries.some((e) => e.kind === 'note' && e.text === 'Zebra 100'), 'the newest are kept');
+    assert.ok(!r.entries.some((e) => e.kind === 'note' && e.text === 'Zebra 0'));
+
+    const s2 = await fresh();
+    const full = (async (input: string | URL | Request, init?: RequestInit) => {
+      const res = await nas.via(input, init);
+      if (!String(input instanceof Request ? input.url : input).includes('/files/search')) return res;
+      const body = await res.json() as { data: { items: Record<string, unknown>[] } };
+      const one = { file_id: '9', permanent_link: 'x', name: 'x', path: '/x', display_path: '/elsewhere/x', type: 'file', hash: 'h',
+        version_id: 1, change_id: 1, max_id: 1, modified_time: 0, removed: false, content_snippet: '' };
+      body.data.items = Array.from({ length: 50 }, () => one);
+      return Response.json(body);
+    }) as DsmFetch;
+    await s2.append('alice', { op: 'thread.note', text: 'Zebra', budget: null });
+    assert.equal((await searchRecord(recordMember(s2), 'zebra', {}, full)).capped, true);
+    assert.equal((await searchRecord(recordMember(s2), 'zebra', {}, nas.via)).capped, false);
+  });
+
+  test('elsewhere is plans and files, eight at most, a file on its plan', async () => {
+    const s = await fresh();
+    await s.append('alice', Array.from({ length: 10 }, (_, i) => ({ op: 'plan.create' as const, plan: `q${i}`, title: `Gutter run ${i}`, area: 'House' })));
+    const ctx = recordMember(s);
+    await followOn(ctx, nas.via);
+    await uploadFile(sid, { folder: '/Planner/h1/q0', name: 'gutter-quote.txt', bytes: new TextEncoder().encode('Gutter guards, $90') }, nas.via);
+    await s.append('alice', { op: 'plan.attach', plan: 'q0', path: '/Planner/h1/q0/gutter-quote.txt', name: 'gutter-quote.txt', size: 18 });
+    const r = await searchRecord(ctx, 'gutter', {}, nas.via);
+    assert.equal(r.elsewhere.length, SEARCH_MAX);
+    assert.ok(r.elsewhere.every((h) => h.kind === 'plan' || h.kind === 'file'));
+    const file = r.elsewhere.find((h) => h.kind === 'file');
+    assert.equal(file?.on, 'Gutter run 0');
+    assert.equal(file?.open.file?.plan, 'q0');
+  });
+
+  test('a kind narrows; elsewhere goes under Budget and stays under Plans; a person keeps their rows', async () => {
+    const s = await fresh({ folder: false });
+    await s.append('alice', { op: 'thread.note', text: 'Gate note from alice', budget: null });
+    const [bob] = await s.append('bob', { op: 'thread.note', text: 'Gate note from bob', budget: null });
+    const ctx = recordMember(s, { sid: null });
+    assert.equal((await searchRecord(ctx, 'gate', {}, nas.via)).elsewhere.length, 1);
+    const budget = await searchRecord(ctx, 'gate', { lane: 'budget' }, nas.via);
+    assert.deepEqual(budget.elsewhere, []);
+    assert.deepEqual(budget.entries, []);
+    assert.equal((await searchRecord(ctx, 'gate', { lane: 'plans' }, nas.via)).elsewhere.length, 1);
+    const notes = await searchRecord(ctx, 'gate', { lane: 'notes' }, nas.via);
+    assert.equal(notes.entries.length, 2);
+    const only = await searchRecord(ctx, 'gate', { person: 'bob' }, nas.via);
+    assert.equal(only.who, 'bob');
+    assert.deepEqual(ids(only), [bob!.id]);
+    const none = await searchRecord(ctx, 'gate', { person: 'casey' }, nas.via);
+    assert.equal(none.who, 'everyone');
+    assert.equal(none.entries.length, 3);
+  });
+
+  test("a card on someone's own calendar is found by nobody else", async () => {
+    const s = await fresh({ folder: false });
+    const mine = await raw(s, 'alice', { on: 'mine', for: 'alice' }, { tool: 'propose_event', summary: 'Dentist, Thursday' });
+    const alice = await searchRecord(recordMember(s, { sid: null }), 'dentist', {}, nas.via);
+    assert.deepEqual(ids(alice), [mine.id]);
+    const bob = await searchRecord(recordMember(s, { sid: null, who: 'bob' }), 'dentist', {}, nas.via);
+    assert.deepEqual(bob.entries, []);
   });
 });
