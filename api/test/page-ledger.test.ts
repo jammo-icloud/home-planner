@@ -253,6 +253,13 @@ const ADDED: readonly Line[] = [
   ['C21', 'function dayCell(', 'calendar'], ['C21', "node('span', 'marks')", 'calendar'], ['C21', '.daystrip .marks', 'css'], ['C22', 'marksWords(', 'calendar'], ['C23', 'calDay = key;', 'calendar'],
   ['C56', "Plans' dates, held nights, money and the record are still shown.", 'calendar'], ['C57', 'could not be read just now; the rest is shown.', 'calendar'],
   ['S2', "else if (view === 'calendar') await loadCalendar(calWeek)", 'page'], ['S21', 'chosenBudget()', 'calendar'], ['S27', 'bookingHere()', 'calendar'], ['S27', 'dsmCalendarUrl()', 'calendar'], ['S14', 'peopleOrder()', 'calendar'],
+  // The day card: one card of plain rows (Calendar Task 7).
+  ['C24', 'function renderDayCard(', 'calendar'], ['C24', 'id="cal-card"', 'calendarMarkup'], ['C24', "'Nothing on.'", 'calendar'], ['C24', 'clashLine(', 'calendar'], ['C24', 'dayLong(', 'calendar'], ['row', 'function calRow(', 'calendar'], ['row', '.erow.cal{', 'css'], ['row', '--when', 'css'],
+  ['C25', "'NIGHTS'", 'calendar'], ['C25', "'ALL DAY'", 'calendar'], ['C25', ' staying', 'calendar'], ['C25', 'kept by ${nameIn(', 'calendar'], ['C26', 'whenOf(', 'calendar'], ['C27', 'nowIndex(', 'calendar'], ['C27', '.cal-now{', 'css'], ['C31', 'openTodayAt({ offer: e.held.request })', 'calendar'],
+  ['C59', 'not on the calendar yet', 'calendar'], ['C60', 'proposed, not approved', 'calendar'], ['C61', 'moved on the calendar', 'calendar'], ['C62', '.erow.cal.clash{', 'css'], ['C7', 'Add to ${', 'calendar'], ['C66', 'nightHeld(', 'calendar'], ['C6', 'id="cal-foot"', 'calendarMarkup'],
+  ['money', "'AUTO PAY'", 'calendar'], ['money', "'PAY BY'", 'calendar'], ['money', "'BILL'", 'calendar'], ['money', "'PAID'", 'calendar'], ['money', "'DUE'", 'calendar'], ['money', ' · no receipt yet', 'calendar'], ['money', ' left`', 'calendar'], ['money', ' over`', 'calendar'], ['money', ' bills, about ', 'calendar'],
+  ['rec', "The day's record", 'calendar'], ['rec', ' waiting on you', 'calendar'], ['rec', 'openTodayAt({ day', 'calendar'], ['rec', 'function dayWriters(', 'shared'], ['rec', 'dayWriters(', 'today'], ['also', 'alsoHasLine(', 'calendar'], ['also', "calAlso.setAttribute('aria-live', 'polite')", 'calendar'],
+  ['S8', 'memberDisc(', 'calendar'], ['S10', 'householdDisc(e.label)', 'calendar'], ['S19', "focus === 'bills'", 'page'], ['S19', "focus === true || focus === 'cover'", 'page'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
@@ -288,6 +295,8 @@ const GONE: readonly Line[] = [
   ['T97', 'id="search"', 'page'], ['T97', 'id="search-q"', 'page'], ['T97', 'id="search-list"', 'page'], ['T100', 'function searchMark(', 'page'], ['T106', 'function searchSay(', 'page'], ['T106', "Today doesn't show that one", 'page'], ['T108', 'function searchOpen(', 'page'], ['T99', 'function searchDraw(', 'page'], ['T102', 'function searchGo(', 'page'], ['spec', 'SEARCH_KINDS', 'page'], ['spec', 'function searchClose(', 'page'], ['spec', 'searchClear(', 'page'], ['spec', 'searchReset(', 'page'],
   // The Calendar's legends, hint, dots and the helpers that served them (Calendar Task 6).
   ['C9', 'function legend(', 'page'], ['C9', 'cal-legend', 'page'], ['C10', 'legend(', 'calendar'], ['C11', 'Shows your calendar', 'page'], ['S3', 'cal-block', 'page'], ['C21', '.dots', 'css'], ['spec', '.legend', 'css'], ['spec', '.sw{', 'css'], ['spec', '.sw.', 'css'], ['spec', 'sourceName', 'page'], ['C6', 'class="btn small" id="cal-dsm"', 'calendarMarkup'], ['C56', 'Due dates from your plans are still shown', 'page'], ['C57', 'the rest of the week is shown', 'page'],
+  // The phone's hour grid and its title (Calendar Task 7).
+  ['C26', 'dayview', 'page'], ['C26', "hourLabels('hrs')", 'page'], ['C24', 'cal-day-count', 'page'], ['C24', 'cal-day-title', 'page'], ['C24', '.day-head', 'css'], ['C26', 'id="cal-day"', 'page'], ['spec', 'evNode(e, long', 'page'], ['spec', 'evSub(e, long', 'page'], ['spec', 'timedBoxes(events, day, long)', 'page'], ['spec', 'renderDay(', 'page'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
