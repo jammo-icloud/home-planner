@@ -51,7 +51,9 @@
   /* align-items: a .btn some screen draws as a flex box keeps its label in the middle of the taller box. */
   @container page (max-width: 759px){ .btn{min-height:var(--tap);align-items:center} }
   /* The one hit-area helper: a control drawn smaller than a thumb is hit across --tap, centred on it, and never
-     across less than itself. The control's own box draws; this only catches the press. */
+     across less than itself. The control's own box draws; this only catches the press. The catch is --tap across
+     whatever the control's own width, so two neighbours narrower than --tap with a small gap overlap, and the later
+     one in the page takes the tap: a caller spaces such controls --tap apart, centre to centre. */
   .hit{position:relative}
   .hit::after{content:'';position:absolute;top:50%;left:50%;width:100%;height:100%;min-width:var(--tap);min-height:var(--tap);
     transform:translate(-50%,-50%)}
@@ -907,59 +909,54 @@
   .state-on{display:inline-flex;align-items:center;gap:6px;color:var(--good);font-size:var(--fs-small);font-weight:var(--fw-medium)}
   .guest-state{display:flex;flex-wrap:wrap;align-items:center;gap:4px 10px}
 
-  /* the board: phone, one area at a time, Planning then Doing stacked full width */
+  /* the board: the head and its count line, the people bar, then a card of rows per area, "A new area" last */
   .page-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);margin-bottom:var(--sp-5)}
   .page-head h1{font-size:var(--fs-headline);letter-spacing:-0.02em;margin-right:auto}
   .page-head .filters{margin-bottom:0}
-  .area{display:grid;gap:var(--sp-3);margin-top:0}
-  .area + .area{margin-top:var(--sp-6)}
-  .area-head{display:flex;align-items:baseline;gap:var(--sp-2)}
-  .area-head h2{font-size:var(--fs-title)}
+  #plan-board .page-head{flex-direction:column;align-items:flex-start;gap:var(--sp-1)}
+  #plan-people{margin-bottom:var(--sp-5)}
+  #plan-areas{display:grid;gap:var(--sp-6)}
+  #plan-areas + #plan-quiet{margin-top:var(--sp-4)}
+  /* The gap keeps the heading's hit (--tap, centred on a shorter line) off the card's first row. */
+  .area{display:grid;gap:var(--sp-3);margin:0;min-width:0}
+  /* An area's heading is one link: its name in title weight, the count, a chevron, hit across --tap (.hit). */
+  .area-head{min-width:0;font-size:var(--fs-title);font-weight:var(--fw-semibold)}
+  .area-head > button{display:inline-flex;align-items:baseline;gap:var(--sp-2);max-width:100%;padding:0;font:inherit;
+    color:var(--ink);text-align:left;background:none;border:0;cursor:pointer}
+  .area-head > button:hover .area-name{text-decoration:underline}
+  .area-head .area-name{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   /* not Import's .count tile, which shares the name */
-  .area-head .count{font-size:var(--fs-micro);color:var(--ink-faint);background:none;border:0;box-shadow:none;
-    padding:0;flex:none;min-width:0}
-  .lane{display:grid;gap:var(--sp-2)}
-  .lane-label{display:flex;align-items:center;gap:6px;font-size:var(--fs-micro);font-weight:var(--fw-semibold);color:var(--ink-faint)}
-  .lane-label .i{width:12px;height:12px}
-  .lane-empty{font-size:var(--fs-small);color:var(--ink-faint);padding:2px 0}
-  .board-head{display:none}
-  /* desk at 1040: the grid. Area labels down the side, two lanes across. */
+  .area-head .count{font-size:var(--fs-micro);font-weight:var(--fw-medium);color:var(--ink-faint);background:none;border:0;
+    box-shadow:none;padding:0;flex:none;min-width:0;white-space:nowrap}
+  .area-head .chev{flex:none;align-self:center;color:var(--ink-faint)}
+  /* Plan's rows vary Budget's: a leading slot a disc wide for the state, the add row's plus or the done row's tick. */
+  .erow.plan{grid-template-columns:var(--disc) minmax(0,1fr) auto;min-height:var(--row)}
+  .erow.plan .erow-l{gap:var(--sp-1)}
+  .erow.plan[data-state="doing"]{box-shadow:inset var(--stroke-rail) 0 0 var(--state-doing)}
+  /* finished: softened by its ink alone, never faded or struck */
+  .erow.plan.finished .erow-name{color:var(--ink-soft)}
+  .erow.add{grid-template-columns:var(--disc) minmax(0,1fr) auto;min-height:var(--row);color:var(--accent-ink)}
+  .erow.add .add-plus{justify-self:center;width:16px;height:16px}
+  .erow.fold{grid-template-columns:var(--disc) minmax(0,1fr) auto;min-height:44px;background:var(--surface-sunken);color:var(--ink-soft)}
+  .erow.fold .st{justify-self:center}
+  .erow-meta{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-1) var(--sp-2);min-width:0;
+    font-size:var(--fs-micro);color:var(--ink-soft)}
+  /* The meta's marks are an icon and words, with no box: only a free chip is a chip. */
+  .pm{display:inline-flex;align-items:center;gap:3px;white-space:nowrap}
+  .pm .i{width:12px;height:12px}
+  .pm-research{color:var(--claude-ink)}
+  .pm-research .i{color:var(--claude-mark);fill:currentColor;stroke:none}
+  .pm-env.neg{color:var(--problem)}
+  .list > .add-form{padding:var(--sp-3) var(--sp-4);border-top:var(--stroke) solid var(--hair)}
+  #plan-areas > .add-row{margin-top:0}
+  /* Room under a form that opened near the bottom, so its field can be scrolled into the top half of a phone. */
+  #plan-board:has(#plan-areas form){padding-bottom:50vh}
+  /* desk at 1040: the areas are columns that wrap, each the same card, "A new area" a solid column at the end */
   @container page (min-width: 1040px){
-    .board{display:grid;grid-template-columns:132px minmax(0,1fr) minmax(0,1fr);border:var(--stroke) solid var(--line);
-      border-radius:var(--r-card);background:var(--surface-raised);overflow:hidden}
-    .board-head{display:contents}
-    .board-head > div{padding:10px var(--sp-4);border-bottom:var(--stroke) solid var(--line);background:var(--surface-sunken)}
-    .board-head .lane-label{font-size:var(--fs-small);color:var(--ink)}
-    .board-head .lane-label small{font-size:var(--fs-micro);font-weight:var(--fw-regular);color:var(--ink-faint);margin-left:4px}
-    .area{display:contents}
-    .area + .area{margin-top:0}
-    .area-head{padding:var(--sp-4);border-top:var(--stroke) solid var(--line);flex-direction:column;gap:2px}
-    section.area:first-of-type .area-head{border-top:0}
-    .area > .lane{padding:var(--sp-3);border-top:var(--stroke) solid var(--line);border-left:var(--stroke) solid var(--hair);
-      align-content:start;min-height:88px}
-    .area > .lane .lane-label{display:none}
-    section.area:first-of-type > .lane{border-top:0}
-    .area > .shelf{grid-column:2 / -1;width:auto;margin:0 var(--sp-3) var(--sp-3)}
+    #plan-areas{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--sp-5);align-items:start}
+    #plan-areas > .add-row{min-height:calc(var(--row) * 2)}
+    .erow.add .add-where{display:none}
   }
-  .bcard{display:block;width:100%;text-align:left;font:inherit;padding:10px 12px;background:var(--surface-raised);
-    border:var(--stroke) solid var(--line);border-radius:var(--r-control);box-shadow:var(--e-1);color:var(--ink);
-    text-decoration:none;cursor:pointer}
-  .bcard .title{display:block;font-size:var(--fs-ui);font-weight:var(--fw-medium);line-height:var(--lh-snug)}
-  .bcard .chips{margin-top:6px}
-  /* asked of you: .bcard sets a solid edge after .provisional did, so the compound rule says the dash again */
-  .bcard.provisional{border:var(--stroke-heavy) dashed var(--provisional);box-shadow:none;padding:10px 12px;
-    border-radius:var(--r-control);cursor:default}
-  .bcard .ask-line{display:block;margin-top:4px;font-size:var(--fs-small);color:var(--ink-soft)}
-  .bcard .actions{margin-top:var(--sp-2)}
-  /* a finished plan, shown only when asked for: quiet, and its clock has stopped */
-  .bcard.is-done .title{color:var(--ink-faint);text-decoration:line-through}
-  /* a shelf: a plan that holds items. Solid and sunken, never dashed. */
-  .shelf{display:flex;align-items:center;gap:var(--sp-2);width:100%;min-height:40px;padding:0 var(--sp-3);
-    font:inherit;text-align:left;cursor:pointer;
-    background:var(--surface-sunken);border:var(--stroke) solid var(--line);border-radius:var(--r-control);
-    font-size:var(--fs-small);color:var(--ink-soft);text-decoration:none}
-  .shelf b{color:var(--ink);font-weight:var(--fw-semibold)}
-  .shelf .go{margin-left:auto;color:var(--ink-faint)}
 
   /* the card */
   .crumb{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:var(--fs-small);color:var(--ink-faint)}
@@ -1015,7 +1012,6 @@
   .sec-form{display:grid;gap:var(--sp-2);margin-top:var(--sp-2);max-width:var(--measure)}
   /* a form slot holds nothing until a button opens its form there */
   .plan-head > div:empty,.plan-side > div:empty{display:none}
-  #plan-form:not(:empty){margin-bottom:var(--sp-5)}
   .sec-form label{display:grid;gap:var(--sp-1);font-size:var(--fs-small);color:var(--ink-soft)}
   .sec-form .msg{font-size:var(--fs-small);color:var(--problem)}
   /* back: from a card to its board on a phone (the crumb does it on a desk), and out of Settings */
@@ -1043,8 +1039,6 @@
   .asof{color:var(--ink-faint);font-weight:var(--fw-regular)}
   #plan-card .empty,#plan .empty{padding:var(--sp-5) var(--sp-4);text-align:center;color:var(--ink-soft);font-size:var(--fs-small);
     border:var(--stroke) solid var(--line);border-radius:var(--r-card);background:var(--surface-raised)}
-  /* the invitation above an empty board's rows */
-  #plan-empty{margin:0 0 var(--sp-5)}
   /* attachments: files on the NAS, and the way to add one. The drop zone is
      solid: a dashed edge is reserved for what waits on a person. */
   .files{display:grid;gap:var(--sp-2);grid-template-columns:repeat(auto-fill,minmax(calc(var(--tap) * 4),1fr))}
@@ -1755,23 +1749,18 @@
       <div id="cmp-out"></div>
     </div>
 
-    <!-- The board: a row per area, Planning (no clock) and Doing (the clock
-         runs) across. A shelf is a solid strip under its row's cards. -->
+    <!-- Plan: the board, one card of rows per area with an add row in each and "A new area" last, under a
+         count line and the people bar; or one area's own page in its place. Drawn by renderPlan. -->
     <div id="plan" hidden>
-      <div class="page-head">
-        <h1>Plan</h1>
-        <div class="filters" id="plan-filters" role="group" aria-label="Show">
-          <button type="button" data-filter="both" aria-pressed="true">Both</button>
-          <button type="button" data-filter="mine" aria-pressed="false">Mine</button>
-          <button type="button" data-filter="theirs" aria-pressed="false" id="plan-theirs">Theirs</button>
-          <span class="sep"></span>
-          <button type="button" id="plan-done" aria-pressed="false">Show done</button>
-        </div>
-        <button class="btn primary" id="plan-new" type="button"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>New plan</button>
+      <div id="plan-board">
+        <div class="page-head"><h1>Plan</h1><p class="set-line" id="plan-count" aria-live="polite"></p></div>
+        <div id="plan-people"></div>
+        <div class="filters" id="plan-goals" role="group" aria-label="Goals" hidden></div>
+        <div id="plan-areas"></div>
+        <p class="hint" id="plan-quiet" aria-live="polite" hidden></p>
+        <div id="plan-foot"></div>
       </div>
-      <div id="plan-form"></div>
-      <p class="empty" id="plan-empty" hidden>Nothing is planned yet: anything the two of you mean to do goes here.</p>
-      <div class="board" id="board"></div>
+      <section id="area-page" hidden></section>
     </div>
 
     <!-- One plan's card: what it is, where it stands, and what has been said and found about it. -->
@@ -2128,6 +2117,8 @@ $('signin-form').addEventListener('submit', async (e) => {
       $('login-note').textContent = 'Enter the code from your authenticator.';
       return;
     }
+    // A person pressed before the session ran out is not carried into the new one.
+    pressPerson(null);
     // One household opens straight into it; none or several ask first.
     if (out.household) await enterApp(); else showHouseholds(out);
   } catch (ex) {
@@ -2262,7 +2253,6 @@ const planPath = (id, sub = '') => `/api/plans/${encodeURIComponent(id)}${sub}`;
 const ICONS = {
   clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/>',
   cal: '<rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/>',
-  shelf: '<path d="M2.5 5h11M2.5 11h11M4 5v6M12 5v6"/>',
   go: '<path d="M6 4l4 4-4 4"/>',
   back: '<path d="M10 4L6 8l4 4"/>',
   check: '<path d="M3.5 8.5l3 3 6-7"/>',
@@ -2313,12 +2303,14 @@ function lucide(name, shape = LUCIDE[name]) {
 
 /**
  * A member as a disc: yours solid, every other member's a ring, one treatment for all of them. The initial, or the
- * first two letters when another member (not this one, not you) starts with the same letter: "Bo" beside "Be".
+ * first two letters when this is another member and a third (not this one, not you) starts with the same letter:
+ * "Bo" beside "Be". Your own disc is always one letter: solid, it is told apart already.
  */
 function memberDisc(name, { small = false } = {}) {
   const who = name || '?';
   const first = who.slice(0, 1).toUpperCase();
-  const shared = members.some((m) => m !== name && m !== myName && m.slice(0, 1).toUpperCase() === first);
+  const shared = name !== myName
+    && members.some((m) => m !== name && m !== myName && m.slice(0, 1).toUpperCase() === first);
   const mark = shared ? `${first}${who.slice(1, 2).toLowerCase()}` : first;
   const d = node('span', `who ${name === myName ? 'mine' : 'other partner'}${small ? ' sm' : ''}`, mark);
   d.title = who;
@@ -2351,9 +2343,10 @@ function goalFlag(label) {
 
 /**
  * The people bar: "Everyone" first, then a button per entry in the order given (peopleOrder's, as a rule), each
- * with its count. A press says whose key; the caller presses the person and draws again.
+ * with its count. A press says whose key; the caller presses the person and draws again. A button's name reads
+ * the count as words, "bob, 3 plans" (`noun` is what is counted), where its face shows "bob 3".
  */
-function peopleBar(host, { label, people, pressed, onPress }) {
+function peopleBar(host, { label, people, pressed, onPress, noun = 'plan' }) {
   host.textContent = '';
   const bar = node('div', 'seg people');
   bar.setAttribute('role', 'group');
@@ -2363,7 +2356,10 @@ function peopleBar(host, { label, people, pressed, onPress }) {
     const b = node('button', 'hit', p.label);
     b.type = 'button';
     b.setAttribute('aria-pressed', String(p.key === pressed));
-    if (p.n != null) b.append(node('span', 'n', String(p.n)));
+    if (p.n != null) {
+      b.append(node('span', 'n', String(p.n)));
+      b.setAttribute('aria-label', `${p.label}, ${p.n} ${noun}${p.n === 1 ? '' : 's'}`);
+    }
     b.addEventListener('click', () => onPress(p.key));
     if (p.key === pressed) on = b;
     bar.appendChild(b);
@@ -2811,10 +2807,14 @@ function sourceDisc(e) {
     const d = node('span', 'who household');
     d.appendChild(icon('home'));
     d.title = e.label;
+    d.setAttribute('role', 'img');
+    d.setAttribute('aria-label', e.label);
     return d;
   }
+  // The calendar's own name, on the title and the accessible name alike, so the two never disagree.
   const d = memberDisc(e.calendar === 'mine' ? myName : (otherMember() ?? e.label));
   d.title = e.label;
+  d.setAttribute('aria-label', e.label);
   return d;
 }
 
@@ -6829,153 +6829,278 @@ async function loadCompare() {
 // The household's to-do board, read from the log. A member's edit is written
 // directly, not proposed, so every change here calls its route and then reads
 // the card (or the board) again: the screen only ever shows what the log says.
-let planFilter = 'both';
-let planShowDone = false;
-let planAreas = [];
-let planRows = [];
+/** The last board read (GET /api/plans): what renderPlan drew, and what the add forms read whose and toward what. */
+let planData = null;
+/** The goal pressed in the goal row, Plan's own and not shared: null for none. */
+let planGoal = null;
+/** An area's own page while it stands in the board's place; null while the board shows. */
+let areaPage = null;
 let cardId = null;
-const LANES = { planning: 'Planning', doing: 'Doing' };
 
-function laneLabel(lane, withSub) {
-  const l = node('div', 'lane-label');
-  if (lane === 'doing') l.appendChild(icon('clock', 'i'));
-  l.append(LANES[lane]);
-  if (withSub) l.appendChild(node('small', '', lane === 'doing' ? 'the clock runs' : 'no clock'));
-  return l;
-}
+/** An area's own page, from its heading or its done row. A stand-in until the Area page is built: it does nothing yet. */
+function openArea(area, o = {}) {}
 
+/** "1 plan", "3 plans": a count is a number and a noun, singular at one. */
+const plansWord = (n) => `${n} plan${n === 1 ? '' : 's'}`;
+/** "People", "People or Trips", "House, People or Trips". */
+const orList = (names) => (names.length < 2 ? names.join('') : `${names.slice(0, -1).join(', ')} or ${names.at(-1)}`);
+
+/**
+ * The board, read whole for the person pressed (and the goal). The route says whose it answered: a person with
+ * nothing in view is answered as everyone's, and the kept choice is left as it is. A reply that lands after the
+ * screen changed, or once an area's page is open, draws nothing.
+ */
 async function loadBoard() {
   $('loading').hidden = false;
   try {
-    const q = new URLSearchParams({ filter: planFilter });
-    if (planShowDone) q.set('showDone', '1');
-    const data = await api(`/api/plans?${q}`);
-    planRows = data.rows;
-    planAreas = data.areas;
-    renderBoard(data.rows);
+    const q = new URLSearchParams({ who: personPressed ?? 'everyone' });
+    if (planGoal) q.set('goal', planGoal);
+    const b = await api(`/api/plans?${q}`);
+    planData = b;
+    if (view === 'plan' && areaPage === null) renderPlan(b);
   } catch (ex) {
-    showProblem(ex);
+    if (view === 'plan') showProblem(ex);
   } finally {
     $('loading').hidden = true;
   }
 }
 
-function renderBoard(rows) {
-  const theirs = otherMember();
-  $('plan-theirs').textContent = theirs ? `${theirs}'s` : 'Theirs';
-  for (const b of $('plan-filters').querySelectorAll('[data-filter]')) {
-    b.setAttribute('aria-pressed', String(b.dataset.filter === planFilter));
+/** The head's one line, counted from the rows in view: "12 plans in 4 areas · 5 doing", "bob's · 4 plans in 3 areas". */
+function planCountLine(b) {
+  const open = b.rows.flatMap((r) => r.plans);
+  const areas = b.rows.filter((r) => r.plans.length).length;
+  const doing = open.filter((c) => c.state === 'doing').length;
+  const person = b.who !== 'everyone';
+  if (!open.length && !person && b.goal === null) return 'Nothing is planned yet. Anything the household means to do goes here.';
+  const count = open.length
+    ? `${plansWord(open.length)} in ${areas} area${areas === 1 ? '' : 's'}${doing ? ` · ${doing} doing` : ''}`
+    : 'No plans';
+  return person ? `${b.who === myName ? 'Yours' : `${b.who}'s`} · ${count}` : count;
+}
+
+/** Under a person, the areas left out because nothing of theirs is in them: "Nothing of bob's in People or Trips." */
+function planQuietLine(b) {
+  if (b.who === 'everyone') return '';
+  const left = b.rows.filter((r) => !r.plans.length && !r.done.length).map((r) => r.area);
+  if (!left.length) return '';
+  return `Nothing of ${b.who === myName ? 'yours' : `${b.who}'s`} in ${orList(left)}.`;
+}
+
+/**
+ * The board: the count line, the people bar, then a card of rows per area (its open plans, the add row, the done
+ * row) and "A new area" last. Under a person an area with nothing of theirs is not drawn, and the quiet line names it.
+ */
+function renderPlan(b) {
+  const person = b.who !== 'everyone';
+  $('plan-count').textContent = planCountLine(b);
+
+  // Pressed is the answer's who, never the kept choice: when the route fell back, Everyone reads pressed.
+  const bar = $('plan-people');
+  bar.hidden = members.length < 2;
+  if (bar.hidden) bar.textContent = '';
+  else {
+    const people = peopleOrder().flatMap((m) => {
+      const e = b.members.find((x) => x.member === m);
+      return e ? [{ key: m, label: m, n: e.plans }] : [];
+    });
+    peopleBar(bar, {
+      label: 'Whose plans', people, pressed: person ? b.who : null,
+      onPress: (key) => { pressPerson(key); void loadBoard(); },
+    });
   }
-  $('plan-done').setAttribute('aria-pressed', String(planShowDone));
 
-  const box = $('board');
+  const box = $('plan-areas');
   box.textContent = '';
-  // Every area is a row, plans or not, so an area added in Settings is on the
-  // board at once; the invitation sits above the rows while nothing is planned.
-  const nothing = !rows.some((r) => r.planning.length || r.doing.length || r.shelves.length);
-  $('plan-empty').hidden = !nothing || planFilter !== 'both';
-  box.hidden = !rows.length;
-
-  const head = node('div', 'board-head');
-  head.append(node('div'), laneLabel('planning', true), laneLabel('doing', true));
-  box.appendChild(head);
-
-  rows.forEach((r, i) => {
+  // A plan added under another member is theirs; under yourself it is yours anyway.
+  const owner = person && b.who !== myName ? b.who : null;
+  b.rows.forEach((r, i) => {
+    if (person && !r.plans.length && !r.done.length) return;
     const sec = node('section', 'area');
-    const h = node('h2', '', r.area);
-    h.id = `area-${i}`;
+    const h = node('h2', 'area-head');
+    h.id = `area-h-${i}`;
     sec.setAttribute('aria-labelledby', h.id);
-    const ah = node('div', 'area-head');
-    const n = r.planning.length + r.doing.length;
-    ah.append(h, node('span', 'count', `${n} plan${n === 1 ? '' : 's'}`));
-    // On the desk grid the label runs down beside its shelves too.
-    if (r.shelves.length) ah.style.gridRow = `span ${1 + r.shelves.length}`;
-    sec.appendChild(ah);
-    for (const lane of ['planning', 'doing']) {
-      const l = node('div', 'lane');
-      l.appendChild(laneLabel(lane, false));
-      if (!r[lane].length) l.appendChild(node('p', 'lane-empty', `Nothing in ${LANES[lane]} in ${r.area}.`));
-      for (const c of r[lane]) l.appendChild(boardCard(c));
-      sec.appendChild(l);
+    const head = node('button', 'hit');
+    head.type = 'button';
+    head.dataset.key = `area:${r.area}`;
+    // An area with no open plan at all says so, under a person too (drawn there for a done one of theirs).
+    const count = !r.all.plans ? 'No plans' : person ? `${r.plans.length} of ${plansWord(r.all.plans)}`
+      : `${plansWord(r.all.plans)}${r.all.doing ? ` · ${r.all.doing} doing` : ''}`;
+    head.append(node('span', 'area-name', r.area), node('span', 'count', count), icon('go', 'i sm chev'));
+    head.addEventListener('click', () => openArea(r.area));
+    h.appendChild(head);
+
+    const list = node('div', 'list');
+    for (const c of r.plans) list.appendChild(planRow(c));
+    list.appendChild(addPlanRow(r.area, { owner, goal: b.goal, after: loadBoard }));
+    if (r.done.length) {
+      const fold = node('button', 'erow fold hit');
+      fold.type = 'button';
+      fold.dataset.key = `done:${r.area}`;
+      fold.setAttribute('aria-label', `${r.done.length} done in ${r.area}`);
+      fold.append(stateGlyph('done', { small: true }), node('span', 'erow-name', `${r.done.length} done`), icon('go', 'i sm chev'));
+      fold.addEventListener('click', () => openArea(r.area, { focus: 'done' }));
+      list.appendChild(fold);
     }
-    for (const s of r.shelves) {
-      const b = node('button', 'shelf');
-      b.type = 'button';
-      const t = node('span');
-      t.append(node('b', '', s.title), ` · holds ${s.count}`);
-      b.append(icon('shelf'), t, icon('go', 'i sm go'));
-      b.addEventListener('click', () => openCard(s.id));
-      sec.appendChild(b);
-    }
+    sec.append(h, list);
     box.appendChild(sec);
   });
+  if (b.goal === null) box.appendChild(newAreaRow());
+
+  const quiet = planQuietLine(b);
+  $('plan-quiet').textContent = quiet;
+  $('plan-quiet').hidden = !quiet;
 }
 
-/** The chips a plan wears, on the board and on its card's children. */
-function planChips(c) {
-  const chips = node('span', 'chips');
-  chips.appendChild(memberDisc(c.owner));
-  if (c.state === 'done') chips.appendChild(chip('', 'done', 'check'));
-  for (const t of c.chips) chips.appendChild(chip('', t));
-  // Yours, asked of them: it stays yours until they answer.
-  if (c.asked && c.owner === myName) chips.appendChild(chip('asked', `asked ${c.asked.to}`));
-  if (c.due) chips.appendChild(chip('due', dueText(c.due), 'cal'));
-  for (const b of c.blocks) chips.appendChild(chip('block', blockText(b), 'clock'));
-  if (c.hasResearch) chips.appendChild(chip('research', 'research', 'mark'));
+/**
+ * A plan as a row: its state's glyph, its title over its meta line, a chevron; a Doing row has a rail. Its name says
+ * it in words: "Fix the fence gate, Doing, bob's, due Sat 14 Nov". Under a goal the row leaves the goal's flag off.
+ */
+function planRow(c, { underGoal = false } = {}) {
+  const row = node('button', c.state === 'done' ? 'erow plan finished' : 'erow plan');
+  row.type = 'button';
+  row.dataset.plan = c.id;
+  row.dataset.state = c.state;
+  const l = node('span', 'erow-l');
+  l.append(node('span', 'erow-name', c.title), planMeta(c, { flag: !underGoal }));
+  row.append(stateGlyph(c.state), l, icon('go', 'i sm chev'));
+  const whose = c.owner === myName ? 'yours' : `${c.owner}'s`;
+  row.setAttribute('aria-label', [c.title, STATE_WORDS[c.state], whose, ...(c.due ? [`due ${dueText(c.due)}`] : [])].join(', '));
+  row.addEventListener('click', () => openCard(c.id));
+  return row;
+}
+
+/**
+ * What a row says under its title, each only when it applies: whose it is, its chips, the Doing clock, the due day,
+ * its blocks, Claude's research, its envelope (in the problem colour when it is over), and its goal. The marks are
+ * an icon and words, no box: only a free chip is a chip.
+ */
+function planMeta(c, { flag = true } = {}) {
+  const m = node('span', 'erow-meta');
+  m.appendChild(memberDisc(c.owner, { small: true }));
+  for (const t of c.chips) m.appendChild(chip('', t));
+  const mark = (cls, glyph, text) => {
+    const s = node('span', `pm ${cls}`);
+    s.append(icon(glyph), text);
+    return s;
+  };
+  // Nothing in Planning shows an age, and a finished plan's clock has stopped.
+  if (showsClock(c)) m.appendChild(mark('pm-clock', 'clock', `${Math.floor(c.daysInState / 7)} wks`));
+  if (c.due) m.appendChild(mark('pm-due', 'cal', dueText(c.due)));
+  for (const b of c.blocks) m.appendChild(mark('pm-block', 'clock', blockText(b)));
+  if (c.hasResearch) m.appendChild(mark('pm-research', 'mark', 'research'));
   if (c.envelope) {
-    const m = chip(`money ${toCents(c.envelope.left) < 0 ? 'over' : ''}`, `$ ${c.envelope.label} · `);
-    m.appendChild(node('b', '', `${c.envelope.left} left`));
-    chips.appendChild(m);
+    const over = toCents(c.envelope.left) < 0;
+    m.appendChild(node('span', over ? 'pm pm-env neg' : 'pm pm-env', `$ ${c.envelope.label} · ${c.envelope.left} left`));
   }
-  // Nothing in Planning ever shows an age; a finished plan's clock has stopped.
-  if (showsClock(c)) chips.appendChild(staleChip(c.daysInState));
-  return chips;
+  if (flag && c.goal) m.appendChild(goalFlag(c.goal));
+  return m;
 }
 
-function boardCard(c) {
-  // Asked of you: not yours until you take it, so it is drawn waiting on you.
-  if (c.asked?.to === myName) {
-    const card = node('div', 'bcard provisional');
-    card.appendChild(node('span', 'title', c.title));
-    const line = node('span', 'ask-line', `${c.owner} asked you · `);
-    line.appendChild(node('q', '', c.asked.why));
-    card.appendChild(line);
-    card.appendChild(askAnswer(c));
-    return card;
-  }
-  const card = node('button', `bcard ${c.state === 'done' ? 'is-done' : ''}`);
-  card.type = 'button';
-  card.append(node('span', 'title', c.title), planChips(c));
-  card.addEventListener('click', () => openCard(c.id));
-  return card;
+/** A form opened in place: focus in its field, and the field in the top half of the screen, clear of a phone's keyboard. */
+function placeForm(input) {
+  input.focus({ preventScroll: true });
+  const top = input.getBoundingClientRect().top;
+  // Under the sticky bar, which is two rows on a phone.
+  if (top < 110 || top > innerHeight / 2 - 60) window.scrollBy({ top: top - 130 });
 }
 
-$('plan-filters').addEventListener('click', (ev) => {
-  const b = ev.target.closest('button');
-  if (!b) return;
-  if (b.id === 'plan-done') planShowDone = !planShowDone;
-  else if (b.dataset.filter) planFilter = b.dataset.filter;
-  void loadBoard();
-});
-
-/** A new plan, on its own or on a shelf. An item lives in its shelf's area. */
-function newPlan(slot, parent = null) {
-  const shelves = planRows.flatMap((r) => [...r.shelves.map((s) => ({ id: s.id, title: s.title, area: r.area })),
-    ...[...r.planning, ...r.doing].filter((c) => !c.parent).map((c) => ({ id: c.id, title: c.title, area: r.area }))]);
-  inlineForm(slot, [
-    { name: 'title', label: parent ? 'The item' : 'What is it', placeholder: 'e.g. Fix the back gate', max: 200 },
-    ...(parent ? [] : [
-      { name: 'area', label: 'Area', options: planAreas.map((a) => ({ value: a, label: a })) },
-      { name: 'parent', label: 'On a shelf', options: [{ value: '', label: 'Not on a shelf' },
-        ...shelves.map((s) => ({ value: s.id, label: `${s.title} (${s.area})` }))] },
-    ]),
-  ], parent ? 'Add it' : 'Make it', async (i) => {
-    const title = need(i.title, 'Give it a name');
-    const shelf = parent ?? shelves.find((s) => s.id === i.parent.value) ?? null;
-    await api('/api/plans', { title, area: shelf ? shelf.area : i.area.value, ...(shelf ? { parent: shelf.id } : {}) });
+/**
+ * One small form of the board's, in place of the row that opened it: one field, what it says under it, the error
+ * slot, Cancel and Add it. Cancel and Escape put the row back with focus on it; `send` is given the trimmed words
+ * and throws to refuse, and what was typed stays.
+ */
+function boardForm(row, { cls, label, placeholder, max, notes, send }) {
+  const input = node('input');
+  input.maxLength = max;
+  input.placeholder = placeholder;
+  input.autocomplete = 'off';
+  const { err, say } = epErr();
+  const cancel = node('button', 'btn', 'Cancel');
+  cancel.type = 'button';
+  cancel.dataset.cancel = '';
+  const go = node('button', 'btn primary', 'Add it');
+  go.type = 'submit';
+  const acts = node('div', 'ep-acts');
+  acts.append(cancel, go);
+  const form = node('form', cls);
+  form.append(epField(label, input, ...notes.map((t) => node('p', 'note', t))), err, acts);
+  const back = () => { form.replaceWith(row); row.focus(); };
+  cancel.addEventListener('click', back);
+  // Its own Escape, until the page has one mechanism for every open form.
+  form.addEventListener('keydown', (ev) => {
+    if (ev.key !== 'Escape') return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    back();
   });
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const words = input.value.trim();
+    if (!words) { say('Give it a name'); input.focus(); return; }
+    say('');
+    go.disabled = true;
+    try {
+      await send(words);
+    } catch (ex) {
+      if (view !== 'plan') return;
+      go.disabled = false;
+      say(ex.message);
+      input.focus();
+    }
+  });
+  row.replaceWith(form);
+  placeForm(input);
+  return form;
 }
-$('plan-new').addEventListener('click', () => newPlan($('plan-form')));
+
+/** Focus on a board's control by its key, once the board is drawn again. */
+const focusBoard = (key) => $('plan-areas').querySelector(`[data-key="${CSS.escape(key)}"]`)?.focus();
+
+/**
+ * An area's add row: "A new plan in House", and ", for bob" with another member pressed. Pressed, it opens a form
+ * where it was; a plan made there lands in the area, bob's under bob, and focus comes back to the add row.
+ */
+function addPlanRow(area, { owner = null, goal = null, after }) {
+  const row = node('button', 'erow add');
+  row.type = 'button';
+  row.dataset.key = `add:${area}`;
+  const where = owner ? `, for ${owner}` : '';
+  row.setAttribute('aria-label', `A new plan in ${area}${where}`);
+  const words = node('span', 'erow-name', 'A new plan');
+  words.appendChild(node('span', 'add-where', ` in ${area}${where}`));
+  row.append(icon('plus', 'i add-plus'), words);
+  row.addEventListener('click', () => boardForm(row, {
+    cls: 'ep-form add-form', label: 'The new plan', placeholder: 'e.g. Fix the fence gate', max: 200,
+    notes: owner ? [`It will be ${owner}'s.`] : [],
+    send: async (title) => {
+      await api('/api/plans', { title, area, ...(owner ? { owner } : {}), ...(goal ? { goal } : {}) });
+      if (view !== 'plan') return;
+      await after();
+      if (view !== 'plan') return;
+      focusBoard(`add:${area}`);
+    },
+  }));
+  return row;
+}
+
+/** The board's last card: "A new area", opened in place. Until the Area page is built, the board is read again with focus on the new heading. */
+function newAreaRow() {
+  const row = node('button', 'add-row', 'A new area');
+  row.type = 'button';
+  row.dataset.key = 'new-area';
+  row.addEventListener('click', () => boardForm(row, {
+    cls: 'ep-form ep-card new-area', label: 'The new area', placeholder: 'e.g. Garden', max: 60,
+    notes: ['It joins the board at the bottom. Rename it, move it or remove it from its own page.'],
+    send: async (area) => {
+      await api('/api/settings/areas/add', { area });
+      if (view !== 'plan') return;
+      await loadBoard();
+      if (view !== 'plan') return;
+      focusBoard(`area:${area}`);
+    },
+  }));
+  return row;
+}
 
 // ── the card ──
 
@@ -7045,7 +7170,6 @@ function cardSection(title, body, onAdd, o = {}) {
 function renderCard(v) {
   const box = $('plan-card');
   box.textContent = '';
-  const isShelf = v.children.length > 0;
   const mine = v.owner === myName;
   const theirs = otherMember();
 
@@ -7064,7 +7188,6 @@ function renderCard(v) {
     return b;
   };
   crumb.append(crumbTo('Plan', () => showView('plan')), node('span', '', '›'), crumbTo(v.area, () => showView('plan')));
-  if (v.shelf) crumb.append(node('span', '', '›'), crumbTo(v.shelf.title, () => openCard(v.shelf.id)));
   head.append(back, crumb);
 
   // The title edits where it is: it becomes a text box when it takes focus,
@@ -7122,28 +7245,26 @@ function renderCard(v) {
   }
 
   const acts = node('div', 'actions');
-  if (!isShelf) {
-    const seg = node('div', 'seg');
-    seg.setAttribute('role', 'group');
-    seg.setAttribute('aria-label', 'State');
-    for (const s of ['planning', 'doing']) {
-      const b = node('button', '', LANES[s]);
-      b.type = 'button';
-      b.setAttribute('aria-pressed', String(v.state === s));
-      b.addEventListener('click', () => {
-        if (v.state !== s) void cardEdit(() => api(planPath(v.id, '/state'), { state: s }));
-      });
-      seg.appendChild(b);
-    }
-    acts.appendChild(seg);
-    if (v.state === 'done') acts.appendChild(chip('', 'Done', 'check'));
-    else {
-      const done = actionButton('Mark done', 'btn', () => api(planPath(v.id, '/state'), { state: 'done' }));
-      done.prepend(icon('check'));
-      acts.appendChild(done);
-    }
-    acts.appendChild(node('span', 'vr'));
+  const seg = node('div', 'seg');
+  seg.setAttribute('role', 'group');
+  seg.setAttribute('aria-label', 'State');
+  for (const s of ['planning', 'doing']) {
+    const b = node('button', '', STATE_WORDS[s]);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', String(v.state === s));
+    b.addEventListener('click', () => {
+      if (v.state !== s) void cardEdit(() => api(planPath(v.id, '/state'), { state: s }));
+    });
+    seg.appendChild(b);
   }
+  acts.appendChild(seg);
+  if (v.state === 'done') acts.appendChild(chip('', 'Done', 'check'));
+  else {
+    const done = actionButton('Mark done', 'btn', () => api(planPath(v.id, '/state'), { state: 'done' }));
+    done.prepend(icon('check'));
+    acts.appendChild(done);
+  }
+  acts.appendChild(node('span', 'vr'));
   const owner = node('span', 'owner');
   owner.append(memberDisc(v.owner), mine ? 'You own it' : `${v.owner} owns it`);
   acts.appendChild(owner);
@@ -7238,14 +7359,6 @@ function renderCard(v) {
     if (notes.value !== v.notes) void cardEdit(() => api(planPath(v.id), { notes: notes.value }));
   });
   main.appendChild(cardSection('Notes', notes));
-
-  if (isShelf) {
-    const list = node('div', 'lane');
-    for (const c of v.children) list.appendChild(boardCard(c));
-    const slot = node('div');
-    main.appendChild(cardSection('On this shelf', [list, slot], () => newPlan(slot, v),
-      { addLabel: 'Add an item', note: `holds ${v.children.length}` }));
-  }
 
   main.appendChild(checklistSection(v));
   main.appendChild(attachmentsSection(v));

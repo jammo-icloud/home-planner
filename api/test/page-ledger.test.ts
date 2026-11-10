@@ -64,14 +64,35 @@ const ADDED: readonly Line[] = [
   ['hit', '.hit::after{', 'css'], ['bar', '.seg.people{', 'css'], ['S8', '.who.other', 'css'], ['S8', '.who.sm{', 'css'],
   // The flag is `span.flag`: Today's thread already has a `.line.flag`, which a bare `.flag` rule would reach.
   ['S33', '.st-doing{', 'css'], ['bar', 'span.flag{', 'css'],
+  // The board (Task 11): its markup, the head, the people bar, the rows, the add row in every area and "A new area" last.
+  ['markup', '<div id="plan-board">'], ['markup', 'id="plan-count"'], ['markup', 'id="plan-people"'], ['markup', 'id="plan-goals"'],
+  ['markup', 'id="plan-areas"'], ['markup', 'id="plan-quiet"'], ['markup', 'id="plan-foot"'], ['markup', '<section id="area-page" hidden>'],
+  ['board', 'function renderPlan('], ['P2', "label: 'Whose plans'"], ['P11', 'function planRow('], ['P12', 'function planMeta('],
+  ['P13', "'pm pm-env neg'"], ['P9', "'No plans'"], ['P3', "'erow fold hit'"],
+  ['P7', 'Nothing is planned yet. Anything the household means to do goes here.'],
+  ['P4', '`A new plan in ${area}'], ['P5', "label: 'The new plan'"], ['P5', "'e.g. Fix the fence gate'"], ['P5', "say('Give it a name')"],
+  ['board', "'A new area'"], ['board', "label: 'The new area'"], ['board', "'e.g. Garden'"],
+  ['board', 'It joins the board at the bottom. Rename it, move it or remove it from its own page.'], ['board', "'/api/settings/areas/add'"],
+  ['board', '#plan-areas{', 'css'], ['board', '.erow.plan{', 'css'], ['board', '.erow.fold{', 'css'], ['board', '.erow.add{', 'css'],
+  ['S33', 'STATE_WORDS[s]'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
   ['S8', 'whoDisc(', 'page'],
   // Areas leave Settings: the editor, the counts that gated its Remove, and the read of the whole board that fed them.
   ['S16', '/api/plans?showDone=1', 'page'], ['spec', 'areaCounts', 'page'], ['spec', 'areasItem', 'page'], ['spec', 'areasForm', 'page'],
+  // The old board (Task 11): its filters, lanes, cards and New plan form, and every shelf on the page.
+  ['spec', 'planFilter'], ['spec', 'planShowDone'], ['spec', 'planRows'], ['spec', 'planAreas'], ['spec', 'LANES'], ['spec', 'laneLabel'],
+  ['spec', 'renderBoard'], ['spec', 'boardCard'], ['spec', 'function planChips('], ['spec', 'newPlan('], ['spec', 'isShelf'],
+  ['spec', 'plan-form', 'page'], ['spec', 'plan-filters', 'page'], ['spec', 'plan-new', 'page'], ['spec', 'plan-empty', 'page'],
+  ['spec', 'plan-theirs', 'page'], ['spec', 'plan-done', 'page'], ['spec', "'Theirs'"], ['spec', 'Show done', 'page'], ['spec', 'New plan', 'page'],
+  ['spec', 'the two of you', 'page'], ['spec', 'the clock runs', 'page'], ['spec', 'no clock', 'page'], ['spec', 'On a shelf', 'page'],
+  ['spec', 'Not on a shelf', 'page'], ['spec', 'On this shelf', 'page'], ['spec', 'Add an item', 'page'], ['spec', 'The item'],
+  ['spec', '· holds '], ['spec', 'shelf:', 'shared'], ['spec', "icon('shelf'", 'page'], ['spec', 'v.shelf'],
+  ['spec', '.board', 'css'], ['spec', '.lane', 'css'], ['spec', '.bcard', 'css'], ['spec', '.shelf', 'css'], ['spec', '.ask-line', 'css'],
+  ['spec', '#plan-form', 'css'], ['spec', '#plan-empty', 'css'],
 ];
-const GONE_FROM_PLAN_MARKUP: readonly string[] = [];
+const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
 const DRAWN_LATER: readonly string[] = [];
 
