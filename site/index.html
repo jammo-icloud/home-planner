@@ -2167,10 +2167,14 @@ function renderMyHouseholds() {
     meta.textContent = [...h.members, h.youOwn ? 'you own it' : `${h.owner} owns it`].join(' · ');
     txt.append(name, meta);
     it.appendChild(txt);
-    it.addEventListener('click', () => { if (h.id !== myHouseholdId) void switchHousehold(h.id); });
+    it.addEventListener('click', () => { if (!switching && h.id !== myHouseholdId) void switchHousehold(h.id); });
     box.appendChild(it);
   }
+  box.setAttribute('aria-busy', String(switching));
 }
+
+/** A switch is in flight: a second one cannot start until the first has ended, however it ends. */
+let switching = false;
 
 /**
  * A switch from the menu. The invariant: at every moment the top bar, the module state and every drawn screen belong
@@ -2181,41 +2185,54 @@ function renderMyHouseholds() {
  *   same path that enters any household (`enterApp`, which asks whoami which one), back on the screen that was
  *   showing when it is the same household, and the error box says why the switch did not happen;
  * - the select taken and a later read failing (whoami, the budgets): the page is half the new household's, so it
- *   goes to the picker, which says what went wrong. So does a refused switch whose household cannot be entered again.
+ *   goes to the picker, which says what went wrong. So does a refused switch whose household cannot be entered again,
+ *   and then it says the refusal as well.
+ * Only one switch is in flight at a time (`switching`): a second is not started, so none can empty the page under
+ * another's reads, and `enterApp` stops writing if the household was forgotten while it waited.
  */
 async function switchHousehold(id) {
-  const was = view;
-  const from = myHouseholdId;
-  onlyToday();
-  closeMenus();
+  if (switching) return;
+  switching = true;
+  $('me-hh-list').setAttribute('aria-busy', 'true');
   try {
-    await api('/api/households/select', { household: id });
-  } catch (refused) {
+    const was = view;
+    const from = myHouseholdId;
+    onlyToday();
+    closeMenus();
+    try {
+      await api('/api/households/select', { household: id });
+    } catch (refused) {
+      let note;
+      try {
+        note = await enterApp();
+      } catch (ex) {
+        await pickerSaying(ex, refused);
+        return;
+      }
+      // Back where it was, in the household still open; a card's id went with the switch, so its board.
+      if (myHouseholdId === from && was !== 'today') await showView(was === 'plan-card' ? 'plan' : was);
+      // The refusal first, then enterApp's own note about Settings, which showView just hid.
+      showProblem(note && !refused.stale ? new Error(`${refused.message.replace(/\.$/, '')}. ${note.message}`) : refused);
+      return;
+    }
+    // A switch from the menu lets the pressed person go too, as the picker does.
+    pressPerson(null);
     try {
       await enterApp();
     } catch (ex) {
       await pickerSaying(ex);
-      return;
     }
-    // Back where it was, in the household still open; a card's id went with the switch, so its board.
-    if (myHouseholdId === from && was !== 'today') await showView(was === 'plan-card' ? 'plan' : was);
-    showProblem(refused);
-    return;
-  }
-  // A switch from the menu lets the pressed person go too, as the picker does.
-  pressPerson(null);
-  try {
-    await enterApp();
-  } catch (ex) {
-    await pickerSaying(ex);
+  } finally {
+    switching = false;
+    $('me-hh-list').setAttribute('aria-busy', 'false');
   }
 }
 
-/** The picker, with what went wrong under its title. */
-async function pickerSaying(ex) {
+/** The picker, with what went wrong under its title: the refusal that led here first, when there was one. */
+async function pickerSaying(ex, refused) {
   await backToPicker();
   if ($('households').hidden) return;
-  $('hh-err').textContent = ex.message;
+  $('hh-err').textContent = refused ? `${refused.message.replace(/\.$/, '')}. ${ex.message}` : ex.message;
   $('hh-err').hidden = false;
 }
 
@@ -2245,8 +2262,8 @@ async function startAnotherHousehold() {
     $('hh-new').click();
   } catch (ex) { showProblem(ex); }
 }
-$('me-new-hh').addEventListener('click', () => void startAnotherHousehold());
-$('me-new-hh-2').addEventListener('click', () => void startAnotherHousehold());
+$('me-new-hh').addEventListener('click', () => { if (!switching) void startAnotherHousehold(); });
+$('me-new-hh-2').addEventListener('click', () => { if (!switching) void startAnotherHousehold(); });
 $('me-settings').addEventListener('click', () => void openSettings());
 
 // ── taking pieces out of a backup ──────────────────────────────────────────
@@ -5038,7 +5055,9 @@ let budgetMeta = {};
 const chosenBudget = () => localStorage.getItem('budget') || '';
 
 async function loadBudgets() {
+  const turn = householdTurn;
   const data = await api('/api/budgets');
+  if (turn !== householdTurn) return;
   budgets = data.budgets;
   budgetMeta = data;
   const sel = $('budget-pick');
@@ -11900,6 +11919,7 @@ async function backToPicker() {
 }
 
 async function openHousehold(id) {
+  if (switching) return;
   try {
     await api('/api/households/select', { household: id });
     $('households').hidden = true;
@@ -12058,7 +12078,11 @@ async function enterApp() {
   // open on the households screen (`onlyToday`, through `forgetHousehold`).
   onlyToday();
   closeMenus();
+  // If another switch forgets this household while a read is out, this entry stops and writes nothing more: the
+  // switch that moved the turn owns the page from then on.
+  const turn = householdTurn;
   const who = await api('/api/whoami');
+  if (turn !== householdTurn) return null;
   householdLabel = who.household?.label ?? null;
   docHousehold = `${who.sandbox ? 'sandbox' : 'nas'}:${who.who}:${who.household?.id ?? ''}`;
   searchReset();
@@ -12070,6 +12094,7 @@ async function enterApp() {
   $('today-date').textContent = pageWords();
   $('households').hidden = true;
   await loadBudgets();
+  if (turn !== householdTurn) return null;
   $('who').textContent = who.sandbox ? `${who.who}, in the sandbox` : `Signed in as ${who.who} on the NAS`;
   $('me-disc').textContent = (who.who || '?').slice(0, 1).toUpperCase();
   $('me-name').textContent = who.who;
@@ -12079,14 +12104,18 @@ async function enterApp() {
   // Your other households, for the menu's sub-list. A list that cannot be
   // read leaves the menu offering to start one, the same as having one.
   myHouseholdId = who.household?.id ?? null;
-  myHouseholds = (await api('/api/households').catch(() => null))?.households ?? [];
+  const mine = (await api('/api/households').catch(() => null))?.households ?? [];
+  if (turn !== householdTurn) return null;
+  myHouseholds = mine;
   renderMyHouseholds();
   // The settings, once per load: the menu's links, whether cards keep files, and
   // your look, which the log decides and the cache only paints first.
   // Unread, the menu's links and the look fall back to what this device has, and
   // the error box says so once, after Today has drawn.
   let settingsProblem = null;
-  settingsData = await api('/api/settings').catch((ex) => { settingsProblem = ex; return null; });
+  const settings = await api('/api/settings').catch((ex) => { settingsProblem = ex; return null; });
+  if (turn !== householdTurn) return null;
+  settingsData = settings;
   if (settingsData) {
     documentsStatus = settingsData.documents ?? null;
     softwareInfo = settingsData.software ?? null;
@@ -12105,9 +12134,13 @@ async function enterApp() {
   $('app').hidden = false;
   homeBanner();
   await loadThread();
+  if (turn !== householdTurn) return null;
   if (settingsProblem) {
-    showProblem(new Error(`Settings could not be read (${settingsProblem.message}): the links in your menu and your look are this device's until the page is loaded again.`));
+    const note = new Error(`Settings could not be read (${settingsProblem.message}): the links in your menu and your look are this device's until the page is loaded again.`);
+    showProblem(note);
+    return note;
   }
+  return null;
 }
 
 // A live session means straight in; the login form is only for when there isn't one.
