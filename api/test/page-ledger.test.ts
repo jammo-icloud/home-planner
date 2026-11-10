@@ -143,6 +143,11 @@ const ADDED: readonly Line[] = [
   ['T111', "$('loading').hidden = false", 'today'], ['T113', "new Error('This household has no budgets yet.", 'today'], ['T114', "new Error('no open month')", 'today'], ['T115', 'Nothing yet today. Ask Claude something, or leave a note.', 'today'], ['T117', 'if (turn !== loadTurn || household !== householdTurn) return;', 'today'],
   ['S2', 'else await loadThread();', 'today'], ['S3', "$('days').addEventListener('focusin'", 'today'], ['S31', "$('days').addEventListener('focusout'", 'today'],
   ['frame', '<h1>Today</h1>', 'todayMarkup'], ['frame', 'id="today-day"', 'todayMarkup'], ['frame', 'id="t-kinds"', 'todayMarkup'], ['frame', 'id="t-people"', 'todayMarkup'], ['frame', 'id="t-waiting"', 'todayMarkup'], ['frame', 'id="day-today"', 'todayMarkup'], ['frame', 'id="earlier-days"', 'todayMarkup'], ['frame', '.day-open{', 'css'], ['frame', '.day-body', 'css'],
+  // A row is lane, who, what and when (Task 8).
+  ['T21', 'function entShell(', 'today'], ['T21', 'left a note', 'today'], ['T21', 'asked Claude', 'today'], ['T22', 'planCrumb(e.plan)', 'today'], ['T23', "e.kind === 'ask' && e.plan", 'today'], ['T29', "node('span', 'ent-why'", 'today'], ['T31', 'refused.textContent = ex.message', 'page'], ['T33', 'No reason was given for this.', 'today'],
+  ['S11', 'clockOf(', 'shared'], ['S24', 'function openCalendarDay(', 'shared'], ['S24', 'calWeek = mondayOf(day)', 'shared'], ['S29', 'name ?? nameOf(who)', 'today'], ['S19', 'openBudgetAt(o.budget, o.envelope)', 'today'],
+  ['hand', ' handed ', 'today'], ['hand', ' took ', 'today'], ['cal', ' added ', 'today'], ['cal', 'the Household calendar', 'today'], ['cal', 'their own calendar', 'today'], ['cal', 'your own calendar', 'today'], ['cal', ' renamed ', 'today'], ['late', 'Suggested on ', 'today'], ['open', "'Open the plan'", 'today'], ['open', "'Open the envelope'", 'today'], ['open', "'Open the day'", 'today'],
+  ['lane', 'function laneIcon(', 'shared'], ['lane', "'message-square':", 'shared'], ['lane', 'function claudeDisc(', 'shared'], ['lane', '.who.claude', 'css'], ['ent', '.ent{', 'css'], ['ent', 'cursor:pointer;text-decoration:underline', 'css'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
@@ -167,6 +172,7 @@ const GONE: readonly Line[] = [
   ['spec', 'function opensItsDay', 'threadSrc'], ['spec', 'const standalone', 'threadSrc'], ['spec', 'cardsFor', 'threadSrc'],
   ['P28', '/ask-to-take', 'page'], ['P28', 'Asking needs a reason'], ['P28', 'They read this on the card'], ['P28', 'Ask ${theirs}'], ['P27', "node('span', 'owner')"], ['card', '#plan-card .back{display:none}', 'css'],
   ['T4', 'id="t-filters"', 'page'], ['T4', 'threadFilter', 'page'], ['T4', '>Mine<', 'page'], ['T4', '>Theirs<', 'page'], ['T4', '>Everything<', 'page'], ['T5', 'id="t-all"', 'page'], ['T5', 'threadAll', 'page'], ['T5', 'All budgets', 'page'], ['T6', 'id="t-earlier"', 'page'], ['T6', 'Show earlier', 'page'], ['T10', 'document.documentElement.scrollHeight', 'today'], ['T13', 'id="thread"', 'page'], ['T13', "$('thread')", 'page'], ['T72', 'id="tray"', 'page'], ['T72', "$('tray')", 'page'], ['T72', ' waiting on you`', 'page'], ['T110', 'filterBeforeDetour', 'page'], ['S4', 'endFilterDetour', 'page'], ['T116', 'Nothing is waiting on you.', 'page'], ['spec', "$('composer'))", 'today'],
+  ['T21', "node('div', 'turn')", 'today'], ['T21', "'msg member'", 'today'], ['S32', 'dataset.kind = e.kind', 'today'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */

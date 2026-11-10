@@ -665,7 +665,7 @@
   /* ── today ─────────────────────────────────────────────────────────── */
   .body.clamped{max-height:9.5em;overflow:hidden;
     -webkit-mask-image:linear-gradient(var(--ink) 55%,transparent);mask-image:linear-gradient(var(--ink) 55%,transparent)}
-  .link{font:inherit;font-size:var(--fs-small);font-weight:500;color:var(--accent-ink);background:none;border:none;padding:4px 0;cursor:pointer}
+  .link{font:inherit;font-size:var(--fs-small);font-weight:500;color:var(--accent-ink);background:none;border:none;padding:4px 0;cursor:pointer;text-decoration:underline}
 
   /* ── activity, a day at a time ─────────────────────────────────────── */
   .act.review{box-shadow:inset 3px 0 var(--problem)}
@@ -1486,6 +1486,31 @@
   .day-body{display:flex;flex-direction:column;gap:var(--sp-3);padding:var(--sp-3)}
   #earlier{margin-top:var(--sp-6)}
   .earlier-head h2{font-size:var(--fs-small);font-weight:var(--fw-semibold);color:var(--ink-soft);margin-bottom:var(--sp-2)}
+  .ent{display:grid;grid-template-columns:var(--disc) var(--disc) minmax(0,1fr) auto;gap:var(--sp-2);align-items:start;
+    padding:var(--sp-3) var(--sp-4);border-top:var(--stroke) solid var(--hair)}
+  .ent:first-child{border-top:0}
+  .ent-lane{display:grid;place-items:center;min-height:var(--disc);color:var(--ink-faint)}
+  .hp .ent-lane svg.i{width:var(--disc-small);height:var(--disc-small)}
+  .ent-who{display:grid;place-items:center;min-height:var(--disc)}
+  .ent-text{min-width:0;font-size:var(--fs-ui);color:var(--ink-soft);overflow-wrap:anywhere}
+  .ent-text b{color:var(--ink);font-weight:var(--fw-semibold)}
+  .ent-words{margin:var(--sp-1) 0 0;color:var(--ink);white-space:pre-wrap;overflow-wrap:anywhere}
+  .ent-why,.ent-sub{display:block;font-size:var(--fs-small)}
+  .ent-why{font-style:italic}
+  .ent-actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);margin-top:var(--sp-2)}
+  .ent-at{font-size:var(--fs-micro);color:var(--ink-faint);white-space:nowrap;min-height:var(--disc);display:flex;align-items:center}
+  .ent-answer{margin-top:var(--sp-2);padding:var(--sp-3);background:var(--claude-paper);border:var(--stroke) solid var(--claude-line);
+    border-radius:var(--r-inner);color:var(--ink)}
+  .ent-answer .body{font-size:var(--fs-body)}
+  .ent-answer .body p{margin:0 0 var(--sp-2);overflow-wrap:anywhere}
+  .ent-answer .body p:last-child{margin-bottom:0}
+  .ent-answer .byline{margin-bottom:var(--sp-2)}
+  .ent-answer .byline .mark{width:var(--fs-micro);height:var(--fs-micro)}
+  .who.claude{display:inline-grid;place-items:center;flex:none;width:var(--disc);height:var(--disc);border-radius:50%;
+    background:var(--claude-paper);box-shadow:inset 0 0 0 var(--stroke-heavy) var(--claude-line);color:var(--claude-mark)}
+  .who.claude .mark{width:60%;height:60%;fill:currentColor;stroke:none}
+  .block-err{font-size:var(--fs-small);color:var(--problem)}
+  .block-err:not(:empty){margin-bottom:var(--sp-2)}
   /* ── end of today ── */
 </style>
 </head>
@@ -2399,6 +2424,7 @@ const LUCIDE = {
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
   'square-kanban': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/>',
   calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
+  'message-square': '<path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>',
   wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
 };
 /** A Lucide icon by name; `shape` draws one of the app's own on the same 24 box, stroke and caps. */
@@ -2428,6 +2454,30 @@ function memberDisc(name, { small = false } = {}) {
   d.setAttribute('role', 'img');
   d.setAttribute('aria-label', who);
   return d;
+}
+
+/** Claude as a disc: the mark in a ring on its paper, the one treatment wherever Claude is the author. */
+function claudeDisc() {
+  const d = node('span', 'who claude');
+  d.title = 'Claude';
+  d.setAttribute('role', 'img');
+  d.setAttribute('aria-label', 'Claude');
+  d.appendChild(icon('mark', 'mark'));
+  return d;
+}
+
+/** A lane as its icon: Budget a wallet, Calendar a calendar, Plans a board, Claude the mark, Notes a speech bubble. */
+function laneIcon(lane) {
+  if (lane === 'claude') return icon('mark', 'i');
+  const names = { budget: 'wallet', calendar: 'calendar', plans: 'square-kanban', notes: 'message-square' };
+  return lucide(names[lane] ?? 'message-square');
+}
+
+/** The Calendar, on the week and the day given. */
+function openCalendarDay(day) {
+  calWeek = mondayOf(day);
+  calDay = day;
+  return showView('calendar');
 }
 
 /** A plan's state in words: the glyph's accessible name and the card's state buttons. */
@@ -2669,7 +2719,7 @@ function monthName(month) {
   return month.slice(0, 4) === todayKey().slice(0, 4) ? name : `${name} ${month.slice(0, 4)}`;
 }
 /** The time an instant fell at on the household's clock: "3:05 PM". */
-function clockAt(iso) { return inZone({ hour: 'numeric', minute: '2-digit' }).format(new Date(iso)); }
+function clockAt(iso) { return clockOf(Date.parse(iso) / 1000); }
 
 /**
  * Today, with what was asked for in view: `{ day }`, or `{ event }`, `{ offer }` or `{ drift }`, an id the day holds.
@@ -3178,6 +3228,102 @@ function unsortedItem(count) {
   return card;
 }
 
+/** Who did a row, in words: Claude, You, or a member or a guest by the list's name. */
+function whoWord(who, name) { return who === 'claude' ? 'Claude' : (name ?? nameOf(who)); }
+const byWord = (e) => node('b', '', whoWord(e.who, e.name));
+
+/**
+ * The frame of every row: lane icon, who (the disc, or nothing for a row the app raised), the text, and the time on the
+ * household's clock. A kind fills `text`, which begins with its author in `b`.
+ */
+function entShell(e) {
+  const row = node('div', 'ent');
+  row.dataset.event = e.id;
+  const lane = node('span', 'ent-lane');
+  lane.appendChild(laneIcon(e.lane));
+  const who = node('span', 'ent-who');
+  if (e.who === 'claude') who.appendChild(claudeDisc());
+  else if (e.who && !e.app) who.appendChild(memberDisc(e.name ?? e.who));
+  const text = node('div', 'ent-text');
+  row.append(lane, who, text, node('span', 'ent-at', clockAt(e.at)));
+  return { row, text };
+}
+
+/** A link in a row's text. */
+const rowLink = (label, act) => textBtn(label, 'link hit', null, act);
+
+/** The day an appointment's instant falls on; an all-day one is the date it was written with. */
+const dayOfStart = (iso, allDay) => (allDay && /^\d{4}-\d\d-\d\d/.test(iso) ? iso.slice(0, 10) : keyAt(Date.parse(iso)));
+/** "Thursday 12 November, 4:30 PM", the time left off an all-day one. */
+function whenLine(event) {
+  const day = dayName(dayOfStart(event.start, event.allDay));
+  return event.allDay ? day : `${day}, ${clockAt(event.start)}`;
+}
+
+/** A plan handed on or taken: "handed T to you", "took T from Bob", or "handed T from Bob to Casey". */
+function handedText(text, e) {
+  const { plan, from, to } = e.hand;
+  text.append(byWord(e));
+  if (e.who === from) text.append(' handed ', node('b', '', plan.title), ` to ${nameIn(to)}`);
+  else if (e.who === to) text.append(' took ', node('b', '', plan.title), ` from ${nameIn(from)}`);
+  else text.append(' handed ', node('b', '', plan.title), ` from ${nameIn(from)} to ${nameIn(to)}`);
+}
+
+/** An appointment added, moved or renamed. */
+function eventText(text, e) {
+  const ev = e.event;
+  text.append(byWord(e));
+  const sub = (line) => text.appendChild(node('span', 'ent-sub', line));
+  if (!ev.was) {
+    const where = ev.on === 'household' ? 'the Household calendar' : e.who === myName ? 'your own calendar' : 'their own calendar';
+    text.append(' added ', node('b', '', ev.summary), ` to ${where}`);
+    sub(whenLine(ev));
+    return;
+  }
+  const was = ev.was;
+  const day = dayOfStart(ev.start, ev.allDay);
+  const wasDay = dayOfStart(was.start, was.allDay);
+  const moved = was.start !== ev.start || was.end !== ev.end || was.allDay !== ev.allDay;
+  if (moved) {
+    text.append(' moved ', node('b', '', ev.summary));
+    const from = wasDay !== day ? dayName(wasDay) + (was.allDay ? '' : `, ${clockAt(was.start)}`)
+      : was.allDay ? 'all day' : clockAt(was.start);
+    sub(`${whenLine(ev)}, from ${from}`);
+  } else if (was.summary !== ev.summary) {
+    text.append(' renamed ', node('b', '', was.summary), ' to ', node('b', '', ev.summary));
+  } else text.append(` ${e.what}`);
+}
+
+/** What a removal asks of whoever reads it: the receipt and its Put it back, and Seen it while it is flagged for the viewer. */
+function removalBits(flag, eventId, ctx) {
+  const bits = [];
+  if (flag?.removed) bits.push(removedBlock(flag.removed));
+  if (ctx.flagged.has(eventId)) {
+    const row = node('div', 'ent-actions');
+    const seen = node('button', 'btn hit', 'Seen it');
+    seen.type = 'button';
+    seen.addEventListener('click', async () => {
+      seen.disabled = true;
+      await api('/api/thread/seen', { event: eventId });
+      await loadThread();
+    });
+    row.appendChild(seen);
+    bits.push(row);
+  }
+  return bits;
+}
+
+/** The way to what a row is about, ending its text: the plan's card, the envelope, or the day on the Calendar. */
+function openFor(e, text) {
+  const o = e.open;
+  if (!o) return;
+  let link;
+  if (o.plan) link = rowLink('Open the plan', () => void openCard(o.plan));
+  else if (o.budget) link = rowLink('Open the envelope', () => void openBudgetAt(o.budget, o.envelope));
+  else if (o.calendar) link = rowLink('Open the day', () => void openCalendarDay(o.calendar));
+  if (link) text.appendChild(node('div', 'ent-actions')).appendChild(link);
+}
+
 function entryNode(e, ctx) {
   if (e.kind === 'briefing') {
     const m = node('div', 'msg claude');
@@ -3204,18 +3350,21 @@ function entryNode(e, ctx) {
     return m;
   }
 
-  if (e.kind === 'ask' || e.kind === 'note') {
-    const wrap = node('div', 'turn');
-    // A note and a question look alike: both are a member's words. The by-line says which.
-    const m = node('div', 'msg member');
-    const by = node('div', 'by');
-    const who = node('b', '', nameOf(e.who));
-    by.append(who, ` ${e.kind === 'note' ? 'left a note' : 'asked'} · ${timeOf(e.at)}`);
-    if (e.plan) by.appendChild(planCrumb(e.plan));
-    m.append(by, node('div', 'bubble', e.text));
-    wrap.appendChild(m);
-    if (e.kind === 'ask') wrap.appendChild(answerNode(e, ctx));
-    return wrap;
+  if (e.kind === 'note') {
+    const { row, text } = entShell(e);
+    text.append(byWord(e), ' left a note');
+    text.appendChild(node('p', 'ent-words', e.text));
+    if (e.plan) text.appendChild(planCrumb(e.plan));
+    return row;
+  }
+
+  if (e.kind === 'ask') {
+    const { row, text } = entShell(e);
+    text.append(byWord(e), ' asked Claude');
+    text.appendChild(node('p', 'ent-words', e.text));
+    if (e.kind === 'ask' && e.plan) text.appendChild(planCrumb(e.plan));
+    text.appendChild(answerNode(e, ctx));
+    return row;
   }
 
   if (e.kind === 'card' && e.offer.prompt.kind === 'ask') return askCardNode(e);
@@ -3233,27 +3382,28 @@ function entryNode(e, ctx) {
     return m;
   }
 
-  // A change made directly on a screen.
-  const line = node('div', `line ${e.flag ? 'flag' : ''}`);
-  // A guest by the list's name for them, never their address.
-  const who = node('b', '', e.name ?? nameOf(e.who));
-  line.append(who, ` ${e.what}`);
-  if (e.why) line.appendChild(node('span', 'why', `“${e.why}”`));
-  else if (e.flag) line.appendChild(node('span', 'why', 'No reason was given for this.'));
-  if (e.flag?.removed) line.appendChild(removedBlock(e.flag.removed));
-  if (ctx.flagged.has(e.id)) {
-    const row = node('div', 'row');
-    const seen = node('button', 'btn', 'Seen it');
-    seen.type = 'button';
-    seen.addEventListener('click', async () => {
-      seen.disabled = true;
-      await api('/api/thread/seen', { event: e.id });
-      await loadThread();
-    });
-    row.appendChild(seen);
-    line.appendChild(row);
+  if (e.kind === 'decision') {
+    const { row, text } = entShell(e);
+    text.append(byWord(e), e.decision === 'approved' ? ' approved ' : ' declined ', node('b', '', e.offer.summary));
+    if (e.why) text.appendChild(node('span', 'ent-why', `“${e.why}”`));
+    const late = rowLink(`Suggested on ${dayName(e.offer.day)}`, () => void openTodayAt({ offer: e.offer.id }));
+    text.appendChild(node('div', 'ent-actions')).appendChild(late);
+    return row;
   }
-  return line;
+
+  // A change made directly on a screen.
+  const { row, text } = entShell(e);
+  const live = budgets.filter((b) => !b.archived);
+  const label = e.budget && live.length > 1 ? live.find((b) => b.id === e.budget)?.label : null;
+  if (e.hand) handedText(text, e);
+  else if (e.event) eventText(text, e);
+  else text.append(byWord(e), ` ${e.what}`, ...(label ? [` · ${label}`] : []));
+  const why = e.why ? `“${e.why}”` : e.flag && !e.hand ? 'No reason was given for this.' : null;
+  if (why) text.appendChild(node('span', 'ent-why', why));
+  const bits = removalBits(e.flag, e.id, ctx);
+  if (bits.length) text.append(...bits);
+  openFor(e, text);
+  return row;
 }
 
 /** Take it, or Decline with a reason the asker reads. Shown only to the member asked. */
@@ -3548,39 +3698,46 @@ function bookingSuggest(card, row, o) {
 
 /** "on <title>": which plan a line in Today is about, and the way to its card. */
 function planCrumb(plan) {
-  const b = node('button', 'link plan-crumb', `on ${plan.title}`);
+  const b = node('button', 'link plan-crumb hit', `on ${plan.title}`);
   b.type = 'button';
   b.addEventListener('click', () => openCard(plan.id));
   return b;
 }
 
+/** "as of 3:05 PM", with the day first once it is not today on the household's clock. */
+function answeredAt(iso) {
+  const day = keyAt(Date.parse(iso));
+  return day === todayKey() ? `as of ${clockAt(iso)}` : `as of ${dayName(day)}, ${clockAt(iso)}`;
+}
+
+/** Claude's answer to a question, inside the question's row: on Claude's paper, under its by-line. */
 function answerNode(q, ctx) {
-  const m = node('div', 'msg claude');
+  const m = node('div', 'ent-answer claude');
+  const by = node('div', 'byline claude-by');
   if (!q.answer) {
-    m.appendChild(node('div', 'by', 'Claude'));
-    const b = node('div', 'bubble');
-    b.appendChild(node('p', 'quiet', "Claude didn't answer this one."));
+    by.append(icon('mark', 'mark'), 'Claude');
+    m.appendChild(by);
+    m.appendChild(node('p', 'quiet', "Claude didn't answer this one."));
     if (claudeOn) {
-      const again = node('button', 'btn', 'Ask again');
+      const again = node('button', 'btn hit', 'Ask again');
       again.type = 'button';
       again.addEventListener('click', () => askClaude(q.text, again));
-      b.appendChild(again);
+      m.appendChild(again);
     }
-    m.appendChild(b);
     return m;
   }
   const a = q.answer;
   m.dataset.event = a.id;
-  m.appendChild(node('div', 'by', `Claude answered · ${asOf(a.at)}`));
-  const b = node('div', 'bubble');
+  by.append(icon('mark', 'mark'), `Claude answered · ${answeredAt(a.at)}`);
+  m.appendChild(by);
   // Kept in Drive, `text` is the headline: the rest is read when asked for,
   // and once read stays open each time the thread is drawn again.
   const read = a.doc ? docRead(a.id) : undefined;
   const words = paragraphs(read?.text ?? a.text);
-  b.appendChild(words);
-  if (a.doc && read?.line) b.appendChild(node('p', 'quiet', read.line));
+  m.appendChild(words);
+  if (a.doc && read?.line) m.appendChild(node('p', 'quiet', read.line));
   else if (a.doc && !read) {
-    const whole = node('button', 'link', 'Read the whole answer');
+    const whole = node('button', 'link hit', 'Read the whole answer');
     whole.type = 'button';
     whole.addEventListener('click', async () => {
       whole.disabled = true;
@@ -3588,11 +3745,10 @@ function answerNode(q, ctx) {
       if (r.text !== undefined) { words.replaceWith(paragraphs(r.text)); whole.remove(); }
       else whole.replaceWith(node('p', 'quiet', r.line));
     });
-    b.appendChild(whole);
+    m.appendChild(whole);
   }
   const looked = [...new Set(a.tools.flatMap((t) => (LOOKED[t] ? [LOOKED[t]] : [])))];
-  if (looked.length) b.appendChild(node('div', 'looked', `Looked at ${looked.join(', ')}.`));
-  m.appendChild(b);
+  if (looked.length) m.appendChild(node('div', 'looked', `Looked at ${looked.join(', ')}.`));
   return m;
 }
 
@@ -6899,7 +7055,7 @@ function removedBlock(r) {
   // needed an envelope. Offer the correction here rather than making someone
   // reconstruct it from a bank statement.
   const put = document.createElement('button');
-  put.className = 'btn';
+  put.className = 'btn hit';
   put.textContent = 'Put it back';
   put.addEventListener('click', () => askToRestore(box, r, put));
   box.appendChild(put);
@@ -6940,12 +7096,18 @@ async function askToRestore(box, r, trigger) {
   const row = document.createElement('div');
   row.className = 'row';
   row.style.marginTop = '10px';
+  // A refusal is said here, never in a button's label.
+  const refused = node('div', 'block-err');
+  refused.setAttribute('role', 'alert');
+  const close = () => { form.remove(); refused.remove(); row.remove(); trigger.hidden = false; };
+  cancelMark(form, close);
   const go = document.createElement('button');
-  go.className = 'btn primary';
+  go.className = 'btn primary hit';
   go.textContent = 'Show what this would do';
   go.addEventListener('click', async () => {
     if (!why.value.trim()) { why.focus(); return; }
     go.disabled = true;
+    refused.textContent = '';
     try {
       const { proposal } = await api('/api/tools/restore_transaction', {
         txnId: r.txnId, ...(sel.value ? { category: sel.value } : {}), why: why.value.trim(),
@@ -6959,26 +7121,32 @@ async function askToRestore(box, r, trigger) {
       }
       row.textContent = '';
       const yes = document.createElement('button');
-      yes.className = 'btn primary';
+      yes.className = 'btn primary hit';
       yes.textContent = proposal.summary;
       yes.addEventListener('click', async () => {
         yes.disabled = true;
-        await api('/api/commit', { proposalId: proposal.id });
-        await loadThread();
+        refused.textContent = '';
+        try {
+          await api('/api/commit', { proposalId: proposal.id });
+          await loadThread();
+        } catch (ex) {
+          refused.textContent = ex.message;
+          yes.disabled = false;
+        }
       });
       const no = document.createElement('button');
-      no.className = 'btn';
+      no.className = 'btn hit';
       no.textContent = 'Leave it';
-      no.addEventListener('click', () => { form.remove(); row.remove(); trigger.hidden = false; });
+      no.addEventListener('click', close);
       row.append(yes, no);
       box.insertBefore(ul, row);
     } catch (ex) {
-      go.textContent = ex.message;
+      refused.textContent = ex.message;
       go.disabled = false;
     }
   });
   row.appendChild(go);
-  box.append(form, row);
+  box.append(form, refused, row);
 }
 
 /** Fetched once. Restoring needs it, and Today may be the first screen opened. */
