@@ -30,6 +30,7 @@ export const plain = (v: unknown): unknown => {
 const ADDED: Record<string, unknown> = {
   savings: { account: null, balances: [] },
   documents: { folder: null, previous: null, docs: [], waiting: [], relinked: [] },
+  hands: [],
 };
 
 describe('a log from before sinking funds', () => {
@@ -38,6 +39,10 @@ describe('a log from before sinking funds', () => {
     for (const [key, empty] of Object.entries(ADDED)) {
       assert.deepEqual(state[key], empty, `${key} starts empty for an old log`);
       delete state[key];
+    }
+    for (const [, p] of state['plans'] as [string, Record<string, unknown>][]) {
+      assert.deepEqual([p['goal'], p['ownerFrom'], p['ownerSince']], [null, null, p['createdAt']], "a plan from an old log has no goal and was always its maker's");
+      for (const key of ['goal', 'ownerFrom', 'ownerSince']) delete p[key];
     }
     assert.deepEqual(state, JSON.parse(readFileSync(SNAPSHOT, 'utf8')));
   });

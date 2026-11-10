@@ -586,6 +586,8 @@ export type Event = Meta &
     | { op: 'plan.ask'; plan: PlanId; to: Actor; why: string }
     | { op: 'plan.ask.accept'; plan: PlanId }
     | { op: 'plan.ask.decline'; plan: PlanId; why: string }
+    /** Any member hands a plan to any member, at once: to themselves, away, or between two others. */
+    | { op: 'plan.hand'; plan: PlanId; to: Actor; why?: string }
     /** Replaced whole. */
     | { op: 'plan.checklist'; plan: PlanId; items: readonly ChecklistItem[] }
     /** Keyed by path: attaching the same path again replaces it. */
@@ -961,9 +963,16 @@ export interface Appointment {
  * no state of its own. `stateAt` is when it entered its current state, which
  * is the only clock on the board, and it only shows in `doing`.
  */
+/** A plan handed on: whose it was and whose it became. */
+export interface Hand { readonly plan: PlanId; readonly from: Actor; readonly to: Actor }
+
 export interface Plan {
   readonly id: PlanId; readonly title: string; readonly area: string; readonly parent: PlanId | null;
   readonly state: PlanState; readonly stateAt: string; readonly owner: Actor;
+  /** The plan's one goal, by name; null for none. */
+  readonly goal: string | null;
+  /** When the plan became its owner's, and whose it was before; null from, for a maker's own. */
+  readonly ownerSince: string; readonly ownerFrom: Actor | null;
   /** An open ask. One at a time; answered only by the member asked. */
   readonly asked: { readonly to: Actor; readonly at: string; readonly why: string } | null;
   /** Free text. Never moves it between columns. */
@@ -1138,6 +1147,8 @@ export interface State {
   readonly calendar: CalendarState;
   /** Every plan ever made, removed ones included and marked. */
   readonly plans: ReadonlyMap<PlanId, Plan>;
+  /** Every hand of a plan, keyed by the `plan.hand` that made it. */
+  readonly hands: ReadonlyMap<EventId, Hand>;
   /** Every drift ever noted, keyed by the `calendar.drift` that noted it. */
   readonly drifts: ReadonlyMap<EventId, Drift>;
   /** Every change found to a plan's page in Drive, keyed by the `plan.page.drift` that noted it. */

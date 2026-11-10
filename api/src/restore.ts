@@ -52,7 +52,7 @@ export function scopeOf(e: Event): Scope {
       return 'settings';
     // The board: every plan and everything on its card. Needs nothing else.
     case 'plan.create': case 'plan.set': case 'plan.state':
-    case 'plan.ask': case 'plan.ask.accept': case 'plan.ask.decline':
+    case 'plan.ask': case 'plan.ask.accept': case 'plan.ask.decline': case 'plan.hand':
     case 'plan.checklist': case 'plan.attach': case 'plan.detach':
     case 'plan.contact.link': case 'plan.contact.unlink':
     case 'plan.due': case 'plan.block': case 'plan.unblock': case 'plan.remove':
@@ -218,8 +218,8 @@ export function planRestore(
   // are one. Members the backup's own people bring, when taken too, count.
   if (wanted.has('plans')) {
     const members = new Set(target.members);
-    const outsiders = new Map<string, 'made' | 'asked'>();
-    const outside = (who: string, how: 'made' | 'asked') => {
+    const outsiders = new Map<string, 'made' | 'asked' | 'handed'>();
+    const outside = (who: string, how: 'made' | 'asked' | 'handed') => {
       if (!members.has(who) && !outsiders.has(who)) outsiders.set(who, how);
     };
     for (const e of take) {
@@ -229,12 +229,13 @@ export function planRestore(
       else if (scopeOf(e) === 'plans') {
         outside(e.who, 'made');
         if (e.op === 'plan.ask') outside(e.to, 'asked');
+        if (e.op === 'plan.hand') outside(e.to, 'handed');
       } else if ((e.op === 'thread.ask' || e.op === 'thread.note') && e.plan !== undefined) outside(e.who, 'made');
     }
     for (const [who, how] of outsiders) {
       collisions.push({
         kind: 'owner', what: who,
-        why: `${who} is not a member of this household, and the backup has plans ${how === 'made' ? 'of theirs' : 'asked of them'}: `
+        why: `${who} is not a member of this household, and the backup has plans ${how === 'made' ? 'of theirs' : how === 'asked' ? 'asked of them' : 'handed to them'}: `
           + `add ${who} as a member first, or restore these where ${who} is one`,
       });
     }

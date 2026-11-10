@@ -10,6 +10,7 @@ import { Store } from '../src/store.ts';
 import { replay, requireReason, ReplayError } from '../src/replay.ts';
 import { parseBackup, scopeOf } from '../src/restore.ts';
 import { board, card } from '../src/plans.ts';
+import { thread } from '../src/thread.ts';
 import { attach, attachmentPath, PLANNER_ROOT, readAttachment } from '../src/attachments.ts';
 import { describe as describeEvent, ProposalStore, ToolError } from '../src/tools.ts';
 import { householdDay, householdZone } from '../src/types.ts';
@@ -265,11 +266,11 @@ test('checklist replaces whole; attachments, contacts, blocks accumulate by key'
 const PLAN_OPS: readonly Op[] = [
   'plan.create', 'plan.set', 'plan.state', 'plan.ask', 'plan.ask.accept', 'plan.ask.decline',
   'plan.checklist', 'plan.attach', 'plan.detach', 'plan.contact.link', 'plan.contact.unlink',
-  'plan.due', 'plan.block', 'plan.unblock', 'plan.remove',
+  'plan.due', 'plan.block', 'plan.unblock', 'plan.remove', 'plan.hand',
 ];
 
 test('every plan op is in the plans scope', () => {
-  assert.equal(PLAN_OPS.length, 15);
+  assert.equal(PLAN_OPS.length, 16);
   for (const op of PLAN_OPS) {
     assert.equal(scopeOf({ id: 'i', at: NOW, who: 'alice', op } as Event), 'plans', op);
   }
@@ -926,4 +927,64 @@ test("plan.md is the plan's page: a file by that name is refused", async () => {
         && e.message === "plan.md is the plan's own page in Drive; give this file another name", name);
   }
   assert.equal(s.state.plans.get('gate')!.attachments.length, 0);
+});
+
+describe('handing a plan on', () => {
+  const gate = create('gate', { title: 'Fix the fence gate' });
+  const LATER = '2026-11-09T10:00:00.000Z';
+  const owned = (s: Store, id = 'gate') => { const p = s.state.plans.get(id)!; return [p.owner, p.ownerSince, p.ownerFrom]; };
+  test('any member gives one away, takes one, or moves one between two others', async () => {
+    const { s, at } = await store();
+    await s.append('alice', [{ op: 'member.add', member: 'casey', why: 'moved in' }, gate, { op: 'plan.state', plan: 'gate', state: 'doing' }]);
+    assert.deepEqual([...owned(s), s.state.plans.get('gate')!.goal], ['alice', NOW, null, null]);
+    at(LATER);
+    const [gave] = await s.append('alice', { op: 'plan.hand', plan: 'gate', to: 'bob', why: 'you have the drill' });
+    assert.deepEqual(owned(s), ['bob', LATER, 'alice']);
+    assert.deepEqual([s.state.plans.get('gate')!.state, s.state.plans.get('gate')!.stateAt], ['doing', NOW]);   // the Doing clock is untouched
+    const [took] = await s.append('alice', { op: 'plan.hand', plan: 'gate', to: 'alice' });
+    const [moved] = await s.append('casey', { op: 'plan.hand', plan: 'gate', to: 'bob' });
+    assert.deepEqual([gave, took, moved].map((e) => s.state.hands.get(e!.id)), [
+      { plan: 'gate', from: 'alice', to: 'bob' }, { plan: 'gate', from: 'bob', to: 'alice' }, { plan: 'gate', from: 'alice', to: 'bob' }]);
+    assert.deepEqual([gave, took, moved].map((e) => describeEvent(e!, s.state).what), [
+      'handed Fix the fence gate to bob', 'took Fix the fence gate from bob', 'handed Fix the fence gate from alice to bob']);
+    assert.deepEqual([describeEvent(gave!, s.state).why, scopeOf(gave!)], ['you have the drill', 'plans']);
+  });
+  test('the fold refuses a hand that moves nothing, an outsider at either end, a long word and a removed plan', async () => {
+    const { s } = await store();
+    await s.append('alice', gate);
+    const hand = (who: string, extra: Record<string, unknown>) => s.append(who, { op: 'plan.hand', plan: 'gate', to: 'bob', ...extra } as NewEventShape);
+    await assert.rejects(hand('bob', { to: 'alice' }), refused(/Fix the fence gate is already alice's/));
+    await assert.rejects(hand('alice', { to: 'casey' }), refused(/casey is not in this household/));
+    await assert.rejects(hand('carol', {}), refused(/carol is not a member of this household/));
+    await assert.rejects(hand('alice', { why: 'x'.repeat(301) }), refused(/a reason is longer than 300 characters/));
+    await s.append('alice', { op: 'plan.remove', plan: 'gate', why: 'sold the house' });
+    await assert.rejects(hand('alice', {}), refused(/has been removed/));
+  });
+  test('a hand settles an open ask, and is still there after another write and after a reload', async () => {
+    const { s } = await store();
+    await s.append('alice', [gate, { op: 'plan.ask', plan: 'gate', to: 'bob', why: 'you have the drill' }]);
+    await s.append('alice', askCard('gate'));
+    const [hand] = await s.append('bob', { op: 'plan.hand', plan: 'gate', to: 'bob' });
+    assert.deepEqual([s.state.plans.get('gate')!.asked, [...s.state.thread.offers.values()][0]!.status], [null, 'replaced']);
+    await s.append('alice', { op: 'plan.set', plan: 'gate', chips: ['fence'] });      // a thaw and a freeze
+    for (const state of [s.state, replay(eventsOf(s))]) assert.deepEqual(state.hands.get(hand!.id), { plan: 'gate', from: 'alice', to: 'bob' });
+  });
+  test('taking an ask, and losing a member, stamp the owner fields too', async () => {
+    const { s, at } = await store();
+    await s.append('alice', [gate, create('shed'), { op: 'plan.ask', plan: 'gate', to: 'bob', why: 'yours?' }]);
+    at(LATER);
+    await s.append('bob', { op: 'plan.ask.accept', plan: 'gate' });
+    assert.deepEqual(owned(s), ['bob', LATER, 'alice']);
+    await s.append('alice', { op: 'member.remove', member: 'bob', why: 'moved out' });
+    assert.deepEqual([owned(s), owned(s, 'shed')], [['alice', LATER, 'bob'], ['alice', NOW, null]]);
+  });
+  test('Today says a hand in one line that names both ends, with the word as its reason', async () => {
+    const { s } = await store();
+    await s.append('alice', gate);
+    const [hand] = await s.append('alice', { op: 'plan.hand', plan: 'gate', to: 'bob', why: 'you have the drill' });
+    const e = (await thread(s, { who: 'bob', budget: null })).entries.find((x) => x.id === hand!.id)!;
+    assert.ok(e.kind === 'change');
+    assert.deepEqual([e.what, e.why, e.hand], ['handed Fix the fence gate to bob', 'you have the drill',
+      { plan: { id: 'gate', title: 'Fix the fence gate' }, from: 'alice', to: 'bob' }]);
+  });
 });

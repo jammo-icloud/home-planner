@@ -43,7 +43,7 @@ import {
 } from './types.ts';
 import type {
   AccountBalance, Actor, Adjustment, Appearance, Appointment, Assignment, Budget, BudgetLocation, CalendarLink, CalendarRef, Category,
-  DocRef, DocumentsFolder, DocumentsState, Drift, Envelope, Event, EventOf, EnvelopeId, EventId, Guest, MonthPlan, MoveFile, Offer, PageDrift,
+  DocRef, DocumentsFolder, DocumentsState, Drift, Envelope, Event, EventOf, EnvelopeId, EventId, Guest, Hand, MonthPlan, MoveFile, Offer, PageDrift,
   Per, Plan, PlanId, Prediction, Rule, State, Stay, SplitPart, StayBlock, Settings, Txn,
 } from './types.ts';
 
@@ -88,6 +88,8 @@ interface Draft {
   model: string | null;
   /** Plans are replaced whole on every change, never mutated, so a thaw shares them. */
   plans: Map<PlanId, Plan>;
+  /** Written once and never changed, but the map is copied on a thaw like the others. */
+  hands: Map<EventId, Hand>;
   /** Replaced whole on every change too, so a thaw shares them as well. */
   drifts: Map<EventId, Drift>;
   pageDrifts: Map<EventId, PageDrift>;
@@ -118,7 +120,7 @@ const emptyDraft = (): Draft => ({
   areas: DEFAULT_AREAS, links: [], arrival: '', appearance: new Map(),
   household: null, target: null, conflicts: new Map(),
   zone: null, booking: null, model: null,
-  plans: new Map(), drifts: new Map(), pageDrifts: new Map(), appointments: new Map(),
+  plans: new Map(), hands: new Map(), drifts: new Map(), pageDrifts: new Map(), appointments: new Map(),
   guests: new Map(), stays: new Map(), stayBlocks: new Map(),
   savingsAccount: null, balances: new Map(),
   documents: { folder: null, previous: null, docs: new Map(), waiting: new Map(), relinked: new Map() },
@@ -139,7 +141,7 @@ function freeze(d: Draft): State {
     thread: { offers: d.offers, seen: d.seen },
     settings: { areas: d.areas, links: d.links, arrival: d.arrival, appearance: d.appearance, booking: d.booking, model: d.model },
     calendar: { household: d.household, target: d.target, conflicts: d.conflicts },
-    plans: d.plans, drifts: d.drifts, pageDrifts: d.pageDrifts, appointments: d.appointments,
+    plans: d.plans, hands: d.hands, drifts: d.drifts, pageDrifts: d.pageDrifts, appointments: d.appointments,
     guests: d.guests, stays: d.stays, stayBlocks: d.stayBlocks,
     savings: { account: d.savingsAccount, balances: d.balances },
     documents: { ...d.documents },
@@ -192,7 +194,7 @@ function thaw(s: State): Draft {
     household: s.calendar.household, target: s.calendar.target,
     conflicts: new Map(s.calendar.conflicts),
     zone: s.zone, booking: s.settings.booking, model: s.settings.model,
-    plans: new Map(s.plans), drifts: new Map(s.drifts), pageDrifts: new Map(s.pageDrifts), appointments: new Map(s.appointments),
+    plans: new Map(s.plans), hands: new Map(s.hands), drifts: new Map(s.drifts), pageDrifts: new Map(s.pageDrifts), appointments: new Map(s.appointments),
     guests: new Map(s.guests), stays: new Map(s.stays), stayBlocks: new Map(s.stayBlocks),
     savingsAccount: s.savings.account, balances: new Map(s.savings.balances),
     // The folders are replaced whole; the maps are copied, since the fold edits them in place.
@@ -653,6 +655,13 @@ function validatePlan(e: Event): void {
     case 'plan.ask':
       text(e.to, 'who is asked');
       reason();
+      return;
+    case 'plan.hand':
+      text(e.to, 'who it is handed to');
+      if (e.why !== undefined) {
+        if (typeof e.why !== 'string') throw refuse('a reason is text');
+        if (e.why.length > PLAN_LIMITS.why) throw refuse(`a reason is longer than ${PLAN_LIMITS.why} characters`);
+      }
       return;
     case 'plan.ask.decline': case 'plan.remove': case 'plan.detach': case 'plan.unblock':
       reason();
@@ -1292,7 +1301,7 @@ function fold(d: Draft, e: Event): void {
       // clean and may ask again. A removed plan is history and keeps the name
       // it was removed under.
       for (const p of d.plans.values()) {
-        if (p.owner === e.member && !p.removed) lapseAsk(d, { ...p, owner: e.who }, e);
+        if (p.owner === e.member && !p.removed) lapseAsk(d, { ...p, owner: e.who, ownerSince: e.at, ownerFrom: p.owner }, e);
       }
       return;
     }
@@ -1560,7 +1569,7 @@ function fold(d: Draft, e: Event): void {
       }
       d.plans.set(e.plan, {
         id: e.plan, title: e.title, area: e.area, parent: e.parent ?? null,
-        state: 'planning', stateAt: e.at, owner: e.who, asked: null,
+        state: 'planning', stateAt: e.at, owner: e.who, goal: null, ownerSince: e.at, ownerFrom: null, asked: null,
         chips: [], notes: '', estimate: null, envelope: null,
         checklist: [], attachments: [], contacts: [], due: null, blocks: [], links: [], letGo: [],
         createdAt: e.at, createdBy: e.who, removed: false,
@@ -1622,7 +1631,17 @@ function fold(d: Draft, e: Event): void {
       if (!p.asked) throw new ReplayError(`nobody has been asked to take ${p.title}`, e);
       if (e.who !== p.asked.to) throw new ReplayError(`only ${p.asked.to} can answer that ask`, e);
       // The card that put the question is answered, so it cannot be answered twice.
-      lapseAsk(d, e.op === 'plan.ask.accept' ? { ...p, owner: e.who } : p, e);
+      lapseAsk(d, e.op === 'plan.ask.accept' ? { ...p, owner: e.who, ownerSince: e.at, ownerFrom: p.owner } : p, e);
+      return;
+    }
+
+    case 'plan.hand': {
+      const p = livePlan(d, e.plan, e);
+      if (e.to === p.owner) throw new ReplayError(`${p.title} is already ${e.to}'s`, e);
+      if (!d.members.has(e.to)) throw new ReplayError(`${e.to} is not in this household`, e);
+      d.hands.set(e.id, { plan: p.id, from: p.owner, to: e.to });
+      // Handed on at once, so an ask for it is settled; the state, its clock and the calendar stay as they are.
+      lapseAsk(d, { ...p, owner: e.to, ownerSince: e.at, ownerFrom: p.owner }, e);
       return;
     }
 

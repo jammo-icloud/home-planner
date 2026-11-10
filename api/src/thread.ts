@@ -44,6 +44,8 @@ export type ThreadEntry =
       plan?: PlanRef }
   | { kind: 'change'; id: EventId; at: string; who: Actor; what: string; why: string | null;
       count: number; budget: BudgetId | null;
+      /** On a plan handed on: which plan, from whom and to whom, from the hand itself. */
+      hand?: { plan: PlanRef; from: Actor; to: Actor };
       /** A guest's name, from the list, to say in place of `guest:<their address>`. */
       name?: string;
       flag?: { removed?: Removed; seenByMe: boolean } };
@@ -104,7 +106,7 @@ const standalone = (kind: OfferPrompt['kind']): boolean =>
  * the card that asks about it, so a line beside it would say it twice.
  */
 const PLAN_LINES = new Set<string>([
-  'plan.create', 'plan.state', 'plan.remove',
+  'plan.create', 'plan.state', 'plan.remove', 'plan.hand',
   'plan.due', 'plan.block', 'plan.unblock', 'plan.attach', 'plan.detach',
   'calendar.drift.resolve', 'calendar.appointment', 'calendar.appointment.remove',
 ]);
@@ -168,6 +170,12 @@ function build(events: readonly Event[], state: State, who: Actor): ThreadEntry[
     return p ? { plan: { id: p.id, title: p.title } } : {};
   };
 
+  const handOf = (id: EventId): { hand: { plan: PlanRef; from: Actor; to: Actor } } | Record<never, never> => {
+    const h = state.hands.get(id);
+    const p = h && state.plans.get(h.plan);
+    return h && p ? { hand: { plan: { id: p.id, title: p.title }, from: h.from, to: h.to } } : {};
+  };
+
   const out: ThreadEntry[] = [];
   for (const e of events) {
     switch (e.op) {
@@ -222,6 +230,7 @@ function build(events: readonly Event[], state: State, who: Actor): ThreadEntry[
         out.push({
           kind: 'change', id: c.id, at: c.at, who: c.who, what: c.what, why: c.why,
           count: c.count, budget: budgetOf(e),
+          ...(e.op === 'plan.hand' ? handOf(e.id) : {}),
           ...(isGuest(e.who) ? { name: state.guests.get(guestEmail(e.who))?.name ?? 'A guest' } : {}),
           ...(e.op === 'txn.remove'
             ? { flag: { ...(c.removed ? { removed: c.removed } : {}), seenByMe: c.who === who || !!seen?.has(e.id) } }

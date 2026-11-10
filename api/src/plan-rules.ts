@@ -20,7 +20,7 @@ export const PLAN_STATES: readonly PlanState[] = ['planning', 'doing', 'done'];
 export const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /** How long each piece of a card may be. The fold refuses longer, whoever wrote it. */
-export const PLAN_LIMITS = { title: 200, chip: 40, item: 500, notes: 20_000 } as const;
+export const PLAN_LIMITS = { title: 200, chip: 40, item: 500, notes: 20_000, goal: 60, why: 300 } as const;
 
 /** Text that must be there: trimmed, and refused when blank. */
 export const required = (v: unknown, name: string): string => {

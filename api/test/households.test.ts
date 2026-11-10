@@ -657,6 +657,17 @@ describe('plans and settings in a backup', () => {
     return made;
   };
 
+  test('a plan handed to someone who is not a member here is named, and nothing is restored', async () => {
+    const hh = new Households(await dir());
+    const source = await hh.create('alice', 'Rivera');
+    await source.store.append('alice', [{ op: 'member.add', member: 'carol', why: 'sister' },
+      { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' }, { op: 'plan.hand', plan: 'gate', to: 'carol' }]);
+    const { store } = await fresh();
+    const plan = planRestore(store.state, parseBackup(await readFile(source.store.path, 'utf8')), ['plans']);
+    assert.deepEqual(plan.collisions.map((c) => [c.kind, c.what]), [['owner', 'carol']]);
+    assert.match(plan.collisions[0]!.why, /plans handed to them: add carol as a member first/);
+  });
+
   test('plans restore into an empty household whose areas they need', async () => {
     const { store } = await fresh();
     await store.append('bob', { op: 'areas.set', areas: ['House', 'Garden'] });

@@ -839,6 +839,14 @@ export function describe(
     case 'plan.ask': what = `asked ${e.to} to take ${plan(e.plan)}`; break;
     case 'plan.ask.accept': what = `took on ${plan(e.plan)}`; break;
     case 'plan.ask.decline': what = `declined ${plan(e.plan)}`; break;
+    case 'plan.hand': {
+      const h = state?.hands.get(e.id);
+      what = !h ? `handed ${plan(e.plan)} to ${e.to}`
+        : h.from === e.who ? `handed ${plan(e.plan)} to ${h.to}`
+        : h.to === e.who ? `took ${plan(e.plan)} from ${h.from}`
+        : `handed ${plan(e.plan)} from ${h.from} to ${h.to}`;
+      break;
+    }
     case 'plan.checklist': what = `updated the checklist on ${plan(e.plan)}`; break;
     case 'plan.attach': what = `attached ${e.name} to ${plan(e.plan)}`; break;
     case 'plan.detach': what = `took ${e.path.split('/').pop() || e.path} off ${plan(e.plan)}`; break;
