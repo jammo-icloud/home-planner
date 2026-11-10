@@ -152,6 +152,8 @@ const ADDED: readonly Line[] = [
   ['T20', "From the day's briefing", 'today'], ['T28', 'From your question at ', 'today'], ['T46', 'In place of an earlier suggestion', 'today'], ['T46', ' suggested', 'today'], ['T47', "label = 'Waiting'", 'today'], ['T34', 'function waitingBlock(', 'today'], ['T35', "'Not now'", 'today'], ['T34', '.block-err', 'css'], ['T40', 'function blockSlot(', 'today'], ['T40', 'function actionButton(label, cls, act, slot = null)', 'today'], ['T41', 'function decidedLine(', 'today'], ['T44', "o.status === 'snoozed'", 'today'],
   ['T49', 'asked you to take', 'today'], ['T50', 'mine ? \'Waiting for you\' : `Waiting on ${ask.to}`', 'today'], ['T53', 'DRIFT_LABELS[on].chip', 'today'], ['T56', 'planCrumb(e.plan)', 'today'], ['T58', "actionButton('Seen it'", 'today'], ['T61', 'clash: e.blocked', 'today'], ['T62', 'Reason (they will read it)', 'today'], ['T63', 'Why these instead (they will read it)', 'today'], ['T64', 'function bookingSend(', 'today'], ['T65', '/^approved\\b/.test(ex.message)', 'today'],
   ['T120', 'why.focus()', 'today'], ['T120', 'arrive.focus()', 'today'], ['T121', 'b.disabled = true', 'today'], ['S6', '.is-decided', 'css'], ['S7', 'function askAnswer(', 'today'], ['S22', 'showProblem(ex)', 'today'], ['esc', 'function todayEscape(', 'today'], ['esc', 'cancelMark(row, closeDecline)', 'today'], ['esc', 'cancelMark(row, closeBooking)', 'today'],
+  // The briefing opens its day (Task 10).
+  ['T14', "Claude · the day's briefing", 'today'], ['T14', 'Claude · briefing for ', 'today'], ['T14', '.day .claude', 'css'], ['T15', 'Briefing · written without Claude', 'today'], ['T16', "'headline'", 'today'], ['T17', 'Read the whole briefing', 'today'], ['T18', 'Reading the briefing…', 'today'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
@@ -178,6 +180,7 @@ const GONE: readonly Line[] = [
   ['T4', 'id="t-filters"', 'page'], ['T4', 'threadFilter', 'page'], ['T4', '>Mine<', 'page'], ['T4', '>Theirs<', 'page'], ['T4', '>Everything<', 'page'], ['T5', 'id="t-all"', 'page'], ['T5', 'threadAll', 'page'], ['T5', 'All budgets', 'page'], ['T6', 'id="t-earlier"', 'page'], ['T6', 'Show earlier', 'page'], ['T10', 'document.documentElement.scrollHeight', 'today'], ['T13', 'id="thread"', 'page'], ['T13', "$('thread')", 'page'], ['T72', 'id="tray"', 'page'], ['T72', "$('tray')", 'page'], ['T72', ' waiting on you`', 'page'], ['T110', 'filterBeforeDetour', 'page'], ['S4', 'endFilterDetour', 'page'], ['T116', 'Nothing is waiting on you.', 'page'], ['spec', "$('composer'))", 'today'],
   ['spec', 'adjusted a suggestion', 'page'], ['T47', 'Waiting for either of you', 'page'], ['spec', 'Reason — they will read it', 'page'], ['spec', 'Why these instead — they will read it', 'page'], ['spec', "node('div', 'line')", 'today'],
   ['T21', "node('div', 'turn')", 'today'], ['T21', "'msg member'", 'today'], ['S32', 'dataset.kind = e.kind', 'today'],
+  ['T17', 'Read all of it', 'page'], ['spec', "'msg claude'", 'today'], ['spec', "node('div', 'bubble'", 'today'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */

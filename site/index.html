@@ -1481,6 +1481,14 @@
   .day-body{display:flex;flex-direction:column;gap:var(--sp-3);padding:var(--sp-3)}
   #earlier{margin-top:var(--sp-6)}
   .earlier-head h2{font-size:var(--fs-small);font-weight:var(--fw-semibold);color:var(--ink-soft);margin-bottom:var(--sp-2)}
+  .day .claude:not(.ent-answer){border-block:var(--stroke) solid var(--claude-line);background:var(--claude-paper);padding:var(--sp-3) var(--sp-4)}
+  .day .briefing .byline{margin-bottom:var(--sp-2)}
+  .day .briefing .byline-at{margin-left:auto;font-weight:var(--fw-regular);color:var(--ink-faint);white-space:nowrap}
+  .day .briefing .headline{margin:0 0 var(--sp-2)}
+  .day .briefing .body{font-size:var(--fs-ui)}
+  .day .briefing .body p{margin:0 0 var(--sp-2);overflow-wrap:anywhere}
+  .day .briefing .body p:last-child{margin-bottom:0}
+  .day .briefing .ent-sub{color:var(--ink-faint)}
   .ent{display:grid;grid-template-columns:var(--disc) var(--disc) minmax(0,1fr) auto;gap:var(--sp-2);align-items:start;
     padding:var(--sp-3) var(--sp-4);border-top:var(--stroke) solid var(--hair)}
   .ent:first-child{border-top:0}
@@ -2833,11 +2841,11 @@ function paragraphs(text) {
   return box;
 }
 
-/** A long body shows its first lines, and Read all of it for the rest. Returns the button, or null. */
+/** A long body shows its first lines, and Read the whole briefing for the rest. Returns the button, or null. */
 function clampBody(body, text) {
   if (text.length <= 420) return null;
   body.classList.add('clamped');
-  const more = node('button', 'link', 'Read all of it');
+  const more = node('button', 'link hit', 'Read the whole briefing');
   more.type = 'button';
   more.addEventListener('click', () => { body.classList.remove('clamped'); more.remove(); });
   return more;
@@ -3022,7 +3030,8 @@ function dayCard(row) {
 
   const body = node('div', 'list day-body');
   body.id = `daybody-${row.day}`;
-  const entries = dayRows.get(row.day) ?? [];
+  const all = dayRows.get(row.day) ?? [];
+  const entries = [...all.filter((x) => x.kind === 'briefing'), ...all.filter((x) => x.kind !== 'briefing')];
   const ctx = todayCtx();
   const fresh = firstFresh();
   for (const e of entries) {
@@ -3340,31 +3349,56 @@ function openFor(e, text) {
   if (link) text.appendChild(node('div', 'ent-actions')).appendChild(link);
 }
 
-function entryNode(e, ctx) {
-  if (e.kind === 'briefing') {
-    const m = node('div', 'msg claude');
-    m.appendChild(node('div', 'by', e.writtenBy === 'claude'
-      ? `Claude · briefing for ${budgets.find((b) => b.id === e.budget)?.label ?? 'the household'}`
-      : 'Briefing · written without Claude'));
-    const b = node('div', 'bubble');
-    b.appendChild(node('p', 'headline', e.headline));
-    // Kept in Drive: the headline at once, and the words once they are read.
-    const showBody = (text, at) => {
-      const body = paragraphs(text);
-      const more = clampBody(body, text);
-      at.replaceWith(...(more ? [body, more] : [body]));
-    };
-    const spot = node('p', 'quiet', 'Reading the briefing…');
-    b.appendChild(spot);
+/**
+ * A day's briefing, first in its card, on Claude's paper under its by-line and the time. Today's card shows the write-up,
+ * clamped when long, and one kept in Drive is read at once; an earlier day shows the headline, and the rest opens in
+ * place from a link, from the log or from Drive.
+ */
+function briefingBlock(e, isToday) {
+  const m = node('div', 'claude briefing');
+  m.dataset.event = e.id;
+  const by = node('div', 'byline claude-by');
+  if (e.writtenBy === 'claude') {
+    by.append(icon('mark', 'mark'), e.source === 'household'
+      ? "Claude · the day's briefing"
+      : `Claude · briefing for ${budgets.find((b) => b.id === e.budget)?.label ?? 'the household'}`);
+  } else by.append('Briefing · written without Claude');
+  by.appendChild(node('span', 'byline-at', clockAt(e.at)));
+  m.append(by, node('p', 'headline', e.headline));
+  if (e.body === null && !e.doc) return m;
+
+  // The write-up in place of `at`; on today's card a long one is clamped.
+  const showBody = (text, at) => {
+    const body = paragraphs(text);
+    const more = isToday ? clampBody(body, text) : null;
+    at.replaceWith(...(more ? [body, more] : [body]));
+  };
+  const fromDrive = (at, then) => {
+    const shown = (r) => { if (r.text !== undefined) showBody(r.text, at); else at.replaceWith(node('p', 'ent-sub', r.line)); then?.(); };
+    const read = docRead(e.id);
+    if (read) shown(read);
+    else void readDocText(e.id, 'briefing').then(shown);
+  };
+  if (isToday) {
+    const spot = node('p', 'ent-sub', 'Reading the briefing…');
+    m.appendChild(spot);
     if (e.body !== null) showBody(e.body, spot);
-    else if (e.doc) {
-      const shown = (r) => { if (r.text !== undefined) showBody(r.text, spot); else spot.textContent = r.line; };
-      if (docRead(e.id)) shown(docRead(e.id));
-      else void readDocText(e.id, 'briefing').then(shown);
-    } else spot.remove();
-    m.appendChild(b);
+    else fromDrive(spot);
     return m;
   }
+  const whole = node('button', 'link hit', 'Read the whole briefing');
+  whole.type = 'button';
+  whole.addEventListener('click', () => {
+    if (e.body !== null) { showBody(e.body, whole); return; }
+    whole.disabled = true;
+    fromDrive(whole);
+  });
+  m.appendChild(whole);
+  return m;
+}
+
+function entryNode(e, ctx) {
+  if (e.kind === 'briefing') return briefingBlock(e, e.day === threadData.today);
 
   if (e.kind === 'note') {
     const { row, text } = entShell(e);
