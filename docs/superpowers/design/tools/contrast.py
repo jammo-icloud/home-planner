@@ -53,11 +53,9 @@ pairs = [
  ("--ink","--accent-line",4.5,"mark fill"),
  ("--line-strong","--surface",3.0,"small hatch mark"),
 ]
-# Measured and printed, not failed: pairs the audit found short, whose fix is a rule rather than a token.
-known = [
- # Faint text inside a search hit's mark. The fix is `mark { color: var(--ink) }` (visual audit, Contrast findings).
- ("--ink-faint","--accent-tint",4.5,"faint on accent tint"),
-]
+# Measured and printed, not failed: pairs known to be short, whose fix is a rule rather than a token. None is short
+# now that a mark is `--mark-fill` under `--ink`, semibold.
+known = []
 fails=0
 for s,(sl,sd) in schemes.items():
     for mode,b,ov in (("light",base_light,sl),("dark",base_dark,sd)):

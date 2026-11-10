@@ -1,10 +1,10 @@
 /**
- * The thread: the household's record, read as a conversation.
+ * The thread: the household's record, read as one card per day.
  *
  * Every visible thing is an entry of its own: the briefing, a question and
  * Claude's answer, a note, a card (which names what raised it), a decision made
  * on a later day than its card, and every change made directly on a screen as a
- * quiet line. Each carries its lane and the household's day. It is the log,
+ * row. Each carries its lane and the household's day, and daysOf() groups them. It is the log,
  * shaped for reading: nothing here is stored that the log does not hold.
  */
 

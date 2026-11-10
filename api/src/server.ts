@@ -4,8 +4,8 @@
  *   GET  /api/tools                 the tool definitions, as Claude receives them
  *   POST /api/tools/:name           run a tool — reads return data, writes return a proposal
  *   POST /api/commit                approve a proposal; the only path that writes
- *   GET  /api/thread                the household's thread: today's briefing, the conversation,
- *                                   cards, every direct change, and what is waiting on you
+ *   GET  /api/thread                the household's days, a month at a time (?through=, ?day=): each day's entries
+ *                                   (briefing, conversation, cards, direct changes), counts, and what waits on you
  *   GET  /api/docs/:event           the whole text of a briefing or an answer kept in Drive, read with your session
  *                                   (404 if the event is not one; 409 without a session; 404 if Drive has lost it)
  *   GET  /api/today                 yours, under the briefing: your calendars today and tomorrow,

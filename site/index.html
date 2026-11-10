@@ -27,7 +27,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F9FE" />
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F131A" />
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/tokens.css?v=0.7.0" />
+<link rel="stylesheet" href="/tokens.css?v=0.8.0" />
 <style>
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -689,22 +689,7 @@
   .home-banner p{margin:0;font-size:var(--fs-small);color:var(--ink-soft)}
   .tnew{display:flex;align-items:center;gap:10px;font-size:var(--fs-micro);font-weight:600;color:var(--accent-ink)}
   .tnew::before,.tnew::after{content:'';flex:1;height:1px;background:var(--accent-line)}
-  .msg .by{font-size:var(--fs-micro);color:var(--ink-faint);margin-bottom:4px}
-  .msg .by b{color:var(--ink);font-weight:600}
-  .msg.claude .bubble{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--r-card);
-    padding:14px 16px;box-shadow:var(--e-1)}
-  .msg.member{align-self:flex-end;max-width:88%}
-  .msg.member .by{text-align:right}
-  .msg.member .bubble{background:var(--accent-tint);border:1px solid var(--accent-line);border-radius:var(--r-card);
-    padding:10px 14px;white-space:pre-wrap;overflow-wrap:anywhere}
-  .turn{display:flex;flex-direction:column;gap:12px}
-  .bubble .headline{font-size:var(--fs-headline)}
-  .bubble .body{font-size:var(--fs-ui)}
-  .bubble p{margin:0 0 8px;overflow-wrap:anywhere}
-  .bubble p:last-child{margin-bottom:0}
   .looked{font-size:var(--fs-micro);color:var(--ink-faint);margin-top:8px}
-  .card.offer{margin-top:10px;border-left:3px solid var(--caution-line);box-shadow:none;padding:12px 14px}
-  .card.offer.moved{border-left-color:var(--problem)}
   .card.offer .row{margin-top:10px}
   .card.offer .f{display:flex;flex-direction:column;gap:4px;margin-top:10px;font-size:var(--fs-micro);color:var(--ink-soft)}
   .card.offer .f input{font:inherit;font-size:var(--fs-input);border:1px solid var(--line-strong);border-radius:8px;padding:8px 10px;color:var(--ink)}
@@ -855,7 +840,6 @@
   .chip.block{color:var(--surface-raised);background:var(--ink-soft);border-color:var(--ink-soft)}
   .chip.stale{color:var(--caution);background:var(--caution-tint);border-color:var(--caution-line)}
   .chip.research{color:var(--claude-ink);background:var(--claude-paper);border-color:var(--claude-line)}
-  .chip.asked{color:var(--ink);border:var(--stroke-heavy) dashed var(--provisional);background:transparent}
   .chip.moved{color:var(--caution);background:var(--caution-tint);border-color:var(--caution-line)}
   .chip.off{color:var(--ink-soft);background:var(--surface-sunken)}
   .off-cal{display:block;font-size:var(--fs-micro);font-weight:var(--fw-regular);color:var(--ink-faint)}
@@ -1421,7 +1405,6 @@
     .headline{font-size:var(--fs-headline)}
     #ta-v{font-size:var(--fs-display)}
     .composer textarea{min-height:44px}
-    .msg.member{max-width:94%}
 
     /* A five-column table on a 375px screen pushes the one control that matters
        off the right edge. Stack each receipt instead: what it was on top, what
@@ -1677,9 +1660,10 @@
     <div id="app-err" class="err" hidden></div>
     <div id="loading" class="quiet">Reading the log&hellip;</div>
 
-    <!-- Today is the household's thread: the day's briefing, what each of you
-         asked or noted, what Claude suggested and what was decided, and every
-         change made directly. Newest at the bottom, beside the reply box. -->
+    <!-- Today is one card per household day, today's first and open: the day's
+         briefing opens it, and its rows read who did what and when (questions,
+         notes, suggestions and their decisions, every change made on a screen).
+         What waits on the viewer is listed above today's card. -->
     <div id="briefing" class="today" hidden>
       <div class="today-main">
       <header class="today-head" id="today-head">
@@ -2252,7 +2236,7 @@ $('signout').addEventListener('click', async () => {
 });
 
 // ── shared: what every screen calls ───────────────────────────────────────
-const BUILD = '0.7.0';
+const BUILD = '0.8.0';
 
 /**
  * Which household's screens these are: moved on whenever a household is left (a switch, the picker, sign-out), so a
@@ -2686,8 +2670,9 @@ const fmtDate = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString(undefine
 
 // ── the thread ─────────────────────────────────────────────────────────────
 //
-// Everything said and decided, in the order it happened. Claude's words and
-// cards on the left, yours on the right, direct changes as quiet lines between.
+// Today's day cards: one card per household day, newest first, each a list of
+// rows (lane icon, who, what, when) under its briefing. Kinds and the people bar
+// narrow every day at once; what waits on the viewer is listed first.
 // Every string a person or Claude wrote is set as text, never as markup.
 let threadData = null;
 /** `'all'` or a lane; what the six kinds narrow every day to. */

@@ -22,11 +22,7 @@ backup of a household is its log.
 
 ### Today
 
-Each day opens with one briefing, drawn from the budget, the plans and the
-calendar. Under it is the thread: questions for Claude, notes between members,
-every change made on another screen, and cards that wait for a person to decide
-(Claude's suggestions, a calendar event moved on a phone, a plan's page edited
-in Drive, a guest's booking request). Today also carries setup notices, such as
+Each day is one card. Today's is first and open, and its briefing opens it; earlier days are closed below it, a month at a time. Inside, what happened sits as rows that read who did what and when: questions for Claude, notes between members, every change made on another screen, and cards that wait for a person to decide (Claude's suggestions, a calendar event moved on a phone, a plan's page edited in Drive, a guest's booking request). What waits on you is listed above today's card. Kinds and the people bar narrow every day at once, and the one search in the household is at the top of Today. Today also carries setup notices, such as
 an owner's *choose a folder* or an administrator's *Set up the NAS*. They are
 reminders, never decisions, and go once the thing is set.
 

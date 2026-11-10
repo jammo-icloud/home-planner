@@ -313,8 +313,10 @@ textarea.input { resize: vertical; line-height: var(--lh-body); }
 .allb { display: inline-flex; gap: 6px; align-items: center; font-size: var(--fs-small); color: var(--ink-soft); }
 .allb input { width: 16px; height: 16px; accent-color: var(--accent-fill); }
 .thread { display: flex; flex-direction: column; gap: var(--sp-4); min-width: 0; }
+/* superseded 2026-11-09: see specs/2026-11-09-today-day-cards-design.md */
 .day-head { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-small); font-weight: var(--fw-semibold); color: var(--ink-soft); }
 .day-head::after { content: ''; flex: 1; height: 1px; background: var(--line); }
+/* superseded 2026-11-09: see specs/2026-11-09-today-day-cards-design.md */
 .newsince { display: flex; align-items: center; gap: var(--sp-3); font-size: var(--fs-micro); font-weight: var(--fw-semibold); color: var(--accent-ink); }
 .newsince::before, .newsince::after { content: ''; flex: 1; height: 1px; background: var(--accent-line); }
 
@@ -329,12 +331,14 @@ textarea.input { resize: vertical; line-height: var(--lh-body); }
 
 /* what each of you wrote: mine on the right in the accent's tint, the other
    member's on the left on plain card. Claude is full width, on paper. */
+/* superseded 2026-11-09: see specs/2026-11-09-today-day-cards-design.md */
 .msg { display: flex; flex-direction: column; gap: 5px; max-width: 88%; }
 .msg.mine { align-self: flex-end; align-items: flex-end; }
 .msg .bubble { padding: 10px 14px; border-radius: 14px; font-size: var(--fs-body); white-space: pre-wrap; overflow-wrap: anywhere; }
 .msg.mine .bubble { background: var(--accent-tint); color: var(--ink); border: var(--stroke) solid var(--accent-line); border-bottom-right-radius: 5px; }
 .msg.theirs .bubble { background: var(--surface-raised); border: var(--stroke) solid var(--line); border-bottom-left-radius: 5px; }
 /* a change made on another screen: a quiet line with a dot */
+/* superseded 2026-11-09: see specs/2026-11-09-today-day-cards-design.md */
 .line { display: flex; gap: var(--sp-2); align-items: baseline; font-size: var(--fs-small); color: var(--ink-soft); }
 .line::before { content: ''; flex: none; width: 5px; height: 5px; border-radius: 50%; background: var(--line-strong); transform: translateY(-2px); }
 .line b { color: var(--ink); font-weight: var(--fw-semibold); }
@@ -365,6 +369,7 @@ textarea.input { resize: vertical; line-height: var(--lh-body); }
 .composer-row { display: flex; gap: var(--sp-2); align-items: center; justify-content: flex-end; margin-top: var(--sp-2); }
 .composer-row .hint { margin-right: auto; }
 /* the waiting tray: how many things want a person, reachable from anywhere */
+/* superseded 2026-11-09: see specs/2026-11-09-today-day-cards-design.md */
 .tray { display: inline-flex; align-items: center; gap: 6px; min-height: 32px; padding: 0 var(--sp-3); margin-bottom: var(--sp-2);
   font: inherit; font-size: var(--fs-small); font-weight: var(--fw-semibold); color: var(--accent-ink); background: var(--accent-tint);
   border: var(--stroke) solid var(--accent-line); border-radius: var(--r-pill); cursor: pointer; }

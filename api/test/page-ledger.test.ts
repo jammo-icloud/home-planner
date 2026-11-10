@@ -193,6 +193,8 @@ const GONE: readonly Line[] = [
   ['T82', 'placeYours', 'page'], ['T92', 'asked ${c.asked.to}', 'page'], ['T92', '${c.owner} asked', 'page'], ['S9', 'otherMember() ?? e.label', 'today'],
   ['T17', 'Read all of it', 'page'], ['spec', "'msg claude'", 'today'], ['spec', "node('div', 'bubble'", 'today'],
   ['T73', 'leave a note for each other', 'page'],
+  ['spec', '.thread-tools', 'css'], ['spec', '.allb', 'css'], ['spec', '.tday', 'css'], ['spec', '.msg .by', 'css'], ['spec', '.msg.claude', 'css'], ['spec', '.msg.member', 'css'], ['spec', '.bubble', 'css'], ['spec', '.turn{', 'css'], ['T33', '.line{', 'css'], ['T33', '.line b', 'css'], ['T33', '.line .why', 'css'], ['T33', '.line.flag', 'css'], ['T33', '.line .row', 'css'], ['T72', '.tray', 'css'], ['T92', '.chip.asked', 'css'],
+  ['T34', 'border-left:3px solid var(--caution-line);box-shadow:none', 'css'], ['T34', '.card.offer.moved{border-left-color', 'css'], ['T97', '.search-list', 'css'], ['T97', '.search-hit', 'css'], ['T97', '.top-inner > .search', 'css'], ['T99', '#search-notes', 'css'],
   ['T97', 'id="search"', 'page'], ['T97', 'id="search-q"', 'page'], ['T97', 'id="search-list"', 'page'], ['T100', 'function searchMark(', 'page'], ['T106', 'function searchSay(', 'page'], ['T106', "Today doesn't show that one", 'page'], ['T108', 'function searchOpen(', 'page'], ['T99', 'function searchDraw(', 'page'], ['T102', 'function searchGo(', 'page'], ['spec', 'SEARCH_KINDS', 'page'], ['spec', 'function searchClose(', 'page'], ['spec', 'searchClear(', 'page'], ['spec', 'searchReset(', 'page'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
@@ -219,6 +221,9 @@ describe('the page ledger', () => {
   }
   test("Plan's markup has lost the old board's words", () => {
     assert.deepEqual(GONE_FROM_PLAN_MARKUP.filter((text) => uncommented(planMarkup).includes(text)), []);
+  });
+  test('the contrast tool lists no short pair', () => {
+    assert.doesNotMatch(read('../../docs/superpowers/design/tools/contrast.py'), /\("--ink-faint","--accent-tint",4\.5/);
   });
   test('the page, its stylesheet and the package are one build', () => {
     const version = (JSON.parse(read('../package.json')) as { version: string }).version;

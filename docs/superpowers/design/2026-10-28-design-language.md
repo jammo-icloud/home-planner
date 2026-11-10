@@ -61,7 +61,7 @@ The full set is in `site/tokens.css`, documented inline. What follows says what 
 
 **Lines.** `--line` divides rows and is decorative. `--line-strong` is the edge of a control (an input, a checkbox) and passes 3:1, which today's `--line` (#DCE6F3, 1.2:1) does not. `--hair` is the faintest rule, inside a card.
 
-**Accent.** `--accent` is the scheme's colour for marks: focus, the selected tab's underline, the "now" line. `--accent-fill` is a primary button, `--accent-ink` is accent as text (links, counts), `--accent-tint` is a selected row and a member's own words in the thread, `--accent-line` its border, `--on-accent` the text on a fill. They are separate because the brand blue, #0C8CE9, fails 4.5:1 with white text (3.4:1). Quartz keeps Ion as the mark and fills buttons a shade deeper.
+**Accent.** `--accent` is the scheme's colour for marks: focus, the selected tab's underline, the "now" line. `--accent-fill` is a primary button, `--accent-ink` is accent as text (links, counts), `--accent-tint` is the row a link landed on, `--accent-line` its border, `--on-accent` the text on a fill. They are separate because the brand blue, #0C8CE9, fails 4.5:1 with white text (3.4:1). Quartz keeps Ion as the mark and fills buttons a shade deeper.
 
 **Signals** (the [core](#the-core-that-never-moves)): `--good`, `--caution`, `--problem`, each with `-tint` and `-line`; `--claude-ink`, `--claude-mark`, `--claude-paper`, `--claude-line`; `--provisional`; the three source sets `--src-mine-*`, `--src-partner-*`, `--src-household-*`; `--hatch-line`.
 
@@ -178,10 +178,10 @@ Fontshare publishes Satoshi in 300, 400, 500, 700 and 900, and no static 600. Th
 | Role | Size | Weight | Used for |
 |---|---|---|---|
 | display | 30 | 600 | One figure per screen at most: left to assign |
-| headline | 21 | 600 | The briefing's headline; a plan card's title |
-| title | 17 | 600 | Section titles, area names, the household pill |
+| headline | 21 | 600 | A screen's name; a page's or a plan card's title |
+| title | 17 | 600 | Section titles, area names, a day's name, the household pill |
 | input | 16 | 400 | Anything typed into. Never smaller: below 16px iOS zooms the page on focus, which is what happens on the reply box today |
-| body | 15 | 400 | Reading text: the thread, notes, card bodies |
+| body | 15 | 400 | Reading text: a note's or an answer's words, card bodies |
 | ui | 14 | 500 | Buttons, menu items, list rows |
 | small | 13 | 400 | Secondary lines, effects, quiet changes |
 | micro | 12 | 500 | By-lines, timestamps, chip text |
@@ -206,15 +206,15 @@ Eight roles replace the eighteen sizes the stylesheet uses today (12.5, 13.5, 14
 
 These answer the brief's section 5, and they hold in every scheme. The canvas's conventions sheet draws each one.
 
-**A proposal** is a card a person must approve: from Claude (in a briefing or an answer), from a member (an ask to take a plan), from a guest (a booking), or from the app (drift). It always has a **dashed edge**, a small "Waiting for you" or "Waiting for either of you" line above its title, its effects in a sunken list, and its actions. A Claude proposal sits on Claude's paper; every other proposal sits on plain card. The dash is the same either way: the provenance is the paper, the status is the dash.
+**A proposal** is a card a person must approve: from Claude (in a briefing or an answer), from a member (an ask to take a plan), from a guest (a booking), or from the app (drift). It always has a **dashed edge**, the label "Waiting" above its title, its effects in a sunken list, and its actions. A proposal is a dashed block under the row that offered it, on plain card whoever offered it: the row's disc and first words say who, the dash says it waits.
 
-**A decision** is never a card. Approving, declining or putting off collapses the card in place to **one line**: an icon (a green check, a cross, a clock), what it was, who, when, and the reason in quotation marks. "Move $110 from Travel to Vehicle. Approved by Bob, 7:41, 'The trip is paid for.'" A put-off line also says it comes back if its numbers change.
+**A decision** is never a card. Approving, declining or putting off leaves the card's title and one settled line in the block's place: who, when and the reason. A decision made on a later day also gets its own row that day. The settled line keeps its icon (a green check, a cross, a clock). The old form, for the example: an icon, what it was, who, when, and the reason in quotation marks. "Move $110 from Travel to Vehicle. Approved by Bob, 7:41, 'The trip is paid for.'" A put-off line also says it comes back if its numbers change.
 
 **When the numbers moved**, the card stays dashed, says so in caution amber, and offers "Work it out again" in place of Approve.
 
 **A suggestion from Claude inside research** (a contact, a due date) is a small dashed row on Claude's paper with two short verbs, such as Add and Skip. It is never drawn in the place the accepted thing will appear. Until accepted, the contact is not in People and the date is not in When.
 
-**Claude's text, everywhere it appears**, wears all four of its channels: mark, by-line, gold rule, paper. That includes the briefing, answers, research on a card, and the "Claude added research" line in a card's history (which takes the by-line style). A briefing written without Claude says so in its by-line and drops all four.
+**Claude's text, everywhere it appears**, wears all four of its channels: mark, by-line, gold rule, paper. That includes the briefing, answers, research on a card, and the "Claude added research" line in a card's history (which takes the by-line style). A briefing written without Claude says so in its by-line and drops all four. In a row, Claude's disc is its mark on its paper inside a gold ring; the briefing inside a day card keeps the gold rule, a `--claude-line` border top and bottom.
 
 **A due date** is a date, not time set aside: a **dashed** chip with a calendar glyph, and on the calendar a dashed all-day marker. **A block** is time set aside for a plan: a **solid** chip with a clock glyph, and on the calendar a solid timed event in its calendar's shade that opens its card. **An appointment** is any timed event, possibly linked to a plan: solid, in its calendar's shade. Due is dashed because it is an intention, which is the same reason a proposal is.
 
@@ -226,7 +226,7 @@ These answer the brief's section 5, and they hold in every scheme. The canvas's 
 
 **Empty states** say in one sentence what would be here, in the app's own words, and offer at most one button, only when there is one obvious first step. "No one is linked to this card yet." with "Link someone from Contacts". "Nothing in Doing in Trips." with nothing.
 
-**The error box.** One per screen, directly under the top bar and above everything else on that screen, cleared when the screen changes (as today). It says what happened and then what to do, in that order: "The due date wasn't saved. The NAS didn't answer, so nothing changed on the plan or the calendar. Try again in a minute." A section that is off for a reason is not an error and does not use the box: "Calendars need you to sign in again. The budget and your plans still work." sits in place, in a quiet grey panel with a lock.
+**The error box.** One per screen, directly under the top bar and above everything else on that screen, cleared when the screen changes (as today). It says what happened and then what to do, in that order: "The due date wasn't saved. The NAS didn't answer, so nothing changed on the plan or the calendar. Try again in a minute." A section that is off for a reason is not an error and does not use the box: "Calendars need you to sign in again. The budget and your plans still work." sits in place, in a quiet grey panel with a lock. A form or a proposal block also has its own error slot, always rendered, for a refusal of that one action.
 
 **Dashed is reserved.** Nothing else has a dashed edge: drop zones, add rows, the desk's "A new area" column and a read-back before a change are solid. The Planning glyph is a dashed circle, which says the same thing in small: not begun. Import's suggested rows, already dashed today, are correct under the law and stay.
 
@@ -240,10 +240,10 @@ The vocabulary, by job:
 
 - **Shell**: `top`, `pill` (household and member), `tabs-top` (desk), `tabbar` (phone, five slots), `menu-list` and `menu-item`, `more-sheet`, `scrim`, `page-head`, `back`. *(Superseded 2026-10-30: `tabs-top` serves both widths; `tabbar`, `more-sheet` and `scrim` are retired. See [the amendment](#amended-2026-10-30).)*
 - **Controls**: `btn` (`primary`, `bare`, `small`, `danger`), `link`, `field` and `input`, `check`, `seg` (segmented: the chosen option is a raised shape), `filters`.
-- **People and chips**: `who` (`mine`, `partner`; gains `other`, `household`, `claude`), `chips` and `chip` (`due`, `block`, `stale`, `research`, `money`, `asked`, `moved`).
+- **People and chips**: `who` (`mine`, `partner`; gains `other`, `household`, `claude`), `chips` and `chip` (`due`, `block`, `stale`, `research`, `money`, `moved`).
 - **Waiting and settled**: `provisional` (with `waiting`, `why`, `effects`, `moved-note`), `decided`.
 - **Claude**: `claude` (the block), `byline` (`claude-by`, `mark`, `asof`), `looked`.
-- **Today**: `today` (three regions), `brief`, `briefing`, `day-head`, `newsince`, `msg` (`mine`, `theirs`), `line` (`flag`), `yours` and `rail`, `composer`, `tray`. From 0.8.0 this becomes: `today` (three regions), `brief`, `briefing`, `yours` and `rail`, `composer`, `day`, `ent`, `seg people`, `tnew`.
+- **Today**: `today` (three regions), `brief`, `briefing`, `yours` and `rail`, `composer`, `day`, `ent`, `seg people`, `tnew`.
 - **Plan**: `area`, `erow plan`, `erow add`, `erow fold`, `st`, `list`; on the card `crumb`, `plan-head`, `plan-title`, `plan-body`, `plan-main`, `plan-side`, `sec-head`, `md`, `checklist`, `files` and `file`, `dropzone`, `kv`, `person`, `notes-list`, `history`, `askrow`.
 - **Calendar**: `cal-bar`, `legend` and `sw`, `ev` (`mine`, `partner`, `household`, `proposed`, `drift`, `clash`, `due`, `held`), `week` (desk), `daystrip` and `dayview` (phone). From 0.9.0 this becomes: `cal-bar`, `marks`, `erow cal`, `ev` (`mine`, `partner`, `household`, `proposed`, `drift`, `clash`, `due`, `held`), `week` (desk), `daystrip` (phone).
 - **Settings**: `settings`, `set-index`, `set-group`, `set-sec`, `rows` and `rowi`, `schemes` and `scheme`, `readonly`, `state-on`.
@@ -263,7 +263,7 @@ Each surface is drawn on the canvas at phone (390) and desk (1280), in two schem
 <a id="amended-2026-10-30"></a>
 > **Amended 2026-10-30: on a phone the screens are icons in the top bar.** The owner replaced the bottom tab bar. The phone's top bar now reads, left to right: the household pill; Today, Plan, Calendar and Budget as icons (Lucide's sun, square kanban, calendar and wallet, each keeping its name for a screen reader), the chosen one underlined in the accent as on the desk; More as a hamburger; and the member disc. The bar stays at the top as the page scrolls, and the hamburger opens the same menu as More on the desk: the links that leave Home Planner, then changing them in Settings, then Settings. The desk is unchanged.
 
-**Today.** The briefing is the page: first, widest, the largest type, on Claude's paper. On a phone the order is the briefing (with its cards and any decided lines), then **Yours**, then the rest of the day's thread, the waiting tray and the reply box. Yours holds the three rails as hairline lists inside one quiet card, labelled "Yours · what the briefing was written from", because three boxes under the briefing is the widget failure the spec warns about. On the desk Yours becomes its own column beside the thread, sticky, so the shared conversation and each member's own layer sit side by side and never interleave. This is the spec's "shared Today is not personal Today" made spatial. The reply box sticks to the bottom; the tray sits on it and counts what waits.
+**Today.** One card per household day, today's first and open, as specified in `specs/2026-11-09-today-day-cards-design.md`; shared Today is not personal Today.
 
 **The Plan board.** Desk: area labels down the side, Planning ("no clock") and Doing ("the clock runs") across, a shelf as a full-width solid strip under its area's cards, "holds 4", opening the shelf's page. Phone: each area is a section; inside it Planning, then Doing (with a clock glyph), each card at full width; the shelf strip last. Filters (Both, Mine, Bob's, Show done) and New sit above both.
 
@@ -321,7 +321,7 @@ Sources for the place: the Sandia Mountains' geology, name and vegetation zones 
 
 ## Copy voice
 
-The app's existing voice, kept: plain, direct, specific, no exclamation marks, no "oops", no "please try again later" without a reason. Name the thing and the person. Say what happened, then what to do. Prefer the household's words to the system's: "Bob moved the vet to Tuesday on his phone", not "Calendar event updated externally". Numbers in sentences are the engine's, never rounded into vagueness ("about $110" only when the briefing says "about"). Times are local and short ("7:41", "Tue 10:30"). A guest is spoken to warmly but with the same plainness: "If that address is one we know, a link is on its way."
+The app's existing voice, kept: plain, direct, specific, no exclamation marks, no "oops", no "please try again later" without a reason. Name the thing and the person. Say what happened, then what to do. Prefer the household's words to the system's: "Bob moved the vet to Tuesday on his phone", not "Calendar event updated externally". Numbers in sentences are the engine's, never rounded into vagueness ("about $110" only when the briefing says "about"). Times are the household's, as `clockOf` writes them ("7:41 AM"); a day is a weekday, a day and a month. A guest is spoken to warmly but with the same plainness: "If that address is one we know, a link is on its way."
 
 ---
 
