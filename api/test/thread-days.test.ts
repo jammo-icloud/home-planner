@@ -212,6 +212,23 @@ describe('thread()', () => {
     assert.equal((await threadDay(store, { who: 'alice', today: D, at: 'nope' })), null);
   });
 
+  test('threadDay finds the day of an offer, a drift and a question by their ids', async () => {
+    const { store, clock } = await household();
+    clock.now = '2026-11-03T17:00:00.000Z';
+    const [q] = await store.append('bob', { op: 'thread.ask', question: 'hm?', budget: null });
+    clock.now = '2026-11-04T17:00:00.000Z';
+    const [o] = await store.append('claude', offerRaw('Move $50 to food'));
+    clock.now = '2026-11-05T17:00:00.000Z';
+    const [d] = await store.append('claude', offerRaw('Drifted', { kind: 'drift', ref: 'drift-ref-1' }));
+    clock.now = NOW;
+    const dayOf = async (at: string) => (await threadDay(store, { who: 'alice', today: D, at }))?.days[0]?.day;
+    assert.equal(await dayOf(q!.id), '2026-11-03');
+    assert.equal(await dayOf(o!.id), '2026-11-04');
+    assert.equal(await dayOf(d!.id), '2026-11-05');
+    assert.equal(await dayOf('drift-ref-1'), '2026-11-05');
+    assert.equal(await dayOf('other-ref'), undefined);
+  });
+
   test('everyEntry gives the whole record, newest day first', async () => {
     const { store } = await household();
     await store.append('bob', { op: 'thread.note', text: 'hi', budget: null });
