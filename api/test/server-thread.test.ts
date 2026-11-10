@@ -744,7 +744,7 @@ describe('Today\'s rails, from the NAS', () => {
     assert.equal(named('Gym')?.calendar, 'mine');
     assert.equal(named('Choir')?.calendar, 'partner');
     assert.equal(named('Fix the gate')?.calendar, 'household');
-    assert.deepEqual(named('Fix the gate')?.plan, { id: gate, title: 'Fix the gate' });
+    assert.deepEqual(named('Fix the gate')?.plan, { id: gate, title: 'Fix the gate', state: 'planning', owner: 'alice', goal: null, area: 'House' });
     assert.equal(named('Gym')?.plan, undefined);
     assert.equal(named('Standup'), undefined, 'a calendar not chosen is not read');
     assert.ok(r.json.calendar.tomorrow.some((e: any) => e.summary === 'Gym'), 'tomorrow is tomorrow');
@@ -891,7 +891,7 @@ describe('the calendar on screen', () => {
 
     const [block] = named('Fix the gate', 'block');
     assert.ok(block, JSON.stringify(r.json.events));
-    assert.deepEqual(block.plan, { id: gate, title: 'Fix the gate' });
+    assert.deepEqual(block.plan, { id: gate, title: 'Fix the gate', state: 'planning', owner: 'alice', goal: null, area: 'House' });
     assert.equal(block.calendar, 'household');
     assert.equal(block.is_all_day, false);
     assert.equal(block.clash, true, 'the block and Pilates overlap');
@@ -909,7 +909,7 @@ describe('the calendar on screen', () => {
 
     const [appt] = named('Locksmith');
     assert.equal(appt.kind, 'appointment');
-    assert.deepEqual(appt.plan, { id: gate, title: 'Fix the gate' });
+    assert.deepEqual(appt.plan, { id: gate, title: 'Fix the gate', state: 'planning', owner: 'alice', goal: null, area: 'House' });
     assert.equal(appt.proposed, undefined);
 
     const [hair] = named('Haircut');
@@ -951,9 +951,9 @@ describe('the calendar on screen', () => {
     assert.equal(blocks[0].is_all_day, false);
   });
 
-  test('a window is whole days, at most eight of them', async () => {
-    assert.equal((await as(cookie, 'GET', `/api/calendar?start=${inDays(0)}&end=${inDays(9)}`)).status, 400);
-    assert.equal((await as(cookie, 'GET', `/api/calendar?start=${inDays(0)}&end=${inDays(8)}`)).status, 200);
+  test('a window is whole days, at most forty-two of them', async () => {
+    assert.equal((await as(cookie, 'GET', `/api/calendar?start=${inDays(0)}&end=${inDays(43)}`)).status, 400);
+    assert.equal((await as(cookie, 'GET', `/api/calendar?start=${inDays(0)}&end=${inDays(42)}`)).status, 200);
     assert.equal((await as(cookie, 'GET', `/api/calendar?start=${inDays(3)}&end=${inDays(3)}`)).status, 400);
     assert.equal((await as(cookie, 'GET', '/api/calendar?start=2026-02-30&end=2026-03-02')).status, 400);
     assert.equal((await as(cookie, 'GET', '/api/calendar')).status, 400);

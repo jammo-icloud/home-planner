@@ -26,7 +26,7 @@ import { checkDrift, checkDriftNowAndThen, eventFor, todayEvents, freeSlotsNear,
 import { addBlock, removePlan, setDue, updatePlan } from '../src/plan-edits.ts';
 import { notOnCalendar, toPlace } from '../src/plan-rules.ts';
 import { ProposalStore, RESEARCH_WRITES, ToolError, commit, researchMay, runTool, toolByName } from '../src/tools.ts';
-import { board, card as planCard } from '../src/plans.ts';
+import { board, card as planCard, goalsOf } from '../src/plans.ts';
 import type { Proposal, ToolContext } from '../src/tools.ts';
 import type { NewEvent } from '../src/store.ts';
 import { adjust, decide, offer, refresh } from '../src/offers.ts';
@@ -1670,7 +1670,7 @@ describe('due dates and blocks become events', () => {
       const week = await weekEvents(ctx, { start: '2026-11-02', end: '2026-11-09' });
       const held = week.events.filter((e) => e.held);
       assert.deepEqual(held.map((e) => [e.summary, e.held, e.is_all_day, e.dtstart, e.dtend]), [
-        ['Nguyen family staying (3)', { kind: 'stay', id: stayId }, true, at('2026-11-04T07:00:00Z'), at('2026-11-06T07:00:00Z')],
+        ['Nguyen family staying (3)', { kind: 'stay', id: stayId, request: 'r1', name: 'Nguyen family', headcount: 3 }, true, at('2026-11-04T07:00:00Z'), at('2026-11-06T07:00:00Z')],
         ['family is here', { kind: 'block', id: blockId, by: 'alice' }, true, at('2026-11-07T07:00:00Z'), at('2026-11-09T07:00:00Z')],
       ]);
       // The stay's own event is not drawn a second time beside it, a cancelled one's not at all (its
@@ -1706,6 +1706,79 @@ describe('due dates and blocks become events', () => {
     assert.equal(left[0]!.evt_id, kept.evt_id);
     assert.equal(left[0]!.calendar, 'household');
     assert.equal(left[0]!.held, undefined, 'an ordinary event, not held nights');
+  });
+
+  describe('what the Calendar reads', () => {
+    const w = { start: '2026-11-02', end: '2026-11-09' };
+
+    test('a plan says its state, owner, goal and area, and its owner follows a hand-over', async () => {
+      const c = await setup();
+      await c.store.append('alice', [
+        { op: 'plan.due', plan: 'gate', due: '2026-11-07' },
+        { op: 'plan.goal', plan: 'gate', goal: 'New roof' },
+        { op: 'plan.hand', plan: 'gate', to: 'bob' },
+      ]);
+      const week = await weekEvents(c, w);
+      assert.deepEqual(week.events.find((e) => e.kind === 'due')!.plan,
+        { id: 'gate', title: gate(c).title, state: gate(c).state, owner: 'bob', goal: 'New roof', area: gate(c).area });
+    });
+
+    test('a linked block the calendars did not show is drawn from the plan, once', async () => {
+      const c = await setup();
+      const blocks = async () => (await weekEvents(c, w)).events.filter((e) => e.kind === 'block');
+      await c.store.append('alice', { op: 'plan.block', plan: 'gate', block: 'b1', start: '2026-11-04T16:00:00Z', end: '2026-11-04T19:00:00Z' });
+      const unlinked = await blocks();
+      assert.equal(unlinked.length, 1);
+      assert.equal(unlinked[0]!.offCalendar, true);
+      await c.store.append('alice', block('b1', 901));
+      const linked = await blocks();
+      assert.equal(linked.length, 1);
+      assert.equal(linked[0]!.offCalendar, undefined);
+      assert.equal(linked[0]!.clash, undefined);
+    });
+
+    test('a linked block the calendar shows is one row', async () => {
+      const c = await setup();
+      await syncDue(c, gate(c), '2026-11-07');
+      const hh = c.store.state.calendar.household!;
+      const ev = await createEvent(c.sid!, { cal_id: hh.cal_id, original_cal_id: hh.original_cal_id, summary: 'Fix the gate',
+        description: '', is_all_day: false, dtstart: at('2026-11-04T16:00:00Z'), dtend: at('2026-11-04T19:00:00Z'), tz_id: ZONE }, via);
+      await c.store.append('alice', [
+        { op: 'plan.block', plan: 'gate', block: 'b1', start: '2026-11-04T16:00:00Z', end: '2026-11-04T19:00:00Z' },
+        { op: 'plan.calendar.link', plan: 'gate', kind: 'block', block: 'b1', cal_id: hh.cal_id, original_cal_id: hh.original_cal_id,
+          evt_id: ev.evt_id, ical_uid: ev.ical_uid, dav_etag: ev.dav_etag },
+      ]);
+      const rows = (await weekEvents(c, w)).events.filter((e) => e.kind === 'block');
+      assert.equal(rows.length, 1);
+      assert.equal(rows[0]!.evt_id, ev.evt_id);
+      await deleteEvent(c.sid!, ev, via);
+    });
+
+    test('mine is whether the account has a calendar of its own, and absent without the NAS', async () => {
+      const c = await setup();
+      assert.equal((await weekEvents(c, w)).mine, true);
+      assert.equal('mine' in (await weekEvents({ ...c, sid: null }, w)), false);
+    });
+
+    test('goals are the plans\' goals, a done plan\'s among them', async () => {
+      const c = await setup();
+      await c.store.append('alice', [
+        { op: 'plan.goal', plan: 'gate', goal: 'New roof' },
+        { op: 'plan.state', plan: 'gate', state: 'done' },
+      ]);
+      const week = await weekEvents(c, w);
+      assert.deepEqual(week.goals, goalsOf(c.store.state));
+      assert.deepEqual(week.goals, [{ goal: 'New roof', plans: 1, done: 1 }]);
+    });
+
+    test('a proposal for your own calendar is yours', async () => {
+      const c = await setup();
+      const mine = await card(c, 'propose_event', dentist({ on: 'mine' }));
+      const home = await card(c, 'propose_event', dentist({ on: 'household', start: THU('15:00'), end: THU('16:00') }));
+      const week = await weekEvents(c, w);
+      assert.equal(week.events.find((e) => e.proposed === mine.id)!.owner, c.who);
+      assert.equal(week.events.find((e) => e.proposed === home.id)!.owner, undefined);
+    });
   });
 
   describe('creating a contact from a suggestion', () => {

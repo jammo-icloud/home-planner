@@ -12,11 +12,19 @@ import type { AppointmentTimes } from './appointments.ts';
 import { NeedsDsm, SessionLost, SynologyError, listEvents, requireSid } from './synology.ts';
 import type { CalEvent, DsmFetch } from './synology.ts';
 import type { ToolContext } from './tools.ts';
+import { goalsOf } from './plans.ts';
 import { isDay, sameCalendar, visibleTo, zoneOf } from './types.ts';
-import type { Actor, CalendarLink, CalendarRef, Day, EventId, PlanId, State } from './types.ts';
+import type { Actor, CalendarLink, CalendarRef, Day, EventId, Plan, PlanId, PlanState, State } from './types.ts';
 
 /** Whose calendar an event is on, as the viewer sees it: their own, the household's, or one they chose to check. */
 export type EventSource = 'mine' | 'household' | 'partner';
+
+/** The plan an event is for, as the Calendar draws it. Not thread.ts's `PlanRef` (`{ id, title }`). */
+export interface PlanRef {
+  readonly id: PlanId; readonly title: string; readonly state: PlanState; readonly owner: Actor;
+  readonly goal: string | null; readonly area: string;
+}
+export const planRef = (p: Plan): PlanRef => ({ id: p.id, title: p.title, state: p.state, owner: p.owner, goal: p.goal, area: p.area });
 
 /**
  * An event on one of the viewer's calendars: whose calendar it is on and
@@ -28,7 +36,7 @@ export type ViewerEvent = CalEvent & {
   readonly label: string;
   /** Whose calendar it is: the viewer for their own, null for the Household's, a member for one they check, else null. */
   readonly owner: Actor | null;
-  readonly plan?: { readonly id: PlanId; readonly title: string };
+  readonly plan?: PlanRef;
 };
 
 /**
@@ -41,7 +49,7 @@ export type ViewerEvent = CalEvent & {
  * (`NeedsDsm` without one); the NAS's refusals are the caller's to word.
  */
 export async function viewerEvents(ctx: ToolContext, range: { from: number; to: number }, f?: DsmFetch):
-  Promise<{ events: ViewerEvent[]; missed: string[] }> {
+  Promise<{ events: ViewerEvent[]; missed: string[]; mine: boolean }> {
   const sid = requireSid(ctx);
   const state = ctx.store.state;
   const listing = await listingFor(sid, f);
@@ -58,9 +66,9 @@ export async function viewerEvents(ctx: ToolContext, range: { from: number; to: 
   // One they check that is their own (a second calendar of theirs) is theirs, whatever list it is on.
   for (const c of state.calendar.conflicts.get(ctx.who) ?? []) add(c, ownedBy(listing.as(c) ?? c, ctx.who) ? 'mine' : 'partner', c.label);
 
-  const plans = new Map<number, { id: PlanId; title: string }>();
+  const plans = new Map<number, PlanRef>();
   for (const p of state.plans.values()) {
-    if (!p.removed) for (const l of p.links) plans.set(l.evt_id, { id: p.id, title: p.title });
+    if (!p.removed) for (const l of p.links) plans.set(l.evt_id, planRef(p));
   }
   const out: ViewerEvent[] = [];
   const missed: string[] = [];
@@ -83,7 +91,7 @@ export async function viewerEvents(ctx: ToolContext, range: { from: number; to: 
         calendar: cal.calendar, label: cal.label, owner: cal.owner, ...(plan ? { plan } : {}) });
     }
   }
-  return { events: out.sort((a, b) => a.dtstart - b.dtstart || a.dtend - b.dtend), missed };
+  return { events: out.sort((a, b) => a.dtstart - b.dtstart || a.dtend - b.dtend), missed, mine: listing.calendars.some((c) => c.isDefault) };
 }
 
 /**
@@ -165,7 +173,7 @@ export type WeekEvent = Partial<ViewerEvent> & Pick<ViewerEvent, 'summary' | 'is
    * a member kept for the household (by its `booking.block`, and who kept them).
    * Drawn hatched, all day, across the nights.
    */
-  readonly held?: { readonly kind: 'stay'; readonly id: EventId } | { readonly kind: 'block'; readonly id: EventId; readonly by: string };
+  readonly held?: { readonly kind: 'stay'; readonly id: EventId; readonly request: EventId; readonly name: string; readonly headcount: number } | { readonly kind: 'block'; readonly id: EventId; readonly by: string };
 };
 
 export interface WeekCalendar {
@@ -173,6 +181,10 @@ export interface WeekCalendar {
   readonly unavailable?: string;
   /** Calendars that could not be read just now while the rest were. */
   readonly missed?: readonly string[];
+  /** Whether the account has a calendar of its own; absent when the calendars could not be read. */
+  readonly mine?: boolean;
+  /** Every goal a live plan carries, with its plans and how many are done. */
+  readonly goals: ReturnType<typeof goalsOf>;
 }
 
 /**
@@ -197,8 +209,8 @@ export function markClashes(events: readonly WeekEvent[]): WeekEvent[] {
   return events.map((e) => (clashing.has(e) ? { ...e, clash: true as const } : e));
 }
 
-/** The most days the screen asks for at once: a week, and a day either side to spare. */
-export const WEEK_MAX_DAYS = 8;
+/** The most days the screen asks for at once: a week, or the picker's 42 days. */
+export const WEEK_MAX_DAYS = 42;
 
 
 const dayNumber = (day: Day): number => {
@@ -238,9 +250,10 @@ export async function weekEvents(ctx: ToolContext, window: { start: Day; end: Da
   const to = midnight(window.end, tz);
   let seen: ViewerEvent[] = [];
   let missed: string[] = [];
+  let mine = false;
   let unavailable: string | undefined;
   try {
-    ({ events: seen, missed } = await viewerEvents(ctx, { from, to }, f));
+    ({ events: seen, missed, mine } = await viewerEvents(ctx, { from, to }, f));
   } catch (err) {
     if (err instanceof NeedsDsm || err instanceof SessionLost) unavailable = 'sign in again to see your calendars';
     else if (err instanceof SynologyError) {
@@ -289,19 +302,23 @@ export async function weekEvents(ctx: ToolContext, window: { start: Day; end: Da
     if (link && shown.has(link.evt_id)) continue;
     marked.push({
       summary: p.title, is_all_day: true, dtstart: midnight(p.due, tz), dtend: midnight(nextDay(p.due), tz),
-      calendar: 'household', label: household, kind: 'due', plan: { id: p.id, title: p.title }, ...driftOf(link?.evt_id),
+      calendar: 'household', label: household, kind: 'due', plan: planRef(p), ...driftOf(link?.evt_id),
       ...(link ? {} : { offCalendar: true as const }),
     });
   }
-  // Blocks kept on a plan with no event yet: the time is still set aside, just not on the calendar.
+  // Blocks the calendars did not show: not linked (no event yet), or linked to an event the viewer does not read.
+  // The time is still set aside, so the plan draws it.
+  const shownBlocks = new Set(out.filter((e) => e.kind === 'block').map((e) => e.evt_id));
   for (const p of live) {
     for (const b of p.blocks) {
-      if (p.links.some((l) => l.kind === 'block' && l.block === b.id)) continue;
+      const link = p.links.find((l) => l.kind === 'block' && l.block === b.id);
+      if (link && shownBlocks.has(link.evt_id)) continue;
       const [s, e] = [Date.parse(b.start) / 1000, Date.parse(b.end) / 1000];
       if (!(s < to && e > from)) continue;
       marked.push({
         summary: p.title, is_all_day: false, dtstart: s, dtend: e,
-        calendar: 'household', label: household, kind: 'block', plan: { id: p.id, title: p.title }, offCalendar: true,
+        calendar: 'household', label: household, kind: 'block', plan: planRef(p),
+        ...driftOf(link?.evt_id), ...(link ? {} : { offCalendar: true as const }),
       });
     }
   }
@@ -313,7 +330,7 @@ export async function weekEvents(ctx: ToolContext, window: { start: Day; end: Da
     if (st.cancelled || !(st.arrive < window.end && window.start < st.depart)) continue;
     marked.push({
       summary: `${st.name} staying (${st.headcount})`, is_all_day: true, dtstart: midnight(st.arrive, tz), dtend: midnight(st.depart, tz),
-      calendar: 'household', label: household, kind: 'other', held: { kind: 'stay', id },
+      calendar: 'household', label: household, kind: 'other', held: { kind: 'stay', id, request: st.request, name: st.name, headcount: st.headcount },
     });
   }
   for (const [id, b] of state.stayBlocks) {
@@ -345,12 +362,16 @@ export async function weekEvents(ctx: ToolContext, window: { start: Day; end: Da
       calendar: on === 'household' ? 'household' : 'mine',
       label: on === 'household' ? household : `${capital(ctx.who)}'s calendar`,
       kind: 'appointment', proposed: o.id,
-      ...(p && !p.removed ? { plan: { id: p.id, title: p.title } } : {}),
+      ...(on === 'mine' ? { owner: ctx.who } : {}),
+      ...(p && !p.removed ? { plan: planRef(p) } : {}),
     });
   }
 
   const events = marked
     .filter((e) => e.dtstart < to && e.dtend > from)
     .sort((a, b) => a.dtstart - b.dtstart || a.dtend - b.dtend);
-  return { events, ...(unavailable !== undefined ? { unavailable } : {}), ...(missed.length ? { missed } : {}) };
+  return {
+    events, ...(unavailable !== undefined ? {} : { mine }), ...(unavailable !== undefined ? { unavailable } : {}),
+    ...(missed.length ? { missed } : {}), goals: goalsOf(state),
+  };
 }
