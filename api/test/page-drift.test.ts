@@ -24,7 +24,7 @@ import { replay, ReplayError } from '../src/replay.ts';
 import { scopeOf } from '../src/restore.ts';
 import { describe as describeEvent, ProposalStore } from '../src/tools.ts';
 import type { ToolContext } from '../src/tools.ts';
-import { thread } from '../src/thread.ts';
+import { everyEntry } from './every-entry.ts';
 import type { ThreadEntry } from '../src/thread.ts';
 import type { Event, EventId, PageChange, PageField, PageView } from '../src/types.ts';
 import { fakeNas } from './fake-nas.ts';
@@ -147,7 +147,7 @@ describe("a plan's page changed in Drive", () => {
     assert.equal(scopeOf(d!), 'plans');
     const [r] = await s.append('bob', { op: 'calendar.drift.resolve', drift: d!.id, choice: 'plan' });
     assert.equal(scopeOf(r!), 'plans');
-    const { entries } = await thread(s, { who: 'alice', budget: null });
+    const { entries } = await everyEntry(s, 'alice');
     const changes = entries.flatMap((e: ThreadEntry) => (e.kind === 'change' ? [e] : []));
     assert.ok(!changes.some((c) => c.id === d!.id), changes.map((c) => c.what).join(' | '));
     assert.ok(!changes.some((c) => /noticed the page/.test(c.what)), changes.map((c) => c.what).join(' | '));
@@ -340,7 +340,7 @@ describe("a plan's page, looked at in Drive", () => {
     assert.equal(card.who, 'alice');
     assert.match(card.summary, /^The page for Fix the gate was changed in Drive/);
     assert.ok(out.some((e) => e.id === card.id), 'the card is among what was written');
-    const { entries } = await thread(s, { who: 'bob', budget: null });
+    const { entries } = await everyEntry(s, 'bob');
     assert.ok(entries.some((e: ThreadEntry) => e.kind === 'card' && e.id === card.id), 'bob sees it too');
 
     // Not asked about again: an hour on, a full look finds the page as the drift found it.

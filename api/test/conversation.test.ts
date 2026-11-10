@@ -13,7 +13,7 @@ import { setClaudeClient, ClaudeRefused } from '../src/claude.ts';
 import { note, askInThread, nowContext, dayContext, readDayDocs } from '../src/conversation.ts';
 import type { DocRef, EventId } from '../src/types.ts';
 import { fake, said, called } from './fake-claude.ts';
-import { thread } from '../src/thread.ts';
+import { everyEntry } from './every-entry.ts';
 import { card } from '../src/plans.ts';
 import { refresh } from '../src/offers.ts';
 import { answerHeadline, renderAnswerPage, renderBriefingPage, writeDoc } from '../src/docs.ts';
@@ -315,7 +315,7 @@ describe('asking from a plan', () => {
     assert.equal(c.store.state.plans.get('heater')!.due, null, 'nothing changed until someone approves it');
 
     // The card is its own entry, raised by the answer to the question.
-    const page = await thread(c.store, { who: 'alice', budget: null, allBudgets: true });
+    const page = await everyEntry(c.store, 'alice');
     const asked = page.entries.find((e) => e.id === r.question.id);
     assert.ok(asked && asked.kind === 'ask');
     const hung = page.entries.filter((e) => e.kind === 'card');

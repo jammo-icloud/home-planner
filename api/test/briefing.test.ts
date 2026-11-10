@@ -15,7 +15,8 @@ import {
   brief, changesSinceSection, ensureSection, markRead, facts, scorePredictions,
   householdFacts, briefHousehold, ensureHousehold,
 } from '../src/briefing.ts';
-import { thread, ordered } from '../src/thread.ts';
+import { ordered } from '../src/thread.ts';
+import { everyEntry } from './every-entry.ts';
 import { validate } from '../src/replay.ts';
 import { fakeDsm } from './fake-dsm-fetch.ts';
 import { fakeNas } from './fake-nas.ts';
@@ -863,7 +864,7 @@ describe('one briefing for the household', () => {
     await ensureHousehold(store, opts({ f: dsm.fn }));
     await ensureHousehold(store, opts({ who: 'bob', sid: null, f: dsm.fn }));
     assert.equal(fc.calls.length, 2);
-    const { entries } = await thread(store, { who: 'alice', budget: 'harbor' });
+    const { entries } = await everyEntry(store, 'alice');
     assert.deepEqual(entries.filter((e) => e.kind === 'briefing').map((e) => e.id), [second.event]);
   });
 
@@ -974,7 +975,7 @@ describe('one briefing for the household', () => {
     fake([draft({ headline: 'budget only' }), draft({ headline: 'for the household' })]);
     await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
     const s = await ensureHousehold(store, opts({ sid: null }));
-    const { entries } = await thread(store, { who: 'alice', budget: 'harbor' });
+    const { entries } = await everyEntry(store, 'alice');
     // `ordered` puts the briefing first in its day (it is no longer moved up in the page's own order).
     const firstToday = ordered(entries).find((e) => e.day === TODAY)!;
     assert.equal(firstToday.kind, 'briefing');

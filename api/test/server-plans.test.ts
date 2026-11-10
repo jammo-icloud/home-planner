@@ -216,7 +216,7 @@ describe('the plan routes', () => {
     assert.equal((await call('alice', 'GET', `/api/plans/${id}`)).json.asked.to, 'bob');
 
     const askEvent = (await log()).find((e) => e.op === 'plan.ask' && e.plan === id);
-    const waiting = await call('bob', 'GET', '/api/thread?filter=waiting');
+    const waiting = await call('bob', 'GET', '/api/thread');
     assert.equal(waiting.status, 200);
     const card = waiting.json.entries.find((e: any) => e.kind === 'card' && e.offer.tool === 'answer_ask'
       && e.offer.args.plan === id);
@@ -227,9 +227,8 @@ describe('the plan routes', () => {
     assert.deepEqual(card.ask, { by: 'alice', to: 'bob', why: 'you like painting' }, 'who asked whom, and why');
     assert.deepEqual(card.plan, { id, title: 'Paint the fence' });
     // It waits on bob, and only on bob: alice is waiting on him, not on her own ask.
-    const hers = await call('alice', 'GET', '/api/thread?filter=waiting');
+    const hers = await call('alice', 'GET', '/api/thread');
     assert.ok(!hers.json.waiting.some((w: any) => w.kind === 'offer' && w.offer.id === card.offer.id));
-    assert.ok(!hers.json.entries.some((e: any) => e.kind === 'card' && e.offer.id === card.offer.id));
     // She cannot put it off or turn it down for him: the fold says whose it is.
     for (const decision of ['snoozed', 'declined', 'approved']) {
       const r = await call('alice', 'POST', '/api/thread/decide', { offer: card.offer.id, decision, why: 'x' });
@@ -257,8 +256,8 @@ describe('the plan routes', () => {
     assert.equal(after.offer.status, 'declined');
     assert.equal(after.offer.decidedBy, 'bob');
     assert.equal(after.offer.why, 'no time');
-    const still = await call('bob', 'GET', '/api/thread?filter=waiting');
-    assert.ok(!still.json.entries.some((e: any) => e.kind === 'card' && e.offer.id === card.offer.id));
+    const still = await call('bob', 'GET', '/api/thread');
+    assert.ok(!still.json.waiting.some((w: any) => w.kind === 'offer' && w.offer.id === card.offer.id));
   });
 
   test('Take it on an old ask: the member asked accepts through /answer, owns the plan, and the card is approved by them', async () => {
@@ -282,7 +281,7 @@ describe('the plan routes', () => {
   test('the card\'s generic Approve takes it on, and only for the member asked', async () => {
     const id = await make('Sort the shed');
     await seedAsk(id, 'bob', 'your tools are in there');
-    const card = (await call('bob', 'GET', '/api/thread?filter=waiting')).json.entries
+    const card = (await call('bob', 'GET', '/api/thread')).json.entries
       .find((e: any) => e.kind === 'card' && e.offer.args.plan === id);
     const mine = await call('alice', 'POST', '/api/thread/decide', { offer: card.offer.id, decision: 'approved' });
     assert.equal(mine.status, 409, 'the asker cannot answer her own ask');
@@ -300,7 +299,7 @@ describe('the plan routes', () => {
   test('the card\'s generic Decline, by the member asked, declines the ask with the reason', async () => {
     const id = await make('Mow the verge');
     await seedAsk(id, 'bob', 'you have the mower');
-    const card = (await call('bob', 'GET', '/api/thread?filter=waiting')).json.entries
+    const card = (await call('bob', 'GET', '/api/thread')).json.entries
       .find((e: any) => e.kind === 'card' && e.offer.args.plan === id);
     const bare = await call('bob', 'POST', '/api/thread/decide', { offer: card.offer.id, decision: 'declined' });
     assert.equal(bare.status, 400, 'declining needs a reason');
@@ -325,8 +324,8 @@ describe('the plan routes', () => {
     assert.equal((await call('alice', 'POST', '/api/commit', { proposalId: proposed.json.proposal.id })).status, 200);
     const v = await call('bob', 'GET', `/api/plans/${id}`);
     assert.deepEqual([v.json.owner, v.json.asked], ['bob', null]);
-    const cards = (await call('bob', 'GET', '/api/thread?filter=waiting')).json.entries
-      .filter((e: any) => e.kind === 'card' && e.offer.args.plan === id);
+    const cards = (await call('bob', 'GET', '/api/thread')).json.waiting
+      .filter((w: any) => w.kind === 'offer' && w.offer.args.plan === id);
     assert.deepEqual(cards, []);
     assert.equal((await call('alice', 'POST', '/api/tools/ask_to_take', { plan: id, to: 'bob', why: 'x' })).status, 404);
   });

@@ -8,7 +8,7 @@ import { join } from 'node:path';
 import { Store } from '../src/store.ts';
 import { replay, ReplayError } from '../src/replay.ts';
 import { parseBackup, scopeOf } from '../src/restore.ts';
-import { thread } from '../src/thread.ts';
+import { everyEntry } from './every-entry.ts';
 import { ProposalStore, describe as describeEvent } from '../src/tools.ts';
 import type { ToolContext } from '../src/tools.ts';
 import { DEFAULT_AREAS, sameCalendar } from '../src/types.ts';
@@ -128,7 +128,7 @@ test('a rename restores with the settings, and reads as one in the thread', asyn
   const [e] = await s.append('alice', { op: 'areas.rename', from: 'Trips', to: 'Travel' });
   assert.equal(scopeOf(e!), 'settings');
   assert.equal(describeEvent(e!, s.state).what, 'renamed the area Trips to Travel');
-  const { entries } = await thread(s, { who: 'alice', budget: null });
+  const { entries } = await everyEntry(s, 'alice');
   assert.ok(entries.some((x) => x.kind === 'change' && x.what === 'renamed the area Trips to Travel'));
 });
 

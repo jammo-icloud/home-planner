@@ -9,7 +9,7 @@ import { Store } from '../src/store.ts';
 import { replay } from '../src/replay.ts';
 import { scopeOf } from '../src/restore.ts';
 import { describe as describeEvent } from '../src/tools.ts';
-import { thread } from '../src/thread.ts';
+import { everyEntry } from './every-entry.ts';
 import { movesLeft, SYSTEM, zoneOf } from '../src/types.ts';
 import type { Event, NewEventShape } from '../src/types.ts';
 
@@ -368,7 +368,7 @@ describe('where documents live', () => {
   test('a move is bookkeeping, not a line in the thread; the choice is one', async () => {
     await moving();
     await s.append('bob', { op: 'documents.moved', file: { link: DOC.link }, gone: true });
-    const { entries } = await thread(s, { who: 'alice', budget: null, limit: 1000 });
+    const { entries } = await everyEntry(s, 'alice');
     const said = entries.flatMap((x) => (x.kind === 'change' ? [x.what] : []));
     assert.ok(said.includes("chose Planner/home/h1 for the household's documents"), said.join('; '));
     assert.ok(!said.some((w) => w.includes('nothing to move')), said.join('; '));
@@ -438,7 +438,7 @@ describe('areas, one at a time', () => {
     const written = await s.append('alice', [{ op: 'areas.add', area: 'Garden' }, { op: 'areas.move', area: 'Garden', to: 0 }, { op: 'areas.remove', area: 'Garden' }]);
     for (const e of written) assert.equal(scopeOf(e), 'settings');
     assert.equal(describeEvent(written[1]!, s.state).what, 'moved the area Garden to place 1');
-    const lines = (await thread(s, { who: 'bob', budget: null })).entries.flatMap((e) => (e.kind === 'change' ? [e.what] : []));
+    const lines = (await everyEntry(s, 'bob')).entries.flatMap((e) => (e.kind === 'change' ? [e.what] : []));
     assert.deepEqual(lines.filter((w) => /Garden/.test(w)), ['added the area Garden', 'removed the area Garden']);
   });
 });

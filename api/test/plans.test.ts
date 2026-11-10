@@ -10,7 +10,7 @@ import { Store } from '../src/store.ts';
 import { replay, requireReason, ReplayError } from '../src/replay.ts';
 import { parseBackup, scopeOf } from '../src/restore.ts';
 import { board, card, goalsOf } from '../src/plans.ts';
-import { thread } from '../src/thread.ts';
+import { everyEntry } from './every-entry.ts';
 import { attach, attachmentPath, PLANNER_ROOT, readAttachment } from '../src/attachments.ts';
 import { describe as describeEvent, ProposalStore, ToolError } from '../src/tools.ts';
 import { SYSTEM, householdDay, householdZone } from '../src/types.ts';
@@ -426,7 +426,7 @@ describe('shelves are retired', () => {
     await s.append('alice', { op: 'plan.state', plan: 'kitchen', state: 'doing' });         // an ordinary plan now
     await s.append('bob', { op: 'goal.rename', from: 'Kitchen refresh', to: 'Kitchen' });   // later goal lines win on every replay
     assert.equal(replay(eventsOf(s)).plans.get('hinge')!.goal, 'Kitchen');
-    assert.ok(!(await thread(s, { who: 'bob', budget: null })).entries.some((e) => e.id === retired!.id));
+    assert.ok(!(await everyEntry(s, 'bob')).entries.some((e) => e.id === retired!.id));
   });
 });
 
@@ -973,7 +973,7 @@ describe('handing a plan on', () => {
     const { s } = await store();
     await s.append('alice', gate);
     const [hand] = await s.append('alice', { op: 'plan.hand', plan: 'gate', to: 'bob', why: 'you have the drill' });
-    const e = (await thread(s, { who: 'bob', budget: null })).entries.find((x) => x.id === hand!.id)!;
+    const e = (await everyEntry(s, 'bob')).entries.find((x) => x.id === hand!.id)!;
     assert.ok(e.kind === 'change');
     assert.deepEqual([e.what, e.why, e.hand], ['handed Fix the fence gate to bob', 'you have the drill',
       { plan: { id: 'gate', title: 'Fix the fence gate' }, from: 'alice', to: 'bob' }]);
@@ -1018,7 +1018,7 @@ describe('goals', () => {
     await assert.rejects(s.append('bob', { op: 'goal.remove', goal: 'New roof' }), refused(/there is no goal called New roof/));
     const said = ['renamed the goal new roof to NEW ROOF', 'removed the goal new roof'];
     assert.deepEqual([renamed, removed].map((e) => describeEvent(e!, s.state).what), said);
-    const lines = (await thread(s, { who: 'alice', budget: null })).entries.flatMap((e) => (e.kind === 'change' ? [e.what] : []));
+    const lines = (await everyEntry(s, 'alice')).entries.flatMap((e) => (e.kind === 'change' ? [e.what] : []));
     assert.deepEqual(lines.filter((w) => /goal/.test(w)), said);                          // and setting one on a plan is no line
   });
 });

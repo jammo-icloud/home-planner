@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { Store } from '../src/store.ts';
 import { parseDollars } from '../src/money.ts';
 import { removedTxn } from '../src/activity.ts';
-import { thread } from '../src/thread.ts';
+import { everyEntry } from './every-entry.ts';
 import type { ThreadEntry } from '../src/thread.ts';
 import { toolByName, commit, ProposalStore, ToolError } from '../src/tools.ts';
 import { ReplayError } from '../src/replay.ts';
@@ -40,8 +40,8 @@ async function fixture() {
 type Change = Extract<ThreadEntry, { kind: 'change' }>;
 
 /** What the thread shows as direct changes, newest first, as read by `who`. */
-async function activity(store: Store, o: { who?: string; filter?: 'theirs' | 'waiting' } = {}) {
-  const page = await thread(store, { who: o.who ?? 'bob', budget: 'harbor', limit: 1000, ...(o.filter ? { filter: o.filter } : {}) });
+async function activity(store: Store, o: { who?: string } = {}) {
+  const page = await everyEntry(store, o.who ?? 'bob');
   const entries = page.entries.filter((e): e is Change => e.kind === 'change').reverse();
   return { entries, flags: page.waiting.filter((w) => w.kind === 'flag').length };
 }
@@ -200,25 +200,16 @@ describe('reading it without drowning', () => {
     assert.equal(entries.some((e) => /scheme|conflicts/.test(e.what)), false);
   });
 
-  test('"theirs" is how you find what the other one decided', async () => {
-    const { store } = await fixture();
-    await store.append('alice', { op: 'txn.remove', txn: 'r1', why: 'mine' });
-    await store.append('bob', { op: 'txn.remove', txn: 'r2', why: 'theirs' });
-
-    const forAlice = await activity(store, { who: 'alice', filter: 'theirs' });
-    assert.equal(forAlice.entries.every((e) => e.who !== 'alice'), true);
-    assert.equal(forAlice.entries[0]!.why, 'theirs');
-  });
-
   test('"waiting" holds the decisions that took money out, for the one who did not make them', async () => {
     const { store } = await fixture();
     await store.append('alice', { op: 'thread.note', text: 'the thread has started', budget: null });
     await store.append('alice', { op: 'txn.remove', txn: 'r1', why: 'gone' });
-    const forBob = await activity(store, { who: 'bob', filter: 'waiting' });
-    assert.equal(forBob.entries.length, 1);
+    const forBob = await activity(store, { who: 'bob' });
+    const waits = forBob.entries.filter((e) => e.waits);
+    assert.equal(waits.length, 1);
     assert.equal(forBob.flags, 1);
-    assert.ok(forBob.entries[0]!.flag);
-    assert.equal((await activity(store, { who: 'alice', filter: 'waiting' })).entries.length, 0);
+    assert.ok(waits[0]!.flag);
+    assert.equal((await activity(store, { who: 'alice' })).entries.filter((e) => e.waits).length, 0);
   });
 
   test('newest first — the question is what changed lately', async () => {

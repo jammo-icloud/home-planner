@@ -1,6 +1,6 @@
 import { test, describe, before, after } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp } from 'node:fs/promises';
+import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -97,6 +97,36 @@ describe('the thread routes', () => {
     assert.ok(r.json.waiting.some((w: any) => w.kind === 'offer' && w.offer.id === cardId));
   });
 
+  test('the route refuses a word it does not know, whole', async () => {
+    const refused = async (q: string, re: RegExp) => {
+      const r = await call('GET', `/api/thread?${q}`);
+      assert.equal(r.status, 400, q);
+      assert.match(r.json.error, re, q);
+    };
+    await refused('lane=money', /lane must be budget, calendar, plans, claude or notes/);
+    await refused('who=nobody', /who must be a member/);
+    await refused('day=2026-13-45', /day must be a date/);
+    await refused('through=2026-1', /through must be a month/);
+    await refused('open=nope', /open must be dates/);
+    assert.equal((await call('GET', '/api/thread?at=none')).status, 404);
+  });
+
+  test('the old words change nothing', async () => {
+    const plain = (await call('GET', '/api/thread')).json;
+    const old = (await call('GET', '/api/thread?filter=mine&all=1&limit=1&before=e1')).json;
+    assert.deepEqual(old.entries.map((e: any) => e.id), plain.entries.map((e: any) => e.id));
+  });
+
+  test('opening a day reads the record and writes no briefing', async () => {
+    await call('GET', '/api/thread');
+    const count = async () => (await readFile(join(dir, 'dev.jsonl'), 'utf8')).split('\n').filter((l) => l.includes('"thread.briefing"')).length;
+    const before = await count();
+    const r = await call('GET', `/api/thread?quiet=1&day=${today}`);
+    assert.equal(r.status, 200);
+    assert.deepEqual(Object.keys(r.json).sort(), ['days', 'entries', 'today']);
+    assert.equal(await count(), before);
+  });
+
   test('the day\'s briefing is the household\'s, one for every budget in view', async () => {
     const harbor = (await call('GET', '/api/thread?budget=harbor')).json;
     const cabin = (await call('GET', '/api/thread?budget=cabin')).json;
@@ -119,7 +149,7 @@ describe('the thread routes', () => {
   });
 
   test('the thread names where a document is, and nothing else of it', async () => {
-    const r = await call('GET', '/api/thread?budget=harbor');
+    const r = await call('GET', '/api/thread?day=2026-01-01');
     const kept = r.json.entries.find((e: any) => e.id === docId);
     assert.equal(kept.body, null);
     assert.deepEqual(kept.doc, { path: DOC.path });
@@ -137,7 +167,7 @@ describe('the thread routes', () => {
     const r = await call('POST', '/api/thread/note', { text: 'trip is paid for', budget: 'harbor' });
     assert.equal(r.status, 200);
     assert.equal(r.json.event.op, 'thread.note');
-    const page = await call('GET', '/api/thread?budget=harbor&filter=mine');
+    const page = await call('GET', '/api/thread?budget=harbor');
     assert.ok(page.json.entries.some((e: any) => e.kind === 'note' && e.text === 'trip is paid for'));
   });
 
@@ -189,7 +219,7 @@ describe('the thread routes', () => {
       { ...king, category: 'groceries', suggestedBy: 'claude' },
     ] });
     assert.equal(c.status, 200);
-    const page = await call('GET', '/api/thread?budget=harbor&filter=mine');
+    const page = await call('GET', '/api/thread?budget=harbor');
     assert.ok(page.json.entries.some((e: any) => e.kind === 'change' && /imported 1/.test(e.what)));
   });
 

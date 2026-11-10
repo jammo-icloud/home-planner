@@ -9,7 +9,7 @@ import { Store } from '../src/store.ts';
 import { replay, ReplayError } from '../src/replay.ts';
 import { scopeOf } from '../src/restore.ts';
 import { describe as describeEvent } from '../src/tools.ts';
-import { thread } from '../src/thread.ts';
+import { everyEntry } from './every-entry.ts';
 import type { ThreadEntry } from '../src/thread.ts';
 import type { Event, Plan } from '../src/types.ts';
 import { before, after } from 'node:test';
@@ -216,7 +216,7 @@ describe('an appointment taken back', () => {
     const [r] = await s.append('bob', remove());
     assert.equal(scopeOf(r!), 'plans');
     assert.equal(describeEvent(r!, s.state).what, 'took an appointment off the calendar: Dentist');
-    const { entries } = await thread(s, { who: 'alice', budget: null });
+    const { entries } = await everyEntry(s, 'alice');
     const lines = entries.flatMap((e: ThreadEntry) => (e.kind === 'change' ? [e.what] : []));
     assert.ok(lines.includes('took an appointment off the calendar: Dentist'), lines.join(' | '));
   });
@@ -339,7 +339,7 @@ describe('where the lines go, and how they read', () => {
     const [d] = await s.append('alice', drift());
     await s.append('bob', { op: 'calendar.drift.resolve', drift: d!.id, choice: 'leave' });
     await s.append('alice', appointment());
-    const { entries } = await thread(s, { who: 'alice', budget: null });
+    const { entries } = await everyEntry(s, 'alice');
     const lines = entries.flatMap((e: ThreadEntry) => (e.kind === 'change' ? [e.what] : []));
     assert.ok(lines.includes('kept Fix the gate as planned and let the calendar be'), lines.join(' | '));
     assert.ok(lines.includes('made an appointment: Dentist'), lines.join(' | '));
@@ -1501,21 +1501,17 @@ describe('due dates and blocks become events', () => {
     const household = await offer(c, { tool: 'propose_event', args: dentist({ on: 'household', start: THU('15:00'), end: THU('16:00') }),
       prompt: { kind: 'answer', ref: answer } });
 
-    const ids = (page: Awaited<ReturnType<typeof thread>>) => new Set(page.entries.flatMap((e: ThreadEntry) =>
+    const ids = (page: Awaited<ReturnType<typeof everyEntry>>) => new Set(page.entries.flatMap((e: ThreadEntry) =>
       e.kind === 'card' ? [e.offer.id] : []));
-    const waits = (page: Awaited<ReturnType<typeof thread>>) =>
+    const waits = (page: Awaited<ReturnType<typeof everyEntry>>) =>
       new Set(page.waiting.flatMap((w) => (w.kind === 'offer' ? [w.offer.id] : [])));
 
-    const hers = await thread(c.store, { who: 'alice', budget: null });
+    const hers = await everyEntry(c.store, 'alice');
     assert.ok(ids(hers).has(own.id) && waits(hers).has(own.id), 'alice sees her own');
-    const his = await thread(c.store, { who: 'bob', budget: null });
+    const his = await everyEntry(c.store, 'bob');
     assert.ok(!ids(his).has(own.id) && !ids(his).has(o.id), "not in bob's thread");
     assert.ok(!waits(his).has(own.id), "not in bob's tray");
     assert.ok(ids(his).has(household.id) && waits(his).has(household.id), 'one for the household is everyone\'s');
-    for (const f of ['waiting', 'theirs'] as const) {
-      const filtered = await thread(c.store, { who: 'bob', budget: null, filter: f });
-      assert.ok(!ids(filtered).has(own.id), f);
-    }
 
     // Nor on the plan's card, where research would have hung it.
     const events = await c.store.since(null);

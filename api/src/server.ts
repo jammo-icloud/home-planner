@@ -207,9 +207,11 @@ import { missingStarter } from './starter.ts';
 import {
   areaIndex, ARRIVAL_MAX, DEFAULT_AREAS, GUEST_PREFIX, householdDay, isDay, isEmail, MODES, SCHEMES, SPLIT, SYSTEM, isSpend, monthKey, monthOf, movesLeft, sameCalendar, zoneOf,
 } from './types.ts';
-import type { Actor, Assignment, Event, Mode, NewEventShape, Scheme, SplitPart, State, Txn } from './types.ts';
+import type { Actor, Assignment, Day, Event, Mode, NewEventShape, Scheme, SplitPart, State, Txn } from './types.ts';
 import { parse, dedupeKey } from './parse.ts';
-import { thread } from './thread.ts';
+import { thread, threadDay } from './thread.ts';
+import { isLane } from './lanes.ts';
+import type { Lane } from './lanes.ts';
 import { decide, refresh, adjust, raiseSavingsCard } from './offers.ts';
 import { note, askInThread } from './conversation.ts';
 import { board, card } from './plans.ts';
@@ -278,6 +280,32 @@ const ADMIN_USER = (process.env['ADMIN_USER'] ?? '').trim().toLowerCase();
  * ADMIN_USER when set, else DSM's administrators group, asked once with the
  * fresh sid. The bypass is never an admin unless ADMIN_USER names it.
  */
+/** The thread's query, checked: every word is refused whole when it is not one the route knows. */
+function threadQuery(url: URL, state: State): {
+  base: { lane?: Lane; person?: Actor | 'everyone' }; day?: Day; at?: string; through?: string; open?: Day[];
+} {
+  const get = (k: string): string | null => url.searchParams.get(k) || null;
+  const lane = get('lane');
+  if (lane !== null && !isLane(lane)) throw new ToolError('lane must be budget, calendar, plans, claude or notes');
+  const who = get('who');
+  if (who !== null && who !== 'everyone' && !state.members.has(who)) {
+    throw new ToolError('who must be a member of this household, or everyone');
+  }
+  const day = get('day');
+  if (day !== null && !isDay(day)) throw new ToolError('day must be a date, such as 2026-11-10');
+  const through = get('through');
+  if (through !== null && !/^\d{4}-(0[1-9]|1[0-2])$/.test(through)) throw new ToolError('through must be a month, such as 2026-10');
+  const open = get('open');
+  const parts = open === null ? undefined : open.split(',');
+  if (parts && !parts.every(isDay)) throw new ToolError('open must be dates, such as 2026-11-10,2026-11-09');
+  const at = get('at');
+  return {
+    base: { ...(lane !== null ? { lane } : {}), ...(who !== null ? { person: who } : {}) },
+    ...(day !== null ? { day } : {}), ...(at !== null ? { at } : {}),
+    ...(through !== null ? { through } : {}), ...(parts ? { open: parts as Day[] } : {}),
+  };
+}
+
 async function adminAtSignIn(username: string, sid: string | null): Promise<boolean> {
   if (ADMIN_USER !== '') return username === ADMIN_USER;
   return sid !== null && await isAdministrator(sid, username);
@@ -2712,60 +2740,65 @@ export async function start(
 
     // ── the thread ───────────────────────────────────────────────────────────
     if (path === '/api/thread' && req.method === 'GET') {
+      const q = threadQuery(url, active.state);
       const asked = url.searchParams.get('budget') || null;
       const budget = asked ?? (active.state.budgets.size ? defaultBudget(ctx) : null);
+      // Opening a day by its date or an id it holds reads the record and writes nothing: no briefing, no drift check.
+      if (q.day !== undefined || q.at !== undefined) {
+        const found = await threadDay(active, { who, today: ctx.today, ...q.base, ...(q.day !== undefined ? { day: q.day } : {}), ...(q.at !== undefined ? { at: q.at } : {}) });
+        if (!found) throw new ToolError('no day shows that', 404);
+        return json(res, 200, found);
+      }
+      const noting = url.searchParams.get('quiet') !== '1';
       // A budget whose month is not open yet has nothing to brief on, which
       // is not a reason to hide the thread; the page says so.
       const noOpenMonth = !!budget && active.state.budgets.has(budget)
         && !active.state.months.has(monthKey(budget, ctx.today.slice(0, 7)));
-      // The day opens with the household's briefing: the money, the plans and
-      // the Household calendar, one for every member. A calendar that cannot be
-      // read is a line in it. Should the briefing itself fail, the budget in
-      // view still gets its own section, as before there was a household one.
-      try {
-        await ensureHousehold(active, { who, today: ctx.today, sid: ctx.sid, tz, ...(ctx.household !== undefined ? { household: ctx.household } : {}) });
-      } catch (err) {
-        console.warn(`[briefing] the household's briefing was not written: ${(err as Error).message}`);
-        // A refusal is Claude's answer for the day; asking it again for the budget would only be refused again.
-        if (budget && active.state.budgets.has(budget) && !noOpenMonth && !(err instanceof ClaudeRefused)) {
+      if (noting) {
+        // The day opens with the household's briefing: the money, the plans and
+        // the Household calendar, one for every member. A calendar that cannot be
+        // read is a line in it. Should the briefing itself fail, the budget in
+        // view still gets its own section, as before there was a household one.
+        try {
+          await ensureHousehold(active, { who, today: ctx.today, sid: ctx.sid, tz, ...(ctx.household !== undefined ? { household: ctx.household } : {}) });
+        } catch (err) {
+          console.warn(`[briefing] the household's briefing was not written: ${(err as Error).message}`);
+          // A refusal is Claude's answer for the day; asking it again for the budget would only be refused again.
+          if (budget && active.state.budgets.has(budget) && !noOpenMonth && !(err instanceof ClaudeRefused)) {
+            try {
+              await ensureSection(active, { who, budget, today: ctx.today });
+            } catch (e2) {
+              if (!(e2 instanceof ToolError && e2.status === 409)) throw e2;
+            }
+          }
+        }
+        // Then the calendar, and the plans' pages in Drive: a plan's event changed
+        // on someone's phone, or its page edited in Drive, is a card on the page.
+        // At most every ten minutes, with a NAS session; and never the reason
+        // Today fails to load.
+        try {
+          await checkDriftNowAndThen(ctx);
+          await checkPagesNowAndThen(ctx);
+        } catch (err) {
+          console.warn(`[calendar] looking for changes on the calendar or in Drive failed: ${(err as Error).message}`);
+        }
+        // Pages left behind (Drive was down, or the change came with no NAS session) catch up.
+        schedulePages(ctx);
+        // A cancelled stay still on the calendar with no card asking about it gets one. Never stops the page.
+        if (active.state.stays.size) {
           try {
-            await ensureSection(active, { who, budget, today: ctx.today });
-          } catch (e2) {
-            if (!(e2 instanceof ToolError && e2.status === 409)) throw e2;
+            await raiseReleaseCards(ctx);
+          } catch (err) {
+            console.warn(`[booking] looking for cancelled stays failed: ${(err as Error).message}`);
           }
         }
       }
-      // Then the calendar, and the plans' pages in Drive: a plan's event changed
-      // on someone's phone, or its page edited in Drive, is a card on the page.
-      // At most every ten minutes, with a NAS session; and never the reason
-      // Today fails to load.
-      try {
-        await checkDriftNowAndThen(ctx);
-        await checkPagesNowAndThen(ctx);
-      } catch (err) {
-        console.warn(`[calendar] looking for changes on the calendar or in Drive failed: ${(err as Error).message}`);
-      }
-      // Pages left behind (Drive was down, or the change came with no NAS session) catch up.
-      schedulePages(ctx);
-      // A cancelled stay still on the calendar with no card asking about it gets one. Never stops the page.
-      if (active.state.stays.size) {
-        try {
-          await raiseReleaseCards(ctx);
-        } catch (err) {
-          console.warn(`[booking] looking for cancelled stays failed: ${(err as Error).message}`);
-        }
-      }
-      const filter = url.searchParams.get('filter');
       return json(res, 200, {
         ...(budget ? {} : { noBudgets: true }),
         ...(noOpenMonth ? { noOpenMonth: true } : {}),
-        ...await thread(active, {
-        who, budget,
-        allBudgets: url.searchParams.get('all') === '1',
-        ...(filter === 'mine' || filter === 'theirs' || filter === 'waiting' ? { filter } : {}),
-        ...(url.searchParams.get('before') ? { before: url.searchParams.get('before')! } : {}),
-        ...(url.searchParams.get('limit') ? { limit: Math.min(500, Number(url.searchParams.get('limit'))) } : {}),
-        }),
+        ...await thread(active, { who, today: ctx.today, ...q.base,
+          ...(q.through !== undefined ? { through: q.through } : {}),
+          ...(q.open !== undefined ? { open: q.open } : {}) }),
       });
     }
 

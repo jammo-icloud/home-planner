@@ -639,7 +639,7 @@ describe('a request is a card, over HTTP', () => {
   });
 
   test('the card waits for the members on Today, in the guest\'s name and not their address', async () => {
-    const r = await call('GET', '/api/thread?filter=waiting', { cookie: alice });
+    const r = await call('GET', '/api/thread', { cookie: alice });
     assert.equal(r.status, 200, r.text);
     const card = r.json.entries.find((e: any) => e.kind === 'card' && e.offer.tool === 'approve_booking' && e.offer.who === 'guest:ann@example.com');
     assert.ok(card, JSON.stringify(r.json.entries.map((e: any) => e.kind)));

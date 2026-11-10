@@ -89,24 +89,61 @@ export type ThreadEntry = Body & Stamp;
 /** The plan an entry is about, by name, so Today can say which card it belongs to. */
 export interface PlanRef { readonly id: PlanId; readonly title: string }
 
+/** One household day: what was written, and the numbers its head states, all worked out by `daysOf`. */
+export interface DayRow {
+  day: Day;
+  /** Entries counted under the kind and person pressed. */
+  count: number;
+  /** Every entry of the day, whatever is pressed. */
+  total: number;
+  /** Entries in view that wait on the viewer. */
+  waiting: number;
+  /** Entries in view that are new to the viewer. */
+  fresh: number;
+  /** Who wrote them, the viewer first; a guest's name is carried. */
+  by: { who: Actor; name?: string; count: number }[];
+}
+
+export interface DayWindow {
+  from: Day;
+  to: Day;
+  lane?: Lane;
+  who?: Actor | 'everyone';
+  /** Only these entries: the words of a search. */
+  only?: ReadonlySet<EventId>;
+}
+
+export type WaitingItem = Waiting & {
+  lane: Lane; by: Actor | null; name?: string; at?: string; day?: Day; title: string; entry?: EventId; inView: boolean;
+};
+
 export interface ThreadPage {
-  /** Oldest first within the page. */
-  readonly entries: ThreadEntry[];
-  readonly waiting: Waiting[];
+  today: Day;
+  /** Who is pressed; everyone when the person asked had nothing in view. */
+  who: Actor | 'everyone';
+  /** Newest day first; a day with entries, and today always. */
+  days: DayRow[];
+  /** Today and each day opened, in `ordered`'s order. */
+  entries: ThreadEntry[];
+  /** Everything waiting on the viewer, whatever is pressed. */
+  waiting: WaitingItem[];
   /** The caller's read cursor, for the "new since you last looked" divider. */
-  readonly newSince: EventId | null;
-  /** Pass back to read further up; null when this page reaches the start. */
-  readonly before: EventId | null;
+  newSince: EventId | null;
+  /** The month, as `YYYY-MM`, to pass back as `through` to read further up; null at the start. */
+  before: string | null;
+  /** The last-placed entry in the log, which reading the briefing is marked at. */
+  last: EventId | null;
 }
 
 export interface ThreadOptions {
   readonly who: Actor;
-  /** The budget in view. Household-wide entries show whatever it is. */
-  readonly budget: BudgetId | null;
-  readonly allBudgets?: boolean;
-  readonly filter?: 'everything' | 'mine' | 'theirs' | 'waiting';
-  readonly before?: EventId;
-  readonly limit?: number;
+  readonly today: Day;
+  /** The earliest month to cover, `YYYY-MM`; the month of `today` when absent. */
+  readonly through?: string;
+  /** Days whose entries are wanted besides today's. */
+  readonly open?: readonly Day[];
+  readonly lane?: Lane;
+  readonly person?: Actor | 'everyone';
 }
 
 /** Which budget an event belongs to; null for the household's own facts. */
@@ -402,35 +439,175 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
   return out;
 }
 
+/** An entry is in view under a kind and a person: a briefing and the cards a person's question raised go with them. */
+export function seen(e: ThreadEntry, lane: Lane | undefined, person: Actor | 'everyone'): boolean {
+  if (lane !== undefined && e.lane !== lane) return false;
+  return person === 'everyone' || e.kind === 'briefing' || authorOf(e) === person
+    || (e.kind === 'card' && e.raised?.by === person);
+}
+
+/** An entry is counted: in view, and under a person, written by them (a briefing or a card their question raised is shown, not counted). */
+export function counted(e: ThreadEntry, lane: Lane | undefined, person: Actor | 'everyone'): boolean {
+  if (!seen(e, lane, person)) return false;
+  if (person === 'everyone') return true;
+  return e.kind !== 'briefing' && authorOf(e) === person;
+}
+
+/** Who comes first in a day's list: the viewer, members in the household's order, former members, Claude, guests by name. */
+function byOrder(state: State, viewer: Actor): (a: { who: Actor; name?: string }, b: { who: Actor; name?: string }) => number {
+  const members = [...state.members];
+  const rank = (x: { who: Actor }): number =>
+    x.who === viewer ? 0 : members.includes(x.who) ? 1 : x.who === 'claude' ? 3 : isGuest(x.who) ? 4 : 2;
+  return (a, b) => rank(a) - rank(b)
+    || (rank(a) === 1 ? members.indexOf(a.who) - members.indexOf(b.who) : 0)
+    || (a.name ?? a.who).localeCompare(b.name ?? b.who);
+}
+
+/** The numbers of every day with entries in a window: the one place a head's counts are made. */
+export function daysOf(entries: readonly ThreadEntry[], state: State, viewer: Actor, w: DayWindow): DayRow[] {
+  const person = w.who ?? 'everyone';
+  const rows = new Map<Day, DayRow>();
+  const authors = new Map<Day, Map<Actor, { who: Actor; name?: string; count: number }>>();
+  for (const e of entries) {
+    if (e.day < w.from || e.day > w.to) continue;
+    let row = rows.get(e.day);
+    if (!row) { row = { day: e.day, count: 0, total: 0, waiting: 0, fresh: 0, by: [] }; rows.set(e.day, row); }
+    row.total++;
+    if (w.only && !w.only.has(e.id)) continue;
+    if (counted(e, w.lane, person)) row.count++;
+    if (seen(e, w.lane, person)) {
+      if (e.waits) row.waiting++;
+      if (e.fresh) row.fresh++;
+    }
+    if (w.lane === undefined || e.lane === w.lane) {
+      const a = authorOf(e);
+      if (a !== null) {
+        const day = authors.get(e.day) ?? new Map();
+        authors.set(e.day, day);
+        const name = 'name' in e ? e.name : undefined;
+        const mine = day.get(a) ?? { who: a, ...(name !== undefined ? { name } : {}), count: 0 };
+        mine.count++;
+        day.set(a, mine);
+      }
+    }
+  }
+  const order = byOrder(state, viewer);
+  for (const [day, row] of rows) row.by = [...(authors.get(day)?.values() ?? [])].sort(order);
+  return [...rows.values()].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
+}
+
+const zeroRow = (day: Day): DayRow => ({ day, count: 0, total: 0, waiting: 0, fresh: 0, by: [] });
+
+/** What waits on the viewer, each with the lane, author and title its list needs, and whether the pressed kind and person show it. */
+function waitingItems(
+  events: readonly Event[], state: State, who: Actor, entries: readonly ThreadEntry[],
+  lane: Lane | undefined, person: Actor | 'everyone',
+): WaitingItem[] {
+  const tz = zoneOf(state);
+  const byId = new Map(events.map((e) => [e.id, e]));
+  const rowOf = new Map<EventId, ThreadEntry>();
+  for (const e of entries) {
+    rowOf.set(e.id, e);
+    if (e.kind === 'card') for (const f of e.flags ?? []) rowOf.set(f.event, e);
+  }
+  const items: WaitingItem[] = [];
+  for (const w of waiting(state, who, events)) {
+    if (w.kind === 'offer') {
+      const row = rowOf.get(w.offer.id);
+      const author = row ? authorOf(row) : (w.offer.prompt.kind === 'drift' || w.offer.prompt.kind === 'savings' ? null : w.offer.who);
+      const plan = w.offer.prompt.kind === 'ask' ? state.plans.get(String(w.offer.args['plan'])) : undefined;
+      items.push({ ...w, lane: row?.lane ?? cardLane(w.offer, state), by: author,
+        ...(row && 'name' in row && row.name !== undefined ? { name: row.name } : {}),
+        at: w.offer.at, day: row?.day ?? householdDay(tz, w.offer.at),
+        title: plan?.title ?? w.offer.summary, ...(row ? { entry: row.id } : {}),
+        inView: row ? seen(row, lane, person) : (lane === undefined || lane === cardLane(w.offer, state)) });
+    } else if (w.kind === 'flag') {
+      const e = byId.get(w.event);
+      const row = rowOf.get(w.event);
+      const removed = e && e.op === 'txn.remove' ? findRemoved(events, e.txn, state) : undefined;
+      const flagged = row?.kind === 'change' ? row.flag?.removed : undefined;
+      const r = removed ?? flagged;
+      items.push({ ...w, lane: 'budget', by: e ? e.who : null,
+        ...(e && isGuest(e.who) ? { name: state.guests.get(guestEmail(e.who))?.name ?? 'A guest' } : {}),
+        ...(e ? { at: e.at, day: row?.day ?? householdDay(tz, e.at) } : {}),
+        title: r ? `A receipt was removed: ${r.payee}, ${r.amount.replace(/^-/, "")}` : 'A receipt was removed',
+        ...(row ? { entry: row.id } : {}),
+        inView: row ? seen(row, lane, person) : (lane === undefined || lane === 'budget') });
+    } else {
+      items.push({ ...w, lane: 'budget', by: null,
+        title: `${w.count} ${w.count === 1 ? 'receipt' : 'receipts'} to sort`,
+        inView: (lane === undefined || lane === 'budget') && person === 'everyone' });
+    }
+  }
+  const rank = (i: WaitingItem): number => (i.kind === 'unsorted' ? 1 : 0);
+  return items
+    .map((x, i) => ({ x, i }))
+    .sort((a, b) => rank(a.x) - rank(b.x) || ((a.x.at ?? '') < (b.x.at ?? '') ? 1 : (a.x.at ?? '') > (b.x.at ?? '') ? -1 : 0) || a.i - b.i)
+    .map((y) => y.x);
+}
+
 export async function thread(store: Store, o: ThreadOptions): Promise<ThreadPage> {
   const events = await store.since(null);
   const state = store.state;
-  // What is waiting, as far as this view goes: a card for another budget is
-  // counted when that budget is in view, so the count and the Waiting filter agree.
-  const pending = waiting(state, o.who, events).filter((w) =>
-    o.allBudgets || w.kind !== 'offer' || w.offer.budget === null || w.offer.budget === o.budget);
-
-  const inView = (e: ThreadEntry): boolean => {
-    if (o.allBudgets || e.kind === 'decision') return true;
-    const b = e.kind === 'card' ? e.offer.budget : e.budget;
-    return b === null || b === o.budget;
-  };
-  const filter = o.filter ?? 'everything';
-  const shown = build(events, state, o.who).filter(inView).filter((e) => {
-    if (filter === 'mine') return authorOf(e) === o.who;
-    if (filter === 'theirs') { const a = authorOf(e); return a !== null && a !== o.who && a !== 'claude'; }
-    if (filter === 'waiting') return e.waits === true;
-    return true;
-  });
-
-  const end = o.before ? shown.findIndex((e) => e.id === o.before) : shown.length;
-  const stop = end < 0 ? shown.length : end;
-  const limit = o.limit ?? 100;
-  const start = Math.max(0, stop - limit);
+  const all = ordered(build(events, state, o.who));
+  const lane = o.lane;
+  const from = `${o.through ?? o.today.slice(0, 7)}-01`;
+  const window = { from, to: '9999-12-31', ...(lane ? { lane } : {}) };
+  let person: Actor | 'everyone' = o.person ?? 'everyone';
+  let days = daysOf(all, state, o.who, { ...window, who: person });
+  if (person !== 'everyone' && days.every((d) => d.count === 0)) {
+    person = 'everyone';
+    days = daysOf(all, state, o.who, { ...window, who: person });
+  }
+  if (!days.some((d) => d.day === o.today)) {
+    days = [...days, zeroRow(o.today)].sort((a, b) => (a.day < b.day ? 1 : a.day > b.day ? -1 : 0));
+  }
+  const wanted = new Set<Day>([o.today, ...(o.open ?? [])]);
+  const entries = all.filter((e) => wanted.has(e.day) && seen(e, lane, person));
+  let before: string | null = null;
+  for (const e of all) {
+    const m = e.day.slice(0, 7);
+    if (`${m}-01` < from && counted(e, lane, person) && (before === null || m > before)) before = m;
+  }
+  const place = new Map(events.map((e, i) => [e.id, i]));
+  let last: EventId | null = null;
+  let lastAt = -1;
+  for (const e of all) {
+    const at = place.get(e.id) ?? -1;
+    if (at > lastAt) { lastAt = at; last = e.id; }
+  }
   return {
-    entries: shown.slice(start, stop),
-    waiting: pending,
-    newSince: state.readCursor.get(o.who) ?? null,
-    before: start > 0 ? shown[start]!.id : null,
+    today: o.today, who: person, days, entries,
+    waiting: waitingItems(events, state, o.who, all, lane, person),
+    newSince: state.readCursor.get(o.who) ?? null, before, last,
+  };
+}
+
+/** One day's row and entries, found by its date or by an id it holds; null when no day shows that id. */
+export async function threadDay(
+  store: Store,
+  o: { who: Actor; today: Day; day?: Day; at?: string; lane?: Lane; person?: Actor | 'everyone' },
+): Promise<{ today: Day; days: DayRow[]; entries: ThreadEntry[] } | null> {
+  const events = await store.since(null);
+  const state = store.state;
+  const all = ordered(build(events, state, o.who));
+  let day = o.day;
+  if (day === undefined) {
+    const at = o.at;
+    const holds = (e: ThreadEntry): boolean =>
+      (e.kind === 'ask' && e.answer?.id === at)
+      || (e.kind === 'card' && (e.offer.prompt.kind === 'drift' && e.offer.prompt.ref === at || !!e.flags?.some((f) => f.event === at)))
+      || (e.kind === 'decision' && e.offer.id === at);
+    const found = all.find((e) => e.id === at) ?? all.find(holds);
+    if (!found) return null;
+    day = found.day;
+  }
+  const lane = o.lane;
+  const person = o.person ?? 'everyone';
+  const days = daysOf(all, state, o.who, { from: day, to: day, ...(lane ? { lane } : {}), who: person });
+  return {
+    today: o.today,
+    days: days.length ? days : [zeroRow(day)],
+    entries: all.filter((e) => e.day === day && seen(e, lane, person)),
   };
 }
