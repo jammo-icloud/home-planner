@@ -8,7 +8,7 @@
 
 import { ZERO, add, sub, cents } from './money.ts';
 import type { Cents } from './money.ts';
-import { DAY_RE, PLAN_LIMITS, PLAN_STATES, pageView } from './plan-rules.ts';
+import { DAY_RE, PLAN_LIMITS, PLAN_STATES, goalLabel, goalSpelling, pageView, sameGoal } from './plan-rules.ts';
 import type { IncomeSource } from './income.ts';
 import {
   ARRIVAL_MAX,
@@ -329,6 +329,7 @@ export function validate(e: Event): void {
   validateSinking(e);
   validateSettings(e);
   validatePlan(e);
+  validateGoals(e);
   validateCalendarLines(e);
   validateBooking(e);
 }
@@ -607,6 +608,19 @@ function refusalsFor(e: Event) {
   return { refuse, whole };
 }
 
+/** A goal's name in the form `goalLabel` gives: the fold never tidies, it refuses. */
+function goalForm(e: Event, v: unknown): void {
+  let ok = false;
+  try { ok = goalLabel(v) === v; } catch { ok = false; }
+  if (!ok) throw new ReplayError(`a goal is 1 to ${PLAN_LIMITS.goal} characters, with single spaces and none around it`, e);
+}
+
+/** `goal.rename` and `goal.remove` name goals in that form. */
+function validateGoals(e: Event): void {
+  if (e.op === 'goal.rename') { goalForm(e, e.from); goalForm(e, e.to); }
+  else if (e.op === 'goal.remove') goalForm(e, e.goal);
+}
+
 function validatePlan(e: Event): void {
   if (!e.op.startsWith('plan.')) return;
   const x = e as unknown as Record<string, unknown>;
@@ -662,6 +676,9 @@ function validatePlan(e: Event): void {
         if (typeof e.why !== 'string') throw refuse('a reason is text');
         if (e.why.length > PLAN_LIMITS.why) throw refuse(`a reason is longer than ${PLAN_LIMITS.why} characters`);
       }
+      return;
+    case 'plan.goal':
+      if (e.goal !== null) goalForm(e, e.goal);
       return;
     case 'plan.ask.decline': case 'plan.remove': case 'plan.detach': case 'plan.unblock':
       reason();
@@ -1642,6 +1659,35 @@ function fold(d: Draft, e: Event): void {
       d.hands.set(e.id, { plan: p.id, from: p.owner, to: e.to });
       // Handed on at once, so an ask for it is settled; the state, its clock and the calendar stay as they are.
       lapseAsk(d, { ...p, owner: e.to, ownerSince: e.at, ownerFrom: p.owner }, e);
+      return;
+    }
+
+    case 'plan.goal': {
+      const p = livePlan(d, e.plan, e);
+      const goal = e.goal === null ? null : goalSpelling(d.plans.values(), e.goal) ?? e.goal;
+      if (goal !== p.goal) d.plans.set(p.id, { ...p, goal });
+      return;
+    }
+
+    case 'goal.rename': {
+      const was = goalSpelling(d.plans.values(), e.from);
+      if (was === null) throw new ReplayError(`there is no goal called ${e.from}`, e);
+      // Another goal by the new name, in any case, would be two chips that read the same;
+      // the goal itself does not count, so a change of case alone is a rename.
+      const clash = goalSpelling([...d.plans.values()].filter((p) => p.goal === null || !sameGoal(p.goal, e.from)), e.to);
+      if (clash !== null) throw new ReplayError(`"${clash}" is already a goal`, e);
+      if (e.to === was) throw new ReplayError(`${e.to} is already its name`, e);
+      for (const p of d.plans.values()) {
+        if (!p.removed && p.goal !== null && sameGoal(p.goal, e.from)) d.plans.set(p.id, { ...p, goal: e.to });
+      }
+      return;
+    }
+
+    case 'goal.remove': {
+      if (goalSpelling(d.plans.values(), e.goal) === null) throw new ReplayError(`there is no goal called ${e.goal}`, e);
+      for (const p of d.plans.values()) {
+        if (!p.removed && p.goal !== null && sameGoal(p.goal, e.goal)) d.plans.set(p.id, { ...p, goal: null });
+      }
       return;
     }
 

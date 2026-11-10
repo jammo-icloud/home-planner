@@ -106,7 +106,7 @@ const standalone = (kind: OfferPrompt['kind']): boolean =>
  * the card that asks about it, so a line beside it would say it twice.
  */
 const PLAN_LINES = new Set<string>([
-  'plan.create', 'plan.state', 'plan.remove', 'plan.hand',
+  'plan.create', 'plan.state', 'plan.remove', 'plan.hand', 'goal.rename', 'goal.remove',
   'plan.due', 'plan.block', 'plan.unblock', 'plan.attach', 'plan.detach',
   'calendar.drift.resolve', 'calendar.appointment', 'calendar.appointment.remove',
 ]);

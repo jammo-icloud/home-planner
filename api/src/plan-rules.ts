@@ -38,6 +38,23 @@ const whole = (v: unknown, name: string): number => {
   return v;
 };
 
+/** A goal's name as a person typed it: trimmed, inner runs of space made one, 1 to 60 characters. */
+export const goalLabel = (v: unknown): string => {
+  const t = typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '';
+  if (!t) throw new ToolError('a goal needs a name');
+  if (t.length > PLAN_LIMITS.goal) throw new ToolError(`a goal is longer than ${PLAN_LIMITS.goal} characters`);
+  return t;
+};
+
+/** Two goal names are the same goal when they are equal ignoring case: the one place that rule lives. */
+export const sameGoal = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
+
+/** The spelling a goal was first given: that of the first live plan carrying a matching goal; null for none. */
+export const goalSpelling = (plans: Iterable<Plan>, label: string): string | null => {
+  for (const p of plans) if (!p.removed && p.goal !== null && sameGoal(p.goal, label)) return p.goal;
+  return null;
+};
+
 /** A plan that exists and has not been removed; a 404 otherwise. A removed plan is history, not a draft. */
 export function livePlan(state: State, id: unknown): Plan {
   if (typeof id !== 'string' || !id) throw new ToolError('plan is required');

@@ -53,6 +53,7 @@ export function scopeOf(e: Event): Scope {
     // The board: every plan and everything on its card. Needs nothing else.
     case 'plan.create': case 'plan.set': case 'plan.state':
     case 'plan.ask': case 'plan.ask.accept': case 'plan.ask.decline': case 'plan.hand':
+    case 'plan.goal': case 'goal.rename': case 'goal.remove':
     case 'plan.checklist': case 'plan.attach': case 'plan.detach':
     case 'plan.contact.link': case 'plan.contact.unlink':
     case 'plan.due': case 'plan.block': case 'plan.unblock': case 'plan.remove':

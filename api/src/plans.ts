@@ -11,7 +11,7 @@ import { fmt } from './money.ts';
 import { monthView } from './envelopes.ts';
 import { ToolError } from './errors.ts';
 import { describe } from './tools.ts';
-import { notOnCalendar } from './plan-rules.ts';
+import { notOnCalendar, sameGoal } from './plan-rules.ts';
 import { householdDay, householdZone, monthOf, visibleTo } from './types.ts';
 import type {
   Actor, BudgetId, Block, Day, EnvelopeId, Event, EventId, Offer, Plan, PlanId, PlanState, State,
@@ -105,6 +105,20 @@ function cardOf(state: State, p: Plan, today: Day, tz: string, researched: Reado
 }
 
 const live = (state: State): Plan[] => [...state.plans.values()].filter((p) => !p.removed);
+
+/** Every goal a live plan carries, in any state, with its plans and how many are done; alphabetical ignoring case. */
+export function goalsOf(state: State): { goal: string; plans: number; done: number }[] {
+  const found: { goal: string; plans: number; done: number }[] = [];
+  for (const p of live(state)) {
+    if (p.goal === null) continue;
+    const g = p.goal;
+    let row = found.find((r) => sameGoal(r.goal, g));
+    if (!row) found.push(row = { goal: g, plans: 0, done: 0 });
+    row.plans += 1;
+    if (p.state === 'done') row.done += 1;
+  }
+  return found.sort((a, b) => a.goal.toLowerCase().localeCompare(b.goal.toLowerCase()));
+}
 
 /**
  * One row per area, in the household's order. A plan with live plans under it

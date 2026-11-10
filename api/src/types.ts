@@ -588,6 +588,12 @@ export type Event = Meta &
     | { op: 'plan.ask.decline'; plan: PlanId; why: string }
     /** Any member hands a plan to any member, at once: to themselves, away, or between two others. */
     | { op: 'plan.hand'; plan: PlanId; to: Actor; why?: string }
+    /** A plan's one goal, by name; null takes it off. A goal exists only as the label plans carry. */
+    | { op: 'plan.goal'; plan: PlanId; goal: string | null }
+    /** Every live plan carrying the goal takes the new name. */
+    | { op: 'goal.rename'; from: string; to: string }
+    /** Every live plan carrying the goal has none. */
+    | { op: 'goal.remove'; goal: string }
     /** Replaced whole. */
     | { op: 'plan.checklist'; plan: PlanId; items: readonly ChecklistItem[] }
     /** Keyed by path: attaching the same path again replaces it. */
@@ -723,7 +729,8 @@ export type Op = Event['op'];
 const BOARD_CALENDAR_OPS: ReadonlySet<string> = new Set<Op>([
   'calendar.drift', 'calendar.drift.resolve', 'calendar.appointment', 'calendar.appointment.remove',
 ]);
-export const planShaped = (op: Op): boolean => op.startsWith('plan.') || BOARD_CALENDAR_OPS.has(op);
+export const planShaped = (op: Op): boolean =>
+  op.startsWith('plan.') || op === 'goal.rename' || op === 'goal.remove' || BOARD_CALENDAR_OPS.has(op);
 
 /** An event as a caller writes it: the store stamps id, timestamp and actor. */
 export type NewEventShape = DistributiveOmit<Event, 'id' | 'at' | 'who'>;
@@ -958,14 +965,14 @@ export interface Appointment {
   readonly at: string;
 }
 
+/** A plan handed on: whose it was and whose it became. */
+export interface Hand { readonly plan: PlanId; readonly from: Actor; readonly to: Actor }
+
 /**
  * A plan, two levels deep at most: a plan with children is a shelf, and has
  * no state of its own. `stateAt` is when it entered its current state, which
  * is the only clock on the board, and it only shows in `doing`.
  */
-/** A plan handed on: whose it was and whose it became. */
-export interface Hand { readonly plan: PlanId; readonly from: Actor; readonly to: Actor }
-
 export interface Plan {
   readonly id: PlanId; readonly title: string; readonly area: string; readonly parent: PlanId | null;
   readonly state: PlanState; readonly stateAt: string; readonly owner: Actor;
