@@ -3068,8 +3068,9 @@ function renderToday() {
 function todayEscape(ev) {
   if (view !== 'today' || ev.key !== 'Escape' || ev.isComposing || ev.defaultPrevented) return;
   if (ev.target.closest?.('#cat-sec, #phone-sec')) return;
-  if (cancelOpen($('days'))) ev.preventDefault();
-  if (leaveSearch()) ev.preventDefault();
+  // One step per press: a form open among the visible days first, then search. Days a search hides are not reached into.
+  if (!$('briefing').classList.contains('searching-record') && cancelOpen($('days'))) ev.preventDefault();
+  else if (leaveSearch()) ev.preventDefault();
 }
 document.addEventListener('keydown', todayEscape);
 
