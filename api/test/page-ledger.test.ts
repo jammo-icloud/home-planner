@@ -77,6 +77,7 @@ const KEPT: readonly Line[] = [
 ];
 /** What 0.7.0 brings, and what it deletes (the spec's "What is deleted"). Each page task adds its lines before it does the work. */
 const ADDED: readonly Line[] = [
+  ['T70', 'function renderWaiting(', 'today'], ['T70', 'In no envelope yet', 'today'], ['S20', "$('unsorted-q').scrollIntoView({ block: 'start' })", 'today'], ['T72', 'Waiting on you · ', 'today'], ['T72', '`Show all ${', 'today'], ['wait', 'suggested it · ', 'today'], ['wait', ' asked you · ', 'today'], ['wait', ' removed it · ', 'today'], ['wait', ' · the numbers have moved', 'today'], ['wait', '#t-waiting', 'css'],
   // A page from another build: the build is the shared region's first line, sent with every request, and linked on the stylesheet.
   ['build', "'x-hp-build': BUILD", 'page'], ['build', "const BUILD = '", 'shared'], ['build', 'href="/tokens.css?v=', 'page'],
   // The four helpers every screen calls, and the person pressed in the people bar, kept for the tab across a reload.
@@ -161,6 +162,7 @@ const ADDED: readonly Line[] = [
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
+  ['T70', 'function unsortedItem(', 'page'], ['T70', 'They are in no envelope yet, so no envelope counts them as spent.', 'page'],
   ['S8', 'whoDisc(', 'page'],
   // Areas leave Settings: the editor, the counts that gated its Remove, and the read of the whole board that fed them.
   ['S16', '/api/plans?showDone=1', 'page'], ['spec', 'areaCounts', 'page'], ['spec', 'areasItem', 'page'], ['spec', 'areasForm', 'page'],

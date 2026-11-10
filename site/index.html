@@ -1553,6 +1553,10 @@
   #earlier-more:not(:empty){margin-top:var(--sp-3)}
   .empty-line,#left-out{margin:0;font-size:var(--fs-small);color:var(--ink-soft)}
   #left-out:not([hidden]){margin-top:var(--sp-3)}
+  #t-waiting{margin-block:var(--sp-4)}
+  #t-waiting h2{margin:0 0 var(--sp-2);font-size:var(--fs-title);font-weight:var(--fw-semibold)}
+  #t-waiting .provisional{padding:0}
+  #t-waiting .rowi{width:100%;text-align:left;font:inherit;color:var(--ink);background:none;border:0;cursor:pointer}
   /* ── end of today ── */
 </style>
 </head>
@@ -3176,6 +3180,7 @@ function renderToday() {
   }
   for (const b of kinds.children) b.setAttribute('aria-pressed', String(b.dataset.kind === todayKind));
   drawPeople();
+  renderWaiting();
   const zero = { day: today, count: 0, total: 0, waiting: 0, fresh: 0, by: [] };
   const todayRow = days.find((d) => d.day === today) ?? zero;
   const none = todayRow.count === 0 ? emptyLine() : '';
@@ -3435,20 +3440,67 @@ function yoursStrip() {
   return strip;
 }
 
-function unsortedItem(count) {
-  const card = node('div', 'card offer');
-  card.appendChild(node('h3', '', `${count} receipt${count === 1 ? '' : 's'} to sort`));
-  card.appendChild(node('p', 'detail', 'They are in no envelope yet, so no envelope counts them as spent.'));
-  const row = node('div', 'row');
-  const go = node('button', 'btn', 'Sort them');
-  go.type = 'button';
-  go.addEventListener('click', async () => {
-    await showView('budget');
-    $('unsorted-q').scrollIntoView({ block: 'start' });
-  });
-  row.appendChild(go);
-  card.appendChild(row);
-  return card;
+/** When a waiting item was raised, as its small line has it: "today, 1:22 PM", or the day's own name. */
+function waitingWhen(w) {
+  if (!w.at) return '';
+  return w.day === threadData.today ? `today, ${clockAt(w.at)}` : dayName(w.day);
+}
+
+/** The small line under a waiting item: who raised it, and when; the receipts say where they stand. */
+function waitingLine(w) {
+  if (w.kind === 'unsorted') return 'In no envelope yet';
+  const when = waitingWhen(w);
+  let line = when;
+  if (w.by !== null) {
+    const name = whoWord(w.by, w.name);
+    if (w.kind === 'flag') line = `${name} removed it · ${when}`;
+    else if (w.name !== undefined) line = `${name} asked · ${when}`;
+    else if (w.offer.prompt.kind === 'ask') line = `${name} asked you · ${when}`;
+    else line = `${name} suggested it · ${when}`;
+  }
+  return w.moved ? `${line} · the numbers have moved` : line;
+}
+
+/** What waits on the viewer, listed first: each row jumps to the card that holds its buttons. */
+function renderWaiting() {
+  const host = $('t-waiting');
+  const all = threadData.waiting ?? [];
+  host.textContent = '';
+  host.hidden = all.length === 0;
+  if (!all.length) return;
+  const shown = all.filter((w) => w.inView);
+  const h = node('h2', '', shown.length === all.length ? `Waiting on you · ${all.length}` : `Waiting on you · ${shown.length} of ${all.length}`);
+  h.id = 't-waiting-h';
+  const box = node('div', 'provisional');
+  for (const w of shown) {
+    const b = node('button', 'rowi hit');
+    b.type = 'button';
+    const text = node('span', '', w.title);
+    text.appendChild(node('span', 'meta', waitingLine(w)));
+    const end = node('span', 'end');
+    end.appendChild(icon('go', 'i sm chev'));
+    b.append(laneIcon(w.lane), text, end);
+    b.addEventListener('click', async () => {
+      if (w.kind === 'unsorted') {
+        await showView('budget');
+        $('unsorted-q').scrollIntoView({ block: 'start' });
+      } else if (w.entry) {
+        await openTodayAt({ event: w.entry });
+      }
+    });
+    box.appendChild(b);
+  }
+  if (shown.length < all.length) {
+    const b = node('button', 'rowi hit', `Show all ${all.length}`);
+    b.type = 'button';
+    b.addEventListener('click', () => {
+      todayKind = 'all';
+      pressPerson(null);
+      void loadThread({ quiet: true });
+    });
+    box.appendChild(b);
+  }
+  host.append(h, box);
 }
 
 /** Who did a row, in words: Claude, You, or a member or a guest by the list's name. */
