@@ -47,7 +47,7 @@ const KEPT: readonly Line[] = [
   ['P57', 'Search Contacts by name'], ['P58', 'Sign in again to reach Contacts.'], ['P59', 'Let it go'], ['P60', 'Put it on the calendar'],
   ['P61', "cardSection('History'"], ['P62', 'Remove this plan'], ['P62', 'Why remove it? The log keeps it, and your reason.'],
   ['P64', 'id="loading"', 'page'], ['P64', 'id="app-err"', 'page'], ['P64', 'Reading the log', 'page'], ['S7', 'function askAnswer(', 'page'], ['S7', 'function askCardNode(', 'page'],
-  ['S7', "node('div', 'waiting', mine ? 'Waiting for you'", 'page'], ['S9', 'const otherMember', 'shared'], ['S15', 'async function eventPlans(', 'page'], ['S15', "(await api('/api/plans')).rows.flatMap((r) => r.plans)", 'page'], ['S18', 'function railChips(', 'page'], ['S11', 'const clockOf', 'shared'],
+  ['S9', 'const otherMember', 'shared'], ['S15', 'async function eventPlans(', 'page'], ['S15', "(await api('/api/plans')).rows.flatMap((r) => r.plans)", 'page'], ['S18', 'function railChips(', 'page'], ['S11', 'const clockOf', 'shared'],
   ['S11', 'const todayKey', 'shared'], ['S5', 'async function openTodayAt(', 'shared'], ['S2', 'async function reloadView(', 'page'], ['S6', 'function actionButton(', 'page'],
   ['shared', 'function icon(', 'shared'], ['shared', 'function lucide(', 'shared'], ['shared', 'function chip(', 'shared'], ['shared', 'function inlineForm(', 'shared'],
   ['card', 'function renderCard('], ['card', 'function checklistSection('], ['card', 'function attachmentsSection('], ['card', 'function claudeSection('],
@@ -148,6 +148,10 @@ const ADDED: readonly Line[] = [
   ['S11', 'clockOf(', 'shared'], ['S24', 'function openCalendarDay(', 'shared'], ['S24', 'calWeek = mondayOf(day)', 'shared'], ['S29', 'name ?? nameOf(who)', 'today'], ['S19', 'openBudgetAt(o.budget, o.envelope)', 'today'],
   ['hand', ' handed ', 'today'], ['hand', ' took ', 'today'], ['cal', ' added ', 'today'], ['cal', 'the Household calendar', 'today'], ['cal', 'their own calendar', 'today'], ['cal', 'your own calendar', 'today'], ['cal', ' renamed ', 'today'], ['late', 'Suggested on ', 'today'], ['open', "'Open the plan'", 'today'], ['open', "'Open the envelope'", 'today'], ['open', "'Open the day'", 'today'],
   ['lane', 'function laneIcon(', 'shared'], ['lane', "'message-square':", 'shared'], ['lane', 'function claudeDisc(', 'shared'], ['lane', '.who.claude', 'css'], ['ent', '.ent{', 'css'], ['ent', 'cursor:pointer;text-decoration:underline', 'css'],
+  // A waiting card is a dashed block in its own row (Task 9).
+  ['T20', "From the day's briefing", 'today'], ['T28', 'From your question at ', 'today'], ['T46', 'In place of an earlier suggestion', 'today'], ['T46', ' suggested', 'today'], ['T47', "label = 'Waiting'", 'today'], ['T34', 'function waitingBlock(', 'today'], ['T35', "'Not now'", 'today'], ['T34', '.block-err', 'css'], ['T40', 'function blockSlot(', 'today'], ['T40', 'function actionButton(label, cls, act, slot = null)', 'today'], ['T41', 'function decidedLine(', 'today'], ['T44', "o.status === 'snoozed'", 'today'],
+  ['T49', 'asked you to take', 'today'], ['T50', 'mine ? \'Waiting for you\' : `Waiting on ${ask.to}`', 'today'], ['T53', 'DRIFT_LABELS[on].chip', 'today'], ['T56', 'planCrumb(e.plan)', 'today'], ['T58', "actionButton('Seen it'", 'today'], ['T61', 'clash: e.blocked', 'today'], ['T62', 'Reason (they will read it)', 'today'], ['T63', 'Why these instead (they will read it)', 'today'], ['T64', 'function bookingSend(', 'today'], ['T65', '/^approved\\b/.test(ex.message)', 'today'],
+  ['T120', 'why.focus()', 'today'], ['T120', 'arrive.focus()', 'today'], ['T121', 'b.disabled = true', 'today'], ['S6', '.is-decided', 'css'], ['S7', 'function askAnswer(', 'today'], ['S22', 'showProblem(ex)', 'today'], ['esc', 'function todayEscape(', 'today'], ['esc', 'cancelMark(row, closeDecline)', 'today'], ['esc', 'cancelMark(row, closeBooking)', 'today'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
@@ -172,6 +176,7 @@ const GONE: readonly Line[] = [
   ['spec', 'function opensItsDay', 'threadSrc'], ['spec', 'const standalone', 'threadSrc'], ['spec', 'cardsFor', 'threadSrc'],
   ['P28', '/ask-to-take', 'page'], ['P28', 'Asking needs a reason'], ['P28', 'They read this on the card'], ['P28', 'Ask ${theirs}'], ['P27', "node('span', 'owner')"], ['card', '#plan-card .back{display:none}', 'css'],
   ['T4', 'id="t-filters"', 'page'], ['T4', 'threadFilter', 'page'], ['T4', '>Mine<', 'page'], ['T4', '>Theirs<', 'page'], ['T4', '>Everything<', 'page'], ['T5', 'id="t-all"', 'page'], ['T5', 'threadAll', 'page'], ['T5', 'All budgets', 'page'], ['T6', 'id="t-earlier"', 'page'], ['T6', 'Show earlier', 'page'], ['T10', 'document.documentElement.scrollHeight', 'today'], ['T13', 'id="thread"', 'page'], ['T13', "$('thread')", 'page'], ['T72', 'id="tray"', 'page'], ['T72', "$('tray')", 'page'], ['T72', ' waiting on you`', 'page'], ['T110', 'filterBeforeDetour', 'page'], ['S4', 'endFilterDetour', 'page'], ['T116', 'Nothing is waiting on you.', 'page'], ['spec', "$('composer'))", 'today'],
+  ['spec', 'adjusted a suggestion', 'page'], ['T47', 'Waiting for either of you', 'page'], ['spec', 'Reason — they will read it', 'page'], ['spec', 'Why these instead — they will read it', 'page'], ['spec', "node('div', 'line')", 'today'],
   ['T21', "node('div', 'turn')", 'today'], ['T21', "'msg member'", 'today'], ['S32', 'dataset.kind = e.kind', 'today'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
@@ -214,6 +219,12 @@ describe('the page ledger', () => {
     const answered = (/\((state\|[a-z|-]+)\)/.exec(server)?.[1] ?? '').split('|');
     assert.deepEqual([...subs].filter((sub) => !answered.includes(sub)), []);
   });
+});
+
+test('a suggestion\'s buttons run Decline, Adjust, Not now, Approve', () => {
+  const b = between(REGIONS.today, 'function offerButtons(', '/** The screen a button acted on');
+  const at = ["'Decline'", "'Adjust'", "'Not now'", "'Approve'"].map((w) => b.indexOf(w));
+  assert.ok(at.every((n, i) => n >= 0 && (i === 0 || n > at[i - 1]!)), String(at));
 });
 
 test("Today's new rules name tokens, never literals", () => {

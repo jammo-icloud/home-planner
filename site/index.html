@@ -729,11 +729,6 @@
   .bubble p{margin:0 0 8px;overflow-wrap:anywhere}
   .bubble p:last-child{margin-bottom:0}
   .looked{font-size:var(--fs-micro);color:var(--ink-faint);margin-top:8px}
-  .line{font-size:var(--fs-small);color:var(--ink-soft);padding:1px 0 1px 12px;border-left:2px solid var(--line)}
-  .line b{color:var(--ink);font-weight:600}
-  .line .why{display:block;font-style:italic;font-size:var(--fs-micro)}
-  .line.flag{border-left-color:var(--problem)}
-  .line .row{display:flex;gap:8px;margin-top:8px;flex-wrap:wrap}
   .card.offer{margin-top:10px;border-left:3px solid var(--caution-line);box-shadow:none;padding:12px 14px}
   .card.offer.moved{border-left-color:var(--problem)}
   .card.offer .row{margin-top:10px}
@@ -1511,6 +1506,16 @@
   .who.claude .mark{width:60%;height:60%;fill:currentColor;stroke:none}
   .block-err{font-size:var(--fs-small);color:var(--problem)}
   .block-err:not(:empty){margin-bottom:var(--sp-2)}
+  .ent-sentence{color:var(--ink-soft)}
+  .ent > .card{box-shadow:none;grid-column:1 / -1;margin-top:0}
+  .ent-tail{grid-column:3 / -1;min-width:0}
+  .ent > .card.offer.provisional{margin-top:0}
+  .ent > .card.is-decided{border:0;background:none;padding:0;grid-column:3 / -1}
+  .ent > .card.is-decided h3{font-size:var(--fs-small);font-weight:var(--fw-medium)}
+  .ent > .card.is-decided .decided{margin-top:var(--sp-1)}
+  .card.offer.provisional{border:var(--stroke-heavy) dashed var(--provisional);box-shadow:none;padding:var(--sp-4);margin-top:var(--sp-2)}
+  .provisional .row.actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center;justify-content:flex-end}
+  .provisional .row.actions .input{flex:1 1 100%}
   /* ── end of today ── */
 </style>
 </head>
@@ -3045,6 +3050,17 @@ function renderToday() {
   watchLastRow();
 }
 
+/**
+ * Escape on Today cancels the first open form among the days (a suggestion's reason, a Decline, other dates) before
+ * anything else answers it; not from a sheet over the page, which has its own.
+ */
+function todayEscape(ev) {
+  if (view !== 'today' || ev.key !== 'Escape' || ev.isComposing || ev.defaultPrevented) return;
+  if (ev.target.closest?.('#cat-sec, #phone-sec')) return;
+  if (cancelOpen($('days'))) ev.preventDefault();
+}
+document.addEventListener('keydown', todayEscape);
+
 /** Opens or shuts a day's card; an earlier day not yet read is read once, for the person the page applied. */
 async function pressDay(day) {
   const turn = householdTurn, mine = loadTurn;
@@ -3367,20 +3383,7 @@ function entryNode(e, ctx) {
     return row;
   }
 
-  if (e.kind === 'card' && e.offer.prompt.kind === 'ask') return askCardNode(e);
-  if (e.kind === 'card' && e.offer.prompt.kind === 'drift') return driftCardNode(e);
-  if (e.kind === 'card' && e.offer.prompt.kind === 'savings') return savingsCardNode(e);
-  if (e.kind === 'card' && e.offer.tool === 'approve_booking') return bookingCardNode(e);
-  if (e.kind === 'card' && e.offer.tool === 'release_stay') return releaseCardNode(e);
-
-  if (e.kind === 'card') {
-    const m = node('div', 'msg claude');
-    const by = node('div', 'by', `${nameOf(e.who)} adjusted a suggestion · ${timeOf(e.at)}`);
-    if (e.plan) by.appendChild(planCrumb(e.plan));
-    m.appendChild(by);
-    m.appendChild(offerCard(e.offer, ctx));
-    return m;
-  }
+  if (e.kind === 'card') return cardRow(e, ctx);
 
   if (e.kind === 'decision') {
     const { row, text } = entShell(e);
@@ -3406,69 +3409,166 @@ function entryNode(e, ctx) {
   return row;
 }
 
-/** Take it, or Decline with a reason the asker reads. Shown only to the member asked. */
-function askAnswer(p) {
-  const row = node('div', 'actions');
-  row.appendChild(actionButton('Take it', 'btn small primary', async () => {
-    await api(planPath(p.id, '/answer'), { answer: 'accept' });
-  }));
-  const no = node('button', 'btn small', 'Decline');
-  no.type = 'button';
-  no.addEventListener('click', () => {
-    row.textContent = '';
-    const why = node('input', 'input');
-    why.placeholder = `Why not? ${p.owner} reads this`;
-    why.maxLength = 300;
-    row.appendChild(why);
-    row.appendChild(actionButton('Decline', 'btn small', async () => {
-      if (!why.value.trim()) { why.focus(); throw new Error('Declining needs a reason'); }
-      await api(planPath(p.id, '/answer'), { answer: 'decline', why: why.value.trim() });
-    }));
-    const keep = node('button', 'btn small bare', 'Cancel');
-    keep.type = 'button';
-    keep.addEventListener('click', () => row.replaceWith(askAnswer(p)));
-    row.appendChild(keep);
-    why.focus();
-  });
-  row.appendChild(no);
+/** The error slot of a block: where a refusal is said, never in a button's label. */
+function blockSlot(card) { return card.querySelector(':scope > .block-err'); }
+
+/**
+ * A proposal's frame, dashed while it waits: the label (a chip beside it), the title, the effects as a list (a clash
+ * last), the error slot, always there, and the row of buttons. A kind fills the row, secondary buttons first and the
+ * primary last.
+ */
+function waitingBlock({ cls = '', label = 'Waiting', tag = null, title, effects = [], clash = null }) {
+  const card = node('div', `card provisional ${cls}`.trim());
+  const waiting = node('div', 'waiting');
+  if (tag) waiting.appendChild(tag);
+  waiting.append(label);
+  card.appendChild(waiting);
+  const h = node('h3');
+  if (typeof title === 'string') h.textContent = title; else h.appendChild(title);
+  card.appendChild(h);
+  if (effects.length || clash) {
+    const ul = node('ul', 'effects');
+    for (const eff of effects) ul.appendChild(node('li', '', eff));
+    if (clash) ul.appendChild(node('li', 'clash', clash));
+    card.appendChild(ul);
+  }
+  const err = node('div', 'block-err');
+  err.setAttribute('role', 'alert');
+  const row = node('div', 'row actions');
+  card.append(err, row);
+  return { card, err, row };
+}
+
+/** A settled line of a block: plain words, " · " between its parts. */
+function settledLine(...parts) {
+  const d = node('div', 'decided');
+  d.append(...parts);
+  return d;
+}
+/** A settled proposal: its title, when it has one the line does not already say, then its lines, with no frame. */
+function settledBlock(title, ...lines) {
+  const card = node('div', 'card is-decided');
+  if (title) card.appendChild(node('h3', '', title));
+  card.append(...lines);
+  return card;
+}
+/** "Approved by bob · 8:14 PM · “why”": the day comes first when it is not the day the card was made. */
+function decidedLine(o) {
+  const day = keyAt(Date.parse(o.decidedAt));
+  const at = day === keyAt(Date.parse(o.at)) ? clockAt(o.decidedAt) : `${dayName(day)}, ${clockAt(o.decidedAt)}`;
+  return settledLine(`${DECIDED[o.status]} by `, node('b', '', nameIn(o.decidedBy)), ` · ${at}`, ...(o.why ? [` · “${o.why}”`] : []));
+}
+
+/** Who asked whom to take a plan; an old card with no `ask` of its own still reads. */
+const askOf = (e) => e.ask ?? { by: e.offer.who, to: '', why: '' };
+
+/** Where a waiting card came from, in words: the link that jumps to it, or null. */
+function raisedWords(e) {
+  const r = e.raised;
+  if (!r) return null;
+  if (r.how === 'briefing') return "From the day's briefing";
+  if (r.how === 'member') return 'In place of an earlier suggestion';
+  if (r.day === e.day) return r.by === myName ? `From your question at ${clockAt(r.at)}` : `From ${r.by}'s question at ${clockAt(r.at)}`;
+  return r.by === myName ? `From your question on ${dayName(r.day)}` : `From ${r.by}'s question on ${dayName(r.day)}`;
+}
+
+/**
+ * A card in its own row: the sentence (none for the app's), the block, while it waits the link to what raised it, then
+ * what its approval removed. The row keeps `data-offer`, and `data-drift` on a drift, for a jump to find.
+ */
+function cardRow(e, ctx) {
+  const o = e.offer;
+  const { row, text } = entShell(e);
+  row.dataset.offer = o.id;
+  if (o.prompt.kind === 'drift' && o.prompt.ref) row.dataset.drift = o.prompt.ref;
+  const ask = o.prompt.kind === 'ask' ? askOf(e) : null;
+  const sentence = node('div', 'ent-sentence');
+  if (ask) sentence.append(byWord(e), ask.to === myName ? ' asked you to take' : ask.to ? ` asked ${nameIn(ask.to)} to take` : ' asked someone to take');
+  else if (e.app) { /* the app's own card has no author */ }
+  else if (o.tool === 'approve_booking') sentence.append(byWord(e), ' asked to stay');
+  else sentence.append(byWord(e), ' suggested');
+  if (e.plan) sentence.appendChild(planCrumb(e.plan));
+  if (sentence.childNodes.length) text.appendChild(sentence);
+  if (ask?.why) text.appendChild(node('span', 'ent-why', `“${ask.why}”`));
+  let block;
+  if (ask) block = askCardNode(e);
+  else if (o.prompt.kind === 'drift') block = driftCardNode(e);
+  else if (o.prompt.kind === 'savings') block = savingsCardNode(e);
+  else if (o.tool === 'approve_booking') block = bookingCardNode(e);
+  else if (o.tool === 'release_stay') block = releaseCardNode(e);
+  else block = offerCard(o, ctx);
+  // The block takes the row's whole width, under the sentence; what follows it sits in the text's column.
+  row.appendChild(block);
+  const tail = node('div', 'ent-tail');
+  const from = block.classList.contains('provisional') ? raisedWords(e) : null;
+  if (from) tail.appendChild(node('div', 'ent-actions')).appendChild(rowLink(from, () => void openTodayAt({ event: e.raised.entry })));
+  for (const f of e.flags ?? []) tail.append(...removalBits(f, f.event, ctx));
+  if (tail.childNodes.length) row.appendChild(tail);
   return row;
 }
 
 /**
- * An ask to take a plan. A member's proposal, so it sits on plain card, never
- * Claude's paper; dashed while it waits. The member asked answers it with Take
- * it or Decline; everyone else sees who it waits on, and nothing to press. Once
- * answered, or lapsed, it settles into one line.
+ * Take it, or Decline with a reason the asker reads, drawn into the block's row and its refusals into `slot`. Shown
+ * only to the member asked. The Decline form closes on Cancel and on Escape, and the two buttons come back.
+ */
+function askAnswer(p, row, slot) {
+  row.textContent = '';
+  const no = node('button', 'btn hit', 'Decline');
+  no.type = 'button';
+  no.dataset.opens = 'decline';
+  no.addEventListener('click', () => {
+    row.textContent = '';
+    const why = node('input', 'input');
+    why.placeholder = `Why not? ${p.owner} reads this`;
+    why.setAttribute('aria-label', why.placeholder);
+    why.maxLength = 300;
+    const closeDecline = () => {
+      delete row.dataset.cancel;
+      slot.textContent = '';
+      askAnswer(p, row, slot);
+      row.querySelector('[data-opens="decline"]')?.focus();
+    };
+    cancelMark(row, closeDecline);
+    const keep = node('button', 'btn hit', 'Cancel');
+    keep.type = 'button';
+    keep.addEventListener('click', closeDecline);
+    row.append(why, keep, actionButton('Decline', 'btn primary hit', async () => {
+      if (!why.value.trim()) { why.focus(); throw new Error('Declining needs a reason'); }
+      await api(planPath(p.id, '/answer'), { answer: 'decline', why: why.value.trim() });
+    }, slot));
+    why.focus();
+  });
+  row.append(no, actionButton('Take it', 'btn primary hit', async () => {
+    await api(planPath(p.id, '/answer'), { answer: 'accept' });
+  }, slot));
+}
+
+/**
+ * An ask to take a plan. A member's proposal, so it sits on plain card, never Claude's paper; dashed while it waits.
+ * The member asked answers it with Decline or Take it; everyone else sees who it waits on, and nothing to press. Once
+ * answered, or lapsed, it settles into plain lines.
  */
 function askCardNode(e) {
   const o = e.offer;
-  const ask = e.ask ?? { by: o.who, to: '', why: '' };
-  const title = e.plan?.title ?? o.summary;
+  const ask = askOf(e);
   if (o.status !== 'open') {
-    const line = node('div', 'line');
-    if (o.status === 'approved') line.append('Taken by ', node('b', '', nameIn(o.decidedBy)));
-    else if (o.status === 'declined') {
-      line.append('Declined by ', node('b', '', nameIn(o.decidedBy)));
-      if (o.why) line.append(` — “${o.why}”`);
-    } else line.append(`The ask to ${nameIn(ask.to)} lapsed`);
-    if (e.plan) line.appendChild(planCrumb(e.plan));
-    return line;
+    if (o.status === 'approved') return settledBlock(null, settledLine('Taken by ', node('b', '', nameIn(o.decidedBy))));
+    if (o.status === 'declined') {
+      return settledBlock(null, settledLine('Declined by ', node('b', '', nameIn(o.decidedBy)), ...(o.why ? [` · “${o.why}”`] : [])));
+    }
+    return settledBlock(null, settledLine(`The ask to ${nameIn(ask.to)} lapsed`));
   }
   const mine = ask.to === myName;
-  const card = node('div', 'card provisional ask-card');
-  card.appendChild(node('div', 'waiting', mine ? 'Waiting for you' : `Waiting on ${ask.to}`));
-  const h = node('h3');
+  const title = e.plan?.title ?? o.summary;
+  let head = title;
   if (e.plan) {
-    const go = node('button', 'link', title);
-    go.type = 'button';
-    go.addEventListener('click', () => openCard(e.plan.id));
-    h.appendChild(go);
-  } else h.textContent = title;
-  card.appendChild(h);
-  const why = node('p', 'why', mine ? `${ask.by} asked you to take it · ` : `${nameOf(ask.by)} asked ${ask.to} to take it · `);
-  why.appendChild(node('q', '', ask.why));
-  card.appendChild(why);
-  if (mine && e.plan) card.appendChild(askAnswer({ id: e.plan.id, owner: ask.by }));
+    head = node('button', 'link hit', title);
+    head.type = 'button';
+    head.addEventListener('click', () => openCard(e.plan.id));
+  }
+  const { card, err, row } = waitingBlock({ cls: 'ask-card', label: mine ? 'Waiting for you' : `Waiting on ${ask.to}`, title: head });
+  if (mine && e.plan) askAnswer({ id: e.plan.id, owner: ask.by }, row, err);
+  else row.remove();
   return card;
 }
 
@@ -3483,168 +3583,123 @@ const DRIFT_LABELS = {
 };
 
 /**
- * A plan's event changed on the calendar, or its page changed in Drive: the
- * app's proposal, so plain card, dashed while it waits, amber and never red.
- * Either member settles it with one of three choices; an event that was
- * deleted has nothing to put back. Settled, it is one line.
+ * A plan's event changed on the calendar, or its page changed in Drive: the app's proposal, so plain card, dashed while
+ * it waits, amber and never red. Any member settles it with one of three choices; an event that was deleted has
+ * nothing to put back. Settled, it is plain lines.
  */
 function driftCardNode(e) {
   const o = e.offer;
   const d = e.drift ?? { on: 'calendar', resolved: null, deleted: false, replaced: false, unreadable: false };
   const on = d.on === 'page' ? 'page' : 'calendar';
   if (o.status !== 'open' && o.status !== 'snoozed') {
-    const line = node('div', 'line');
     if (o.status === 'approved' && d.resolved) {
-      line.append(`${DRIFT_CHOSEN[on][d.resolved]}, by `, node('b', '', nameIn(o.decidedBy)), `, ${timeOf(o.decidedAt)}`);
-    } else if (d.replaced) {
-      line.append(`${o.summary}; it changed again since, and the newer card asks about it`);
-    } else {
-      line.append(`${o.summary}; let go when the plan was removed`);
+      return settledBlock(o.summary, settledLine(`${DRIFT_CHOSEN[on][d.resolved]}, by `, node('b', '', nameIn(o.decidedBy)), `, ${clockAt(o.decidedAt)}`));
     }
-    if (e.plan) line.appendChild(planCrumb(e.plan));
-    return line;
+    return settledBlock(null, settledLine(d.replaced
+      ? `${o.summary}; it changed again since, and the newer card asks about it`
+      : `${o.summary}; let go when the plan was removed`));
   }
-  const card = node('div', 'card provisional drift drift-card');
-  // For the Calendar: a moved event opens Today at its card.
-  card.dataset.offer = o.id;
-  if (o.prompt?.ref) card.dataset.drift = o.prompt.ref;
-  const waiting = node('div', 'waiting');
   const chip = node('span', 'chip moved');
   chip.append(icon('alert'), DRIFT_LABELS[on].chip);
-  waiting.append(chip, 'Waiting for either of you');
-  if (e.plan) waiting.appendChild(planCrumb(e.plan));
-  card.appendChild(waiting);
-  card.appendChild(node('h3', '', o.summary));
-  const ul = node('ul', 'effects');
-  for (const eff of o.effects) ul.appendChild(node('li', '', eff));
-  card.appendChild(ul);
-  const row = node('div', 'row actions');
+  const { card, err, row } = waitingBlock({ cls: 'drift drift-card', tag: chip, title: o.summary, effects: o.effects });
   const choose = (label, cls, choice) => actionButton(label, cls, async () => {
     await api('/api/thread/decide', { offer: o.id, decision: 'approved', args: { choice } });
-  });
+  }, err);
   const say = DRIFT_LABELS[on];
   // A page that cannot be read has nothing on it to take: putting it back comes first.
   const nothingToTake = on === 'page' && d.unreadable === true;
-  if (!nothingToTake) row.appendChild(choose(say.plan, 'btn primary', 'plan'));
+  row.appendChild(choose(say.leave, 'btn hit', 'leave'));
   // Deleted on the calendar: there is no event to put back.
-  if (!d.deleted) row.appendChild(choose(say.calendar, nothingToTake ? 'btn primary' : 'btn', 'calendar'));
-  row.appendChild(choose(say.leave, 'btn', 'leave'));
-  card.appendChild(row);
+  if (!d.deleted) row.appendChild(choose(say.calendar, nothingToTake ? 'btn primary hit' : 'btn hit', 'calendar'));
+  if (!nothingToTake) row.appendChild(choose(say.plan, 'btn primary hit', 'plan'));
   return card;
 }
 
 /**
- * Savings came up short of the sinking envelopes: the app's card, raised by a
- * balance, so plain card, dashed while it waits. Nothing moves, since money
- * goes between the accounts by hand; either of you says you have seen it. A
- * newer balance takes its place. Settled, it is one line.
+ * Savings came up short of the sinking envelopes: the app's card, raised by a balance, so plain card, dashed while it
+ * waits. Nothing moves, since money goes between the accounts by hand; a member says they have seen it. A newer
+ * balance takes its place. Settled, it is plain lines.
  */
 function savingsCardNode(e) {
   const o = e.offer;
   if (o.status !== 'open' && o.status !== 'snoozed') {
-    const line = node('div', 'line');
-    if (o.status === 'approved') line.append('Seen by ', node('b', '', nameIn(o.decidedBy)), `, ${timeOf(o.decidedAt)}`);
-    else if (o.status === 'replaced') line.append('A newer balance came in since');
-    else line.append('Put away by ', node('b', '', nameIn(o.decidedBy)));
-    line.appendChild(node('span', 'why', o.summary));
-    return line;
+    let line;
+    if (o.status === 'approved') line = settledLine('Seen by ', node('b', '', nameIn(o.decidedBy)), `, ${clockAt(o.decidedAt)}`);
+    else if (o.status === 'replaced') line = settledLine('A newer balance came in since');
+    else line = settledLine('Put away by ', node('b', '', nameIn(o.decidedBy)));
+    return settledBlock(o.summary, line);
   }
-  const card = node('div', 'card provisional savings-card');
-  card.dataset.offer = o.id;
-  card.appendChild(node('div', 'waiting', 'Waiting for either of you'));
-  card.appendChild(node('h3', '', o.summary));
-  const ul = node('ul', 'effects');
-  for (const eff of o.effects) ul.appendChild(node('li', '', eff));
-  card.appendChild(ul);
-  const row = node('div', 'row actions');
-  row.appendChild(actionButton('Seen it', 'btn primary', async () => {
+  const { card, err, row } = waitingBlock({ cls: 'savings-card', title: o.summary, effects: o.effects });
+  row.appendChild(actionButton('Seen it', 'btn primary hit', async () => {
     await api('/api/thread/decide', { offer: o.id, decision: 'approved' });
-  }));
-  card.appendChild(row);
+  }, err));
   return card;
 }
 
 /**
- * A friend asking to stay: their request, so plain card, dashed while it waits
- * on either of you. Approve it, decline it with the reason they will read, or
- * suggest other dates. Decided, it is one line. The guest is named as the list
- * names them; their address stays in the card's args, for the email.
+ * A friend asking to stay: their request, so plain card, dashed while it waits. Approve it, decline it with the reason
+ * they will read, or suggest other dates. Decided, it is plain lines. The guest is named as the list names them; their
+ * address stays in the card's args, for the email.
  */
 function bookingCardNode(e) {
   const o = e.offer;
   if (o.status !== 'open' && o.status !== 'snoozed') {
-    const line = node('div', 'line');
+    let line;
     if (o.status === 'approved') {
-      line.append('Approved by ', node('b', '', nameIn(o.decidedBy)), `, ${timeOf(o.decidedAt)}`);
+      line = settledLine('Approved by ', node('b', '', nameIn(o.decidedBy)), `, ${clockAt(o.decidedAt)}`);
     } else if (o.status === 'declined') {
-      line.append('Declined by ', node('b', '', nameIn(o.decidedBy)));
-      if (o.why) line.append(` — “${o.why}”`);
+      line = settledLine('Declined by ', node('b', '', nameIn(o.decidedBy)), ...(o.why ? [` · “${o.why}”`] : []));
     } else {
       // A guest's request is only ever withdrawn by them; a newer one is a request of its own.
-      line.append(o.replacedBy ? 'Replaced by a newer request' : 'Withdrawn by them');
+      line = settledLine(o.replacedBy ? 'Replaced by a newer request' : 'Withdrawn by them');
     }
-    line.appendChild(node('span', 'why', o.summary));
-    return line;
+    return settledBlock(o.summary, line);
   }
-  const card = node('div', 'card provisional booking-card');
-  card.dataset.offer = o.id;
-  card.appendChild(node('div', 'waiting', 'Waiting for either of you'));
-  card.appendChild(node('h3', '', o.summary));
-  const ul = node('ul', 'effects');
-  for (const eff of o.effects) ul.appendChild(node('li', '', eff));
-  // Nights it asks for that were kept for the household since: in words, and approving it will say so too.
-  if (e.blocked) ul.appendChild(node('li', 'clash', e.blocked));
-  card.appendChild(ul);
-  const row = node('div', 'row actions');
-  // A refusal (nights taken since, a mail that did not go) is said above the buttons, and the card stays.
-  row.appendChild(bookingSend(card, row, 'Approve', async () => {
-    await api('/api/thread/decide', { offer: o.id, decision: 'approved' });
-  }));
-  const decline = node('button', 'btn', 'Decline');
-  decline.type = 'button';
-  decline.addEventListener('click', () => bookingDecline(card, row, o));
-  const suggest = node('button', 'btn', 'Suggest other dates');
-  suggest.type = 'button';
-  suggest.addEventListener('click', () => bookingSuggest(card, row, o));
-  row.append(decline, suggest);
-  card.appendChild(row);
+  // Nights it asks for that were kept for the household since are its last effect, and approving it will say so too.
+  const { card, row } = waitingBlock({ cls: 'booking-card', title: o.summary, effects: o.effects, clash: e.blocked });
+  bookingButtons(card, row, o);
   return card;
 }
 
+/** A request's own buttons, drawn into its row: also how a form that closes puts them back. A refusal is said in the slot, and the card stays. */
+function bookingButtons(card, row, o) {
+  row.textContent = '';
+  const decline = node('button', 'btn hit', 'Decline');
+  decline.type = 'button';
+  decline.dataset.opens = 'decline';
+  decline.addEventListener('click', () => bookingDecline(card, row, o));
+  const suggest = node('button', 'btn hit', 'Suggest other dates');
+  suggest.type = 'button';
+  suggest.dataset.opens = 'suggest';
+  suggest.addEventListener('click', () => bookingSuggest(card, row, o));
+  row.append(decline, suggest, bookingSend(card, row, 'Approve', async () => {
+    await api('/api/thread/decide', { offer: o.id, decision: 'approved' });
+  }));
+}
+
 /**
- * A friend cancelled a confirmed stay: the nights are already open, and this
- * asks one of you to take its event off the Household calendar. Acknowledged
- * by approving; done, it is one line.
+ * A friend cancelled a confirmed stay: the nights are already open, and this asks a member to take its event off the
+ * Household calendar. Acknowledged by approving; done, it is plain lines.
  */
 function releaseCardNode(e) {
   const o = e.offer;
   if (o.status !== 'open' && o.status !== 'snoozed') {
-    const line = node('div', 'line');
-    line.append(o.status === 'approved' ? 'Taken off the calendar by ' : 'Left on the calendar by ', node('b', '', nameIn(o.decidedBy)));
-    line.appendChild(node('span', 'why', o.summary));
-    return line;
+    return settledBlock(o.summary, settledLine(o.status === 'approved' ? 'Taken off the calendar by ' : 'Left on the calendar by ', node('b', '', nameIn(o.decidedBy))));
   }
-  const card = node('div', 'card provisional booking-card');
-  card.dataset.offer = o.id;
-  card.appendChild(node('div', 'waiting', 'Waiting for either of you'));
-  card.appendChild(node('h3', '', o.summary));
-  const ul = node('ul', 'effects');
-  for (const eff of o.effects) ul.appendChild(node('li', '', eff));
-  card.appendChild(ul);
-  const row = node('div', 'row actions');
+  const { card, row } = waitingBlock({ cls: 'booking-card', title: o.summary, effects: o.effects });
   row.appendChild(bookingSend(card, row, 'Take it off the calendar', async () => {
     await api('/api/thread/decide', { offer: o.id, decision: 'approved' });
   }));
-  card.appendChild(row);
   return card;
 }
 
-/** A button that sends what a booking card's form says, and shows a refusal plainly, above the buttons. */
+/** A button that sends what a booking card's form says, and says a refusal plainly in the block's slot. */
 function bookingSend(card, row, label, send) {
-  const b = node('button', 'btn primary', label);
+  const b = node('button', 'btn primary hit', label);
   b.type = 'button';
   b.addEventListener('click', async () => {
-    card.querySelector('.err')?.remove();
+    const slot = blockSlot(card);
+    slot.textContent = '';
     b.disabled = true;
     try { await send(); await reloadView(); }
     catch (ex) {
@@ -3652,12 +3707,21 @@ function bookingSend(card, row, label, send) {
       // the card is decided, so it is drawn again as decided and the words go in the error box.
       if (ex.status === 502 && /^approved\b/.test(ex.message)) { await reloadView(); showProblem(ex); return; }
       b.disabled = false;
-      const err = node('div', 'err', ex.message);
-      err.setAttribute('role', 'alert');
-      card.insertBefore(err, row);
+      slot.textContent = ex.message;
     }
   });
   return b;
+}
+
+/** Closing a booking form: its fields go, the row's cancel mark with them, and the card's own buttons come back. */
+function bookingClose(card, row, o, fields, opens) {
+  return () => {
+    for (const f of fields) f.remove();
+    delete row.dataset.cancel;
+    blockSlot(card).textContent = '';
+    bookingButtons(card, row, o);
+    row.querySelector(`[data-opens="${opens}"]`)?.focus();
+  };
 }
 
 /** Declining asks for the reason: the guest is told it. */
@@ -3665,12 +3729,17 @@ function bookingDecline(card, row, o) {
   row.textContent = '';
   const why = node('input');
   why.maxLength = 300;
-  card.insertBefore(field('Reason — they will read it', why), row);
-  row.appendChild(bookingSend(card, row, 'Decline', async () => {
+  const f = field('Reason (they will read it)', why);
+  card.insertBefore(f, blockSlot(card));
+  const closeBooking = bookingClose(card, row, o, [f], 'decline');
+  cancelMark(row, closeBooking);
+  const back = node('button', 'btn hit', 'Back');
+  back.type = 'button';
+  back.addEventListener('click', closeBooking);
+  row.append(back, bookingSend(card, row, 'Decline', async () => {
     if (!why.value.trim()) { why.focus(); throw new Error('Declining needs a reason: they will read it'); }
     await api('/api/thread/decide', { offer: o.id, decision: 'declined', why: why.value.trim() });
   }));
-  row.appendChild(actionButton('Back', 'btn', async () => {}));
   why.focus();
 }
 
@@ -3684,15 +3753,20 @@ function bookingSuggest(card, row, o) {
   why.maxLength = 300;
   const dates = node('div', 'dates');
   dates.append(field('Arriving', arrive), field('Leaving', depart));
-  card.insertBefore(dates, row);
-  card.insertBefore(field('Why these instead — they will read it', why), row);
-  row.appendChild(bookingSend(card, row, 'Suggest these dates', async () => {
+  const reason = field('Why these instead (they will read it)', why);
+  card.insertBefore(dates, blockSlot(card));
+  card.insertBefore(reason, blockSlot(card));
+  const closeBooking = bookingClose(card, row, o, [dates, reason], 'suggest');
+  cancelMark(row, closeBooking);
+  const back = node('button', 'btn hit', 'Back');
+  back.type = 'button';
+  back.addEventListener('click', closeBooking);
+  row.append(back, bookingSend(card, row, 'Suggest these dates', async () => {
     if (!arrive.value || !depart.value) throw new Error('Choose the day they would arrive and the day they would leave');
     if (depart.value <= arrive.value) throw new Error('They leave after they arrive');
     if (!why.value.trim()) { why.focus(); throw new Error('Suggesting other dates needs a reason: they will read it'); }
     await api('/api/bookings/suggest', { offer: o.id, arrive: arrive.value, depart: depart.value, why: why.value.trim() });
   }));
-  row.appendChild(actionButton('Back', 'btn', async () => {}));
   arrive.focus();
 }
 
@@ -3755,74 +3829,67 @@ function answerNode(q, ctx) {
 const DECIDED = { approved: 'Approved', declined: 'Declined', snoozed: 'Put off' };
 
 function offerCard(o, ctx) {
-  const card = node('div', `card offer ${ctx.moved.has(o.id) ? 'moved' : ''}`);
-  card.dataset.offer = o.id;
-  card.appendChild(node('h3', '', o.summary));
-
   if (o.status === 'replaced') {
-    card.appendChild(node('div', 'decided', 'Replaced by a newer suggestion for the same envelopes.'));
-    return card;
+    return offerSettled(o, settledLine('Replaced by a newer suggestion for the same envelopes.'));
   }
-  if (o.status === 'approved' || o.status === 'declined') {
-    const d = node('div', 'decided');
-    d.append(`${DECIDED[o.status]} by `, node('b', '', nameIn(o.decidedBy)), ` · ${timeOf(o.decidedAt)}`);
-    if (o.why) d.append(` — “${o.why}”`);
-    card.appendChild(d);
-    return card;
-  }
-
-  const ul = node('ul', 'effects');
-  for (const eff of o.effects) ul.appendChild(node('li', '', eff));
-  card.appendChild(ul);
+  if (o.status === 'approved' || o.status === 'declined') return offerSettled(o, decidedLine(o));
+  const moved = ctx.moved.has(o.id);
 
   if (o.status === 'snoozed' && !ctx.pending.has(o.id)) {
-    const d = node('div', 'decided');
+    const ul = node('ul', 'effects');
+    for (const eff of o.effects) ul.appendChild(node('li', '', eff));
     // Only a card with figures behind it comes back when they move; a plan's card has none to move.
-    d.append('Put off by ', node('b', '', nameIn(o.decidedBy)), o.budget ? '. It comes back if its numbers change.' : '.');
-    card.appendChild(d);
-    return card;
+    return offerSettled(o, ul, settledLine('Put off by ', node('b', '', nameIn(o.decidedBy)), o.budget ? '. It comes back if its numbers change.' : '.'));
   }
 
-  const row = node('div', 'row');
-  card.appendChild(row);
-  const moved = ctx.moved.has(o.id);
-  if (moved) card.insertBefore(node('p', 'moved-note', 'The numbers have moved since this was suggested.'), row);
+  const { card, row } = waitingBlock({ cls: `offer${moved ? ' moved' : ''}`, title: o.summary, effects: o.effects });
+  card.dataset.offer = o.id;
+  if (moved) card.insertBefore(node('p', 'moved-note', 'The numbers have moved since this was suggested.'), blockSlot(card));
   offerButtons(card, row, o, moved);
+  return card;
+}
+
+/** A suggestion that no longer waits: its title and plain lines, no frame. */
+function offerSettled(o, ...lines) {
+  const card = settledBlock(o.summary, ...lines);
+  card.classList.add('offer');
+  card.dataset.offer = o.id;
   return card;
 }
 
 /**
  * The suggestion's own buttons, drawn into its row: also how a form that closes without a write puts them back, in
- * place, so the rest of the screen (an unsent note on a plan's card) is left as it is.
+ * place, so the rest of the screen (an unsent note on a plan's card) is left as it is. Secondary first, the primary last.
  */
 function offerButtons(card, row, o, moved) {
   row.textContent = '';
-  if (moved) {
-    row.appendChild(actionButton('Work it out again', 'btn primary', async () => {
-      await api('/api/thread/refresh', { offer: o.id });
-    }));
-  } else {
-    const approve = node('button', 'btn primary', 'Approve');
-    approve.type = 'button';
-    approve.dataset.opens = 'approve';
-    approve.addEventListener('click', () => approveForm(card, row, o));
-    row.appendChild(approve);
-  }
-  row.appendChild(actionButton('Not now', 'btn', async () => {
-    await api('/api/thread/decide', { offer: o.id, decision: 'snoozed' });
-  }));
+  const slot = blockSlot(card);
+  // Always available: a card that has gone stale, or whose budget has gone,
+  // must still be possible to turn down.
+  row.appendChild(actionButton('Decline', 'btn hit', async () => {
+    await api('/api/thread/decide', { offer: o.id, decision: 'declined' });
+  }, slot));
   if (o.tool === 'move_money' || o.tool === 'set_assignment') {
-    const adj = node('button', 'btn', 'Adjust');
+    const adj = node('button', 'btn hit', 'Adjust');
     adj.type = 'button';
     adj.dataset.opens = 'adjust';
     adj.addEventListener('click', () => adjustForm(card, row, o, moved));
     row.appendChild(adj);
   }
-  // Always available: a card that has gone stale, or whose budget has gone,
-  // must still be possible to turn down.
-  row.appendChild(actionButton('Decline', 'btn', async () => {
-    await api('/api/thread/decide', { offer: o.id, decision: 'declined' });
-  }));
+  row.appendChild(actionButton('Not now', 'btn hit', async () => {
+    await api('/api/thread/decide', { offer: o.id, decision: 'snoozed' });
+  }, slot));
+  if (moved) {
+    row.appendChild(actionButton('Work it out again', 'btn primary hit', async () => {
+      await api('/api/thread/refresh', { offer: o.id });
+    }, slot));
+  } else {
+    const approve = node('button', 'btn primary hit', 'Approve');
+    approve.type = 'button';
+    approve.dataset.opens = 'approve';
+    approve.addEventListener('click', () => approveForm(card, row, o));
+    row.appendChild(approve);
+  }
 }
 
 /** The screen a button acted on, read again: the board, a plan's card, or the thread. */
@@ -3833,14 +3900,21 @@ async function reloadView() {
   else await loadThread();
 }
 
-/** A button that does one thing, then reloads its screen — or says what went wrong. */
-function actionButton(label, cls, act) {
+/**
+ * A button that does one thing, then reloads its screen, or says what went wrong: in `slot` when it has one (a
+ * block's error slot, cleared by the next press), else in its own label.
+ */
+function actionButton(label, cls, act, slot = null) {
   const b = node('button', cls, label);
   b.type = 'button';
   b.addEventListener('click', async () => {
+    if (slot) slot.textContent = '';
     b.disabled = true;
     try { await act(); await reloadView(); }
-    catch (ex) { b.disabled = false; b.textContent = ex.message; }
+    catch (ex) {
+      b.disabled = false;
+      if (slot) slot.textContent = ex.message; else b.textContent = ex.message;
+    }
   });
   return b;
 }
@@ -3858,23 +3932,24 @@ function approveForm(card, row, o) {
   why.value = o.args?.why ?? '';
   why.maxLength = 300;
   const f = field('Reason, as it will read in the record', why);
-  card.insertBefore(f, row);
+  card.insertBefore(f, blockSlot(card));
   // Escape closes the form, drawing the suggestion's buttons again, in place and with focus back on Approve; on a card
   // that is the press that does not go Back.
   const closeApprove = () => {
     f.remove();
+    blockSlot(card).textContent = '';
     offerButtons(card, row, o, false);
     row.querySelector('[data-opens="approve"]')?.focus();
   };
   cancelMark(f, closeApprove);
   why.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); closeApprove(); } });
-  row.appendChild(actionButton(`Approve: ${o.summary}`, 'btn primary', async () => {
+  row.appendChild(actionButton('Decline', 'btn hit', async () => {
+    await api('/api/thread/decide', { offer: o.id, decision: 'declined', ...(why.value.trim() ? { why: why.value.trim() } : {}) });
+  }, blockSlot(card)));
+  row.appendChild(actionButton(`Approve: ${o.summary}`, 'btn primary hit', async () => {
     if (!why.value.trim()) { why.focus(); throw new Error('Approving needs a reason, the same as moving money'); }
     await api('/api/thread/decide', { offer: o.id, decision: 'approved', why: why.value.trim() });
-  }));
-  row.appendChild(actionButton('Decline', 'btn', async () => {
-    await api('/api/thread/decide', { offer: o.id, decision: 'declined', ...(why.value.trim() ? { why: why.value.trim() } : {}) });
-  }));
+  }, blockSlot(card)));
   why.focus();
 }
 
@@ -3888,29 +3963,30 @@ function adjustForm(card, row, o, moved = false) {
   const why = node('input');
   why.value = o.args?.why ?? '';
   const amountField = field(o.tool === 'move_money' ? 'Amount to move' : 'Fund it at', amount);
-  card.insertBefore(amountField, row);
+  card.insertBefore(amountField, blockSlot(card));
   const reasonField = field('Reason', why);
-  card.insertBefore(reasonField, row);
+  card.insertBefore(reasonField, blockSlot(card));
   // Escape closes the form as its Cancel does, from either box, in place and with focus back on Adjust; on a card that
   // is the press that does not go Back.
   const closeAdjust = () => {
     amountField.remove();
     reasonField.remove();
+    blockSlot(card).textContent = '';
     offerButtons(card, row, o, moved);
     row.querySelector('[data-opens="adjust"]')?.focus();
   };
   cancelMark(amountField, closeAdjust);
   for (const box of [amount, why]) box.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); closeAdjust(); } });
-  row.appendChild(actionButton('Suggest this instead', 'btn primary', async () => {
+  const cancel = node('button', 'btn hit', 'Cancel');
+  cancel.type = 'button';
+  cancel.addEventListener('click', closeAdjust);
+  row.appendChild(cancel);
+  row.appendChild(actionButton('Suggest this instead', 'btn primary hit', async () => {
     const cents = toCents(amount.value);
     if (!Number.isFinite(cents) || cents <= 0) { amount.focus(); throw new Error('Enter an amount in dollars'); }
     if (!why.value.trim()) { why.focus(); throw new Error('It needs a reason'); }
     await api('/api/thread/adjust', { offer: o.id, args: { [key]: cents, why: why.value.trim() } });
-  }));
-  const cancel = node('button', 'btn', 'Cancel');
-  cancel.type = 'button';
-  cancel.addEventListener('click', closeAdjust);
-  row.appendChild(cancel);
+  }, blockSlot(card)));
   amount.focus();
 }
 
