@@ -4344,7 +4344,12 @@ async function afterSend(id, lane) {
     return;
   }
   const row = $('days').querySelector(`[data-event="${CSS.escape(String(id))}"]`);
-  if (row) row.scrollIntoView({ block: 'nearest' });
+  if (row) {
+    // The sticky bar sits at the viewport's bottom edge, so a row aligned there would be hidden behind it.
+    const bar = $('composer');
+    row.style.scrollMarginBottom = (bar && !bar.classList.contains('resting') ? bar.offsetHeight + 12 : 12) + 'px';
+    row.scrollIntoView({ block: 'nearest' });
+  }
 }
 
 async function askClaude(text, trigger) {
