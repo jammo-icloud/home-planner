@@ -2463,6 +2463,7 @@ function peopleBar(host, { label, people, pressed, onPress, noun = 'plan' }) {
   for (const p of [{ key: null, label: 'Everyone' }, ...people]) {
     const b = node('button', 'hit', p.label);
     b.type = 'button';
+    b.dataset.key = p.key === null ? 'person:everyone' : `person:${p.key}`;
     b.setAttribute('aria-pressed', String(p.key === pressed));
     if (p.n != null) {
       b.append(node('span', 'n', String(p.n)));
@@ -3536,7 +3537,7 @@ function offerButtons(card, row, o, moved) {
     const adj = node('button', 'btn', 'Adjust');
     adj.type = 'button';
     adj.dataset.opens = 'adjust';
-    adj.addEventListener('click', () => adjustForm(card, row, o));
+    adj.addEventListener('click', () => adjustForm(card, row, o, moved));
     row.appendChild(adj);
   }
   // Always available: a card that has gone stale, or whose budget has gone,
@@ -3588,7 +3589,7 @@ function approveForm(card, row, o) {
     row.querySelector('[data-opens="approve"]')?.focus();
   };
   cancelMark(f, closeApprove);
-  why.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeApprove(); } });
+  why.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); closeApprove(); } });
   row.appendChild(actionButton(`Approve: ${o.summary}`, 'btn primary', async () => {
     if (!why.value.trim()) { why.focus(); throw new Error('Approving needs a reason, the same as moving money'); }
     await api('/api/thread/decide', { offer: o.id, decision: 'approved', why: why.value.trim() });
@@ -3600,7 +3601,7 @@ function approveForm(card, row, o) {
 }
 
 /** Your own version of a card: the amount and the reason. It replaces Claude's. */
-function adjustForm(card, row, o) {
+function adjustForm(card, row, o, moved = false) {
   row.textContent = '';
   const key = o.tool === 'move_money' ? 'amountCents' : 'toCents';
   const amount = node('input');
@@ -3617,11 +3618,11 @@ function adjustForm(card, row, o) {
   const closeAdjust = () => {
     amountField.remove();
     reasonField.remove();
-    offerButtons(card, row, o, false);
+    offerButtons(card, row, o, moved);
     row.querySelector('[data-opens="adjust"]')?.focus();
   };
   cancelMark(amountField, closeAdjust);
-  for (const box of [amount, why]) box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeAdjust(); } });
+  for (const box of [amount, why]) box.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); closeAdjust(); } });
   row.appendChild(actionButton('Suggest this instead', 'btn primary', async () => {
     const cents = toCents(amount.value);
     if (!Number.isFinite(cents) || cents <= 0) { amount.focus(); throw new Error('Enter an amount in dollars'); }
@@ -7426,9 +7427,20 @@ async function loadBoard() {
   const mine = ++planFetch;
   $('loading').hidden = false;
   try {
-    const q = new URLSearchParams({ who: personPressed ?? 'everyone' });
-    if (planGoal) q.set('goal', planGoal);
-    const b = await api(`/api/plans?${q}`);
+    // A person who has left the household is let go before the board is read, not after the route refuses them.
+    if (personPressed !== null && members.length && !members.includes(personPressed)) pressPerson(null);
+    const read = () => {
+      const q = new URLSearchParams({ who: personPressed ?? 'everyone' });
+      if (planGoal) q.set('goal', planGoal);
+      return api(`/api/plans?${q}`);
+    };
+    let b;
+    try { b = await read(); } catch (ex) {
+      // The route answers 400 for a name that is not a member (taken out elsewhere): read once more for everyone.
+      if (ex.status !== 400 || personPressed === null) throw ex;
+      pressPerson(null);
+      b = await read();
+    }
     // A newer read (another person pressed, the tab left and come back to, a household switched) has the say.
     if (mine !== planFetch) return false;
     boardReadFailed = false;
@@ -7537,7 +7549,7 @@ function renderPlan(b) {
   const underGoal = b.goal !== null;
   // A chip or a foot button that had focus is put away with the redraw: focus goes back on its twin.
   const had = document.activeElement;
-  const hadKey = had && ($('plan-goals').contains(had) || $('plan-foot').contains(had)) ? had.dataset.key ?? null : null;
+  const hadKey = had && ($('plan-people').contains(had) || $('plan-goals').contains(had) || $('plan-foot').contains(had)) ? had.dataset.key ?? null : null;
   $('plan-count').textContent = planCountLine(b);
 
   // Pressed is the answer's who, never the kept choice: when the route fell back, Everyone reads pressed.
@@ -9151,7 +9163,7 @@ function whenRows(v) {
 //
 // One screen in groups that say whose they are: You (how the app looks to
 // you, the calendars you check for clashes, your phone) and Household (setup,
-// members, areas, the budget, the Household calendar, guests, documents, links,
+// members, the budget, the Household calendar, guests, documents, links,
 // the backup), and This NAS for an administrator. Each is a row of a list: a
 // title and one line saying what is set. Tapping it opens that setting's own
 // page, its form at the top; Back returns to the list where it was. Every

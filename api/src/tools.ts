@@ -2635,7 +2635,7 @@ const updatePlan: Tool = {
   description:
     "Propose changes to a plan's card: its title, area, chips, notes, estimated cost, or the budget " +
     'envelope it is paid from. Only the fields given change. Chips are free-text labels such as ' +
-    '"researching" or "waiting on a quote"; they never move a plan between columns, and chips and ' +
+    '"researching" or "waiting on a quote"; they never change the state of a plan (Planning, Doing or Done), and chips and ' +
     'notes are replaced whole, so read get_plan and send the full list. Linking an envelope moves no ' +
     'money — it only lets the card say what the cost means. Returns a proposal.',
   kind: 'write',
@@ -2720,8 +2720,8 @@ const updatePlan: Tool = {
 const setPlanState: Tool = {
   name: 'set_plan_state',
   description:
-    'Propose moving a plan between Planning and Doing, or marking it done. Done takes it off the ' +
-    'board and keeps it. Only suggest it when they have said where it stands; do not infer ' +
+    'Propose moving a plan between Planning and Doing, or marking it done. Done keeps it on the page ' +
+    'of its area. Only suggest it when they have said where it stands; do not infer ' +
     'progress from chips or a checklist. Returns a proposal.',
   kind: 'write',
   input: {
@@ -2931,8 +2931,8 @@ const setPlanDue: Tool = {
 const blockPlanTime: Tool = {
   name: 'block_plan_time',
   description:
-    'Propose setting aside a stretch of time for a plan, such as a Saturday morning to fit the ' +
-    'shelves. Suggest a time only when they have said when they mean to do it; you cannot see ' +
+    'Propose setting aside a stretch of time for a plan, such as a Saturday morning to paint ' +
+    'the fence. Suggest a time only when they have said when they mean to do it; you cannot see ' +
     'their calendars, so never assume a slot is free. Returns a proposal.',
   kind: 'write',
   input: {

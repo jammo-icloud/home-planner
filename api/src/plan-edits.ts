@@ -114,7 +114,10 @@ export async function handPlan(ctx: ToolContext, id: PlanId, to: unknown, why?: 
 /** A plan's one goal, tidied; null takes it off. */
 export async function setGoal(ctx: ToolContext, id: PlanId, goal: unknown): Promise<Plan> {
   const p = livePlan(ctx.store.state, id);
-  await writePlan(ctx, { op: 'plan.goal', plan: p.id, goal: planGoal(ctx.store.state, goal) });
+  const next = planGoal(ctx.store.state, goal);
+  // The same goal (a goal has one stored spelling, so another case is the same), or none on a plan with none, is no change: nothing is written.
+  if (next === null ? p.goal === null : p.goal !== null && sameGoal(p.goal, next)) return p;
+  await writePlan(ctx, { op: 'plan.goal', plan: p.id, goal: next });
   return fresh(ctx, p.id);
 }
 

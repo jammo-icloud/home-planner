@@ -257,7 +257,7 @@ fold's own, so nothing checks it. `state.hands` joins `Draft`, `emptyDraft`, `fr
   `retireShelves(store)` appends it whenever the log holds a live plan with a `parent`: after each of the four
   loads (`open`, `create`, `createFromLog` in `households.ts`; the sandbox's in `server.ts`) and after a
   restore's adopt, so before any request. It is the one write no member asked for, so it first copies the log
-  to `<log>.before-0.7.0` (`copyFile`, `COPYFILE_EXCL`: never overwritten); if either fails, the open fails
+  to `<log>.before-0.7.0` (written to a `.partial` file, synced, then hard-linked to its name, so the copy is whole or absent; an existing copy is never overwritten); if either fails, the open fails
   loudly. An older build cannot open a log holding an op it does not know: going back is that file put back.
 - **`goal.rename`, `goal.remove`.** Both are refused when no goal matches ("there is no goal called New
   roof"). Rename is also refused when `to` is exactly the spelling the goal is stored in (whatever case `from` was typed in), or matches another goal: "Summer trip" is

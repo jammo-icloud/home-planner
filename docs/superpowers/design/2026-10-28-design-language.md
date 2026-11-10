@@ -243,9 +243,9 @@ The vocabulary, by job:
 - **People and chips**: `who` (`mine`, `partner`; gains `other`, `household`, `claude`), `chips` and `chip` (`due`, `block`, `stale`, `research`, `money`, `asked`, `moved`).
 - **Waiting and settled**: `provisional` (with `waiting`, `why`, `effects`, `moved-note`), `decided`.
 - **Claude**: `claude` (the block), `byline` (`claude-by`, `mark`, `asof`), `looked`.
-- **Today**: `today` (three regions), `brief`, `briefing`, `yours` and `rail`, `composer`, `day`, `ent`, `seg people`, `tnew`.
+- **Today**: `today` (three regions), `brief`, `briefing`, `day-head`, `newsince`, `msg` (`mine`, `theirs`), `line` (`flag`), `yours` and `rail`, `composer`, `tray`. From 0.8.0 this becomes: `today` (three regions), `brief`, `briefing`, `yours` and `rail`, `composer`, `day`, `ent`, `seg people`, `tnew`.
 - **Plan**: `area`, `erow plan`, `erow add`, `erow fold`, `st`, `list`; on the card `crumb`, `plan-head`, `plan-title`, `plan-body`, `plan-main`, `plan-side`, `sec-head`, `md`, `checklist`, `files` and `file`, `dropzone`, `kv`, `person`, `notes-list`, `history`, `askrow`.
-- **Calendar**: `cal-bar`, `marks`, `erow cal`, `ev` (`mine`, `partner`, `household`, `proposed`, `drift`, `clash`, `due`, `held`), `week` (desk), `daystrip` (phone).
+- **Calendar**: `cal-bar`, `legend` and `sw`, `ev` (`mine`, `partner`, `household`, `proposed`, `drift`, `clash`, `due`, `held`), `week` (desk), `daystrip` and `dayview` (phone). From 0.9.0 this becomes: `cal-bar`, `marks`, `erow cal`, `ev` (`mine`, `partner`, `household`, `proposed`, `drift`, `clash`, `due`, `held`), `week` (desk), `daystrip` (phone).
 - **Settings**: `settings`, `set-index`, `set-group`, `set-sec`, `rows` and `rowi`, `schemes` and `scheme`, `readonly`, `state-on`.
 - **Errors and empties**: `err`, `unavailable`, `empty`.
 - **Guest**: `guest`, `letter`, `letterhead`, `banner`, `month-bar`, `nights` and `night` (`taken`, `pending`, `confirmed`, `inrange`), `key`, `request`, and for the place layer `landscape`, `place-line`, `fence`, `know`.

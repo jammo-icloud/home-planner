@@ -57,7 +57,7 @@ const ADDED: readonly Line[] = [
   ['build', "'x-hp-build': BUILD", 'page'], ['build', "const BUILD = '", 'shared'], ['build', 'href="/tokens.css?v=', 'page'],
   // The four helpers every screen calls, and the person pressed in the people bar, kept for the tab across a reload.
   ['S8', 'function memberDisc(', 'shared'], ['S33', 'function stateGlyph(', 'shared'], ['S33', 'const STATE_WORDS = {', 'shared'],
-  ['bar', 'function goalFlag(', 'shared'], ['bar', 'function peopleBar(', 'shared'],
+  ['bar', 'function goalFlag(', 'shared'], ['bar', 'function peopleBar(', 'shared'], ['bar', "'person:everyone'", 'shared'],
   ['P17', 'function pressPerson(', 'shared'], ['P17', "'hp.person'", 'shared'], ['P17', 'function restorePerson(', 'shared'],
   ['P17', 'restorePerson();', 'page'],
   // Their rules, and the one hit-area helper.

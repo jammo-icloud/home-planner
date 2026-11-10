@@ -189,6 +189,19 @@ describe('the plan routes', () => {
     assert.equal((await call('bob', 'POST', `/api/plans/${b}/goal`, { goal: 'x'.repeat(61) })).status, 400);
   });
 
+  test('a goal the plan already has, in any case, or none on a plan with none, writes nothing', async () => {
+    const a = await make('Strip the old shingles', { goal: 'Reroof' });
+    const bare = await make('Order the shingles');
+    const before = (await log()).length;
+    const same = await call('alice', 'POST', `/api/plans/${a}/goal`, { goal: 'Reroof' });
+    assert.deepEqual([same.status, same.json.plan.goal], [200, 'Reroof']);
+    const other = await call('bob', 'POST', `/api/plans/${a}/goal`, { goal: 'REROOF' });
+    assert.deepEqual([other.status, other.json.plan.goal], [200, 'Reroof']);
+    const none = await call('alice', 'POST', `/api/plans/${bare}/goal`, { goal: null });
+    assert.deepEqual([none.status, none.json.plan.goal], [200, null]);
+    assert.equal((await log()).length, before);
+  });
+
   test('creating needs a title and an area', async () => {
     assert.equal((await call('alice', 'POST', '/api/plans', { area: 'House' })).status, 400);
     assert.equal((await call('alice', 'POST', '/api/plans', { title: '  ', area: 'House' })).status, 400);

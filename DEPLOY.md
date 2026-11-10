@@ -919,9 +919,11 @@ do; some network or FUSE mounts do not), and on one that does not a household
 with a shelf will not open until the data is moved. An older build cannot open
 a log that holds that line, or any of this release's new lines: to go back,
 stop the container, put the copy back under the log's name, and start the old
-image; whatever was written after the upgrade is lost. A backup made by 0.7.0
-is refused by an older build, and a backup from a newer build is refused by
-this one, in words. A page left open on a phone across the upgrade says "Home
+image; whatever was written after the upgrade is lost. Do not restore a backup
+made by 0.7.0 into an older build: 0.6.0 does not refuse it and brings it in in
+part, without who each plan was handed to, the goals, or the areas added,
+removed and moved since. To go back, use the `.before-0.7.0` copy as above. A
+backup from a newer build than this one is refused by this one, in words. A page left open on a phone across the upgrade says "Home
 Planner has been updated. Reload."
 
 ## TLS
