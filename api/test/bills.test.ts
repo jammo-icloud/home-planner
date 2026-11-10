@@ -14,6 +14,7 @@ import { describe as describeEvent, APPROVE_IN_ONE, ProposalStore, commit, toolB
 import type { Proposal, ToolContext } from '../src/tools.ts';
 import { newerBackup, parseBackup, planRestore, eventsToApply, scopeOf } from '../src/restore.ts';
 import { Households } from '../src/households.ts';
+import { changes } from '../src/activity.ts';
 import type { Bill, BillPaid } from '../src/analytics.ts';
 import type { BillDate, Event, State, Txn } from '../src/types.ts';
 import type { DistributiveOmit } from '../src/util-types.ts';
@@ -391,6 +392,13 @@ describe('set_bill', () => {
     assert.equal(c.store.state.budgets.get('harbor')!.bills.size, 0, 'a proposal writes nothing');
     await commit(p.id, c);
     assert.equal(c.store.state.budgets.get('harbor')!.bills.size, 1);
+  });
+  test('a change row reads rightly where the household reads it', async () => {
+    const c = await ctx();
+    await commit((run({ bill: 'example power billp', ...d16 }, c) as Proposal).id, c);
+    const rows = changes(await c.store.since(null), c.store.state).filter((r) => r.events.some((e) => e.op === 'bill.set'));
+    assert.equal(rows.length, 1);
+    assert.equal(rows[0]!.what, 'set EXAMPLE POWER BILLP in Utilities to due on the 16th, every month');
   });
   test('Claude is offered it', () => assert.ok(toolSchemas().some((t) => t.name === 'set_bill')));
   test('a longer period sends on', async () => {
