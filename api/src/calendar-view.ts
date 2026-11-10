@@ -243,7 +243,7 @@ export function weekWindow(start: unknown, end: unknown): { start: Day; end: Day
  * not show (one signed in without the NAS still has its dates); and what open
  * appointment cards ask for, which is on no calendar yet: one for the
  * household's, or for the viewer's own that they asked for. One for the
- * other member's own calendar is theirs, and not drawn. An open drift and a
+ * another member's own calendar is theirs, and not drawn. An open drift and a
  * clash between two timed events are marked. In time order. The NAS's
  * refusals are a line, as on Today, never a failure.
  */

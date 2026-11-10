@@ -906,6 +906,10 @@ the NAS's Docker dropped `.git` from the build despite
 `BUILDKIT_CONTEXT_KEEP_GIT_DIR` in `docker.yml`, and the build time is the
 thing to check instead.
 
+### Upgrading to 0.9.0
+
+Back up first: download each household's backup from Settings, and copy the `data` folder. 0.9.0 adds two lines to the log, written when a member sets a bill's date or removes a bill named by hand. An older build cannot open a log that holds either, so going back means restoring the backup taken before the upgrade, and whatever was written since is lost. Nothing is rewritten on upgrade, and no budget's figures move until a date is set. The Calendar reads up to six weeks at a time when its month is opened, one calendar after another, so a slow NAS may show the loading line for longer there. A page left open on a phone across the upgrade says "Home Planner has been updated. Reload."
+
 ### Upgrading to 0.8.0
 
 Back up first: download each household's backup from Settings, and copy the `data` folder. 0.8.0 adds one line to the log, written when a member moves or renames an appointment in the app. An older build cannot open a log that holds that line, so going back means restoring the backup taken before the upgrade, and whatever was written since is lost. Nothing is rewritten on upgrade: which day and kind an entry belongs to is worked out on reading. A page left open on a phone across the upgrade says "Home Planner has been updated. Reload."

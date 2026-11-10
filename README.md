@@ -51,6 +51,7 @@ reminders, never decisions, and go once the thing is set.
   and its receipts.
 - **Several budgets, compared.** A budget can carry a place, and Compare sets
   budgets side by side.
+- **Bills.** An envelope's page lists its bills. A member may give one a Due, Auto Pay or Pay by date; with none, its day is the day of its last receipt. A receipt is what says it is paid, and the Calendar shows each bill on its day.
 
 ### Pricing from public data
 
@@ -81,6 +82,8 @@ and the plans that sat on it carry a goal with its name: press that goal on Plan
 to see them together. Back up first (see DEPLOY.md).
 
 ### Calendar
+
+On a phone the Calendar is a strip of seven days with marks under each date, over the chosen day as one card of plain rows: what the calendars have, each plan's due date and blocks, each bill, and the day's record. The month opens from its name. Whose calendar, and whether plans, money and the record are shown, are pressed at the top. On a desk the week's grid stays, with the same marks on its day heads and a day's card above it.
 
 Plans' due dates, blocks of time and appointments live in Synology Calendar,
 read and written with each member's own DSM session. The household's owner

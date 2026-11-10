@@ -218,7 +218,7 @@ These answer the brief's section 5, and they hold in every scheme. The canvas's 
 
 **A due date** is a date, not time set aside: a **dashed** chip with a calendar glyph, and on the calendar a dashed all-day marker. **A block** is time set aside for a plan: a **solid** chip with a clock glyph, and on the calendar a solid timed event in its calendar's shade that opens its card. **An appointment** is any timed event, possibly linked to a plan: solid, in its calendar's shade. Due is dashed because it is an intention, which is the same reason a proposal is.
 
-**On the calendar**, a proposed event (from a card nobody has approved) is hollow and dashed in the accent. Drift (a plan and its event disagree) is an amber ring offset from the event, and the event says "moved" in words. A clash is a red ring: the only red on the grid. Held nights (a guest's stay or a member's block) are hatched and never say why.
+**On the calendar**, a proposed event (from a card nobody has approved) is hollow and dashed in the accent. Drift (a plan and its event disagree) is an amber ring offset from the event, and the event says "moved" in words. A clash is a red ring, the only red ring; a bill its envelope cannot cover is red in its words and figure. An unpaid bill is caution, a paid one quiet, and a date going by changes neither. Held nights are hatched; a friend never sees why, a member's row names the stay or the reason.
 
 **Handed, not asked.** A plan changes hands at once, and Today says who moved it, from whom, to whom and why. Nothing on Plan is dashed for it. An ask from before 0.7.0 keeps its dashed card on Today until it is answered or the plan moves.
 
@@ -245,7 +245,7 @@ The vocabulary, by job:
 - **Claude**: `claude` (the block), `byline` (`claude-by`, `mark`, `asof`), `looked`.
 - **Today**: `today` (three regions), `brief`, `briefing`, `yours` and `rail`, `composer`, `day`, `ent`, `seg people`, `tnew`.
 - **Plan**: `area`, `erow plan`, `erow add`, `erow fold`, `st`, `list`; on the card `crumb`, `plan-head`, `plan-title`, `plan-body`, `plan-main`, `plan-side`, `sec-head`, `md`, `checklist`, `files` and `file`, `dropzone`, `kv`, `person`, `notes-list`, `history`, `askrow`.
-- **Calendar**: `cal-bar`, `legend` and `sw`, `ev` (`mine`, `partner`, `household`, `proposed`, `drift`, `clash`, `due`, `held`), `week` (desk), `daystrip` and `dayview` (phone). From 0.9.0 this becomes: `cal-bar`, `marks`, `erow cal`, `ev` (`mine`, `partner`, `household`, `proposed`, `drift`, `clash`, `due`, `held`), `week` (desk), `daystrip` (phone).
+- **Calendar**: `cal-bar`, `marks`, `erow cal`, `ev` (`mine`, `partner`, `household`, `proposed`, `drift`, `clash`, `due`, `held`, `money`, `paid`, `short`), `week` (desk), `daystrip` (phone).
 - **Settings**: `settings`, `set-index`, `set-group`, `set-sec`, `rows` and `rowi`, `schemes` and `scheme`, `readonly`, `state-on`.
 - **Errors and empties**: `err`, `unavailable`, `empty`.
 - **Guest**: `guest`, `letter`, `letterhead`, `banner`, `month-bar`, `nights` and `night` (`taken`, `pending`, `confirmed`, `inrange`), `key`, `request`, and for the place layer `landscape`, `place-line`, `fence`, `know`.
@@ -269,7 +269,7 @@ Each surface is drawn on the canvas at phone (390) and desk (1280), in two schem
 
 **The Plan card.** Desk: crumb, title, then a row of facts and actions (the Planning/Doing segment, Mark done, the owner, Ask the other member to take it, Due date, Block time) and the card's chips. Main column: Notes, Checklist, Attachments, Claude, Between us. Sidebar: Money, People, When, History. Phone: the same order, except When and Money move up into one compact card under the title, because on a phone they are the facts you opened the card to check. The ask button appears only for the owner.
 
-**The Calendar.** Desk: the seven-day week, 7:00 to 21:00, the all-day row as one strip so a span can cross days, today's column tinted and marked by the accent "now" line, a legend, Block nights and New event. Phone: the month and week arrows, a strip of seven days with a dot per source under each, the chosen day as a full-width timed column with its all-day markers above, and a compact legend.
+**The Calendar.** See `specs/2026-11-09-calendar-day-page-design.md`: a strip of days with marks over one day's card of rows on a phone, the week grid with the same marks on a desk.
 
 **Settings** is described in its own section below. **The guest page** likewise.
 

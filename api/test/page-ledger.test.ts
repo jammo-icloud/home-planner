@@ -323,6 +323,10 @@ describe('the page ledger', () => {
     assert.equal(uncommented(REGIONS.calendar).split('showProblem(').length - 1, 2); // loadCalendar, openPicker
     assert.equal(uncommented(REGIONS.calendar).includes("$('app-err')"), false);
   });
+  test('the Calendar says none of the words the spec retired', () => {
+    const text = uncommented(REGIONS.calendar) + uncommented(REGIONS.calendarMarkup);
+    for (const w of ['Block nights', 'Unblock', 'overdue', 'thread']) assert.equal(new RegExp(`['\`>]${w}`, 'i').test(text), false, w);
+  });
   test('every id the script reaches for at load is in the markup', () => {
     const ids = new Set([...script.matchAll(/^\S.*?\$\('([\w-]+)'\)/gm)].map((m) => m[1]!));
     assert.ok(ids.size >= 8, 'the pattern still finds the top-level lookups');

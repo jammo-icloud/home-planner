@@ -580,9 +580,5 @@
   --bg: var(--surface);
   --radius: var(--r-card);
   --shadow: var(--e-1);
-  /* The source that was "partner" while a household had two members. */
-  --src-partner-fill: var(--src-other-fill);
-  --src-partner-line: var(--src-other-line);
-  --src-partner-ink: var(--src-other-ink);
   /* --ink-soft, --ink-faint, --line and --hair keep their names. */
 }
