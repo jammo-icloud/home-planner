@@ -8,7 +8,7 @@
 
 import { ZERO, add, sub, cents } from './money.ts';
 import type { Cents } from './money.ts';
-import { DAY_RE, PLAN_LIMITS, PLAN_STATES, goalLabel, goalSpelling, pageView, sameGoal } from './plan-rules.ts';
+import { DAY_RE, PLAN_LIMITS, PLAN_STATES, goalLabel, goalSpelling, pageView, sameGoal, shelfGoals } from './plan-rules.ts';
 import type { IncomeSource } from './income.ts';
 import {
   ARRIVAL_MAX,
@@ -1725,20 +1725,10 @@ function fold(d: Draft, e: Event): void {
       // Each shelf, in the log's order, becomes a goal named for it, on it and on
       // its plans, except where one already carries a goal. Then nothing sits under
       // anything. A removed plan is history, and keeps what it was.
-      const live = [...d.plans.values()].filter((p) => !p.removed);
-      for (const shelf of live) {
-        const under = live.filter((c) => c.parent === shelf.id);
-        if (under.length === 0) continue;
-        const label = shelfGoal(d.plans.get(shelf.id)!.title);
-        const goal = goalSpelling(d.plans.values(), label) ?? label;
-        for (const { id } of [shelf, ...under]) {
-          const p = d.plans.get(id)!;
-          if (p.goal === null) d.plans.set(id, { ...p, goal });
-        }
-      }
-      for (const { id } of live) {
-        const p = d.plans.get(id)!;
-        if (p.parent !== null) d.plans.set(id, { ...p, parent: null });
+      const goals = shelfGoals(d.plans.values());
+      for (const p of d.plans.values()) {
+        if (p.removed || (p.parent === null && !goals.has(p.id))) continue;
+        d.plans.set(p.id, { ...p, parent: null, goal: goals.get(p.id) ?? p.goal });
       }
       return;
     }
@@ -2116,14 +2106,6 @@ function lapseOffers(d: Draft, id: PlanId, e: Event): void {
     }
   }
 }
-
-/**
- * The goal a shelf becomes: its title by the goal rule, cut to the goal's 60
- * characters. Never refused: a title is never blank, and what the cut leaves
- * is trimmed again, so the label is one `goalLabel` would leave as it is.
- */
-const shelfGoal = (title: string): string =>
-  title.trim().replace(/\s+/g, ' ').slice(0, PLAN_LIMITS.goal).trimEnd();
 
 function refuseUnknownArea(d: Draft, area: string, e: Event): void {
   if (!d.areas.includes(area)) throw new ReplayError(`"${area}" is not one of this household's areas`, e);

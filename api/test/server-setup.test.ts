@@ -327,6 +327,22 @@ describe('changing the folder', () => {
   });
 });
 
+describe('a backup from a newer build', () => {
+  test('is refused whole by the preview and by the restore, in a sentence naming the op', async () => {
+    const content = [{ id: 'n1', op: 'household.claim', label: 'Home' }, { id: 'n2', op: 'bill.set', budget: 'b' }]
+      .map((e) => JSON.stringify({ at: '2026-12-01T09:00:00.000Z', who: 'alice', ...e })).join('\n');
+    const said = 'This backup was made by a newer Home Planner. It holds bill.set, which this version cannot read.';
+    const before = await readFile(households.path('home'), 'utf8');
+    for (const [path, body] of [['/api/restore/preview', { content, scopes: ['settings'] }], ['/api/restore', { content, scopes: ['settings'] }],
+      ['/api/restore', { content, asNewHousehold: 'Newer' }]] as const) {
+      const r = await call(alice, 'POST', path, body);
+      assert.deepEqual([r.status, r.json.error], [400, said], `${path} ${JSON.stringify(Object.keys(body))}`);
+    }
+    assert.equal(await readFile(households.path('home'), 'utf8'), before, 'nothing was written');
+    assert.ok(!(await households.ids()).includes('newer'), 'no household was made');
+  });
+});
+
 describe('a restore in place', () => {
   test("a backup's folder is not taken: the registry, the folder and the moves stay as they are, and the summary says so", async () => {
     const { Store } = await import('../src/store.ts');

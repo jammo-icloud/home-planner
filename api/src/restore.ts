@@ -16,6 +16,8 @@
  */
 
 import { guestEmail, validate } from './replay.ts';
+import { goalSpelling, sameGoal, shelfGoals } from './plan-rules.ts';
+import type { ShelfView } from './plan-rules.ts';
 import { areaIndex, areaMoved, isGuest } from './types.ts';
 import type { Event, State } from './types.ts';
 
@@ -262,6 +264,51 @@ export function planRestore(
         why: `${who} is not a member of this household, and the backup has plans ${how === 'made' ? 'of theirs' : how === 'asked' ? 'asked of them' : 'handed to them'}: `
           + `add ${who} as a member first, or restore these where ${who} is one`,
       });
+    }
+  }
+
+  // The goals, as the walk goes: the live plans here, then each line taken. A
+  // goal line the fold would refuse at that point (a rename or a remove of a
+  // goal no plan carries, a rename onto another goal or onto its own name) is
+  // named here, once, instead of failing at adopt; and, as the fold does, it
+  // then changes nothing. The same rules the fold asks: `goalSpelling`,
+  // `sameGoal`, `shelfGoals`.
+  if (wanted.has('plans')) {
+    const plans = new Map<string, ShelfView>();
+    for (const p of target.plans.values()) {
+      if (!p.removed) plans.set(p.id, { id: p.id, title: p.title, parent: p.parent, goal: p.goal, removed: false });
+    }
+    const said = new Set<string>();
+    const name = (key: string, why: string) => {
+      if (said.has(key)) return;
+      said.add(key);
+      missingPrerequisites.push(why);
+    };
+    const carrying = (goal: string) => [...plans.values()].filter((p) => p.goal !== null && sameGoal(p.goal, goal));
+    for (const e of take) {
+      if (e.op === 'plan.create') plans.set(e.plan, { id: e.plan, title: e.title, parent: e.parent ?? null, goal: null, removed: false });
+      else if (e.op === 'plan.set' && e.title !== undefined) {
+        const p = plans.get(e.plan);
+        if (p) plans.set(e.plan, { ...p, title: e.title });
+      } else if (e.op === 'plan.remove') plans.delete(e.plan);
+      else if (e.op === 'plan.goal') {
+        const p = plans.get(e.plan);
+        if (p) plans.set(e.plan, { ...p, goal: e.goal === null ? null : goalSpelling(plans.values(), e.goal) ?? e.goal });
+      } else if (e.op === 'goal.rename') {
+        const was = goalSpelling(plans.values(), e.from);
+        const clash = goalSpelling([...plans.values()].filter((p) => p.goal === null || !sameGoal(p.goal, e.from)), e.to);
+        if (was === null) name(`rename ${e.from}`, `the goal "${e.from}" cannot be renamed: no plan carries it here at that point`);
+        else if (clash !== null) name(`rename ${was} to ${e.to}`, `the goal "${was}" cannot be renamed to "${e.to}": "${clash}" is already a goal here`);
+        else if (e.to === was) name(`rename ${was} to ${e.to}`, `the goal "${was}" cannot be renamed to "${e.to}": that is already its name`);
+        else for (const p of carrying(e.from)) plans.set(p.id, { ...p, goal: e.to });
+      } else if (e.op === 'goal.remove') {
+        if (goalSpelling(plans.values(), e.goal) === null) {
+          name(`remove ${e.goal}`, `the goal "${e.goal}" cannot be removed: no plan carries it here at that point`);
+        } else for (const p of carrying(e.goal)) plans.set(p.id, { ...p, goal: null });
+      } else if (e.op === 'shelves.retire') {
+        const goals = shelfGoals(plans.values());
+        for (const p of plans.values()) plans.set(p.id, { ...p, parent: null, goal: goals.get(p.id) ?? p.goal });
+      }
     }
   }
 

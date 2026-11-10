@@ -417,6 +417,12 @@ describe('shelves are retired', () => {
     assert.deepEqual([...s.state.plans.values()].filter((p) => !p.removed && p.parent !== null), []);
     assert.deepEqual([plan('hinge').state, plan('kitchen').owner, scopeOf(retired!)], ['doing', 'alice', 'plans']);
     assert.deepEqual([...s.state.plans.values()].filter((p) => p.pageEvent === retired!.id).map((p) => p.id).sort(), ['hinge', 'long1', 'roof1', 'tap']);
+    // An emoji at the cut is left out whole, never halved; one that fits in the 60 is kept.
+    await s.append('alice', [create('house', { title: `${'B'.repeat(59)}🏠 tail` }), create('house1', { parent: 'house' }),
+      create('home', { title: `${'C'.repeat(58)}🏠X` }), create('home1', { parent: 'home' })]);
+    await s.append(SYSTEM, { op: 'shelves.retire' });
+    assert.deepEqual([plan('house1').goal, plan('home1').goal], ['B'.repeat(59), `${'C'.repeat(58)}🏠`]);
+    await s.append('alice', { op: 'goal.remove', goal: `${'C'.repeat(58)}🏠` });             // a goal a later line can name
     await s.append('alice', { op: 'plan.state', plan: 'kitchen', state: 'doing' });         // an ordinary plan now
     await s.append('bob', { op: 'goal.rename', from: 'Kitchen refresh', to: 'Kitchen' });   // later goal lines win on every replay
     assert.equal(replay(eventsOf(s)).plans.get('hinge')!.goal, 'Kitchen');

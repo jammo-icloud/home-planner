@@ -50,10 +50,54 @@ export const goalLabel = (v: unknown): string => {
 export const sameGoal = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
 
 /** The spelling a goal was first given: that of the first live plan carrying a matching goal; null for none. */
-export const goalSpelling = (plans: Iterable<Plan>, label: string): string | null => {
+export const goalSpelling = (plans: Iterable<Pick<Plan, 'removed' | 'goal'>>, label: string): string | null => {
   for (const p of plans) if (!p.removed && p.goal !== null && sameGoal(p.goal, label)) return p.goal;
   return null;
 };
+
+/**
+ * The goal a shelf becomes: its title by the goal rule, cut to the goal's 60
+ * characters, and trimmed again, so the label is one `goalLabel` would leave
+ * as it is. The cut is made between code points, never inside one, so an emoji
+ * at the cut is left out whole rather than halved; and it is held to the 60
+ * that `goalLabel` counts, so the goal can be named again by a later line.
+ * Never refused: a title is never blank.
+ */
+export const shelfGoal = (title: string): string => {
+  let cut = '';
+  for (const c of title.trim().replace(/\s+/g, ' ')) {
+    if (cut.length + c.length > PLAN_LIMITS.goal) break;
+    cut += c;
+  }
+  return cut.trimEnd();
+};
+
+/** What `shelves.retire` needs of a plan, and all a restore's walk keeps of one. */
+export type ShelfView = Pick<Plan, 'id' | 'title' | 'parent' | 'goal' | 'removed'>;
+
+/**
+ * The goals `shelves.retire` gives, by plan id: for each live plan with live
+ * plans under it, in the order given (the log's), its `shelfGoal`, or the
+ * spelling of a goal that already matches; on it and on each live plan under
+ * it that carries no goal. The fold and the restore walk both ask this, so they
+ * cannot disagree about what a retirement does. Parents are the caller's to clear.
+ */
+export function shelfGoals(plans: Iterable<ShelfView>): Map<string, string> {
+  const live = [...plans].filter((p) => !p.removed);
+  const goals = new Map(live.map((p) => [p.id, p.goal]));
+  const given = new Map<string, string>();
+  const now = () => live.map((p) => ({ removed: false, goal: goals.get(p.id)! }));
+  for (const shelf of live) {
+    const under = live.filter((c) => c.parent === shelf.id);
+    if (under.length === 0) continue;
+    const label = shelfGoal(shelf.title);
+    const goal = goalSpelling(now(), label) ?? label;
+    for (const { id } of [shelf, ...under]) {
+      if (goals.get(id) === null) { goals.set(id, goal); given.set(id, goal); }
+    }
+  }
+  return given;
+}
 
 /** A plan that exists and has not been removed; a 404 otherwise. A removed plan is history, not a draft. */
 export function livePlan(state: State, id: unknown): Plan {

@@ -11,8 +11,8 @@
  * whole log and caches it, which happens when somebody actually looks.
  */
 
-import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile, rename } from 'node:fs/promises';
-import { constants, existsSync } from 'node:fs';
+import { copyFile, link, mkdir, open, readFile, readdir, rm, stat, writeFile, rename } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
 import { Store } from './store.ts';
@@ -27,13 +27,27 @@ import type { Actor, Event } from './types.ts';
  * to `<log>.before-0.7.0`, and never over a copy already there: that copy is
  * the log as it was before any retirement, and an older build opens it. A copy
  * that cannot be made throws, and nothing is written; the caller's open fails.
+ *
+ * The copy is the owner's only way back, so it is whole or absent: written to
+ * `<log>.before-0.7.0.partial`, synced, then linked to its name, which refuses
+ * an existing file in one step. A crash mid-copy leaves only the partial file,
+ * which the next attempt writes over and removes.
  */
 export async function retireShelves(store: Store, copy: typeof copyFile = copyFile): Promise<boolean> {
   if (![...store.state.plans.values()].some((p) => !p.removed && p.parent !== null)) return false;
+  const kept = `${store.path}.before-0.7.0`;
+  const partial = `${kept}.partial`;
   try {
-    await copy(store.path, `${store.path}.before-0.7.0`, constants.COPYFILE_EXCL);
-  } catch (err) {
-    if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    await copy(store.path, partial);
+    const fh = await open(partial, 'r+');
+    try { await fh.sync(); } finally { await fh.close(); }
+    try {
+      await link(partial, kept);
+    } catch (err) {
+      if ((err as NodeJS.ErrnoException).code !== 'EEXIST') throw err;
+    }
+  } finally {
+    await rm(partial, { force: true });
   }
   await store.append(SYSTEM, { op: 'shelves.retire' });
   return true;

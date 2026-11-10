@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile } from 'node:fs/promises';
+import { mkdtemp, readFile, writeFile } from 'node:fs/promises';
 import { existsSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -877,13 +877,27 @@ describe('a log with shelves is retired when it is opened', () => {
   test('a copy that cannot be made fails loudly and appends nothing; a copy already there stands; no shelf, no line and no copy', async () => {
     const { hh, store, before } = await shelved();
     const failing = (code: string) => async () => { throw Object.assign(new Error(code), { code }); };
+    const kept = `${store.path}.before-0.7.0`;
     await assert.rejects(retireShelves(store, failing('EACCES')), /EACCES/);
     assert.equal(await readFile(store.path, 'utf8'), before);
-    assert.deepEqual([await retireShelves(store, failing('EEXIST')), await retireShelves(store)], [true, false]);
+    for (const path of [kept, `${kept}.partial`]) await assert.rejects(readFile(path), /ENOENT/);
+    await writeFile(kept, 'an earlier copy\n', 'utf8');                       // a copy already there stands, never overwritten
+    assert.deepEqual([await retireShelves(store), await retireShelves(store)], [true, false]);
+    assert.equal(await readFile(kept, 'utf8'), 'an earlier copy\n');
+    await assert.rejects(readFile(`${kept}.partial`), /ENOENT/);
     const plain = (await hh.create('alice', 'Elsewhere')).store;
     await plain.append('alice', { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' });
     assert.equal(await retireShelves(plain), false);
     await assert.rejects(readFile(`${plain.path}.before-0.7.0`), /ENOENT/);
+  });
+  test('a copy cut short by a crash is never taken for the copy: the next open writes it whole and clears the leftover', async () => {
+    const { hh, id, store, before } = await shelved();
+    const kept = `${store.path}.before-0.7.0`;
+    await writeFile(`${kept}.partial`, before.slice(0, 40), 'utf8');          // what a crash mid-copy left behind
+    await new Households(hh.dir).open(id);
+    assert.equal(await readFile(kept, 'utf8'), before);
+    await assert.rejects(readFile(`${kept}.partial`), /ENOENT/);
+    assert.equal((await readFile(store.path, 'utf8')).trim().split('\n').at(-1)!.includes('"op":"shelves.retire"'), true);
   });
 });
 
@@ -908,6 +922,65 @@ describe('a backup made by 0.7.0', () => {
     assert.deepEqual([own.collisions, own.missingPrerequisites], [[], []]);
     assert.doesNotThrow(() => apply(source.store.state, own.take));                 // an area already there changes nothing
   });
+  describe('goal lines in a backup are found as the fold finds them', () => {
+    /** alice's backup of a household that ran `ops`, without the lines whose op is in `drop`. */
+    const backupOfOps = async (ops: Parameters<Store['append']>[1], drop: readonly string[] = []) => {
+      const source = await new Households(await dir()).create('alice', 'Rivera');
+      await source.store.append('alice', ops);
+      const text = await readFile(source.store.path, 'utf8');
+      return parseBackup(text.split('\n').filter((l) => !drop.some((op) => l.includes(`"op":"${op}"`))).join('\n'));
+    };
+    /** bob's household, alice a member, with one plan of his toward each goal given. */
+    const target = async (goals: string[]) => {
+      const { store } = await fresh();
+      for (const [i, goal] of goals.entries()) {
+        await store.append('bob', [{ op: 'plan.create', plan: `own${i}`, title: `Own ${i}`, area: 'House' }, { op: 'plan.goal', plan: `own${i}`, goal }]);
+      }
+      return store;
+    };
+    const gate = { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' } as const;
+    /** Named in the preview, refused by the restore, and refused by the fold too: the preview spoke for it. */
+    const named = async (store: Store, backup: ReturnType<typeof parseBackup>, said: string, fold: RegExp) => {
+      const plan = planRestore(store.state, backup, ['plans']);
+      assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], [said]]);
+      const before = await readFile(store.path, 'utf8');
+      assert.throws(() => eventsToApply(plan), /1 missing prerequisite\(s\) — nothing was restored/);
+      await assert.rejects(store.adopt([...plan.take]), fold);
+      assert.equal(await readFile(store.path, 'utf8'), before, 'nothing was written');
+    };
+
+    test('a rename onto a goal this household already has is named, and nothing is restored', async () => {
+      const backup = await backupOfOps([gate, { op: 'plan.goal', plan: 'gate', goal: 'Summer trip' }, { op: 'goal.rename', from: 'Summer trip', to: 'Garden' }]);
+      await named(await target(['Garden']), backup,
+        'the goal "Summer trip" cannot be renamed to "Garden": "Garden" is already a goal here', /"Garden" is already a goal/);
+    });
+
+    test('a rename or a remove of a goal no plan carries at that point is named, and nothing is restored', async () => {
+      const ops = [gate, { op: 'plan.goal', plan: 'gate', goal: 'Summer trip' }] as const;
+      const renamed = await backupOfOps([...ops, { op: 'goal.rename', from: 'Summer trip', to: 'Holiday' }], ['plan.goal']);
+      await named(await target([]), renamed, 'the goal "Summer trip" cannot be renamed: no plan carries it here at that point',
+        /there is no goal called Summer trip/);
+      const removed = await backupOfOps([...ops, { op: 'goal.remove', goal: 'Summer trip' }], ['plan.goal']);
+      await named(await target([]), removed, 'the goal "Summer trip" cannot be removed: no plan carries it here at that point',
+        /there is no goal called Summer trip/);
+    });
+
+    test('a rename to the spelling this household already gives the goal is named, and nothing is restored', async () => {
+      const backup = await backupOfOps([gate, { op: 'plan.goal', plan: 'gate', goal: 'summer trip' }, { op: 'goal.rename', from: 'summer trip', to: 'Summer Trip' }]);
+      await named(await target(['Summer Trip']), backup,
+        'the goal "Summer Trip" cannot be renamed to "Summer Trip": that is already its name', /Summer Trip is already its name/);
+    });
+
+    test('a rename with no clash here previews clean and restores, onto this household\'s plans carrying it too', async () => {
+      const backup = await backupOfOps([gate, { op: 'plan.goal', plan: 'gate', goal: 'Summer trip' }, { op: 'goal.rename', from: 'Summer trip', to: 'Holiday' }]);
+      const store = await target(['summer trip', 'Garden']);
+      const plan = planRestore(store.state, backup, ['plans']);
+      assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
+      await store.adopt(eventsToApply(plan));
+      assert.deepEqual(['gate', 'own0', 'own1'].map((id) => store.state.plans.get(id)!.goal), ['Holiday', 'Holiday', 'Garden']);
+    });
+  });
+
   test('a backup holding an op this build does not know is refused whole, never read as if the line were absent', () => {
     const line = (e: object) => JSON.stringify({ at: '2026-12-01T09:00:00.000Z', who: 'alice', ...e });
     const claim = line({ id: 'x1', op: 'household.claim', label: 'Home' });
