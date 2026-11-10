@@ -1123,21 +1123,6 @@
     color:var(--ink-soft);box-shadow:inset 0 0 0 1px var(--line)}
   /* Block nights, and a block opened: a small panel under the bar */
   .cal-panel{display:grid;gap:var(--sp-3);max-width:560px;margin-top:var(--sp-3)}
-  .cal-panel h2{font-size:var(--fs-body)}
-  .cal-panel .pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
-  .cal-panel label{display:grid;gap:var(--sp-1);font-size:var(--fs-small);color:var(--ink-soft)}
-  .cal-panel .input{width:100%}
-  .cal-panel{scroll-margin-top:72px}
-  .cal-panel .where{display:grid;gap:var(--sp-1);justify-items:start;font-size:var(--fs-small);color:var(--ink-soft)}
-  .cal-panel label.check{display:flex;color:var(--ink)}
-  .cal-panel textarea.input{min-height:72px}
-  .cal-panel .clashes{display:grid;gap:var(--sp-2);font-size:var(--fs-small)}
-  .cal-panel .clashes p{margin:0}
-  .cal-panel .clashes .clash{color:var(--caution)}
-  .cal-panel button.chip{font:inherit;font-size:var(--fs-small);font-weight:var(--fw-medium);height:28px;padding:0 var(--sp-3);cursor:pointer}
-  .cal-panel button.chip:hover{border-color:var(--accent-line);background:var(--accent-tint)}
-  .cal-panel .facts p{margin:0}
-  .cal-panel .sure{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
   a.btn{display:inline-flex;align-items:center;text-decoration:none}
   .steps{margin:0;padding-left:var(--sp-5);display:grid;gap:var(--sp-2);font-size:var(--fs-ui);color:var(--ink-soft)}
   .steps b{color:var(--ink);font-weight:var(--fw-semibold)}
@@ -1584,6 +1569,25 @@
   .daystrip.month .mh{text-align:center;font-size:var(--fs-micro);font-weight:var(--fw-medium);color:var(--ink-soft)}
   .daystrip.month .dn{display:none}
   .daystrip .outside .dd{color:var(--ink-faint)}
+  .card.cal-panel{padding:0}
+  .cal-form{padding:var(--sp-3) var(--sp-4);scroll-margin-top:calc(var(--sp-9) + var(--sp-4))}
+  .list > .cal-form{border-top:var(--stroke) solid var(--hair)}
+  .cal-form h2{font-size:var(--fs-body)}
+  .cal-form .pair{display:grid;grid-template-columns:1fr 1fr;gap:var(--sp-2)}
+  .cal-form .input{width:100%}
+  .cal-form textarea.input{min-height:calc(var(--sp-9) + var(--sp-4))}
+  .cal-l{font-size:var(--fs-small);font-weight:var(--fw-medium);color:var(--ink-soft)}
+  .cal-form label.check{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--tap);font-size:var(--fs-small);color:var(--ink)}
+  .cal-form .clashes{display:grid;gap:var(--sp-2);font-size:var(--fs-small)}
+  .cal-form .clashes:empty{display:none}
+  .cal-form .clashes p{margin:0}
+  .cal-form .clashes .clash{color:var(--problem);font-weight:var(--fw-medium)}
+  .cal-form .seg button,.cal-form button.chip{min-height:var(--control)}
+  .cal-form button.chip{height:var(--control);font:inherit;font-size:var(--fs-small);font-weight:var(--fw-medium);padding:0 var(--sp-3);cursor:pointer}
+  .cal-form button.chip:hover{border-color:var(--accent-line);background:var(--accent-tint)}
+  .cal-form .chips{gap:var(--sp-2)}
+  .cal-form .facts p{margin:0}
+  .cal-form .sure{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
   /* ── end of calendar ── */
 </style>
 </head>
@@ -13076,7 +13080,7 @@ function calPress(key) {
 
 function renderCalendar() {
   if (!calWeekData) return;
-  calOpen = null;
+  closeCalOpen();
   renderHead();
   renderPeople();
   renderOverlays();
@@ -13415,107 +13419,159 @@ const bookingHere = () => settingsData?.booking?.on === true;
 const heldNights = (first, last) => (first === last ? `the night of ${keyWords(first, { weekday: 'short', day: 'numeric', month: 'short' })}`
   : `the nights of ${keyWords(first, { weekday: 'short', day: 'numeric', month: 'short' })} to ${keyWords(last, { weekday: 'short', day: 'numeric', month: 'short' })}`);
 
-function closeCalPanel(focus) {
-  const p = $('cal-panel');
-  p.hidden = true;
-  p.textContent = '';
-  $('cal-keep').setAttribute('aria-expanded', 'false');
+/**
+ * Puts the one open form on the page: `el` in place of the row `anchor` that asked, or, from a box or a button on the
+ * desk (no anchor), in `#cal-panel`. What was open comes back first. The first field takes focus, with the form at the top.
+ */
+function calMount(anchor, el, first) {
+  closeCalOpen();
+  calOpen = { el, anchor };
+  if (anchor) {
+    anchor.replaceWith(el);
+  } else {
+    const p = $('cal-panel');
+    p.replaceChildren(el);
+    p.hidden = false;
+    calPanelDay = null;
+  }
+  el.scrollIntoView({ block: 'start' });
+  first.focus({ preventScroll: true });
+}
+
+/** Closes what is open: the row comes back, or the panel empties and hides. `focus`, when given, takes focus. */
+function closeCalOpen(focus) {
+  const open = calOpen;
+  calOpen = null;
+  if (open) {
+    if (open.anchor) {
+      if (open.el.isConnected) open.el.replaceWith(open.anchor);
+    } else {
+      const p = $('cal-panel');
+      p.replaceChildren();
+      p.hidden = true;
+    }
+    $('cal-keep').setAttribute('aria-expanded', 'false');
+    $('cal-new').setAttribute('aria-expanded', 'false');
+  }
   focus?.focus();
 }
 
-/** A labelled input for the panel. */
-function panelField(label, attrs) {
-  const l = node('label', '', label);
-  const i = node('input', 'input');
-  Object.assign(i, attrs);
-  l.appendChild(i);
-  return [l, i];
+/** Escape on the Calendar: the open form first, then the month picker; neither, and the page's own Escape goes on. */
+function calEscape(ev) {
+  if (ev.key !== 'Escape' || view !== 'calendar' || ev.isComposing || ev.defaultPrevented) return;
+  if (cancelOpen($('calendar'))) { ev.preventDefault(); return; }
+  if (pickerOpen()) {
+    shutPicker();
+    renderCalendar();
+    $('cal-month').focus();
+    ev.preventDefault();
+  }
+}
+document.addEventListener('keydown', calEscape);
+
+/** The latest form asked for: one that waited on a read and finds a newer one asked, or its row gone, draws nothing. */
+let calOpenTurn = 0;
+
+/**
+ * After a change is committed: the picker shuts, the day is the one the change is on, the week is read again, and focus goes
+ * to the row `key` names, or to the "also has" line when a pressed calendar or goal hides that row.
+ */
+async function afterCalChange(day, key) {
+  closeCalOpen();
+  shutPicker();
+  calVisit = null;
+  calDay = day;
+  await loadCalendar(day);
+  if (key === undefined) return;
+  (calCardHost().querySelector(`[data-key="${CSS.escape(String(key))}"]`) ?? (calAlso.textContent ? calAlso : null))?.focus();
 }
 
-function openBlockForm() {
-  const p = $('cal-panel');
-  p.textContent = '';
-  const f = node('form', 'cal-panel-form');
-  f.style.display = 'grid';
-  f.style.gap = 'var(--sp-3)';
+/** A labelled input for a form: its field and the input itself. */
+function panelField(label, attrs) {
+  const i = node('input', 'input');
+  Object.assign(i, attrs);
+  return [epField(label, i), i];
+}
+/** A label over a group of buttons, which no one control owns. */
+const panelLabel = (text) => node('span', 'cal-l', text);
+
+function openBlockForm({ anchor = null, day = null } = {}) {
+  ++calOpenTurn;
+  const opener = $('cal-keep');
+  const f = node('form', 'ep-form cal-form');
   const h = node('h2', '', 'Keep nights for the household');
-  h.id = 'cal-panel-h';
-  p.setAttribute('aria-labelledby', h.id);
-  const start = calDay && calDay >= todayKey() ? calDay : todayKey();
-  const [lf, from] = panelField('First night', { type: 'date', required: true, value: start, min: todayKey() });
-  const [ll, last] = panelField('Last night', { type: 'date', required: true, value: start, min: todayKey() });
+  h.id = 'cal-form-h';
+  f.setAttribute('aria-labelledby', h.id);
+  const today = todayKey();
+  const want = day ?? calDay;
+  const start = want && want >= today ? want : today;
+  const [lf, from] = panelField('First night', { type: 'date', required: true, value: start, min: today });
+  const [ll, last] = panelField('Last night', { type: 'date', required: true, value: start, min: today });
   const [lw, why] = panelField('Why', { type: 'text', required: true, maxLength: 200, placeholder: 'Family is here' });
   from.addEventListener('change', () => { if (last.value < from.value) last.value = from.value; last.min = from.value; });
   const pair = node('div', 'pair');
   pair.append(lf, ll);
-  const acts = node('div', 'actions');
-  const go = node('button', 'btn primary', 'Block these nights');
+  const { err, say } = epErr();
+  const acts = node('div', 'ep-acts');
+  const go = node('button', 'btn primary', 'Keep these nights');
   go.type = 'submit';
-  acts.append(go, textBtn('Cancel', 'btn', null, () => closeCalPanel($('cal-keep'))));
-  f.append(h, pair, lw, node('p', 'hint', 'Friends see these nights as taken, and never why. A stay already confirmed cannot be blocked.'), acts);
-  f.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCalPanel($('cal-keep')); });
+  const close = () => closeCalOpen(anchor ?? opener);
+  acts.append(textBtn('Cancel', 'btn', null, close), go);
+  f.append(h, pair, lw, node('p', 'hint', 'Friends see these nights as taken, and never why. Nights of a confirmed stay cannot be kept.'), err, acts);
+  cancelMark(f, close);
   f.addEventListener('submit', async (e) => {
     e.preventDefault();
     go.disabled = true;
+    say('');
     try {
       await api('/api/bookings/block', { from: from.value, to: addDayKey(last.value, 1), why: why.value.trim() });
-      $('app-err').hidden = true;
-      closeCalPanel($('cal-keep'));
-      calDay = from.value;
-      await loadCalendar(from.value);
+      await afterCalChange(from.value);
+      $('cal-day-h')?.focus();
     } catch (ex) {
       go.disabled = false;
-      showProblem(ex);
+      say(ex.message);
     }
   });
-  p.appendChild(f);
-  p.hidden = false;
-  $('cal-keep').setAttribute('aria-expanded', 'true');
-  from.focus();
+  calMount(anchor, f, from);
+  if (!anchor) $('cal-keep').setAttribute('aria-expanded', 'true');
 }
 $('cal-keep').addEventListener('click', () => {
-  if ($('cal-keep').getAttribute('aria-expanded') === 'true') closeCalPanel($('cal-keep'));
+  if ($('cal-keep').getAttribute('aria-expanded') === 'true') closeCalOpen($('cal-keep'));
   else openBlockForm();
 });
 
-/** A block, opened from the week: its nights, its reason and who kept them, and Unblock with a reason. */
-function openHeld(e) {
+/** A block, opened from the week: its nights, its reason and who kept them, and Open these nights with a reason. */
+function openHeld(e, { anchor = null } = {}) {
+  ++calOpenTurn;
   const opener = document.activeElement;
-  const p = $('cal-panel');
-  p.textContent = '';
-  $('cal-keep').setAttribute('aria-expanded', 'false');
   const { first, last } = daysOf(e);
+  const f = node('form', 'ep-form cal-form');
   const h = node('h2', '', `Kept for the household: ${heldNights(first, last)}`);
-  h.id = 'cal-panel-h';
-  p.setAttribute('aria-labelledby', h.id);
+  h.id = 'cal-form-h';
+  f.setAttribute('aria-labelledby', h.id);
   const said = node('p', 'quiet', `“${e.summary}” · kept by ${nameIn(e.held.by)}. Friends see these nights as taken.`);
-  const f = node('form');
-  f.style.display = 'grid';
-  f.style.gap = 'var(--sp-3)';
   const [lw, why] = panelField('Why open them again', { type: 'text', required: true, maxLength: 200 });
-  const acts = node('div', 'actions');
-  const go = node('button', 'btn primary', 'Unblock these nights');
+  const { err, say } = epErr();
+  const acts = node('div', 'ep-acts');
+  const go = node('button', 'btn primary', 'Open these nights');
   go.type = 'submit';
-  acts.append(go, textBtn('Close', 'btn', null, () => closeCalPanel(opener)));
-  f.append(lw, acts);
-  f.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeCalPanel(opener); });
+  const close = () => closeCalOpen(anchor ?? opener);
+  acts.append(textBtn('Close', 'btn', null, close), go);
+  f.append(h, said, lw, err, acts);
+  cancelMark(f, close);
   f.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     go.disabled = true;
+    say('');
     try {
       await api(`/api/bookings/block/${encodeURIComponent(e.held.id)}`, { why: why.value.trim() }, 'DELETE');
-      $('app-err').hidden = true;
-      closeCalPanel();
-      await loadCalendar(calWeek);
+      await afterCalChange(calDay);
     } catch (ex) {
       go.disabled = false;
-      showProblem(ex);
+      say(ex.message);
     }
   });
-  p.append(h, said, f);
-  p.hidden = false;
-  p.scrollIntoView({ block: 'nearest' });
-  why.focus();
+  calMount(anchor, f, why);
 }
 
 $('cal-prev').addEventListener('click', () => {
@@ -13582,40 +13638,39 @@ async function eventPlans() {
 const editable = (e) => e.kind === 'appointment' && e.evt_id !== undefined && !e.proposed && e.calendar !== 'partner';
 
 /**
- * The form, new (`e` null) or filled in from an event the app made. A made
- * event keeps its calendar and its plan: those are shown, not changed.
+ * The form, new (`e` null) or filled in from an event the app made. From a row in the day's card it opens in place of that
+ * row (`anchor`, on `day`); from the desk it fills the panel. A made event keeps its calendar and its plan: those are shown,
+ * not changed.
  */
-async function openEventForm(e) {
-  const opener = document.activeElement;
+async function openEventForm(e, { anchor = null, day = null } = {}) {
+  const opener = !anchor && !e ? $('cal-new') : document.activeElement;
+  const turn = ++calOpenTurn;
   const changing = !!e;
-  const p = $('cal-panel');
-  p.textContent = '';
-  $('cal-keep').setAttribute('aria-expanded', 'false');
   const plans = changing ? [] : await eventPlans();
+  if (turn !== calOpenTurn || (anchor && !anchor.isConnected)) return;
 
   const spans = changing && daysOf(e).first !== daysOf(e).last;
   const today = todayKey();
-  const startDay = changing ? daysOf(e).first : (calDay && calDay >= today ? calDay : today);
+  const want = day ?? calDay;
+  const startDay = changing ? daysOf(e).first : (want && want >= today ? want : today);
   const now = Number(hhmm(Date.now() / 1000).slice(0, 2));
   const openHour = changing || startDay !== today ? 9 : Math.min(Math.max(now + 1, 9), 22);
   const pad = (h) => `${String(h).padStart(2, '0')}:00`;
   const notes0 = changing ? splitDescription(e.description).notes : '';
 
-  const f = node('form', 'cal-panel-form');
-  f.style.display = 'grid';
-  f.style.gap = 'var(--sp-3)';
-  const h = node('h2', '', changing ? 'Change this event' : 'New event');
-  h.id = 'cal-panel-h';
-  p.setAttribute('aria-labelledby', h.id);
+  const f = node('form', 'ep-form cal-form');
+  const h = node('h2', '', changing ? 'Change this event' : anchor ? `Add to ${dayLong(startDay)}` : 'New event');
+  h.id = 'cal-form-h';
+  f.setAttribute('aria-labelledby', h.id);
 
   const [lw, what] = panelField('What', { type: 'text', required: true, maxLength: 200, placeholder: 'Dentist', value: changing ? e.summary : '' });
+  // Adding to a day from its card has no Day field: the day is the card's. The input still holds it.
   const [ld, dayIn] = panelField('Day', { type: 'date', required: true, value: startDay, ...(changing ? {} : { min: today }) });
   const [le, endDay] = panelField('Ends on', { type: 'date', value: changing ? daysOf(e).last : startDay, min: startDay });
-  le.hidden = !spans;
   const allDayBox = node('input');
   allDayBox.type = 'checkbox';
   allDayBox.checked = changing && e.is_all_day;
-  const allDayLabel = node('label', 'check');
+  const allDayLabel = node('label', 'check hit');
   allDayLabel.append(allDayBox, 'All day');
   const [lf, from] = panelField('From', { type: 'time', required: true, value: changing && !e.is_all_day ? hhmm(e.dtstart) : pad(openHour) });
   const [lt, to] = panelField('To', { type: 'time', required: true, value: changing && !e.is_all_day ? hhmm(e.dtend) : pad(openHour + 1) });
@@ -13623,20 +13678,17 @@ async function openEventForm(e) {
   times.append(lf, lt);
   const syncAllDay = () => { times.hidden = allDayBox.checked; from.required = to.required = !allDayBox.checked; };
 
-  // Where it goes: a new event chooses; a made one shows where it is.
+  // Where it goes: a new event chooses (Household unless the member's own is pressed); a made one shows where it is.
   let on = 'household';
-  const where = node('div', 'where');
-  if (changing) {
-    where.append(node('p', 'quiet', `On ${e.label}`));
-  } else {
-    const lab = node('span', '', 'Where it goes');
-    lab.id = 'ev-where-l';
+  const where = changing ? null : node('div', 'ep-f');
+  if (!changing) {
     const seg = node('div', 'seg');
     seg.setAttribute('role', 'group');
-    seg.setAttribute('aria-labelledby', lab.id);
-    const mineLabel = `${myName ? `${myName.charAt(0).toUpperCase()}${myName.slice(1)}'s` : 'My'} calendar`;
-    for (const [value, text] of [['household', 'Household'], ['mine', mineLabel]]) {
-      const b = textBtn(text, '', null, () => {
+    seg.setAttribute('aria-label', 'Which calendar');
+    const choices = [['household', 'Household']];
+    if (calWeekData?.mine) choices.push(['mine', `${myName.charAt(0).toUpperCase()}${myName.slice(1)}'s`]);
+    for (const [value, text] of choices) {
+      const b = textBtn(text, 'hit', null, () => {
         on = value;
         for (const x of seg.children) x.setAttribute('aria-pressed', String(x === b));
         queueCheck();
@@ -13644,34 +13696,31 @@ async function openEventForm(e) {
       b.setAttribute('aria-pressed', String(value === on));
       seg.appendChild(b);
     }
-    where.append(lab, seg);
+    where.append(panelLabel('On'), seg);
   }
 
   // A plan it is for: chosen when new; shown, with its card a click away, when made.
   let planIn = null;
-  const planBox = node('div');
+  let planBox = null;
   if (changing) {
     if (e.plan) {
-      const open = textBtn(`Plan › ${e.plan.title}`, 'link', null, () => { closeCalPanel(); void openCard(e.plan.id); });
-      planBox.append(node('span', 'quiet', 'For '), open);
+      planBox = node('div');
+      planBox.append(node('span', 'quiet', 'For '), textBtn(e.plan.title, 'link hit', null, () => { closeCalOpen(); void openCard(e.plan.id); }));
     }
   } else if (plans.length) {
-    const l = node('label', '', 'Plan (optional)');
     planIn = node('select', 'input');
     planIn.appendChild(Object.assign(node('option', '', 'None'), { value: '' }));
     for (const x of plans) planIn.appendChild(Object.assign(node('option', '', `${x.title} · ${x.area}`), { value: x.id }));
-    l.appendChild(planIn);
-    planBox.appendChild(l);
+    planBox = epField('For a plan', planIn);
   }
 
-  const ln = node('label', '', 'Notes (optional)');
   const notes = node('textarea', 'input');
   notes.maxLength = 2000;
   notes.rows = 3;
   notes.value = notes0;
-  ln.appendChild(notes);
+  const ln = epField('Notes', notes);
 
-  // What the times clash with, and free times to choose instead.
+  // What the times overlap, and free times to choose instead.
   const clash = node('div', 'clashes');
   clash.setAttribute('aria-live', 'polite');
 
@@ -13690,33 +13739,35 @@ async function openEventForm(e) {
     try {
       const out = await api('/api/calendar/conflicts', { ...r, allDay: allDayBox.checked, on: changing ? e.calendar : on,
         ...(changing ? { except: e.evt_id } : {}) });
-      if (mine !== seq || !p.contains(f)) return;
+      if (mine !== seq || !f.isConnected) return;
       clash.textContent = '';
       if (!out.clashes.length) {
         clash.appendChild(node('p', 'hint', out.checked.length ? `Nothing else at that time on ${listOf(out.checked)}.` : 'There is no calendar to check it against yet.'));
         return;
       }
       for (const c of out.clashes) {
-        clash.appendChild(node('p', 'clash', `Clashes with ${c.label} · ${c.summary || 'something'} ${clockOf(c.dtstart)}–${clockOf(c.dtend)}`));
+        const line = node('p');
+        line.append('Overlaps ', node('b', 'clash', c.summary || 'something'), `, ${clockOf(c.dtstart)} to ${clockOf(c.dtend)}`);
+        clash.appendChild(line);
       }
       if (out.slots.length) {
         const row = node('div', 'chips');
-        row.appendChild(node('span', 'hint', 'Free instead:'));
-        for (const s of out.slots) {
-          const chip = textBtn(`${clockOf(s.start)}–${clockOf(s.end)}`, 'chip', null, () => {
+        row.setAttribute('role', 'group');
+        row.setAttribute('aria-label', 'Free from');
+        for (const s of out.slots.slice(0, 3)) {
+          row.appendChild(textBtn(clockOf(s.start), 'chip hit', null, () => {
             from.value = hhmm(s.start);
             to.value = hhmm(s.end);
             queueCheck();
-          });
-          row.appendChild(chip);
+          }));
         }
         clash.appendChild(row);
       }
     } catch (ex) {
-      if (mine !== seq || !p.contains(f)) return;
+      if (mine !== seq || !f.isConnected) return;
       clash.textContent = '';
       // A time that does not read yet (the end before the start) is the form's to say on Save, not a failure here.
-      if (ex.status !== 400) clash.appendChild(node('p', 'hint', ex.status === 409 ? 'Sign in again to check for clashes.' : 'Clashes could not be checked just now.'));
+      if (ex.status !== 400) clash.appendChild(node('p', 'hint', ex.status === 409 ? 'Sign in again to check for overlaps.' : 'Overlaps could not be checked just now.'));
     }
   }
   function queueCheck() {
@@ -13728,73 +13779,81 @@ async function openEventForm(e) {
   allDayBox.addEventListener('change', () => { syncAllDay(); queueCheck(); });
   syncAllDay();
 
-  const acts = node('div', 'actions');
+  const { err, say } = epErr();
+  const close = () => closeCalOpen(anchor ?? opener);
+  const acts = node('div', 'ep-acts');
+  acts.appendChild(textBtn(changing ? 'Close' : 'Cancel', 'btn', null, close));
   const go = node('button', 'btn primary', 'Save');
   go.type = 'submit';
-  acts.appendChild(go);
   if (changing) {
     const sure = node('span', 'sure');
     sure.hidden = true;
     const del = textBtn('Delete', 'btn danger', null, () => { del.hidden = true; sure.hidden = false; yes.focus(); });
     const yes = textBtn('Delete it', 'btn danger', null, async () => {
       yes.disabled = true;
+      say('');
       try {
         await api(`/api/calendar/events/${e.evt_id}`, undefined, 'DELETE');
-        $('app-err').hidden = true;
-        closeCalPanel();
-        await loadCalendar(calWeek);
+        await afterCalChange(calDay);
       } catch (ex) {
         yes.disabled = false;
-        showProblem(ex);
+        say(ex.message);
       }
     });
     sure.append(node('span', 'quiet', 'Take it off the calendar for good?'), yes, textBtn('Keep it', 'btn', null, () => { sure.hidden = true; del.hidden = false; del.focus(); }));
     acts.append(del, sure);
   }
-  acts.appendChild(textBtn(changing ? 'Close' : 'Cancel', 'btn', null, () => closeCalPanel(opener)));
+  acts.appendChild(go);
 
-  f.append(h, lw, ld, le, allDayLabel, times, where, planBox, ln, clash, acts);
-  f.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeCalPanel(opener); });
+  const parts = [h, lw];
+  if (changing || !anchor) parts.push(ld);
+  parts.push(allDayLabel, times);
+  if (spans) parts.push(le);
+  parts.push(clash);
+  parts.push(changing ? node('p', 'quiet', `On ${e.label}`) : where);
+  if (planBox) parts.push(planBox);
+  parts.push(ln, err, acts);
+  f.append(...parts);
+  cancelMark(f, close);
   f.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const r = range();
     if (!r) return;
     go.disabled = true;
+    say('');
     try {
-      await api(changing ? `/api/calendar/events/${e.evt_id}` : '/api/calendar/events', {
+      const saved = await api(changing ? `/api/calendar/events/${e.evt_id}` : '/api/calendar/events', {
         summary: what.value.trim(), ...r, allDay: allDayBox.checked, notes: notes.value.trim(),
         ...(changing ? {} : { on, ...(planIn?.value ? { plan: planIn.value } : {}) }),
       });
-      $('app-err').hidden = true;
-      closeCalPanel();
-      calDay = dayIn.value;
-      await loadCalendar(dayIn.value);
+      await afterCalChange(dayIn.value, changing ? e.evt_id : saved.appointment.evt_id);
     } catch (ex) {
       go.disabled = false;
-      showProblem(ex);
+      say(ex.message);
     }
   });
-  p.appendChild(f);
-  p.hidden = false;
-  p.scrollIntoView({ block: 'nearest' });
-  what.focus();
+  calMount(anchor, f, what);
+  if (!anchor && !changing) $('cal-new').setAttribute('aria-expanded', 'true');
   void check();
 }
 
 /** An event the app did not make (or on a calendar only checked): what it is, read-only, and a way to Synology Calendar. */
-function openEventView(e) {
+function openEventView(e, { anchor = null } = {}) {
+  ++calOpenTurn;
   const opener = document.activeElement;
-  const p = $('cal-panel');
-  p.textContent = '';
-  $('cal-keep').setAttribute('aria-expanded', 'false');
+  const box = node('div', 'cal-form');
   const h = node('h2', '', e.summary || 'Busy');
-  h.id = 'cal-panel-h';
-  p.setAttribute('aria-labelledby', h.id);
+  h.id = 'cal-form-h';
+  box.setAttribute('role', 'group');
+  box.setAttribute('aria-labelledby', h.id);
   const facts = node('div', 'facts');
   facts.append(node('p', '', whenWords(e)), node('p', 'quiet', e.calendar === 'partner' ? `On ${e.label}, shared with you` : `On ${e.label}`));
   const notes = splitDescription(e.description).notes;
   if (notes) facts.appendChild(node('p', '', notes));
-  const acts = node('div', 'actions');
+  const close = () => closeCalOpen(anchor ?? opener);
+  const acts = node('div', 'ep-acts');
+  const closeBtn = textBtn('Close', 'btn', null, close);
+  acts.appendChild(closeBtn);
   const url = dsmCalendarUrl();
   if (url) {
     const a = node('a', 'btn primary', 'Open in Synology Calendar');
@@ -13803,19 +13862,14 @@ function openEventView(e) {
     a.rel = 'noopener';
     acts.appendChild(a);
   }
-  acts.appendChild(textBtn('Close', 'btn', null, () => closeCalPanel(opener)));
   const why = e.calendar === 'partner' ? 'It is on a calendar shared with you, so only its owner changes it.' : 'It was not made in Home Planner, so it is changed where it was made.';
-  const box = node('div');
   box.append(h, facts, node('p', 'hint', why), acts);
-  box.addEventListener('keydown', (ev) => { if (ev.key === 'Escape') closeCalPanel(opener); });
-  p.appendChild(box);
-  p.hidden = false;
-  p.scrollIntoView({ block: 'nearest' });
-  acts.querySelector('a, button').focus();
+  cancelMark(box, close);
+  calMount(anchor, box, closeBtn);
 }
 
 $('cal-new').addEventListener('click', () => {
-  if (!$('cal-panel').hidden && $('cal-panel').querySelector('.cal-panel-form h2')?.textContent === 'New event') closeCalPanel($('cal-new'));
+  if ($('cal-new').getAttribute('aria-expanded') === 'true') closeCalOpen($('cal-new'));
   else void openEventForm(null);
 });
 
@@ -14060,9 +14114,10 @@ function forgetHousehold() {
   calGoal = null;
   calVisit = null;
   calPanelDay = null;
-  calOpen = null;
   calHousehold = false;
-  closeCalPanel();
+  closeCalOpen();
+  $('cal-panel').replaceChildren();
+  $('cal-panel').hidden = true;
   for (const id of ['cal-week', 'cal-strip', 'cal-card', 'cal-people', 'cal-over',
     'cal-range', 'cal-month-t', 'cal-off']) $(id).textContent = '';
   $('cal-off').hidden = true;

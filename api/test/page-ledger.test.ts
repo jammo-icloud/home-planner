@@ -262,6 +262,10 @@ const ADDED: readonly Line[] = [
   ['S8', 'memberDisc(', 'calendar'], ['S10', 'householdDisc(e.label)', 'calendar'], ['S19', "focus === 'bills'", 'page'], ['S19', "focus === true || focus === 'cover'", 'page'],
   // The month picker (Calendar Task 8).
   ['month', 'function openPicker(', 'calendar'], ['month', 'function shutPicker(', 'calendar'], ['month', "'Previous month'", 'calendar'], ['month', "'Next month'", 'calendar'], ['month', '.daystrip.month', 'css'], ['C1', "$('cal-month').setAttribute('aria-expanded'", 'calendar'],
+  // Forms in place (Calendar Task 9).
+  ['C8', 'function calMount(', 'calendar'], ['C55', 'function closeCalOpen(', 'calendar'], ['C68', 'function calEscape(', 'calendar'], ['C68', "document.addEventListener('keydown', calEscape)", 'calendar'], ['C69', 'first.focus({ preventScroll: true })', 'calendar'],
+  ['form', 'ep-form cal-form', 'calendar'], ['C33', "panelField('Day'", 'calendar'], ['C34', "'Which calendar'", 'calendar'], ['C34', "panelLabel('On')", 'calendar'], ['C35', "'For a plan'", 'calendar'], ['C36', "'Notes'", 'calendar'], ['C38', "'Overlaps '", 'calendar'], ['C39', "'Free from'", 'calendar'], ['C40', 'Sign in again to check for overlaps.', 'calendar'], ['C40', 'Overlaps could not be checked just now.', 'calendar'], ['C41', 'ex.status !== 400', 'calendar'],
+  ['C43', 'say(ex.message)', 'calendar'], ['C44', 'async function afterCalChange(', 'calendar'], ['C46', 'except: e.evt_id', 'calendar'], ['C50', "'Open these nights'", 'calendar'], ['C52', "'Keep these nights'", 'calendar'], ['C52', 'Nights of a confirmed stay cannot be kept.', 'calendar'], ['C53', 'afterCalChange(from.value', 'calendar'], ['S15', 'await eventPlans()', 'calendar'], ['form', '.cal-form{', 'css'], ['form', '.cal-form .clashes .clash{color:var(--problem)', 'css'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
@@ -299,12 +303,18 @@ const GONE: readonly Line[] = [
   ['C9', 'function legend(', 'page'], ['C9', 'cal-legend', 'page'], ['C10', 'legend(', 'calendar'], ['C11', 'Shows your calendar', 'page'], ['S3', 'cal-block', 'page'], ['C21', '.dots', 'css'], ['spec', '.legend', 'css'], ['spec', '.sw{', 'css'], ['spec', '.sw.', 'css'], ['spec', 'sourceName', 'page'], ['C6', 'class="btn small" id="cal-dsm"', 'calendarMarkup'], ['C56', 'Due dates from your plans are still shown', 'page'], ['C57', 'the rest of the week is shown', 'page'],
   // The phone's hour grid and its title (Calendar Task 7).
   ['C26', 'dayview', 'page'], ['C26', "hourLabels('hrs')", 'page'], ['C24', 'cal-day-count', 'page'], ['C24', 'cal-day-title', 'page'], ['C24', '.day-head', 'css'], ['C26', 'id="cal-day"', 'page'], ['spec', 'evNode(e, long', 'page'], ['spec', 'evSub(e, long', 'page'], ['spec', 'timedBoxes(events, day, long)', 'page'], ['spec', 'renderDay(', 'page'],
+  // Forms in place (Calendar Task 9): the panel's old words and its closer.
+  ['spec', 'Block these nights', 'page'], ['C50', 'Unblock these nights', 'page'], ['C52', 'cannot be blocked', 'page'], ['C34', 'Where it goes', 'page'], ['C35', 'Plan (optional)', 'page'], ['C36', 'Notes (optional)', 'page'], ['C38', 'Clashes with ${', 'page'], ['C39', 'Free instead', 'page'], ['C40', 'check for clashes', 'page'], ['spec', 'closeCalPanel', 'page'], ['spec', 'Plan › ${e.plan.title}', 'calendar'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
 const DRAWN_LATER: readonly string[] = [];
 
 describe('the page ledger', () => {
+  test('a Calendar form says a refusal once: only a week that cannot be read uses the error box', () => {
+    assert.equal(uncommented(REGIONS.calendar).split('showProblem(').length - 1, 2); // loadCalendar, openPicker
+    assert.equal(uncommented(REGIONS.calendar).includes("$('app-err')"), false);
+  });
   test('every id the script reaches for at load is in the markup', () => {
     const ids = new Set([...script.matchAll(/^\S.*?\$\('([\w-]+)'\)/gm)].map((m) => m[1]!));
     assert.ok(ids.size >= 8, 'the pattern still finds the top-level lookups');
