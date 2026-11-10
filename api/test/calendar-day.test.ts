@@ -12,7 +12,7 @@ const weekdayLong = (k: string) => DAYS[new Date(`${k}T12:00:00Z`).getUTCDay()]!
 const weekdayShort = (k: string) => weekdayLong(k).slice(0, 3);
 const listOf = (n: string[]) => (n.length < 2 ? n.join('') : `${n.slice(0, -1).join(', ')} and ${n.at(-1)}`);
 const f = new Function('keyAt', 'clockOf', 'weekdayLong', 'weekdayShort', 'listOf', `${block}
-return { calKey, calTitle, dayView, dayMarks, markList, marksWords, barEntries, pressedOn, clashLine, alsoHasLine, nowIndex, whenOf, rowWords, moneyWords, visitNeedsEveryone, nightHeld, dayShort, dayLong, CAL_HOUSEHOLD };`)(keyAt, clockOf, weekdayLong, weekdayShort, listOf) as any;
+return { calKey, calTitle, dayView, dayMarks, markList, marksWords, barEntries, pressedOn, clashLine, alsoHasLine, nowIndex, whenOf, rowWords, moneyWords, visitNeedsEveryone, nightHeld, dayInWeek, dayShort, dayLong, CAL_HOUSEHOLD };`)(keyAt, clockOf, weekdayLong, weekdayShort, listOf) as any;
 
 const H = (d: string, h = 0) => Date.parse(`${d}T${String(h).padStart(2, '0')}:00:00Z`) / 1000;
 const D = '2026-11-14', NEXT = '2026-11-15';   // a Saturday, a Sunday
@@ -148,4 +148,19 @@ describe('the card', () => {
       assert.ok(at > 0 && at < ring, `${state} comes before the focus ring`);
     }
   });
+});
+
+describe('the day a week keeps', () => {
+  const week = ['2026-11-09', '2026-11-10', '2026-11-11', '2026-11-12', '2026-11-13', '2026-11-14', '2026-11-15'];
+  test('a chosen day of another week gives way to today, else the first day', () => {
+    assert.equal(f.dayInWeek('2026-11-04', week, '2026-11-11'), '2026-11-11');
+    assert.equal(f.dayInWeek('2026-11-04', week, '2026-12-01'), '2026-11-09');
+    assert.equal(f.dayInWeek(null, week, '2026-12-01'), '2026-11-09');
+  });
+  test('a chosen day in the week stays', () => assert.equal(f.dayInWeek('2026-11-13', week, '2026-11-11'), '2026-11-13'));
+});
+
+describe('the marks fit a phone cell', () => {
+  test('the strip marks wrap rather than overlap the next day', () =>
+    assert.match(page, /\.daystrip \.marks\{[^}]*flex-wrap:wrap/));
 });

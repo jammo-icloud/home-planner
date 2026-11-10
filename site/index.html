@@ -1520,7 +1520,8 @@
   #cal-over button{flex:none;display:inline-flex;align-items:center;gap:var(--sp-1);min-height:var(--sp-7);white-space:nowrap}
   #cal-over button span.flag{color:inherit;max-width:none}
   #cal-over button span.flag > span{overflow:visible;text-overflow:clip}
-  .daystrip .marks{display:flex;align-items:center;justify-content:center;gap:var(--sp-1);min-height:var(--sp-4)}
+  /* Four marks are wider than a 47px phone cell: they wrap to a second line rather than run over the next day. */
+  .daystrip .marks{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px var(--sp-1);min-height:var(--sp-4);max-width:100%}
   .daystrip .mk-n{font-size:var(--fs-micro);color:var(--ink-soft)}
   .daystrip .mk-m{font-size:var(--fs-micro);line-height:1}
   .daystrip .mk-m.due{color:var(--caution)}
@@ -12853,6 +12854,8 @@ function visitNeedsEveryone(day, key, data, lens) {
 
 /** Whether any event, shown or not, holds the night of `day`. */
 const nightHeld = (day, events) => events.some((e) => { if (!e.held) return false; const { first, last } = daysOf(e); return first <= day && last >= day; });
+/** The day a week keeps once it has arrived: the one chosen if it is in that week, else today if it is, else the first. */
+const dayInWeek = (chosen, days, today) => (chosen && days.includes(chosen) ? chosen : days.includes(today) ? today : days[0]);
 // ── the calendar: end of what a day shows ──────────────────────────────────
 
 function evClasses(e) {
@@ -12993,10 +12996,7 @@ function hourLabels(cls) {
 async function loadCalendar(weekStart) {
   calWeek = mondayOf(weekStart);
   const days = weekDays(calWeek);
-  if (!calDay || !days.includes(calDay)) {
-    const today = todayKey();
-    calDay = days.includes(today) ? today : days[0];
-  }
+  calDay = dayInWeek(calDay, days, todayKey());
   const mine = ++calFetch;
   $('loading').hidden = false;
   try {
@@ -13004,6 +13004,8 @@ async function loadCalendar(weekStart) {
     const r = await api(`/api/calendar?start=${days[0]}&end=${addDayKey(calWeek, 7)}${budget ? `&budget=${encodeURIComponent(budget)}` : ''}`);
     // Another week was asked for while this one was on its way: that one is drawn, not this.
     if (mine !== calFetch) return;
+    // A day was pressed on the old strip while this week was on its way: the card is of a day in this week.
+    calDay = dayInWeek(calDay, days, todayKey());
     calWeekData = { ...r, week: calWeek };
     // A link to a row: if this lens hides it, it is drawn under Everyone for this visit; a row that is gone leaves the day untinted.
     if (calVisit && !calVisit.everyone) {
