@@ -16,11 +16,14 @@ const script = page.slice(at, page.lastIndexOf('</script>'));
 const server = read('../src/server.ts').replaceAll('\\/', '/');
 const tools = read('../src/tools.ts');
 const between = (text: string, from: string, to: string): string => text.slice(text.indexOf(from), text.indexOf(to));
-/** Plan's own markup, the board and the empty card: "Mine" and "Theirs" stay in Today's filters until 0.8.0. */
+/** Plan's own markup, the board and the empty card. */
 const planMarkup = markup.slice(markup.indexOf('<div id="plan"'), markup.indexOf('</div>', markup.indexOf('<div id="plan-card"')) + 6);
 /** The regions an entry is searched in. `page` is for what truly lives outside Plan's own code and the shared helpers. */
 const REGIONS = {
   plan: `${planMarkup}\n${between(script, '// ── plan: the board and the card', '// ── settings')}`,
+  today: between(script, '// ── today', '// ── budget'),
+  todayMarkup: markup.slice(markup.indexOf('<div id="briefing"'), markup.indexOf('<!-- Budget, Import and Compare')),
+  threadSrc: read('../src/thread.ts'),
   shared: between(script, '// ── shared: what every screen calls', '// ── today'),
   css: between(page, '<style', '</style>'),
   page,
@@ -50,6 +53,27 @@ const KEPT: readonly Line[] = [
   ['card', 'function renderCard('], ['card', 'function checklistSection('], ['card', 'function attachmentsSection('], ['card', 'function claudeSection('],
   ['card', 'function betweenSection('], ['card', 'function moneySection('], ['card', 'function peopleSection('], ['card', 'function whenSection('],
   ['card', 'function factsCard('], ['card', 'async function openCard('],
+// Today (0.8.0): what stands before the rebuild and after it.
+['T1', 'Put Home Planner on your Home Screen', 'todayMarkup'], ['T1', 'function homeBanner(', 'page'], ['T2', 'openSettings(a.group, a.row)', 'today'], ['T3', 'openBudgetAt(a.budget, a.envelope, a.cover === true)', 'today'],
+['T19', 'Sign in again to read the whole ${what}.', 'today'], ['T19', 'The full text is on the old NAS.', 'today'], ['T19', 'The whole ${what} could not be read just now.', 'today'],
+['T24', 'Claude answered · ', 'today'], ['T25', 'Read the whole answer', 'today'], ['T26', 'Looked at ${looked.join(', 'today'], ['T27', "Claude didn't answer this one.", 'today'], ['T27', "'Ask again'", 'today'],
+['T30', 'not in the ledger', 'page'], ['T30', 'function removedBlock(', 'page'], ['T31', 'Why it belongs after all', 'page'], ['T31', "'Leave it'", 'page'], ['T32', "'/api/thread/seen'", 'today'],
+['T36', "o.tool === 'move_money' || o.tool === 'set_assignment'", 'today'], ['T37', 'The numbers have moved since this was suggested.', 'today'], ['T37', "'Work it out again'", 'today'],
+['T38', 'Reason, as it will read in the record', 'today'], ['T38', 'Approving needs a reason, the same as moving money', 'today'], ['T39', 'function adjustForm(', 'today'], ['T39', 'Amount to move', 'today'], ['T39', 'Fund it at', 'today'], ['T39', "'Suggest this instead'", 'today'], ['T39', 'Enter an amount in dollars', 'today'], ['T39', 'It needs a reason', 'today'],
+['T42', 'Replaced by a newer suggestion for the same envelopes.', 'today'], ['T43', '. It comes back if its numbers change.', 'today'], ['T45', 'ctx.pending.has(o.id)', 'today'],
+['T48', "actionButton('Take it'", 'today'], ['T48', ' reads this`', 'today'], ['T48', 'Declining needs a reason', 'today'], ['T51', 'Taken by ', 'today'], ['T51', 'The ask to ', 'today'],
+['T52', "plan: 'Move the plan too'", 'today'], ['T52', "plan: 'Take the change'", 'today'], ['T52', "calendar: 'Put the page back'", 'today'], ['T52', "leave: 'Leave both'", 'today'], ['T54', 'if (!d.deleted)', 'today'], ['T55', 'd.unreadable === true', 'today'],
+['T57', "plan: 'Moved the plan too'", 'today'], ['T57', "leave: 'Left both'", 'today'], ['T57', "plan: 'Took the change made in Drive'", 'today'], ['T57', "leave: 'Left the page as edited'", 'today'], ['T57', '; it changed again since, and the newer card asks about it', 'today'], ['T57', '; let go when the plan was removed', 'today'],
+['T59', 'Seen by ', 'today'], ['T59', 'A newer balance came in since', 'today'], ['T59', 'Put away by ', 'today'], ['T60', "'Suggest other dates'", 'today'], ['T62', 'Declining needs a reason: they will read it', 'today'],
+['T63', "'Suggest these dates'", 'today'], ['T63', 'Choose the day they would arrive and the day they would leave', 'today'], ['T63', 'They leave after they arrive', 'today'], ['T63', 'Suggesting other dates needs a reason: they will read it', 'today'],
+['T66', 'Replaced by a newer request', 'today'], ['T66', 'Withdrawn by them', 'today'], ['T67', "'Take it off the calendar'", 'today'], ['T68', 'Taken off the calendar by ', 'today'], ['T68', 'Left on the calendar by ', 'today'], ['T69', 'dataset.offer', 'today'], ['T69', 'dataset.drift', 'today'],
+['T74', 'id="leave-note"', 'todayMarkup'], ['T75', 'id="ask-claude"', 'todayMarkup'], ['T76', "Claude isn't set up on this server. Notes still work.", 'today'], ['T77', 'Asking Claude…', 'today'], ['T78', "Claude couldn't answer: ${r.error}", 'today'],
+['T81', 'Yours · what the briefing was written from', 'todayMarkup'], ['T83', '.today > .yours{', 'css'], ['T84', 'function calendarRail(', 'today'], ['T84', 'function eventWhen(', 'today'], ['T88', 'could not be read just now.`', 'today'], ['T89', 'cal.unavailable', 'today'], ['T90', 'Nothing on your calendars today or tomorrow.', 'today'],
+['T91', 'Plans that need you', 'todayMarkup'], ['T91', 'function plansRail(', 'today'], ['T93', 'Nothing of yours is due this week, or in Doing.', 'today'], ['T94', 'Money this month', 'todayMarkup'], ['T94', 'function moneyRail(', 'today'], ['T95', 'No budget has this month open yet.', 'today'],
+['T103', 'Nothing in the household matches that.', 'page'], ['T104', 'The search could not be done just now.', 'page'], ['T105', 'Sign in again to search briefings, answers and files too.', 'page'], ['T112', 'function showProblem(', 'page'], ['T113', 'This household has no budget yet. ', 'page'], ['T114', 'Open it from the template', 'page'],
+['T118', "ev.key === 'Enter' && !ev.shiftKey", 'today'], ['T119', '!ev.isComposing', 'today'],
+['S12', 'const dayKey', 'today'], ['S12', 'const timeOf', 'today'], ['S12', 'const fmtDate', 'today'], ['S12', 'const asOf', 'today'], ['S13', 'const docTexts', 'today'], ['S13', 'function readDocText(', 'today'], ['S13', 'const docRead', 'today'], ['S13', 'let docHousehold', 'today'],
+['S14', 'claudeOn = who.claude === true', 'page'], ['S20', 'id="unsorted-q"', 'page'], ['S20', 'async function categoryList(', 'page'], ['S21', 'const chosenBudget', 'page'], ['S24', 'let calWeek', 'page'], ['S27', 'const bookingHere', 'page'], ['S27', 'const dsmCalendarUrl', 'page'],
 ];
 /** What 0.7.0 brings, and what it deletes (the spec's "What is deleted"). Each page task adds its lines before it does the work. */
 const ADDED: readonly Line[] = [
@@ -137,7 +161,7 @@ const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
 const DRAWN_LATER: readonly string[] = [];
 
-describe('the page ledger: Plan, 0.7.0', () => {
+describe('the page ledger', () => {
   test('every id the script reaches for at load is in the markup', () => {
     const ids = new Set([...script.matchAll(/^\S.*?\$\('([\w-]+)'\)/gm)].map((m) => m[1]!));
     assert.ok(ids.size >= 10, 'the pattern still finds the top-level lookups');
@@ -147,6 +171,7 @@ describe('the page ledger: Plan, 0.7.0', () => {
     for (const [name, text] of Object.entries(REGIONS)) assert.ok(text.length > 500, `the ${name} region is not empty`);
     assert.ok(planMarkup.includes('id="plan-card"'), "Plan's markup runs through the card's element");
     assert.ok(REGIONS.plan.includes('function renderCard('), "the plan region holds the card's script");
+    assert.ok(REGIONS.today.includes('function renderSetupNotes('), 'the today region holds its script');
     assert.ok(REGIONS.shared.includes('function icon('), 'the shared region holds the helpers');
   });
   for (const [name, list, want] of [['kept', KEPT, true], ['added', ADDED, true], ['gone', GONE, false]] as const) {
