@@ -12573,6 +12573,193 @@ function wallMs(key, hour = 0) {
 const hoursIn = (key, sec) => (sec * 1000 - wallMs(key, CAL_OPEN)) / 3_600_000;
 const SPAN = CAL_CLOSE - CAL_OPEN;
 
+const weekdayShort = (key) => keyWords(key, { weekday: 'short' });
+const weekdayLong = (key) => keyWords(key, { weekday: 'long' });
+
+// ── the calendar: what a day shows ─────────────────────────────────────────
+//
+// For any day, what the Calendar draws: the strip, the month, the bar, the
+// card, the desk's heads and the "also has" line all read it. No DOM in it, and
+// it uses only keyAt, clockOf, listOf, weekdayShort and weekdayLong, so a test
+// reads it out of the page and runs it. `data` is { events, money, thread,
+// goals }; `lens` is { pressed, goal, over: { plans, budget, record } }.
+
+/** Household's key in the bar: a DSM account cannot begin with "@". */
+const CAL_HOUSEHOLD = '@household';
+
+/** The household's days an event covers: all day from its first day to its last; timed, each day it touches. */
+function daysOf(e) {
+  const first = keyAt(e.dtstart * 1000);
+  const last = keyAt(Math.max(e.dtstart, e.dtend - 1) * 1000);
+  return { first, last };
+}
+
+const dayShort = (key) => `${weekdayShort(key)} ${Number(key.slice(8))}`;
+const dayLong = (key) => `${weekdayLong(key)} ${Number(key.slice(8))}`;
+const isPlanRow = (e) => e.kind === 'due' || e.kind === 'block';
+
+/** Whose row it is, for the bar: Household for a plan's date, a block, held nights or the Household calendar; else its owner; a calendar that is no member's has none. */
+function calKey(e) {
+  if (isPlanRow(e) || e.held || e.calendar === 'household') return CAL_HOUSEHOLD;
+  return e.owner || null;
+}
+
+/** Whether the pressed calendar and the goal chip leave this row showing; the overlays are not asked. */
+function showsUnder(e, lens) {
+  if (lens.pressed && calKey(e) !== lens.pressed) return false;
+  if (lens.goal && e.plan && String(e.plan.goal ?? '').toLowerCase() !== String(lens.goal).toLowerCase()) return false;
+  return true;
+}
+
+const calTitle = (e) => (e.held && e.held.kind === 'stay' && e.held.name ? `${e.held.name} staying` : e.summary || 'Busy');
+
+/** What a row is called in the URL and in a link: its event, its proposal, its plan or its held nights. */
+const rowKey = (e) => String(e.evt_id ?? e.proposed ?? e.plan?.id ?? e.held?.id);
+
+const byText = (a, b) => (a < b ? -1 : a > b ? 1 : 0);
+
+/** Everything a day holds under a lens, in the order the card draws it. */
+function dayView(day, data, lens) {
+  const on = data.events.filter((e) => { const { first, last } = daysOf(e); return first <= day && last >= day; });
+  const overlaid = lens.over.plans ? on : on.filter((e) => !isPlanRow(e));
+  const shown = overlaid.filter((e) => showsUnder(e, lens));
+  const hidden = overlaid.filter((e) => !showsUnder(e, lens));
+  const byStart = (a, b) => a.dtstart - b.dtstart;
+  return {
+    shown, hidden,
+    money: lens.over.budget && data.money ? data.money.filter((m) => m.day === day) : [],
+    record: lens.over.record ? (data.thread || []).find((r) => r.day === day) ?? null : null,
+    due: shown.filter((e) => e.kind === 'due' && !e.held).sort((a, b) => byText(calTitle(a), calTitle(b))),
+    held: shown.filter((e) => e.held).sort(byStart),
+    allDay: shown.filter((e) => e.is_all_day && e.kind !== 'due' && !e.held).sort((a, b) => byStart(a, b) || byText(calTitle(a), calTitle(b))),
+    timed: shown.filter((e) => !e.is_all_day && !e.held).sort((a, b) => byStart(a, b) || a.dtend - b.dtend),
+  };
+}
+
+/** The marks on a day: how many things, a plan's glyph, money, a clash, held nights. */
+function dayMarks(day, data, lens) {
+  const v = dayView(day, data, lens);
+  const states = v.shown.filter(isPlanRow).map((e) => e.plan?.state);
+  const glyph = states.includes('doing') ? 'doing' : states.includes('planning') ? 'planning' : states.includes('done') ? 'done' : null;
+  const money = v.money.some((m) => m.short) ? 'short' : v.money.some((m) => m.kind !== 'paid') ? 'due' : v.money.length ? 'paid' : null;
+  return { count: v.shown.length, glyph, money, clash: v.timed.some((e) => e.clash), held: v.shown.some((e) => e.held) };
+}
+
+/** The marks that are on, in the order they are drawn; a phone keeps the first `limit`. */
+function markList(m, limit = Infinity) {
+  return ['count', 'glyph', 'money', 'clash', 'held'].filter((k) => (k === 'count' ? m.count > 0 : m[k])).slice(0, limit);
+}
+
+const GLYPH_WORDS = { planning: 'a plan in planning', doing: 'a plan in progress', done: 'a plan done' };
+const MONEY_MARK_WORDS = { short: 'money short', due: 'money', paid: 'bills paid' };
+
+/** A day's accessible name: the date and every mark. */
+function marksWords(dayWords, m) {
+  const parts = [];
+  if (m.count > 0) parts.push(`${m.count} ${m.count === 1 ? 'thing' : 'things'}`);
+  if (m.glyph) parts.push(GLYPH_WORDS[m.glyph]);
+  if (m.money) parts.push(MONEY_MARK_WORDS[m.money]);
+  if (m.clash) parts.push('a clash');
+  if (m.held) parts.push('nights held');
+  return `${dayWords}, ${parts.length ? parts.join(', ') : 'nothing on'}`;
+}
+
+/** The bar: members in order who have a row in the window, then Household; each count is the sum of its day counts. Under two entries there is no bar. */
+function barEntries(events, days, lens, order) {
+  const entries = [];
+  for (const key of [...order, CAL_HOUSEHOLD]) {
+    const n = days.reduce((sum, d) => sum + dayMarks(d, { events, money: [], thread: [] }, { ...lens, pressed: key }).count, 0);
+    if (n > 0) entries.push({ key, label: key === CAL_HOUSEHOLD ? 'Household' : key, n });
+  }
+  return entries.length < 2 ? [] : entries;
+}
+
+/** Who is pressed once the bar is known: a person with no entry falls back to Everyone. */
+const pressedOn = (wanted, entries) => (wanted && entries.some((e) => e.key === wanted) ? wanted : null);
+
+/** The clashes in a day's timed rows, one phrase per group of two or more: "2 at 10:00 AM". */
+function clashLine(timed) {
+  const flagged = timed.filter((e) => e.clash).sort((a, b) => a.dtstart - b.dtstart || a.dtend - b.dtend);
+  const groups = [];
+  let latest = -Infinity;
+  for (const e of flagged) {
+    if (groups.length && e.dtstart < latest) { groups[groups.length - 1].push(e); latest = Math.max(latest, e.dtend); }
+    else { groups.push([e]); latest = e.dtend; }
+  }
+  return groups.filter((g) => g.length > 1).map((g) => `${g.length} at ${clockOf(g[1].dtstart)}`).join(' · ');
+}
+
+/** What a pressed calendar or goal hides on the day, clashing rows first; empty when nothing is hidden. */
+function alsoHasLine(day, view) {
+  if (!view.hidden.length) return '';
+  const meets = (a, b) => a.dtstart < b.dtend && b.dtstart < a.dtend;
+  const shownClash = view.shown.filter((e) => e.clash);
+  const clashing = (e) => e.clash && shownClash.some((s) => meets(e, s));
+  const ordered = [...view.hidden.filter(clashing), ...view.hidden.filter((e) => !clashing(e))];
+  const names = ordered.slice(0, 3).map(calTitle);
+  const more = ordered.length - names.length;
+  const n = ordered.length;
+  return `${weekdayLong(day)} also has ${n} other ${n === 1 ? 'thing' : 'things'}: ${listOf(more > 0 ? [...names, `${more} more`] : names)}.`;
+}
+
+/** Where the now line sits among a day's timed rows: before the first that has not begun; -1 when there are none. */
+function nowIndex(timed, nowSec) {
+  if (!timed.length) return -1;
+  const i = timed.findIndex((e) => e.dtstart > nowSec);
+  return i < 0 ? timed.length : i;
+}
+
+/** A row's when column: a word, a start over an end, or from and to when it runs past this day. */
+function whenOf(e, day) {
+  if (e.held) return { top: 'nights', under: '', bold: false };
+  if (e.kind === 'due') return { top: 'due', under: '', bold: false };
+  if (e.is_all_day) return { top: 'all day', under: '', bold: false };
+  const { first, last } = daysOf(e);
+  return {
+    top: first === day ? clockOf(e.dtstart) : `from ${weekdayShort(first)}`,
+    under: last === day ? clockOf(e.dtend) : `to ${weekdayShort(last)}`,
+    bold: first === last,
+  };
+}
+
+const PLAN_STATE_WORDS = { planning: 'Planning', doing: 'Doing', done: 'Done' };
+
+/** A row's accessible name: when, what, whose, and every state that applies. */
+function rowWords(e, day, me) {
+  const when = e.held ? 'nights' : e.kind === 'due' ? 'due' : e.is_all_day ? 'all day' : `${clockOf(e.dtstart)} to ${clockOf(e.dtend)}`;
+  const key = calKey(e);
+  const whose = key === CAL_HOUSEHOLD ? 'on Household' : e.owner && e.owner === me ? 'on your calendar' : e.owner ? `on ${e.owner}'s calendar` : `on ${e.label}`;
+  const parts = [when, calTitle(e), whose];
+  if (isPlanRow(e) && e.plan?.state) parts.push(PLAN_STATE_WORDS[e.plan.state]);
+  if (e.proposed) parts.push('proposed, not approved');
+  if (e.drift) parts.push('moved on the calendar');
+  if (e.offCalendar) parts.push('not on the calendar yet');
+  if (e.clash) parts.push('clashes with another event');
+  return parts.join(', ');
+}
+
+const MONEY_KIND_WORDS = { due: 'Due', autopay: 'Auto Pay', payby: 'Pay By', bill: 'Bill', paid: 'Paid' };
+
+/** A money row's accessible name. */
+function moneyWords(m) {
+  const parts = [MONEY_KIND_WORDS[m.short ? m.billKind : m.kind] ?? 'Bill', m.label, m.name, m.amount ?? `about ${m.about}`];
+  if (m.noReceipt) parts.push('no receipt yet');
+  if (m.left) parts.push(`${m.left} left`);
+  else if (m.over) parts.push(`${m.over} over`);
+  return parts.join(', ');
+}
+
+/** A link to a row on a day: 'absent' if the day no longer has it, true if this lens hides it (draw it under Everyone), false if it shows. */
+function visitNeedsEveryone(day, key, data, lens) {
+  const there = data.events.some((e) => { const { first, last } = daysOf(e); return first <= day && last >= day && rowKey(e) === key; });
+  if (!there) return 'absent';
+  return !dayView(day, data, lens).shown.some((e) => rowKey(e) === key);
+}
+
+/** Whether any event, shown or not, holds the night of `day`. */
+const nightHeld = (day, events) => events.some((e) => { if (!e.held) return false; const { first, last } = daysOf(e); return first <= day && last >= day; });
+// ── the calendar: end of what a day shows ──────────────────────────────────
+
 /** Whose calendar, in a word: yours, the other member's, or the household's. */
 const sourceName = (e) => (e.calendar === 'mine' ? 'Yours' : e.calendar === 'household' ? 'Household' : `${otherMember() ?? e.label}'s`);
 
@@ -12648,13 +12835,6 @@ function evNode(e, long, clampedBefore = false, clampedAfter = false) {
 
 /** The week's days, as day keys, Monday first. */
 const weekDays = (monday) => Array.from({ length: 7 }, (_, i) => addDayKey(monday, i));
-
-/** The household's days an event covers: all day from its first day to its last; timed, each day it touches. */
-function daysOf(e) {
-  const first = keyAt(e.dtstart * 1000);
-  const last = keyAt(Math.max(e.dtstart, e.dtend - 1) * 1000);
-  return { first, last };
-}
 
 /**
  * One day's timed events as boxes in its column: clamped to 7:00–21:00, with

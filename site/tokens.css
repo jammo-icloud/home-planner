@@ -114,6 +114,8 @@
   --row: 56px;               /* a row that opens a page                       */
   --disc: 22px;              /* a member disc, a state glyph, a row's slot    */
   --disc-small: 18px;        /* the same beside a word                        */
+  --when: 68px;              /* a calendar row's when column: "10:00 AM" at 14px, 600 */
+  --mark: 6px;               /* a day's clash dot                             */
 
   /* ── shape ─────────────────────────────────────────────────────────── */
   --r-chip: 6px;

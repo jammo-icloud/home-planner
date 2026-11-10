@@ -244,6 +244,8 @@ const ADDED: readonly Line[] = [
   // The composer (Task 15).
   ['T73', 'Ask Claude, or leave a note for the others', 'todayMarkup'], ['T79', 'id="say-note" aria-live="polite"', 'todayMarkup'], ['T79', 'Goes into today', 'today'], ['T80', 'function afterSend(', 'today'], ['T80', 'Left in today. It shows under Everyone.', 'today'], ['T80', 'row.style.scrollMarginBottom = (bar', 'today'], ['T71', '.composer.resting', 'css'], ['T71', "$('composer').classList.add('resting')", 'today'], ['T119', "if (!text) { $('say').focus(); return; }", 'today'], ['T74', "$('leave-note').disabled = true", 'today'], ['T75', "$('ask-claude').disabled = !claudeOn", 'today'],
   ['srch', 'Elsewhere · ', 'today'], ['srch', 'A plan · ', 'today'], ['srch', 'A file on ', 'today'], ['srch', 'Searched every day since the record began.', 'today'], ['srch', 'Showing the newest 100. Add a word to narrow it.', 'today'], ['srch', 'function searchActive(', 'today'], ['srch', '  search: \'<path', 'shared'], ['srch', '  x: \'<path', 'shared'], ['mark', '--mark-fill', 'css'],
+  // What a day shows, in one block (Calendar Task 5).
+  ['block', '// ── the calendar: what a day shows ──', 'calendar'], ['C21', 'function dayMarks(', 'calendar'], ['C22', 'function marksWords(', 'calendar'], ['C20', "e.summary || 'Busy'", 'calendar'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
