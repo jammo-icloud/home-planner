@@ -289,8 +289,8 @@ describe('asking from a plan', () => {
     assert.equal((r.offers[0]!.events[0] as { plan: string }).plan, 'heater');
 
     // A plan that has no field for a plan keeps what it was given.
-    r = await ask([called('create_plan', { title: 'Shelf', area: 'House', parent: 'fence' })], 'heater');
-    assert.equal(r.offers[0]!.args['parent'], 'fence');
+    r = await ask([called('create_plan', { title: 'Hinge', area: 'House' })], 'heater');
+    assert.deepEqual([r.offers[0]!.args['title'], r.offers[0]!.args['plan']], ['Hinge', undefined]);
 
     // Asked without a plan, nothing is bound.
     r = await ask([called('create_contact', { ...contact, plan: 'fence' })]);

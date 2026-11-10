@@ -1,5 +1,5 @@
 /**
- * The reply box: a question for Claude, or a note for the other person.
+ * The reply box: a question for Claude, or a note for the other members.
  *
  * Both go in the log, because the question that led to a decision is as much
  * the record as the decision. A note costs nothing and works with no key;
@@ -28,7 +28,7 @@ const checked = (text: string): string => {
   return t;
 };
 
-/** A note for the other member. Left on a plan's card, it carries the plan, and the plan must be there. */
+/** A note for the other members. Left on a plan's card, it carries the plan, and the plan must be there. */
 export async function note(ctx: ToolContext, text: string, budget: BudgetId | null, plan?: PlanId): Promise<Event> {
   const t = checked(text);
   if (plan !== undefined) {
@@ -148,7 +148,7 @@ export function planContext(c: CardView): string {
     checklist,
     `Chips: ${c.chips.join(', ') || 'none'}`,
     money,
-    `Its id is "${c.id}" and it is ${c.owner}'s${c.shelf ? `, on the ${c.shelf.title} shelf` : ''}. `
+    `Its id is "${c.id}" and it is ${c.owner}'s. `
       + 'This question was asked from its card. Anything concrete you find for it (an item, a due date, '
       + 'a contact, a change to its notes) goes through the plan tools with that id, as a suggestion for '
       + 'them to approve. You may read the budget and say what a cost means for an envelope; do not move money.',
@@ -205,7 +205,7 @@ export async function askInThread(ctx: ToolContext, question: string, budget: Bu
   const context = (facing ? `${facing}\n\n` : '')
     + `${nowContext(ctx.today, zoneOf(ctx.store.state))} You are speaking to ${ctx.who}. `
     + (budget ? `The budget in view is ${budget}. ` : '')
-    + 'Call tools for every figure you state. Notes are between the two of them: read them, never answer them.'
+    + 'Call tools for every figure you state. Notes are between the members: read them, never answer them.'
     + (day ? `\n\n${day}` : '');
 
   let result;

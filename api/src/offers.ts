@@ -18,7 +18,7 @@
 
 import { raiseDriftCards } from './drift.ts';
 import { monthView } from './envelopes.ts';
-import { raiseAskCards } from './plan-edits.ts';
+import { RETIRED } from './plan-rules.ts';
 import { ReplayError } from './replay.ts';
 import { unsorted } from './analytics.ts';
 import { savingsCheck } from './sinking.ts';
@@ -95,6 +95,25 @@ export async function raiseSavingsCard(ctx: ToolContext, budget: BudgetId | null
   if ([...state.thread.offers.values()].some((o) => o.prompt.kind === 'savings' && o.prompt.ref === latest.event)) return null;
   return offer(ctx, { tool: 'savings_short', args: { budget, account }, prompt: { kind: 'savings', ref: latest.event }, by: latest.who });
 }
+
+/**
+ * What a card from before 0.7.0 would still do that nothing does now: ask a
+ * member to take a plan (the `ask_to_take` tool, or any `plan.ask` line), or
+ * put a plan on a shelf (a `parent`). Such a card can only be declined. An
+ * `answer_ask` card is not closed: an ask already made is still answered.
+ */
+export function closedCard(o: Offer): string | null {
+  if (o.tool === 'ask_to_take' || o.events.some((e) => e.op === 'plan.ask')) return RETIRED.ask;
+  if (o.events.some((e) => 'parent' in e && e.parent !== undefined)) return RETIRED.shelf;
+  return null;
+}
+
+/** The card as it can still be worked on: a closed one is refused as a conflict, in its own words. */
+const open = (o: Offer): Offer => {
+  const closed = closedCard(o);
+  if (closed) throw new ToolError(closed, 409);
+  return o;
+};
 
 const live = (state: State, id: EventId): Offer => {
   const o = state.thread.offers.get(id);
@@ -180,6 +199,7 @@ export async function decide(ctx: ToolContext, offerId: EventId,
     });
   }
   if (decision !== 'approved') return refusedAs409(ctx.store.append(ctx.who, choice));
+  open(o);
 
   const b = o.budget ? state.budgets.get(o.budget) : null;
   if (o.budget && (!b || b.archived)) {
@@ -205,9 +225,7 @@ export async function decide(ctx: ToolContext, offerId: EventId,
       });
     });
   }
-  // An approved ask_to_take puts its card in front of the member asked, as any
-  // ask does; a drift its effect found (a date set on an event moved since), its card.
-  await raiseAskCards(ctx, written);
+  // A drift its effect found (a date set on an event moved since) has its card raised.
   await raiseDriftCards(ctx, written);
   return written;
 }
@@ -261,7 +279,7 @@ const asAsked = (o: Offer): void => {
 
 /** Work a card out again from where things stand now. It replaces the old one. */
 export async function refresh(ctx: ToolContext, offerId: EventId): Promise<Offer> {
-  const o = live(ctx.store.state, offerId);
+  const o = open(live(ctx.store.state, offerId));
   asAsked(o);
   return offer(ctx, { tool: o.tool, args: o.args, prompt: o.prompt, by: o.who, replaces: o.id, from: o.args,
     ...(o.plan ? { plan: o.plan } : {}) });
@@ -269,7 +287,7 @@ export async function refresh(ctx: ToolContext, offerId: EventId): Promise<Offer
 
 /** A member's own version of a card: same tool, their changes. It replaces the original. */
 export async function adjust(ctx: ToolContext, offerId: EventId, args: Record<string, unknown>): Promise<Offer> {
-  const o = live(ctx.store.state, offerId);
+  const o = open(live(ctx.store.state, offerId));
   if (o.prompt.kind === 'drift') throw new ToolError('a change on the calendar is settled by choosing, not adjusted');
   asAsked(o);
   return offer(ctx, {

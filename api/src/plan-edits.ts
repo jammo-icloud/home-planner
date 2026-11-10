@@ -12,18 +12,18 @@ import { placeDates, syncBlock, syncDue, syncNames, undoMade, unsyncAll, unsyncB
 import { letPageDriftsGo, raiseDriftCards } from './drift.ts';
 import { ToolError } from './errors.ts';
 import type { Cents } from './money.ts';
-import { offer } from './offers.ts';
 import {
-  blockTimes, contactLink, envelopeRef, knownArea, livePlan, newBlockId, newPlanId, notOnCalendar, planChecklist, planChips,
-  planDue, planEstimate, planNotes, planState, planTitle, required, shelfFor,
+  blockTimes, contactLink, envelopeRef, goalLabel, handReason, knownArea, livePlan, newBlockId, newPlanId, notOnCalendar,
+  planChecklist, planChips, planDue, planEstimate, planGoal, planNotes, planState, planTitle, required, RETIRED, sameGoal,
 } from './plan-rules.ts';
+import { goalsOf } from './plans.ts';
 import { ReplayError } from './replay.ts';
 import { oneAtATime, planKey } from './settings.ts';
 import { NeedsDsm, requireSid } from './synology.ts';
 import type { NewEvent } from './store.ts';
 import type { ToolContext } from './tools.ts';
 import type {
-  Actor, BudgetId, ChecklistItem, ContactLink, Day, EnvelopeId, Event, NewEventShape, Plan, PlanId, PlanState,
+  BudgetId, ChecklistItem, ContactLink, Day, EnvelopeId, Event, NewEventShape, Plan, PlanId, PlanState,
 } from './types.ts';
 
 /** The fields a member edits on a card. Chips and notes are replaced whole. */
@@ -37,8 +37,8 @@ export interface PlanFields {
 }
 
 /**
- * The fold refuses what breaks a household rule (a third level, an ask by
- * someone who does not own the plan); that is the member's request being
+ * The fold refuses what breaks a household rule (a hand to someone who is
+ * not a member, a goal that does not exist); that is the member's request being
  * wrong, not the server, so it is a 400 with the fold's reason and without the
  * event id it was stamped with.
  */
@@ -58,13 +58,26 @@ export const writePlan = (ctx: ToolContext, events: NewEventShape | NewEventShap
 /** The plan as it stands after a write. */
 export const fresh = (ctx: ToolContext, id: PlanId): Plan => ctx.store.state.plans.get(id)!;
 
-export async function createPlan(ctx: ToolContext, o: { title: string; area: string; parent?: PlanId }): Promise<Plan> {
+/**
+ * A plan, in one write: made, then handed to `owner` when that is not the
+ * sender, then set toward `goal` when one is given. A blank goal is no goal.
+ * There are no shelves: a `parent` of any kind is refused.
+ */
+export async function createPlan(
+  ctx: ToolContext, o: { title: string; area: string; owner?: unknown; goal?: unknown; parent?: unknown },
+): Promise<Plan> {
+  if (o.parent !== undefined) throw new ToolError(RETIRED.shelf, 400);
   const state = ctx.store.state;
   const title = planTitle(o.title);
   const area = knownArea(state, o.area);
-  const shelf = shelfFor(state, o.parent, area);
+  const owner = o.owner === undefined || o.owner === null ? ctx.who : required(o.owner, 'owner');
+  const blank = o.goal === undefined || o.goal === null || (typeof o.goal === 'string' && !o.goal.trim());
   const plan = newPlanId(title);
-  await writePlan(ctx, { op: 'plan.create', plan, title, area, ...(shelf ? { parent: shelf.id } : {}) });
+  await writePlan(ctx, [
+    { op: 'plan.create', plan, title, area },
+    ...(owner !== ctx.who ? [{ op: 'plan.hand' as const, plan, to: owner }] : []),
+    ...(blank ? [] : [{ op: 'plan.goal' as const, plan, goal: planGoal(state, o.goal) }]),
+  ]);
   return fresh(ctx, plan);
 }
 
@@ -90,37 +103,40 @@ export async function setState(ctx: ToolContext, id: PlanId, state: PlanState): 
   return fresh(ctx, p.id);
 }
 
-/**
- * The one place an ask card is raised. Every `plan.ask` in what was just
- * written gets its card for the member asked, whichever door it came through:
- * a member's own ask (`recordAsk`), an `ask_to_take` proposal committed in
- * the conversation (`commit`), or one approved from a card (`decide`). Take it
- * approves the `plan.ask.accept` the card carries, so even a generic approval
- * can only ever be the asked member's yes; the fold refuses anyone else's
- * decision on it, and settles the card when the ask is answered or lapses.
- */
-export async function raiseAskCards(ctx: ToolContext, written: readonly Event[]): Promise<void> {
-  for (const e of written) {
-    if (e.op !== 'plan.ask') continue;
-    await offer(ctx, {
-      tool: 'answer_ask', args: { plan: e.plan, answer: 'accept' },
-      prompt: { kind: 'ask', ref: e.id }, by: e.who,
-    });
-  }
-}
-
-/** Ask a member to take a plan, and put the card in front of them: two appends, the card naming the ask. */
-export async function recordAsk(ctx: ToolContext, plan: PlanId, to: Actor, why: string): Promise<Event> {
-  const [asked] = await writePlan(ctx, { op: 'plan.ask', plan, to, why });
-  await refusedAs400(raiseAskCards(ctx, [asked!]));
-  return asked!;
-}
-
-/** The owner asks another member to take it; the fold says who may be asked. */
-export async function askToTake(ctx: ToolContext, id: PlanId, to: Actor, why: string): Promise<Plan> {
+/** Any member hands any plan to any member at once; the fold says who may be handed it. */
+export async function handPlan(ctx: ToolContext, id: PlanId, to: unknown, why?: unknown): Promise<Plan> {
   const p = livePlan(ctx.store.state, id);
-  await recordAsk(ctx, p.id, required(to, 'to'), required(why, 'why'));
+  const reason = handReason(why);
+  await writePlan(ctx, { op: 'plan.hand', plan: p.id, to: required(to, 'to'), ...(reason ? { why: reason } : {}) });
   return fresh(ctx, p.id);
+}
+
+/** A plan's one goal, tidied; null takes it off. */
+export async function setGoal(ctx: ToolContext, id: PlanId, goal: unknown): Promise<Plan> {
+  const p = livePlan(ctx.store.state, id);
+  await writePlan(ctx, { op: 'plan.goal', plan: p.id, goal: planGoal(ctx.store.state, goal) });
+  return fresh(ctx, p.id);
+}
+
+/** How many live plans carry the goal, ignoring case: read before the write that changes it. */
+const carrying = (ctx: ToolContext, goal: string): number =>
+  goalsOf(ctx.store.state).find((g) => sameGoal(g.goal, goal))?.plans ?? 0;
+
+/** A goal renamed for every plan that carries it; answers how many did. */
+export async function renameGoal(ctx: ToolContext, from: unknown, to: unknown): Promise<number> {
+  const a = goalLabel(from);
+  const b = goalLabel(to);
+  const n = carrying(ctx, a);
+  await writePlan(ctx, { op: 'goal.rename', from: a, to: b });
+  return n;
+}
+
+/** A goal taken off every plan that carries it; answers how many did. */
+export async function removeGoal(ctx: ToolContext, goal: unknown): Promise<number> {
+  const g = goalLabel(goal);
+  const n = carrying(ctx, g);
+  await writePlan(ctx, { op: 'goal.remove', goal: g });
+  return n;
 }
 
 export async function answerAsk(ctx: ToolContext, id: PlanId, answer: 'accept' | 'decline', why?: string): Promise<Plan> {

@@ -1012,6 +1012,10 @@ describe('goals', () => {
     await assert.rejects(rename('alice', 'New roof', 'summer trip'), refused(/"Summer trip" is already a goal/));
     await assert.rejects(rename('alice', 'new roof', 'New roof'), refused(/New roof is already its name/));
     await assert.rejects(rename('carol', 'New roof', 'Roof'), refused(/carol is not a member of this household/));
+    // Every goal op is a member's alone: removing a goal and setting one on a plan are refused to a non-member too.
+    await assert.rejects(s.append('carol', { op: 'goal.remove', goal: 'New roof' }), refused(/carol is not a member of this household/));
+    await assert.rejects(s.append('carol', toward('p3', 'New roof')), refused(/carol is not a member of this household/));
+    assert.deepEqual(goalOf(s, 'p1', 'p2', 'p3'), ['New roof', 'New roof', 'Summer trip'], 'nothing was written');
     const [renamed] = await rename('bob', 'new roof', 'NEW ROOF');                       // a change of case alone is a rename
     assert.deepEqual(goalsOf(s.state), [{ goal: 'NEW ROOF', plans: 2, done: 0 }, { goal: 'Summer trip', plans: 1, done: 0 }]);
     const [removed] = await s.append('bob', { op: 'goal.remove', goal: 'new roof' });

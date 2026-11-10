@@ -25,7 +25,6 @@
  * callers and tests import are re-exported from here.
  */
 
-import { liveChildren } from './plan-rules.ts';
 import { ensureHouseholdCalendar, targetCalendar } from './settings.ts';
 import { ToolError } from './errors.ts';
 import { EtagMismatch, SynologyError, createEvent, deleteEvent, getEvent, listCalendars, requireSid, setEvent } from './synology.ts';
@@ -505,8 +504,7 @@ export const logDsm = (what: string, err: SynologyError): void =>
  * A plan given a new title or area: its due date and blocks on the calendar
  * take the new name and description (which names the area), through the same
  * sync as a new date, with the stored etag. An event changed on the calendar
- * since is a drift, as ever, and nothing is retried. Moving a shelf's area
- * moves its items, so theirs follow too. An appointment keeps its own name.
+ * since is a drift, as ever, and nothing is retried. An appointment keeps its own name.
  * Takes the plan as it stands before the change; nothing to rename asks
  * nothing of the NAS.
  */
@@ -515,9 +513,8 @@ export async function syncNames(ctx: ToolContext, plan: Plan, set: { title?: str
   const title = set.title ?? plan.title;
   const area = set.area ?? plan.area;
   if (title === plan.title && area === plan.area) return [];
-  // Each plan as it was, and as it will be.
+  // The plan as it was, and as it will be.
   const renamed: [Plan, Plan][] = [[plan, { ...plan, title, area }]];
-  if (area !== plan.area) renamed.push(...liveChildren(ctx.store.state, plan.id).map((c): [Plan, Plan] => [c, { ...c, area }]));
   const out: NewEvent[] = [];
   for (const [was, p] of renamed) {
     for (const link of p.links) {

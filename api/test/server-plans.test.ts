@@ -41,6 +41,7 @@ const { pagesIdle } = await import('../src/pages.ts');
 
 let base = '';
 let close: () => Promise<void> = async () => {};
+let homeStore: import('../src/store.ts').Store;
 const cookies: Record<string, string> = {};
 
 async function call(who: string, method: string, path: string, body?: unknown): Promise<{ status: number; json: any }> {
@@ -63,11 +64,22 @@ const make = async (title: string, extra: Record<string, unknown> = {}): Promise
 const log = async (): Promise<any[]> =>
   ((await call('alice', 'GET', '/api/backup')).json as string).trim().split('\n').map((l) => JSON.parse(l));
 
+/** An ask as 0.6.0 left one in a log: the ask by alice, then the card for the member asked, naming it. */
+const seedAsk = async (plan: string, to: string, why: string): Promise<void> => {
+  const [asked] = await homeStore.append('alice', { op: 'plan.ask', plan, to, why });
+  await homeStore.append('alice', {
+    op: 'proposal.offer', tool: 'answer_ask', args: { plan, answer: 'accept' }, summary: `${to} takes ${plan}`, effects: [],
+    events: [{ op: 'plan.ask.accept', plan }], budget: null, month: null, envelopes: [], fingerprint: '',
+    prompt: { kind: 'ask', ref: asked!.id },
+  });
+};
+
 /** The server's own households, so a test can write to the stores it reads. */
 const households = new Households(process.env['HOUSEHOLDS_DIR']!);
 
 before(async () => {
   const home = await households.create('alice', 'Home', { id: 'home' });
+  homeStore = home.store;
   await home.store.append('alice', { op: 'member.add', member: 'bob', why: 'my partner' });
   await chooseFolderIn(home.store);
   // A file attached when the cap was larger, or by hand: its stored size is over today's cap.
@@ -130,13 +142,37 @@ describe('the plan routes', () => {
     assert.ok(house.planning.some((c: any) => c.id === r.json.plan.id));
   });
 
-  test('a plan under an item is refused as a 400, with the fold\'s reason and no event id', async () => {
-    const shelf = await make('Kitchen');
-    const item = await make('Cabinets', { parent: shelf });
-    const r = await call('alice', 'POST', '/api/plans', { title: 'Hinges', area: 'House', parent: item });
-    assert.equal(r.status, 400);
-    assert.match(r.json.error, /two levels/);
-    assert.doesNotMatch(r.json.error, /\(event /);
+  test('a plan is made for someone, toward a goal, in one write; a shelf is refused', async () => {
+    const r = await call('alice', 'POST', '/api/plans', { title: 'Fix the fence gate', area: 'House', owner: 'bob', goal: ' New   roof ' });
+    assert.deepEqual([r.status, r.json.plan.owner, r.json.plan.ownerFrom, r.json.plan.createdBy, r.json.plan.goal], [200, 'bob', 'alice', 'alice', 'New roof']);
+    const tail = (await log()).slice(-3);
+    assert.deepEqual([tail.map((e) => e.op), new Set(tail.map((e) => e.at)).size], [['plan.create', 'plan.hand', 'plan.goal'], 1]);
+    const mine = await call('alice', 'POST', '/api/plans', { title: 'Oil the hinges', area: 'House', owner: 'alice', goal: '' });
+    assert.deepEqual([(await log()).at(-1).op, mine.json.plan.goal], ['plan.create', null]);
+    const shelf = await call('alice', 'POST', '/api/plans', { title: 'Hinge', area: 'House', parent: r.json.plan.id });
+    assert.deepEqual([shelf.status, shelf.json.error], [400, 'Plans no longer sit on shelves. Give it a goal instead.']);
+  });
+  test("any member hands a plan on at once; a refusal is a 400 in the fold's words; asking is gone", async () => {
+    const id = await make('Clear the gutters');
+    const took = await call('bob', 'POST', `/api/plans/${id}/hand`, { to: 'bob', why: 'I have the ladder' });
+    assert.deepEqual([took.status, took.json.plan.owner, took.json.plan.ownerFrom], [200, 'bob', 'alice']);
+    const same = await call('alice', 'POST', `/api/plans/${id}/hand`, { to: 'bob' });
+    assert.deepEqual([same.status, same.json.error], [400, "Clear the gutters is already bob's"]);
+    const out = await call('alice', 'POST', `/api/plans/${id}/hand`, { to: 'carol' });
+    assert.deepEqual([out.status, out.json.error], [400, 'carol is not in this household']);
+    const old = await call('alice', 'POST', `/api/plans/${id}/ask-to-take`, { to: 'bob', why: 'please' });
+    assert.deepEqual([old.status, old.json.error], [410, 'Home Planner has been updated. Reload.']);
+  });
+  test('a goal is set, renamed and removed, and the pair answer how many plans', async () => {
+    const a = await make('Strip the old shingles', { goal: 'Reroof' });
+    const b = await make('Order the shingles');
+    assert.equal((await call('alice', 'POST', `/api/plans/${b}/goal`, { goal: 'reroof' })).json.plan.goal, 'Reroof');
+    assert.deepEqual((await call('bob', 'POST', '/api/goals/rename', { from: 'Reroof', to: ' New shingles ' })).json, { plans: 2 });
+    const none = await call('bob', 'POST', '/api/goals/rename', { from: 'Reroof', to: 'Roof' });
+    assert.deepEqual([none.status, none.json.error], [400, 'there is no goal called Reroof']);
+    assert.equal((await call('alice', 'POST', `/api/plans/${a}/goal`, { goal: null })).json.plan.goal, null);
+    assert.deepEqual((await call('bob', 'POST', '/api/goals/remove', { goal: 'new shingles' })).json, { plans: 1 });
+    assert.equal((await call('bob', 'POST', `/api/plans/${b}/goal`, { goal: 'x'.repeat(61) })).status, 400);
   });
 
   test('creating needs a title and an area', async () => {
@@ -147,19 +183,10 @@ describe('the plan routes', () => {
     assert.equal((await call('alice', 'POST', '/api/plans', { title: 'x', area: 'House', parent: 7 })).status, 400);
   });
 
-  test('only the owner asks someone to take it', async () => {
-    const id = await make('Clean the gutters');
-    const r = await call('bob', 'POST', `/api/plans/${id}/ask-to-take`, { to: 'alice', why: 'you have the ladder' });
-    assert.equal(r.status, 400);
-    assert.match(r.json.error, /only the owner/);
-    assert.equal((await call('alice', 'POST', `/api/plans/${id}/ask-to-take`, { to: 'bob' })).status, 400, 'a reason is required');
-  });
-
   test('an ask is a card for the member asked; declining clears it, keeps the owner, and settles the card', async () => {
     const id = await make('Paint the fence');
-    const asked = await call('alice', 'POST', `/api/plans/${id}/ask-to-take`, { to: 'bob', why: 'you like painting' });
-    assert.equal(asked.status, 200);
-    assert.equal(asked.json.plan.asked.to, 'bob');
+    await seedAsk(id, 'bob', 'you like painting');
+    assert.equal((await call('alice', 'GET', `/api/plans/${id}`)).json.asked.to, 'bob');
 
     const askEvent = (await log()).find((e) => e.op === 'plan.ask' && e.plan === id);
     const waiting = await call('bob', 'GET', '/api/thread?filter=waiting');
@@ -209,7 +236,7 @@ describe('the plan routes', () => {
 
   test('the card\'s generic Approve takes it on, and only for the member asked', async () => {
     const id = await make('Sort the shed');
-    await call('alice', 'POST', `/api/plans/${id}/ask-to-take`, { to: 'bob', why: 'your tools are in there' });
+    await seedAsk(id, 'bob', 'your tools are in there');
     const card = (await call('bob', 'GET', '/api/thread?filter=waiting')).json.entries
       .find((e: any) => e.kind === 'card' && e.offer.args.plan === id);
     const mine = await call('alice', 'POST', '/api/thread/decide', { offer: card.offer.id, decision: 'approved' });
@@ -227,7 +254,7 @@ describe('the plan routes', () => {
 
   test('the card\'s generic Decline, by the member asked, declines the ask with the reason', async () => {
     const id = await make('Mow the verge');
-    await call('alice', 'POST', `/api/plans/${id}/ask-to-take`, { to: 'bob', why: 'you have the mower' });
+    await seedAsk(id, 'bob', 'you have the mower');
     const card = (await call('bob', 'GET', '/api/thread?filter=waiting')).json.entries
       .find((e: any) => e.kind === 'card' && e.offer.args.plan === id);
     const bare = await call('bob', 'POST', '/api/thread/decide', { offer: card.offer.id, decision: 'declined' });
@@ -241,28 +268,22 @@ describe('the plan routes', () => {
     const v = await call('alice', 'GET', `/api/plans/${id}`);
     assert.equal(v.json.asked, null, 'the plan is no longer asked');
     assert.equal(v.json.owner, 'alice');
-    // And it can be asked again, which an ask still open would refuse.
-    assert.equal((await call('alice', 'POST', `/api/plans/${id}/ask-to-take`, { to: 'bob', why: 'fixed it' })).status, 200);
+    // The plan can be handed on, which an ask still open would not stop.
+    assert.equal((await call('alice', 'POST', `/api/plans/${id}/hand`, { to: 'bob' })).status, 200);
   });
 
-  test('an ask_to_take committed from the conversation raises the same card for the member asked', async () => {
+  test('a hand_plan suggestion committed from the conversation hands the plan on at once, with no card for anyone', async () => {
     const id = await make('Paint the shed');
-    const proposed = await call('alice', 'POST', '/api/tools/ask_to_take', { plan: id, to: 'bob', why: 'you chose the colour' });
+    const proposed = await call('alice', 'POST', '/api/tools/hand_plan', { plan: id, to: 'bob', why: 'you chose the colour' });
     assert.equal(proposed.status, 200);
-    // The route records the call's args on the proposal, whichever tool it is.
     assert.deepEqual(proposed.json.proposal.args, { plan: id, to: 'bob', why: 'you chose the colour' });
-    const done = await call('alice', 'POST', '/api/commit', { proposalId: proposed.json.proposal.id });
-    assert.equal(done.status, 200);
-    const askEvent = (await log()).find((e) => e.op === 'plan.ask' && e.plan === id);
+    assert.equal((await call('alice', 'POST', '/api/commit', { proposalId: proposed.json.proposal.id })).status, 200);
+    const v = await call('bob', 'GET', `/api/plans/${id}`);
+    assert.deepEqual([v.json.owner, v.json.asked], ['bob', null]);
     const cards = (await call('bob', 'GET', '/api/thread?filter=waiting')).json.entries
       .filter((e: any) => e.kind === 'card' && e.offer.args.plan === id);
-    assert.equal(cards.length, 1);
-    assert.deepEqual(cards[0].offer.prompt, { kind: 'ask', ref: askEvent.id });
-    assert.equal(cards[0].offer.who, 'alice');
-    const r = await call('bob', 'POST', `/api/plans/${id}/answer`, { answer: 'accept' });
-    assert.equal(r.json.plan.owner, 'bob');
-    const settled = (await call('bob', 'GET', '/api/thread')).json.entries.find((e: any) => e.offer?.id === cards[0].offer.id);
-    assert.equal(settled.offer.status, 'approved');
+    assert.deepEqual(cards, []);
+    assert.equal((await call('alice', 'POST', '/api/tools/ask_to_take', { plan: id, to: 'bob', why: 'x' })).status, 404);
   });
 
   test('every edit is written directly, and the card reads it back', async () => {
@@ -353,9 +374,7 @@ describe('the plan routes', () => {
     assert.equal((await call('alice', 'POST', `/api/plans/${id}/ask`,
       { question: 'x', to: 'bob', why: 'y' })).status, 400);
     assert.equal((await call('alice', 'POST', `/api/plans/${id}/ask-to-take`,
-      { question: 'Who does slate roofs?' })).status, 400, 'asking Claude is its own route');
-    assert.equal((await call('alice', 'POST', `/api/plans/${id}/ask-to-take`,
-      { question: 'x', to: 'bob', why: 'y' })).status, 400);
+      { question: 'Who does slate roofs?' })).status, 410, 'the old route is closed, whatever it is sent');
     assert.equal((await call('alice', 'GET', `/api/plans/${id}`)).json.asked, null, 'nothing was asked');
   });
 
@@ -391,6 +410,10 @@ describe('the plan routes', () => {
       ['POST', `/api/plans/${id}`, { title: 'x' }],
       ['POST', `/api/plans/${id}/state`, { state: 'doing' }],
       ['POST', `/api/plans/${id}/ask-to-take`, { to: 'carol', why: 'x' }],
+      ['POST', `/api/plans/${id}/hand`, { to: 'carol' }],
+      ['POST', `/api/plans/${id}/goal`, { goal: 'x' }],
+      ['POST', '/api/goals/rename', { from: 'x', to: 'y' }],
+      ['POST', '/api/goals/remove', { goal: 'x' }],
       ['POST', `/api/plans/${id}/ask`, { question: 'x' }],
       ['POST', `/api/plans/${id}/answer`, { answer: 'accept' }],
       ['POST', `/api/plans/${id}/checklist`, { items: [] }],

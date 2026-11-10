@@ -588,7 +588,10 @@ export type Event = Meta &
         envelope?: { budget: BudgetId; envelope: EnvelopeId } | null;
       }
     | { op: 'plan.state'; plan: PlanId; state: PlanState }
-    /** The owner asks another member to take it. Nobody is handed a plan without being asked. */
+    /**
+     * The owner asks another member to take it. No longer written: a plan is handed on with `plan.hand`.
+     * Kept so a log from before 0.7.0 replays, and an ask still open can be answered.
+     */
     | { op: 'plan.ask'; plan: PlanId; to: Actor; why: string }
     | { op: 'plan.ask.accept'; plan: PlanId }
     | { op: 'plan.ask.decline'; plan: PlanId; why: string }
@@ -997,8 +1000,9 @@ export interface Appointment {
 export interface Hand { readonly plan: PlanId; readonly from: Actor; readonly to: Actor }
 
 /**
- * A plan, two levels deep at most: a plan with children is a shelf, and has
- * no state of its own. `stateAt` is when it entered its current state, which
+ * A plan. Plans no longer sit under one another: `parent` is only ever set on a plan
+ * from a log that still had shelves, and `shelves.retire` clears it (on a removed plan
+ * it stays as history). Every plan has a state of its own. `stateAt` is when it entered its current state, which
  * is the only clock on the board, and it only shows in `doing`.
  */
 export interface Plan {

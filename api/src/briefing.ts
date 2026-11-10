@@ -1,8 +1,8 @@
 /**
  * The daily briefing.
  *
- * Two people share one budget and rarely sit at it together, so each day opens
- * with one briefing for both of them: what changed since the last one, and what
+ * A household shares one budget and its members rarely sit at it together, so each day opens
+ * with one briefing for every member: what changed since the last one, and what
  * needs a person today. It is written once per budget per day and kept in the
  * log as the first message of the day's thread. Whatever happens later that day
  * appears in the thread itself, so the briefing never rewrites itself.
@@ -104,7 +104,7 @@ function previousSection(events: readonly Event[], budget: BudgetId, today: Day)
 }
 
 /**
- * Changes made since the previous day's section, for both members at once.
+ * Changes made since the previous day's section, for every member at once.
  *
  * The first section ever looks back only a little way: a seed import is not
  * news. The total is kept beside the list, because a list cut to its latest
@@ -294,7 +294,7 @@ export function facts(
 
   if (extra.notes?.length) {
     parts.push('');
-    parts.push('NOTES THE TWO OF THEM LEFT EACH OTHER (take these into account; do not reply to them)');
+    parts.push('NOTES THE MEMBERS LEFT EACH OTHER (take these into account; do not reply to them)');
     for (const n of extra.notes) parts.push(`  ${n.who}: "${n.text}"`);
   }
 
@@ -603,7 +603,7 @@ const saysUnread = (body: string): boolean => /calendar[^.]*(?:\bnot\b|n['\u2019
  *
  * It never fails the briefing. Without a NAS session, or when the NAS says
  * no, the block says the calendar was not read for this briefing, in words
- * that are the briefing's and not the looker's: both members read it. Why is
+ * that are the briefing's and not the looker's: every member reads it. Why is
  * kept for `missing` and the server's log.
  */
 async function calendarBlock(state: State, o: HouseholdOptions, tz: string): Promise<Gathered['calendar']> {
@@ -742,7 +742,7 @@ export interface Section {
   readonly writtenBy: 'claude' | 'fallback';
 }
 
-/** One draft at a time per budget and day, so two people opening at once write one section. */
+/** One draft at a time per budget and day, so two members opening at once write one section. */
 const inFlight = new Map<string, Promise<Section>>();
 /**
  * When Claude was last tried for a day that has only the fallback. The thread
@@ -773,7 +773,7 @@ export function ensureSection(store: Store, o: BriefingOptions): Promise<Section
 }
 
 /**
- * The household's briefing for the day, one for both members whichever of
+ * The household's briefing for the day, one for every member whichever of
  * them looks first: returned if it is recorded, written and recorded if not,
  * under the same rules as a budget's section.
  */
@@ -922,9 +922,9 @@ function suggestion(
 
 const BRIEFING_TASK = `TODAY'S TASK
 
-Write the household's daily briefing from the facts below. Both of them read it, every morning; most
-mornings nothing is wrong, and it has to stay worth opening on those mornings too. If they left each
-other notes, take them into account — a note can mean a concern is already handled.
+Write the household's daily briefing from the facts below. Every member reads it, every morning; most
+mornings nothing is wrong, and it has to stay worth opening on those mornings too. If members left
+notes, take them into account — a note can mean a concern is already handled.
 
 A quiet day is a real answer. Say so, and use the space for something forward-looking instead — a
 plan that looks thin for next month, a habit worth naming, how an earlier forecast turned out. Never

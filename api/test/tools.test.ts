@@ -7,7 +7,7 @@ import { join } from 'node:path';
 import { parseDollars, fmt } from '../src/money.ts';
 import { Store } from '../src/store.ts';
 import {
-  TOOLS, toolByName, toolSchemas, commit, ProposalStore, ToolError, describe as describeEvent, forClaude, researchMay, runEffect, touches,
+  TOOLS, toolByName, toolSchemas, commit, ProposalStore, RESEARCH_WRITES, ToolError, runTool, describe as describeEvent, forClaude, researchMay, runEffect, touches,
 } from '../src/tools.ts';
 import { SEARCH_KINDS } from '../src/search.ts';
 import { NotAllowed, SessionLost, SynologyError } from '../src/synology.ts';
@@ -15,6 +15,7 @@ import type { Proposal, ToolContext } from '../src/tools.ts';
 import { monthView } from '../src/envelopes.ts';
 import { TRANSFER, SPLIT } from '../src/types.ts';
 import * as edits from '../src/plan-edits.ts';
+import { RETIRED } from '../src/plan-rules.ts';
 
 const NOW = '2026-08-13T09:00:00Z';
 const TODAY = '2026-08-13';
@@ -738,7 +739,7 @@ describe('plan tools', () => {
   test('every plan tool is there, in the shape later tasks rely on', () => {
     const writes: Record<string, string[]> = {
       create_plan: ['title', 'area'], update_plan: ['plan'], set_plan_state: ['plan', 'state'],
-      ask_to_take: ['plan', 'to', 'why'], answer_ask: ['plan', 'answer'], set_checklist: ['plan', 'items'],
+      hand_plan: ['plan', 'to'], set_plan_goal: ['plan', 'goal'], answer_ask: ['plan', 'answer'], set_checklist: ['plan', 'items'],
       set_plan_due: ['plan', 'due'], block_plan_time: ['plan', 'start', 'end'], remove_plan: ['plan', 'why'],
       link_contact: ['plan', 'contact_id', 'addressbook_id', 'display'],
     };
@@ -749,7 +750,7 @@ describe('plan tools', () => {
       assert.deepEqual(t.input['required'], required, name);
     }
     const props = (name: string) => Object.keys(toolByName.get(name)!.input['properties'] as object);
-    assert.deepEqual(props('create_plan'), ['title', 'area', 'parent']);
+    assert.deepEqual(props('create_plan'), ['title', 'area']);
     assert.deepEqual(props('update_plan'), ['plan', 'title', 'area', 'chips', 'notes', 'estimateCents', 'envelope']);
     assert.deepEqual(props('answer_ask'), ['plan', 'answer', 'why']);
     assert.equal(toolByName.get('list_plans')?.kind, 'read');
@@ -775,18 +776,6 @@ describe('plan tools', () => {
     assert.deepEqual(p.events, []);
   });
 
-  test('a plan can hold items; an item cannot — refused before any proposal exists', async () => {
-    const { c, puts } = counting(await planCtx());
-    assert.throws(() => call('create_plan', { title: 'Screws', area: 'House', parent: 'p2' }, c),
-      (e: unknown) => e instanceof ToolError && e.status === 400
-        && e.message === 'plans go two levels deep, no more: a plan can hold items; an item cannot');
-    assert.equal(puts(), 0);
-    // A plan on a shelf is fine.
-    const p = call('create_plan', { title: 'Paint', area: 'House', parent: 'p1' }, c) as Proposal;
-    assert.equal(puts(), 1);
-    assert.deepEqual(p.events, [{ op: 'plan.create', plan: (p.events[0] as { plan: string }).plan, title: 'Paint', area: 'House', parent: 'p1' }]);
-  });
-
   test('create_plan proposes a plan and writes nothing; whoever approves it owns it', async () => {
     const c = await planCtx();
     const before = c.store.state.eventCount;
@@ -797,18 +786,38 @@ describe('plan tools', () => {
     assert.ok(e!.plan && !c.store.state.plans.has(e!.plan), 'a fresh id');
     assert.deepEqual(p.events, [{ op: 'plan.create', plan: e!.plan, title: 'Gutters', area: 'House' }]);
     assert.throws(() => call('create_plan', { title: 'X', area: 'Garage' }, c), /not one of this household's areas/);
-    assert.throws(() => call('create_plan', { title: 'X', area: 'Trips', parent: 'p1' }, c), /shelf's area/);
     await commit(p.id, { ...c, who: 'bob' });
     assert.equal(c.store.state.plans.get(e!.plan)!.owner, 'bob');
   });
 
-  test('only the owner can ask someone to take a plan', async () => {
+  test('hand_plan names both ends in its summary; set_plan_goal takes an existing spelling; shelves and asks are closed', async () => {
     const c = await planCtx();
-    assert.throws(() => call('ask_to_take', { plan: 'p3', to: 'alice', why: 'yours really' }, { ...c, who: 'bob' }),
-      (e: unknown) => e instanceof ToolError && /only the owner/.test(e.message));
-    const p = call('ask_to_take', { plan: 'p3', to: 'bob', why: 'you know boilers' }, c) as Proposal;
-    assert.deepEqual(p.events, [{ op: 'plan.ask', plan: 'p3', to: 'bob', why: 'you know boilers' }]);
-    assert.throws(() => call('ask_to_take', { plan: 'p3', to: 'carol', why: 'x' }, c), /not in this household/);
+    const run = (name: string, args: Record<string, unknown>) => runTool(toolByName.get(name)!, args, c) as Promise<Proposal>;
+    const hand = await run('hand_plan', { plan: 'p3', to: 'bob', why: 'you know a plumber' });
+    assert.deepEqual([hand.summary, hand.events], ['Hand Water heater from alice to bob', [{ op: 'plan.hand', plan: 'p3', to: 'bob', why: 'you know a plumber' }]]);
+    await assert.rejects(run('hand_plan', { plan: 'p3', to: 'alice' }), /Water heater is already alice's/);
+    await c.store.append('alice', { op: 'plan.goal', plan: 'p1', goal: 'New kitchen' });
+    const goal = await run('set_plan_goal', { plan: 'p3', goal: ' new  kitchen ' });
+    assert.deepEqual([goal.summary, goal.events], ['Set Water heater toward New kitchen', [{ op: 'plan.goal', plan: 'p3', goal: 'New kitchen' }]]);
+    assert.equal((await run('set_plan_goal', { plan: 'p1', goal: null })).summary, 'Take Kitchen off New kitchen');
+    await assert.rejects(run('create_plan', { title: 'Hinge', area: 'House', parent: 'p1' }), /Plans no longer sit on shelves\. Give it a goal instead\./);
+    assert.ok(!toolByName.has('ask_to_take') && toolByName.has('answer_ask'));
+    assert.ok(RESEARCH_WRITES.has('hand_plan') && RESEARCH_WRITES.has('set_plan_goal'));
+    await run('set_plan_state', { plan: 'p1', state: 'doing' });            // a former shelf has a state like any plan
+  });
+
+  test('hand_plan and set_plan_goal refuse before any proposal exists, and a blank reason is no reason', async () => {
+    const { c, puts } = counting(await planCtx());
+    const run = (name: string, args: Record<string, unknown>) => runTool(toolByName.get(name)!, args, c);
+    await assert.rejects(run('hand_plan', { plan: 'p3', to: 'carol' }), /carol is not in this household/);
+    await assert.rejects(run('hand_plan', { plan: 'p3', to: 'bob', why: 'x'.repeat(301) }), /300/);
+    await assert.rejects(run('set_plan_goal', { plan: 'p3', goal: null }), /Water heater has no goal/);
+    assert.equal(puts(), 0);
+    const blank = await run('hand_plan', { plan: 'p3', to: 'bob', why: '   ' }) as Proposal;
+    assert.deepEqual(blank.events, [{ op: 'plan.hand', plan: 'p3', to: 'bob' }]);
+    await c.store.append('alice', { op: 'plan.goal', plan: 'p3', goal: 'Warm house' });
+    await assert.rejects(run('set_plan_goal', { plan: 'p3', goal: 'warm HOUSE' }), /Water heater is already toward Warm house/);
+    assert.equal(puts(), 1);
   });
 
   test('each plan tool proposes exactly the ops the fold knows, and touches no money', async () => {
@@ -853,9 +862,7 @@ describe('plan tools', () => {
 
   test('plan tools refuse what the fold would refuse, before anything is offered', async () => {
     const c = await planCtx();
-    assert.throws(() => call('set_plan_state', { plan: 'p1', state: 'doing' }, c), /shelf/);
     assert.throws(() => call('set_plan_state', { plan: 'p3', state: 'started' }, c), /state/);
-    assert.throws(() => call('remove_plan', { plan: 'p1', why: 'x' }, c), /still has plans on it/);
     assert.throws(() => call('remove_plan', { plan: 'p3' }, c), /why is required/);
     assert.throws(() => call('answer_ask', { plan: 'p3', answer: 'accept' }, c), /nobody has been asked/);
     assert.throws(() => call('set_plan_due', { plan: 'p3', due: 'next week' }, c), /YYYY-MM-DD/);
@@ -873,10 +880,10 @@ describe('plan tools', () => {
     const chips = (call('update_plan', { plan: 'p3', chips: [' quote ', '', '  '] }, c) as Proposal).events[0] as { chips?: string[] };
     assert.deepEqual(chips.chips, ['quote']);
     assert.deepEqual((await edits.updatePlan(c, 'p3', { chips: [' quote ', '', '  '] })).chips, ['quote']);
-    // An empty parent is no shelf, for both.
-    const made = (call('create_plan', { title: 'Gate', area: 'House', parent: '' }, c) as Proposal).events[0] as { parent?: string };
-    assert.equal(made.parent, undefined);
-    assert.equal((await edits.createPlan(c, { title: 'Gate', area: 'House', parent: '' })).parent, null);
+    // Any parent, even an empty one, is a shelf, and refused by both in the same words.
+    const noShelf = (e: unknown) => e instanceof ToolError && e.status === 400 && e.message === RETIRED.shelf;
+    assert.throws(() => call('create_plan', { title: 'Gate', area: 'House', parent: '' }, c), noShelf);
+    await assert.rejects(edits.createPlan(c, { title: 'Gate', area: 'House', parent: '' }), noShelf);
     // An envelope that is not there is a 404 from both.
     const missing = (e: unknown) => e instanceof ToolError && e.status === 404 && /no budget nope/.test(e.message);
     assert.throws(() => call('update_plan', { plan: 'p3', envelope: { budget: 'nope', envelope: 'x' } }, c), missing);

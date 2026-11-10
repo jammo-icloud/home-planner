@@ -29,10 +29,9 @@ import type { Basis, Cover, Hint } from './figures.ts';
 import type { MissingStarter } from './starter.ts';
 import { board, card } from './plans.ts';
 import { SEARCH_KINDS, searchHousehold, searchKind, searchWords } from './search.ts';
-import { raiseAskCards } from './plan-edits.ts';
 import {
-  blockTimes, contactLink, envelopeRef, knownArea, liveChildren, livePlan, newBlockId, newPlanId, PLAN_LIMITS, PLAN_STATES,
-  planChecklist, planChips, planDue, planEstimate, planNotes, planState, planTitle, required, shelfFor,
+  blockTimes, contactLink, envelopeRef, handReason, handTarget, knownArea, livePlan, newBlockId, newPlanId, PLAN_LIMITS, PLAN_STATES,
+  planChecklist, planChips, planDue, planEstimate, planGoal, planNotes, planState, planTitle, required, RETIRED,
 } from './plan-rules.ts';
 import { ToolError } from './errors.ts';
 import { resolvedEnv } from './connectors.ts';
@@ -2602,9 +2601,8 @@ const createPlan: Tool = {
   name: 'create_plan',
   description:
     'Propose a new plan on the household board: something to do, buy or sort out, in one of the ' +
-    "household's areas. It starts in Planning and belongs to whoever approves it. Give a parent to " +
-    'put it on a shelf — a plan that holds items, such as each job in a kitchen remodel. Shelves go ' +
-    'one level only: an item cannot hold items, and an item sits in its shelf\'s area. Read ' +
+    "household's areas. It starts in Planning and belongs to whoever approves it. To gather plans " +
+    'under one aim, propose set_plan_goal after it is made. Read ' +
     'list_plans first, so you do not suggest a plan they already have. Returns a proposal.',
   kind: 'write',
   input: {
@@ -2612,7 +2610,6 @@ const createPlan: Tool = {
     properties: {
       title: { type: 'string', description: 'Short, as it would read on a card: "Replace the water heater".' },
       area: { type: 'string', description: "One of the household's areas, exactly as list_plans names them." },
-      parent: { type: 'string', description: 'Optional. The id of the plan whose shelf this goes on.' },
     },
     required: ['title', 'area'],
   },
@@ -2620,20 +2617,15 @@ const createPlan: Tool = {
     const state = ctx.store.state;
     const title = planTitle(args['title']);
     const area = knownArea(state, args['area']);
-    const parent = shelfFor(state, args['parent'], area);
+    // There are no shelves: a card from before 0.7.0 that carries one is refused in the same words.
+    if (args['parent'] !== undefined) throw new ToolError(RETIRED.shelf, 400);
 
     const plan = newPlanId(title);
-    const effects = [`A new plan in ${area}, in Planning`, 'It belongs to whoever approves it'];
-    if (parent) {
-      effects.push(liveChildren(state, parent.id).length
-        ? `It goes on the ${parent.title} shelf`
-        : `${parent.title} becomes a shelf, with this as its first item`);
-    }
     return ctx.proposals.put({
       tool: 'create_plan', who: ctx.who,
       summary: `Make a plan: ${title}`,
-      effects,
-      events: [{ op: 'plan.create', plan, title, area, ...(parent ? { parent: parent.id } : {}) }],
+      effects: [`A new plan in ${area}, in Planning`, 'It belongs to whoever approves it'],
+      events: [{ op: 'plan.create', plan, title, area }],
     }, planStamp(ctx));
   },
 };
@@ -2645,8 +2637,7 @@ const updatePlan: Tool = {
     'envelope it is paid from. Only the fields given change. Chips are free-text labels such as ' +
     '"researching" or "waiting on a quote"; they never move a plan between columns, and chips and ' +
     'notes are replaced whole, so read get_plan and send the full list. Linking an envelope moves no ' +
-    "money — it only lets the card say what the cost means. Moving a shelf's area moves its items " +
-    'with it; an item stays in its shelf\'s area. Returns a proposal.',
+    'money — it only lets the card say what the cost means. Returns a proposal.',
   kind: 'write',
   input: {
     type: 'object',
@@ -2681,12 +2672,7 @@ const updatePlan: Tool = {
     }
     if (args['area'] !== undefined) {
       set.area = knownArea(state, args['area']);
-      const shelf = p.parent ? state.plans.get(p.parent) : undefined;
-      if (shelf && shelf.area !== set.area) {
-        throw new ToolError(`an item lives in its shelf's area: move ${shelf.title} instead`);
-      }
-      const n = liveChildren(state, p.id).length;
-      effects.push(`Area: ${p.area} becomes ${set.area}${n ? `, and its ${n} item${n === 1 ? '' : 's'} move with it` : ''}`);
+      effects.push(`Area: ${p.area} becomes ${set.area}`);
     }
     if (args['chips'] !== undefined) {
       set.chips = planChips(args['chips']);
@@ -2709,10 +2695,9 @@ const updatePlan: Tool = {
       }
     }
     if (!effects.length) throw new ToolError('nothing to change: give at least one field');
-    // A new name or area goes to its due date and blocks on the calendar (an item's too, when a shelf moves).
+    // A new name or area goes to its due date and blocks on the calendar.
     const renamed = (set.title !== undefined && set.title !== p.title) || (set.area !== undefined && set.area !== p.area);
-    const named = [p, ...(set.area !== undefined && set.area !== p.area ? liveChildren(state, p.id) : [])];
-    if (renamed && named.some((x) => x.links.some((l) => l.kind === 'due' || l.kind === 'block'))) {
+    if (renamed && p.links.some((l) => l.kind === 'due' || l.kind === 'block')) {
       effects.push('Renames its calendar events too');
     }
 
@@ -2736,8 +2721,7 @@ const setPlanState: Tool = {
   name: 'set_plan_state',
   description:
     'Propose moving a plan between Planning and Doing, or marking it done. Done takes it off the ' +
-    'board and keeps it. A shelf has no state of its own — its items do — so propose this for an ' +
-    'item, never the shelf. Only suggest it when they have said where it stands; do not infer ' +
+    'board and keeps it. Only suggest it when they have said where it stands; do not infer ' +
     'progress from chips or a checklist. Returns a proposal.',
   kind: 'write',
   input: {
@@ -2752,9 +2736,6 @@ const setPlanState: Tool = {
     const state = ctx.store.state;
     const p = livePlan(state, args['plan']);
     const to = planState(args['state']);
-    if (liveChildren(state, p.id).length) {
-      throw new ToolError(`${p.title} is a shelf; its plans have states, it does not`);
-    }
     if (p.state === to) throw new ToolError(`${p.title} is already in ${stateName(to)}`, 409);
     return ctx.proposals.put({
       tool: 'set_plan_state', who: ctx.who,
@@ -2767,37 +2748,64 @@ const setPlanState: Tool = {
   },
 };
 
-const askToTake: Tool = {
-  name: 'ask_to_take',
+const handPlan: Tool = {
+  name: 'hand_plan',
   description:
-    "Propose that a plan's owner ask another member to take it on. Nobody is handed a plan: the " +
-    'other member is asked, and it only becomes theirs if they say yes. Only the owner can ask, so ' +
-    'suggest this only to the person who owns the plan, and only when they have said they want ' +
-    'to hand it over. One ask at a time. Returns a proposal.',
+    'Propose handing a plan to a household member at once: any member may hand any plan to any ' +
+    'member, themselves included, and it is theirs and shows in their Today as soon as it is ' +
+    'approved. Suggest this only when they have said who should have it. A short reason is read ' +
+    'by the member it goes to. Returns a proposal.',
   kind: 'write',
   input: {
     type: 'object',
     properties: {
       plan: { type: 'string' },
-      to: { type: 'string', description: 'The member to ask, by account name.' },
-      why: { type: 'string', description: 'One line, read by the person asked.' },
+      to: { type: 'string', description: 'The member to hand it to, by account name.' },
+      why: { type: 'string', description: 'Optional. One line, read by the member it goes to.' },
     },
-    required: ['plan', 'to', 'why'],
+    required: ['plan', 'to'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
     const p = livePlan(state, args['plan']);
-    const to = required(args['to'], 'to');
-    const why = required(args['why'], 'why');
-    if (ctx.who !== p.owner) throw new ToolError(`only the owner, ${p.owner}, can ask someone to take ${p.title}`);
-    if (p.asked) throw new ToolError(`${p.asked.to} has already been asked to take ${p.title}`, 409);
-    if (to === p.owner) throw new ToolError(`${p.title} is already ${to}'s`);
-    if (!state.members.has(to)) throw new ToolError(`${to} is not in this household`);
+    const to = handTarget(state, p, args['to']);
+    const why = handReason(args['why']);
     return ctx.proposals.put({
-      tool: 'ask_to_take', who: ctx.who,
-      summary: `Ask ${to} to take ${p.title}`,
-      effects: [`${to} is asked to take it on`, `It stays ${p.owner}'s unless ${to} says yes`],
-      events: [{ op: 'plan.ask', plan: p.id, to, why }],
+      tool: 'hand_plan', who: ctx.who,
+      summary: `Hand ${p.title} from ${p.owner} to ${to}`,
+      effects: [`It becomes ${to}'s at once and shows in Today`],
+      events: [{ op: 'plan.hand', plan: p.id, to, ...(why ? { why } : {}) }],
+    }, planStamp(ctx));
+  },
+};
+
+const setPlanGoal: Tool = {
+  name: 'set_plan_goal',
+  description:
+    "Propose setting a plan toward a goal, or taking it off its goal with null. A goal is a short name " +
+    'for what several plans are for, such as "New roof"; a plan has at most one. A name that matches ' +
+    'an existing goal ignoring case joins that goal, in its spelling. Read list_plans first so you ' +
+    'use the goals they already have. Returns a proposal.',
+  kind: 'write',
+  input: {
+    type: 'object',
+    properties: {
+      plan: { type: 'string' },
+      goal: { type: ['string', 'null'], description: 'The goal, up to 60 characters. null takes the plan off its goal.' },
+    },
+    required: ['plan', 'goal'],
+  },
+  run(args, ctx) {
+    const state = ctx.store.state;
+    const p = livePlan(state, args['plan']);
+    const goal = planGoal(state, args['goal']);
+    if (goal === null && p.goal === null) throw new ToolError(`${p.title} has no goal`, 409);
+    if (goal !== null && p.goal === goal) throw new ToolError(`${p.title} is already toward ${goal}`, 409);
+    return ctx.proposals.put({
+      tool: 'set_plan_goal', who: ctx.who,
+      summary: goal === null ? `Take ${p.title} off ${p.goal}` : `Set ${p.title} toward ${goal}`,
+      effects: [goal === null ? `${p.title} has no goal` : `${p.title} is toward ${goal}`],
+      events: [{ op: 'plan.goal', plan: p.id, goal }],
     }, planStamp(ctx));
   },
 };
@@ -2959,8 +2967,8 @@ const removePlan: Tool = {
   name: 'remove_plan',
   description:
     'Propose taking a plan off the board for good, because it is no longer wanted. It is kept in ' +
-    'the log, marked removed. A finished plan is marked done, not removed. A shelf with items on ' +
-    'it cannot be removed until they are. A reason is required. Returns a proposal.',
+    'the log, marked removed. A finished plan is marked done, not removed. A reason is required. ' +
+    'Returns a proposal.',
   kind: 'write',
   input: {
     type: 'object',
@@ -2974,7 +2982,6 @@ const removePlan: Tool = {
     const state = ctx.store.state;
     const p = livePlan(state, args['plan']);
     const why = required(args['why'], 'why');
-    if (liveChildren(state, p.id).length) throw new ToolError(`${p.title} still has plans on it`, 409);
     const effects = [`${p.title} leaves the board`, 'It stays in the log, marked removed'];
     if (p.asked) effects.push(`The ask to ${p.asked.to} lapses`);
     return ctx.proposals.put({
@@ -3480,7 +3487,7 @@ export const TOOLS: readonly Tool[] = [
   createBudget, renameBudget, archiveBudget, defineEnvelope, setSinkingGoal, removeEnvelope,
   defineCategory, archiveCategory, closeMonth, discardMonth,
   planIncome, defineIncome, removeIncome, locateBudget, localCosts, seedFromLocation,
-  listPlans, getPlan, searchTool, createPlan, updatePlan, setPlanState, askToTake, answerAsk, setChecklist,
+  listPlans, getPlan, searchTool, createPlan, updatePlan, setPlanState, handPlan, setPlanGoal, answerAsk, setChecklist,
   setPlanDue, blockPlanTime, removePlan, linkContact, createContactTool, proposeEvent,
 ];
 
@@ -3515,7 +3522,7 @@ export const forClaude = (t: Tool): boolean => TOOLS.includes(t);
  * and nothing happens until a member approves the card.
  */
 export const RESEARCH_WRITES: ReadonlySet<string> = new Set([
-  createPlan, updatePlan, setPlanState, askToTake, answerAsk, setChecklist,
+  createPlan, updatePlan, setPlanState, handPlan, setPlanGoal, answerAsk, setChecklist,
   setPlanDue, blockPlanTime, removePlan, linkContact, createContactTool,
 ].map((t) => t.name));
 
@@ -3613,9 +3620,7 @@ export async function commit(id: string, ctx: ToolContext): Promise<{ committed:
     await tool?.afterWrite?.(args, ctx, extra);
     return written;
   });
-  // An ask committed here puts its card in front of the member asked, as any
-  // ask does; a drift the effect found, its card in front of everyone.
-  await raiseAskCards(ctx, committed);
+  // A drift the effect found has its card put in front of everyone.
   await raiseDriftCards(ctx, committed);
   return { committed, summary: p.summary };
 }

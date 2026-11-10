@@ -346,9 +346,12 @@ describe('the thread', () => {
         { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' },
         { op: 'plan.create', plan: 'shed', title: 'Sort the shed', area: 'House' },
       ]);
-      const { recordAsk } = await import('../src/plan-edits.ts');
-      await recordAsk(c, 'gate', 'bob', 'you know the gate');
-      await recordAsk(c, 'shed', 'bob', 'your tools');
+      const { offer } = await import('../src/offers.ts');
+      // Asks as 0.6.0 left them in a log: the ask, then the card naming it.
+      for (const [plan, why] of [['gate', 'you know the gate'], ['shed', 'your tools']] as const) {
+        const [asked] = await c.store.append('alice', { op: 'plan.ask', plan, to: 'bob', why });
+        await offer(c, { tool: 'answer_ask', args: { plan, answer: 'accept' }, prompt: { kind: 'ask', ref: asked!.id }, by: 'alice' });
+      }
       // Answered directly, as Take it and Decline do: no proposal.decide, only the plan line.
       await c.store.append('bob', { op: 'plan.ask.decline', plan: 'gate', why: 'no time' });
       await c.store.append('bob', { op: 'plan.ask.accept', plan: 'shed' });

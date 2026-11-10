@@ -18,13 +18,17 @@
  *   POST /api/thread/seen           you have looked at a flagged change
  *   POST /api/briefing/read         advance the caller's read cursor
  *   GET  /api/plans                 the board: a row per area (?filter=both|mine|theirs&showDone=1)
- *   POST /api/plans                 make a plan; a member's plan edits are written, not proposed
+ *   POST /api/plans                 make a plan { title, area, owner?, goal? }; a member's plan edits are written, not proposed
+ *   POST /api/goals/rename          { from, to }: every plan carrying the goal takes the new name; { plans }
+ *   POST /api/goals/remove          { goal }: it comes off every plan carrying it; { plans }
  *   GET  /api/plans/:id             one plan's card
  *   POST /api/plans/:id             change its title, area, chips, notes, estimate or envelope
  *   DELETE /api/plans/:id           remove it, with a reason
  *   POST /api/plans/:id/state       planning, doing or done
  *   POST /api/plans/:id/ask         ask Claude about it, from its card { question }
- *   POST /api/plans/:id/ask-to-take ask a member to take it { to, why }: a card for them
+ *   POST /api/plans/:id/hand        hand it to a member at once { to, why? }
+ *   POST /api/plans/:id/goal        its one goal { goal }, or null for none
+ *   POST /api/plans/:id/ask-to-take closed since 0.7.0: always 410, "Home Planner has been updated. Reload."
  *   POST /api/plans/:id/answer      the member asked takes it, or declines with a reason
  *   POST /api/plans/:id/checklist   the whole checklist
  *   POST /api/plans/:id/due         a due date, or null; on the calendar as an all-day event
@@ -32,7 +36,7 @@
  *                                   (without a DSM session a new one is kept with `calendar: 'sign in again'`)
  *   POST /api/plans/:id/calendar    put its dates that have no event on the calendar now (needs the NAS)
  *   POST /api/plans/:id/contact     put a contact on it;  DELETE …/contact/:contact_id
- *   POST /api/plans/:id/note        a note between the two of you, on its card
+ *   POST /api/plans/:id/note        a note between the members, on its card
  *   POST /api/plans/:id/attach      one file, as multipart/form-data, onto the NAS and the card
  *   GET  /api/plans/:id/files/:name that file, read from the NAS with your session
  *   DELETE /api/plans/:id/files/:name take it off the card, with a reason (it stays on the NAS)
@@ -215,8 +219,8 @@ import { moveFailures } from './moves.ts';
 import { searchHousehold, searchKind, searchWords } from './search.ts';
 import type { BoardCard } from './plans.ts';
 import {
-  addBlock, answerAsk, askToTake, createPlan, linkContact, putOnCalendar, removeBlock, removePlan, setChecklist, setDue, setState,
-  unlinkContact, updatePlan,
+  addBlock, answerAsk, createPlan, handPlan, linkContact, putOnCalendar, removeBlock, removePlan, removeGoal, renameGoal, setChecklist,
+  setDue, setGoal, setState, unlinkContact, updatePlan,
 } from './plan-edits.ts';
 import { attach, ATTACH_MAX_BYTES, detach, filesOff, PLANNER_ROOT, readAttachment } from './attachments.ts';
 import type { FileContext } from './attachments.ts';
@@ -2923,11 +2927,21 @@ export async function start(
     }
 
     if (path === '/api/plans' && req.method === 'POST') {
-      const body = (await readBody(req)) as { title: string; area: string; parent?: string };
-      return json(res, 200, { plan: await createPlan(ctx, body) });
+      const body = (await readBody(req)) as Record<string, any>;
+      return json(res, 200, { plan: await createPlan(ctx, pick(body, ['title', 'area', 'owner', 'goal', 'parent']) as any) });
     }
 
-    const planMatch = /^\/api\/plans\/([^/]+)(?:\/(state|ask|ask-to-take|answer|checklist|due|block|calendar|contact|note|attach|files)(?:\/([^/]+))?)?$/.exec(path);
+    // A goal is the household's, not a plan's: renamed or removed for every plan that carries it.
+    if (path === '/api/goals/rename' && req.method === 'POST') {
+      const body = (await readBody(req)) as Record<string, unknown>;
+      return json(res, 200, { plans: await renameGoal(ctx, body['from'], body['to']) });
+    }
+    if (path === '/api/goals/remove' && req.method === 'POST') {
+      const body = (await readBody(req)) as Record<string, unknown>;
+      return json(res, 200, { plans: await removeGoal(ctx, body['goal']) });
+    }
+
+    const planMatch = /^\/api\/plans\/([^/]+)(?:\/(state|ask|ask-to-take|hand|goal|answer|checklist|due|block|calendar|contact|note|attach|files)(?:\/([^/]+))?)?$/.exec(path);
     if (planMatch) {
       const [, rawId, sub, rawKey] = planMatch;
       const id = decoded(rawId!);
@@ -2972,12 +2986,16 @@ export async function start(
         case 'POST state':
           return json(res, 200, { plan: await setState(ctx, id, body['state']) });
         case 'POST ask-to-take':
-          // Asking a person and asking Claude are two routes; each refuses the other's body.
-          if (body['question'] !== undefined) throw new ToolError('to ask Claude, use /ask with a question');
-          return json(res, 200, { plan: await askToTake(ctx, id, body['to'], body['why']) });
+          // Nobody is asked to take a plan any more: a page from before 0.7.0 is told to reload.
+          throw new ToolError(STALE, 410);
+        case 'POST hand':
+          return json(res, 200, { plan: await handPlan(ctx, id, body['to'], body['why']) });
+        case 'POST goal':
+          if (!('goal' in body)) throw new ToolError('goal is required: a name, or null');
+          return json(res, 200, { plan: await setGoal(ctx, id, body['goal']) });
         case 'POST ask': {
           if (body['to'] !== undefined || body['why'] !== undefined) {
-            throw new ToolError('to ask someone to take it, use /ask-to-take with to and why');
+            throw new ToolError('to hand it to someone, use /hand with to');
           }
           if (typeof body['question'] !== 'string') throw new ToolError('question is required');
           try {

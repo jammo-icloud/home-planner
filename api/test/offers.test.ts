@@ -256,29 +256,30 @@ describe('an ask to take a plan', () => {
   const waitingAsks = async (c: ToolContext, who: string) =>
     waiting(c.store.state, who, await c.store.since(null)).filter((w) => w.kind === 'offer' && w.offer.prompt.kind === 'ask');
 
-  test('an ask_to_take suggested by research and approved raises the card for the member asked', async () => {
+  /** An ask as 0.6.0 left one in a log: the ask, then the card for the member asked, naming it. */
+  const seedAsk = async (c: ToolContext, plan: string, to: string, why: string) => {
+    const [asked] = await c.store.append('alice', { op: 'plan.ask', plan, to, why });
+    await offer(c, { tool: 'answer_ask', args: { plan, answer: 'accept' }, prompt: { kind: 'ask', ref: asked!.id }, by: 'alice' });
+  };
+
+  test('an ask left in the log still waits on the member asked, and nobody else', async () => {
     const c = await ctx();
     await c.store.append('alice', { op: 'plan.create', plan: 'fence', title: 'Paint the fence', area: 'House' });
-    const research: OfferPrompt = { kind: 'research', ref: null };
-    const suggested = await offer(c, { tool: 'ask_to_take', args: { plan: 'fence', to: 'bob', why: 'you like painting' },
-      prompt: research, plan: 'fence' });
-    assert.equal(askCards(c, 'fence').length, 0, 'nothing is asked until it is approved');
-
-    const written = await decide(c, suggested.id, 'approved');
-    assert.deepEqual(written.map((e) => e.op), ['proposal.decide', 'plan.ask']);
+    await seedAsk(c, 'fence', 'bob', 'you like painting');
     const [card] = askCards(c, 'fence');
     assert.ok(card, 'the member asked has a card');
-    assert.deepEqual(card.prompt, { kind: 'ask', ref: written[1]!.id });
     assert.equal(card.who, 'alice');
     assert.deepEqual((await waitingAsks(c, 'bob')).map((w) => w.kind === 'offer' && w.offer.id), [card.id]);
     assert.deepEqual(await waitingAsks(c, 'alice'), [], 'the asker is not waiting on her own ask');
+    // An old ask is still answered: its card is not closed.
+    const done = await decide(as(c, 'bob'), card.id, 'approved');
+    assert.deepEqual(done.map((e) => e.op), ['proposal.decide', 'plan.ask.accept']);
   });
 
   test('the asker cannot put the card off or decide it; the member asked answers it, and it settles', async () => {
     const c = await ctx();
     await c.store.append('alice', { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' });
-    const { recordAsk } = await import('../src/plan-edits.ts');
-    await recordAsk(c, 'gate', 'bob', 'you have the tools');
+    await seedAsk(c, 'gate', 'bob', 'you have the tools');
     const [card] = askCards(c, 'gate');
     for (const d of ['snoozed', 'declined', 'approved'] as const) {
       await assert.rejects(decide(c, card!.id, d, 'x'),
@@ -292,6 +293,22 @@ describe('an ask to take a plan', () => {
     assert.deepEqual([settled.status, settled.decidedBy, settled.why], ['declined', 'bob', 'no time']);
     assert.equal(c.store.state.plans.get('gate')!.asked, null);
     assert.deepEqual(await waitingAsks(c, 'bob'), []);
+  });
+
+  test('a card from before 0.7.0 that would ask, or put a plan on a shelf, can only be declined', async () => {
+    const c = await ctx();
+    await c.store.append('alice', { op: 'plan.create', plan: 'p1', title: 'Kitchen', area: 'House' });
+    const card = (tool: string, events: NewEvent[]): NewEvent => ({ op: 'proposal.offer', tool, args: { plan: 'p1' }, summary: 's', effects: [],
+      events, budget: null, month: null, envelopes: [], fingerprint: '', prompt: BRIEFING } as NewEvent);
+    const [ask, shelf] = await c.store.append('claude', [card('ask_to_take', [{ op: 'plan.ask', plan: 'p1', to: 'bob', why: 'w' }]),
+      card('create_plan', [{ op: 'plan.create', plan: 'p2', title: 'Hinge', area: 'House', parent: 'p1' }])]);
+    const closed = (message: string) => (e: unknown) => e instanceof ToolError && e.status === 409 && e.message === message;
+    await assert.rejects(decide(c, ask!.id, 'approved'), closed('Nobody is asked to take a plan any more. Hand it from its card.'));
+    await assert.rejects(refresh(c, ask!.id), closed('Nobody is asked to take a plan any more. Hand it from its card.'));
+    await assert.rejects(adjust(c, ask!.id, { why: 'x' }), closed('Nobody is asked to take a plan any more. Hand it from its card.'));
+    await assert.rejects(decide(c, shelf!.id, 'approved'), closed('Plans no longer sit on shelves. Give it a goal instead.'));
+    await decide(c, ask!.id, 'declined', 'not needed');
+    assert.equal(c.store.state.thread.offers.get(ask!.id)!.status, 'declined');
   });
 });
 

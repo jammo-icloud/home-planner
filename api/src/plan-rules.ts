@@ -38,6 +38,15 @@ const whole = (v: unknown, name: string): number => {
   return v;
 };
 
+/**
+ * The two doors that were closed in 0.7.0, in the words every refusal of them
+ * uses: a member's route, Claude's tool, and an old card that still carries one.
+ */
+export const RETIRED = {
+  ask: 'Nobody is asked to take a plan any more. Hand it from its card.',
+  shelf: 'Plans no longer sit on shelves. Give it a goal instead.',
+} as const;
+
 /** A goal's name as a person typed it: trimmed, inner runs of space made one, 1 to 60 characters. */
 export const goalLabel = (v: unknown): string => {
   const t = typeof v === 'string' ? v.trim().replace(/\s+/g, ' ') : '';
@@ -45,6 +54,33 @@ export const goalLabel = (v: unknown): string => {
   if (t.length > PLAN_LIMITS.goal) throw new ToolError(`a goal is longer than ${PLAN_LIMITS.goal} characters`);
   return t;
 };
+
+/** A reason that goes with a hand: trimmed, and none when it has no words; at most 300 characters, as the fold has it. */
+export const handReason = (v: unknown): string | undefined => {
+  if (v === undefined || v === null) return undefined;
+  if (typeof v !== 'string') throw new ToolError('a reason is text');
+  const t = v.trim();
+  return t ? capped(t, PLAN_LIMITS.why, 'a reason') : undefined;
+};
+
+/** Who a plan is handed to: a member who does not already own it, in the fold's own sentences. */
+export function handTarget(state: State, p: Plan, to: unknown): string {
+  const who = required(to, 'to');
+  if (who === p.owner) throw new ToolError(`${p.title} is already ${who}'s`);
+  if (!state.members.has(who)) throw new ToolError(`${who} is not in this household`);
+  return who;
+}
+
+/**
+ * The goal to write: null, or the name as `goalLabel` tidies it, in the
+ * spelling a live plan already carries it in when one does. The fold refuses a
+ * goal that `goalLabel` would change, so every door tidies before it writes.
+ */
+export function planGoal(state: State, v: unknown): string | null {
+  if (v === null) return null;
+  const label = goalLabel(v);
+  return goalSpelling(state.plans.values(), label) ?? label;
+}
 
 /** Two goal names are the same goal when they are equal ignoring case: the one place that rule lives. */
 export const sameGoal = (a: string, b: string): boolean => a.toLowerCase() === b.toLowerCase();
@@ -122,9 +158,6 @@ export function pageView(p: Plan): PageView {
   };
 }
 
-export const liveChildren = (state: State, id: string): Plan[] =>
-  [...state.plans.values()].filter((c) => c.parent === id && !c.removed);
-
 /** A fresh id that still says what it is in the raw log. */
 /**
  * A plan's dates that are not on the calendar: its due date, or a block,
@@ -162,20 +195,6 @@ export function knownArea(state: State, v: unknown): string {
     throw new ToolError(`"${area}" is not one of this household's areas: ${state.settings.areas.join(', ')}`);
   }
   return area;
-}
-
-/**
- * The shelf a new plan goes on, or null. Left out, null or empty is no shelf;
- * anything else must be a live plan that is not itself on a shelf, in the
- * area the new plan is in.
- */
-export function shelfFor(state: State, parent: unknown, area: string): Plan | null {
-  if (parent === undefined || parent === null || parent === '') return null;
-  if (typeof parent !== 'string') throw new ToolError('parent must be a plan id');
-  const shelf = livePlan(state, parent);
-  if (shelf.parent !== null) throw new ToolError('plans go two levels deep, no more: a plan can hold items; an item cannot');
-  if (shelf.area !== area) throw new ToolError(`an item lives in its shelf's area: ${shelf.title} is in ${shelf.area}`);
-  return shelf;
 }
 
 /** The whole set of chips: each trimmed, blanks dropped. */
