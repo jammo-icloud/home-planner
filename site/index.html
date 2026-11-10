@@ -1570,6 +1570,7 @@
   .daystrip.month .dn{display:none}
   .daystrip .outside .dd{color:var(--ink-faint)}
   .card.cal-panel{padding:0}
+  #calendar.cal-room{padding-bottom:100vh}
   .cal-form{padding:var(--sp-3) var(--sp-4);scroll-margin-top:calc(var(--sp-9) + var(--sp-4))}
   .list > .cal-form{border-top:var(--stroke) solid var(--hair)}
   .cal-form h2{font-size:var(--fs-body)}
@@ -13434,6 +13435,9 @@ function calMount(anchor, el, first) {
     p.hidden = false;
     calPanelDay = null;
   }
+  // A short day leaves no page below a short form, and scrolling stops at the page's end: while a form is open the
+  // Calendar keeps a screen of room under it, so its first field reaches the top half even with the keyboard up.
+  $('calendar').classList.add('cal-room');
   el.scrollIntoView({ block: 'start' });
   first.focus({ preventScroll: true });
 }
@@ -13453,6 +13457,7 @@ function closeCalOpen(focus) {
     $('cal-keep').setAttribute('aria-expanded', 'false');
     $('cal-new').setAttribute('aria-expanded', 'false');
   }
+  $('calendar').classList.remove('cal-room');
   focus?.focus();
 }
 
