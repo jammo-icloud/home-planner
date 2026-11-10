@@ -3,6 +3,8 @@ import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
 
 import { replay, apply } from '../src/replay.ts';
+import { billsOf } from '../src/analytics.ts';
+import type { BillDate, Event } from '../src/types.ts';
 import { figuresOf, readLog } from './bill-figures.ts';
 
 /**
@@ -35,5 +37,44 @@ describe('an old log reads the same figures', () => {
     assert.equal(row('bills-old-log', 'harbor/2026-09/2026-09-12', 'subs')[5], 0, "September's STREAM PLUS landed as a split part");
     assert.equal(row('bills-old-log', 'harbor/2026-11/2026-11-30', 'home')[5], 0, 'the last day: nothing more is coming');
     assert.equal(row('bills-old-log', at, 'spare'), undefined, 'pace leaves out an envelope with nothing funded and nothing spent');
+  });
+});
+
+describe('a date set on an old log', () => {
+  const at = 'harbor/2026-11/2026-11-12';
+  const COVER = { op: 'bill.set', budget: 'harbor', envelope: 'cover', bill: 'example mutual insurance', name: 'Example Mutual',
+                  date: { kind: 'due', per: 'quarter', on: '2026-09-21' } } as const;
+  const later = (date = COVER.date as BillDate | null, more: Event[] = []) =>
+    figuresOf(apply(replay(readLog('bills-old-log')), [{ id: 'z1', at: '2026-11-02T18:00:00Z', who: 'alice', ...COVER, date } as Event, ...more]));
+
+  test('moves that envelope, in that month, and nothing else', () => {
+    const was = GOLDEN['bills-old-log'].months;
+    const now = later().months;
+    const moved: string[] = [];
+    for (const key of Object.keys(was)) {
+      const a = was[key].pace.filter((r: unknown[]) => r[0] !== 'cover');
+      const b = now[key].pace.filter((r: unknown[]) => r[0] !== 'cover');
+      assert.deepEqual(a.map((r: unknown[]) => [r[0]]).sort(), b.map((r: unknown[]) => [r[0]]).sort(), key);
+      for (const r of a) assert.deepEqual(r, b.find((x: unknown[]) => x[0] === r[0]), `${key} ${r[0]}`);
+      if (JSON.stringify(was[key].pace) !== JSON.stringify(now[key].pace)) moved.push(key);
+    }
+    assert.ok(moved.length > 0);
+    assert.equal(now[at].pace.find((r: unknown[]) => r[0] === 'cover')[5], 0, 'no date of a quarterly falls in November');
+  });
+  test('cleared, every figure is back', () => {
+    const f = later(COVER.date, [{ id: 'z2', at: '2026-11-03T18:00:00Z', who: 'alice', ...COVER, date: null } as Event]);
+    assert.deepEqual(f, GOLDEN['bills-old-log']);
+  });
+  test('a date on one bill of two charges: paid is one payment', () => {
+    const f = figuresOf(apply(replay(readLog('bills-old-log')), [{ id: 'z3', at: '2026-11-02T18:00:00Z', who: 'alice', op: 'bill.set', budget: 'harbor',
+      envelope: 'home', bill: 'p2p payment', name: 'P2P', date: { kind: 'due', per: 'month', day: 5 } } as Event]));
+    assert.equal(f.months[at]!.pace.find((r: unknown[]) => r[0] === 'home')[5], 0, "November's rent paid the date");
+  });
+  test('reading the bills writes nothing', () => {
+    const s = replay(readLog('bills-old-log'));
+    const n = s.eventCount;
+    billsOf(s, 'harbor');
+    assert.equal(s.eventCount, n);
+    assert.equal(s.budgets.get('harbor')!.bills.size, 0);
   });
 });

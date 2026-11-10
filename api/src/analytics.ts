@@ -190,19 +190,7 @@ export function pace(view: MonthView, clock: MonthClock, state: State): Pace[] {
   const fixed = fixedCharges(state);
   const byKey = new Map(fixed.map((f) => [f.key, f]));
 
-  // Which envelope each fixed charge belongs to, from where it has landed
-  // before. A bill that has never been seen in this budget expects nothing.
-  const expectedFor = new Map<EnvelopeId, Map<string, Cents>>();
-  const budget = state.budgets.get(view.budget);
-  if (budget) {
-    for (const t of state.txns.values()) {
-      const f = byKey.get(chargeKey(t.payee, t.category));
-      if (!f) continue;
-      const env = envelopeFor(budget, t);
-      if (!env) continue;
-      (expectedFor.get(env.id) ?? expectedFor.set(env.id, new Map()).get(env.id)!).set(f.key, f.typical);
-    }
-  }
+  const bills = billsOf(state, view.budget, { fixed });
 
   const out: Pace[] = [];
   for (const e of view.envelopes) {
@@ -210,7 +198,6 @@ export function pace(view: MonthView, clock: MonthClock, state: State): Pace[] {
 
     let committed = ZERO;
     let discretionary = ZERO;
-    const landed = new Set<string>();
     // By part: a split receipt counts its share here, never the whole.
     for (const line of e.lines) {
       const t = state.txns.get(line.txnId);
@@ -221,7 +208,6 @@ export function pace(view: MonthView, clock: MonthClock, state: State): Pace[] {
         && state.categories.get(line.category)?.sinking !== undefined;
       if (byKey.has(key) || sinking) {
         committed = add(committed, amount);
-        landed.add(key);
       } else {
         discretionary = add(discretionary, amount);
       }
@@ -229,12 +215,7 @@ export function pace(view: MonthView, clock: MonthClock, state: State): Pace[] {
 
     // Bills this envelope gets every month that have not arrived yet. This is
     // the half that used to read as "ok" right up until it wasn't.
-    let stillExpected = ZERO;
-    if (!clock.complete) {
-      for (const [key, typical] of expectedFor.get(e.envelope.id) ?? []) {
-        if (!landed.has(key)) stillExpected = add(stillExpected, typical);
-      }
-    }
+    const stillExpected = clock.complete ? ZERO : billsExpected(bills.get(e.envelope.id) ?? [], clock.month);
 
     const variable = clock.elapsed > 0 && !clock.complete
       ? cents(discretionary / clock.elapsed)
