@@ -123,6 +123,10 @@ describe('the card', () => {
     assert.deepEqual([f.nightHeld(D, kept), f.nightHeld(NEXT, kept)], [true, false]);
     assert.equal(f.rowWords(timed('Swim', 9, 10, { clash: true }), D, 'alice'), '09:00 to 10:00, Swim, on your calendar, clashes with another event');
     assert.equal(f.rowWords(due('doing'), D, 'alice'), 'due, Fix the gate, on Household, Doing');
+    // The name replaces the row's text, so "for a plan" on its second line is said too (Ruling 9).
+    const roofer = timed('Roofer visit', 9, 10, { kind: 'appointment', calendar: 'household', owner: null, label: 'Household', plan: plan('doing') });
+    assert.equal(f.rowWords(roofer, D, 'alice'), '09:00 to 10:00, Roofer visit, on Household, for Fix the gate');
+    assert.equal(f.rowWords({ ...roofer, proposed: 'o1' }, D, 'alice'), '09:00 to 10:00, Roofer visit, on Household, proposed, not approved, for Fix the gate');
     assert.equal(f.moneyWords({ kind: 'autopay', label: 'Utilities', name: 'Example Power', about: '$146', short: false }), 'Auto Pay, Utilities, Example Power, about $146');
     assert.equal(f.moneyWords({ kind: 'short', billKind: 'bill', label: 'Utilities', name: 'Example Power', about: '$146', left: '$14', short: true }), 'Bill, Utilities, Example Power, about $146, $14 left');
     assert.equal(f.moneyWords({ kind: 'payby', label: 'Util', name: 'Example Power', short: false }), 'Pay By, Util, Example Power');

@@ -12825,6 +12825,8 @@ function rowWords(e, day, me) {
   if (e.proposed) parts.push('proposed, not approved');
   if (e.drift) parts.push('moved on the calendar');
   if (e.offCalendar) parts.push('not on the calendar yet');
+  // The name replaces the row's text: an appointment's "for a plan" is said as its second line shows it.
+  if (!isPlanRow(e) && e.plan?.title) parts.push(`for ${e.plan.title}`);
   if (e.clash) parts.push('clashes with another event');
   return parts.join(', ');
 }
