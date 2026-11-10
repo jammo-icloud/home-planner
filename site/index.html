@@ -1091,7 +1091,7 @@
 
   /* ── Calendar ──────────────────────────────────────────────────────── */
   /* the week on a desk from 1040, one day at a time on a phone; one fetch draws both */
-  #calendar{display:grid;gap:14px;padding-bottom:var(--sp-6)}
+  #calendar{display:grid;grid-template-columns:minmax(0,1fr);gap:14px;padding-bottom:var(--sp-6)}
   #calendar p,#calendar h1{margin:0}
   .cal-bar{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
   .cal-bar .range{font-size:var(--fs-title);font-weight:var(--fw-semibold);letter-spacing:var(--tracking-tight);margin-right:auto}

@@ -353,6 +353,12 @@ test("the people bar presses Everyone when the pressed member has nothing in vie
   assert.doesNotMatch(b, /pressPerson\(null\)/, 'the choice is not cleared');
 });
 
+test("the Calendar's one grid column is bounded, so a wide people bar scrolls inside it and never widens the page", () => {
+  const rule = REGIONS.css.match(/#calendar\{display:grid;[^}]*\}/);
+  assert.ok(rule, 'the grid rule is found');
+  assert.match(rule[0], /grid-template-columns:\s*minmax\(0,\s*1fr\)/);
+});
+
 describe('after the final review', () => {
   const today = REGIONS.today;
   test('a pressed person who has left is let go before Today or search sends who', () => {
