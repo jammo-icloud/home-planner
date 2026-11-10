@@ -35,7 +35,7 @@ export interface Stamp {
 export interface Raised { how: 'briefing' | 'answer' | 'research' | 'member'; entry: EventId; day: Day; at: string; by: Actor }
 
 /** Where a row opens: a live plan's card, an envelope, or a day on the Calendar. */
-export type Open = { plan: PlanId } | { budget: BudgetId; envelope: EnvelopeId } | { calendar: Day };
+export type Open = { plan: PlanId } | { budget: BudgetId; envelope: EnvelopeId } | { calendar: Day; key?: number };
 
 type Body =
   | { kind: 'briefing'; id: EventId; at: string; source: BriefingSource; budget: BudgetId | null; day: Day;
@@ -294,7 +294,7 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
       case 'move': return { budget: e.budget, envelope: e.to };
       case 'calendar.appointment': case 'calendar.appointment.change':
         // An all-day start is a bare date; read as an instant it lands a day early west of UTC.
-        return { calendar: e.allDay && /^\d{4}-\d\d-\d\d$/.test(e.start) ? e.start.slice(0, 10) : householdDay(tz, e.start) };
+        return { calendar: e.allDay && /^\d{4}-\d\d-\d\d$/.test(e.start) ? e.start.slice(0, 10) : householdDay(tz, e.start), key: e.evt_id };
       case 'booking.block': return { calendar: e.from };
       case 'booking.confirm': return { calendar: e.arrive };
       case 'calendar.drift.resolve': {

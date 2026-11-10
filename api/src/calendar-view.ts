@@ -6,13 +6,15 @@
  */
 
 import { ToolError } from './errors.ts';
-import { capital, listingFor, logDsm, midnight, nextDay } from './calendar.ts';
+import { addDays, capital, listingFor, logDsm, midnight, nextDay } from './calendar.ts';
 import { appointmentTimes } from './appointments.ts';
 import type { AppointmentTimes } from './appointments.ts';
 import { NeedsDsm, SessionLost, SynologyError, listEvents, requireSid } from './synology.ts';
 import type { CalEvent, DsmFetch } from './synology.ts';
 import type { ToolContext } from './tools.ts';
 import { goalsOf } from './plans.ts';
+import { build, daysOf, ordered } from './thread.ts';
+import type { DayRow } from './thread.ts';
 import { isDay, sameCalendar, visibleTo, zoneOf } from './types.ts';
 import type { Actor, CalendarLink, CalendarRef, Day, EventId, Plan, PlanId, PlanState, State } from './types.ts';
 
@@ -185,6 +187,8 @@ export interface WeekCalendar {
   readonly mine?: boolean;
   /** Every goal a live plan carries, with its plans and how many are done. */
   readonly goals: ReturnType<typeof goalsOf>;
+  /** The record's numbers for each day of the window that has entries, as a day card's, unnarrowed. */
+  readonly thread: readonly { day: Day; entries: number; by: DayRow['by']; waiting: number }[];
 }
 
 /**
@@ -373,5 +377,7 @@ export async function weekEvents(ctx: ToolContext, window: { start: Day; end: Da
   return {
     events, ...(unavailable !== undefined ? {} : { mine }), ...(unavailable !== undefined ? { unavailable } : {}),
     ...(missed.length ? { missed } : {}), goals: goalsOf(state),
+    thread: daysOf(ordered(build(await ctx.store.since(null), state, ctx.who)), state, ctx.who, { from: window.start, to: addDays(window.end, -1) })
+      .map((r) => ({ day: r.day, entries: r.total, by: r.by, waiting: r.waiting })),
   };
 }

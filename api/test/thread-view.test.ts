@@ -150,10 +150,10 @@ describe('the thread', () => {
       const made = all[0] as Extract<ThreadEntry, { kind: 'change' }>;
       assert.equal(made.event?.on, 'household');
       assert.equal(made.event?.summary, 'Dentist');
-      assert.deepEqual(made.open, { calendar: '2026-08-20' });
+      assert.deepEqual(made.open, { calendar: '2026-08-20', key: 5 });
       const moved = all[1] as Extract<ThreadEntry, { kind: 'change' }>;
       assert.equal(moved.event?.was?.summary, 'Dentist');
-      assert.deepEqual(moved.open, { calendar: '2026-08-21' });
+      assert.deepEqual(moved.open, { calendar: '2026-08-21', key: 5 });
     });
 
     test('an all-day appointment opens its own date, west of UTC too', async () => {
@@ -162,7 +162,7 @@ describe('the thread', () => {
       await c.store.append('alice', { op: 'calendar.appointment', cal_id: '/alice/hh/', original_cal_id: '/alice/hh/', evt_id: 6,
         ical_uid: 'u6', dav_etag: 'E', summary: 'Holiday', start: '2026-11-12', end: '2026-11-13', allDay: true } as never);
       const e = (await entries(c)).find((x) => x.kind === 'change' && x.event?.summary === 'Holiday') as Extract<ThreadEntry, { kind: 'change' }>;
-      assert.deepEqual(e.open, { calendar: '2026-11-12' });
+      assert.deepEqual(e.open, { calendar: '2026-11-12', key: 6 });
     });
 
     test('an all-day appointment stored as an instant opens the household day, east of UTC', async () => {
@@ -171,7 +171,33 @@ describe('the thread', () => {
       await c.store.append('alice', { op: 'calendar.appointment', cal_id: '/alice/hh/', original_cal_id: '/alice/hh/', evt_id: 7,
         ical_uid: 'u7', dav_etag: 'E', summary: 'Show day', start: '2026-11-11T13:00:00.000Z', end: '2026-11-12T13:00:00.000Z', allDay: true } as never);
       const e = (await entries(c)).find((x) => x.kind === 'change' && x.event?.summary === 'Show day') as Extract<ThreadEntry, { kind: 'change' }>;
-      assert.deepEqual(e.open, { calendar: '2026-11-12' });
+      assert.deepEqual(e.open, { calendar: '2026-11-12', key: 7 });
+    });
+
+    test('a change row knows its appointment, and a drift resolve does not', async () => {
+      const c = await ctx();
+      const CAL = { cal_id: '/alice/hh/', original_cal_id: '/alice/hh/' };
+      await c.store.append('alice', { op: 'household.zone', zone: 'America/Denver' });
+      await c.store.append('alice', [
+        { op: 'calendar.appointment', ...CAL, evt_id: 300, ical_uid: 'u300', dav_etag: 'E', summary: 'Plumber',
+          start: '2026-11-12T16:00:00.000Z', end: '2026-11-12T17:00:00.000Z', allDay: false },
+        { op: 'calendar.appointment.change', evt_id: 300, summary: 'Plumber, later', start: '2026-11-13T16:00:00.000Z',
+          end: '2026-11-13T17:00:00.000Z', allDay: false, dav_etag: 'E2',
+          was: { summary: 'Plumber', start: '2026-11-12T16:00:00.000Z', end: '2026-11-12T17:00:00.000Z', allDay: false } },
+      ] as never);
+      const rows = (await entries(c)).filter((x) => x.kind === 'change' && x.event?.summary?.startsWith('Plumber')) as Extract<ThreadEntry, { kind: 'change' }>[];
+      assert.deepEqual(rows.map((r) => r.open), [{ calendar: '2026-11-12', key: 300 }, { calendar: '2026-11-13', key: 300 }]);
+
+      await c.store.append('alice', [
+        { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' },
+        { op: 'plan.due', plan: 'gate', due: '2026-11-07' },
+        { op: 'plan.calendar.link', plan: 'gate', kind: 'due', ...CAL, evt_id: 7, ical_uid: 'u7', dav_etag: 'E1' },
+      ]);
+      const [d] = await c.store.append('alice', { op: 'calendar.drift', plan: 'gate', evt_id: 7, theirs: null,
+        ours: { dtstart: 1_794_009_600, dtend: 1_794_096_000, summary: 'Fix the gate' } });
+      await c.store.append('alice', { op: 'calendar.drift.resolve', drift: d!.id, choice: 'plan' });
+      const resolved = (await entries(c)).filter((x) => x.kind === 'change' && x.open && 'calendar' in x.open && !('key' in x.open));
+      assert.equal(resolved.length, 1);
     });
 
     test('fresh is what others wrote after what I last read', async () => {

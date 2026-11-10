@@ -1779,6 +1779,27 @@ describe('due dates and blocks become events', () => {
       assert.equal(week.events.find((e) => e.proposed === mine.id)!.owner, c.who);
       assert.equal(week.events.find((e) => e.proposed === home.id)!.owner, undefined);
     });
+
+    test('the record row is the numbers of a day card, unnarrowed, in any window', async () => {
+      const c = await setup();
+      const rowOf = async () => (await weekEvents(c, { start: '2026-10-26', end: '2026-11-02' })).thread.find((t) => t.day === '2026-10-29')!;
+      // setup already wrote the gate plan on this day: the note is one more entry among them.
+      const before = (await rowOf()).entries;
+      await c.store.append('alice', { op: 'thread.note', text: 'The gate is done', budget: null });
+      const row = await rowOf();
+      assert.deepEqual([row.entries, row.waiting, row.by.map((b) => b.who)], [before + 1, 0, ['alice']]);
+      assert.deepEqual((await weekEvents(c, { start: '2026-11-02', end: '2026-11-09' })).thread, []);
+    });
+
+    test('the record row is there without the NAS, and an open proposal for the household is waiting', async () => {
+      const c = await setup();
+      await c.store.append('alice', { op: 'thread.note', text: 'The gate is done', budget: null });
+      await card(c, 'propose_event', dentist({ on: 'household', start: THU('15:00'), end: THU('16:00') }));
+      const week = await weekEvents({ ...c, sid: null }, { start: '2026-10-26', end: '2026-11-02' });
+      const row = week.thread.find((t) => t.day === '2026-10-29')!;
+      assert.equal(row.waiting, 1);
+      assert.ok(row.entries >= 2);
+    });
   });
 
   describe('creating a contact from a suggestion', () => {
