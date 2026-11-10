@@ -25,6 +25,9 @@ const REGIONS = {
   todayMarkup: markup.slice(markup.indexOf('<div id="briefing"'), markup.indexOf('<!-- Budget, Import and Compare')),
   threadSrc: read('../src/thread.ts'),
   shared: between(script, '// ── shared: what every screen calls', '// ── today'),
+  calendar: between(script, '// ── the calendar', '// ── views'),
+  calendarMarkup: markup.slice(markup.indexOf('<div id="calendar"'), markup.indexOf('<div id="settings"')),
+  calendarView: read('../src/calendar-view.ts'),
   css: between(page, '<style', '</style>'),
   page,
 } as const;
@@ -141,6 +144,17 @@ const KEPT: readonly Line[] = [
 ['T118', "ev.key === 'Enter' && !ev.shiftKey", 'today'], ['T119', '!ev.isComposing', 'today'],
 ['S12', 'const dayKey', 'today'], ['S12', 'const timeOf', 'today'], ['S12', 'const fmtDate', 'today'], ['S12', 'const asOf', 'today'], ['S13', 'const docTexts', 'today'], ['S13', 'function readDocText(', 'today'], ['S13', 'const docRead', 'today'], ['S13', 'let docHousehold', 'today'],
 ['S14', 'claudeOn = who.claude === true', 'page'], ['S20', 'id="unsorted-q"', 'page'], ['S20', 'async function categoryList(', 'page'], ['S21', 'const chosenBudget', 'page'], ['S24', 'let calWeek', 'page'], ['S27', 'const bookingHere', 'page'], ['S27', 'const dsmCalendarUrl', 'page'],
+// The Calendar (0.9.0): what stands before the rebuild and after it.
+['C2', 'aria-label="Previous week"', 'calendarMarkup'], ['C2', 'aria-label="Next week"', 'calendarMarkup'], ['C3', 'This week', 'calendarMarkup'], ['C4', '.formatRange(keyDate(calWeek), keyDate(days[6]))', 'calendar'],
+['C13', "node('div', 'adlab', 'all day')", 'calendar'], ['C14', "hourLabels('hours')", 'calendar'], ['C14', '.week .col.is-today{', 'css'], ['C15', 'function timedBoxes(', 'calendar'], ['C15', "'↑ '", 'calendar'], ['C15', "' ↓'", 'calendar'],
+['C16', 'function nowLine(', 'calendar'], ['C16', 'Now, ${clockOf(Date.now() / 1000)}', 'calendar'], ['C17', 'function evClasses(', 'calendar'], ['C17', '.ev.proposed{', 'css'], ['C17', '.ev.drift{', 'css'], ['C17', '.ev.off{', 'css'], ['C17', '.ev.held{', 'css'], ['C20', "|| 'Busy'", 'calendar'],
+['C28', 'calDay = days.includes(today) ? today : days[0]', 'calendar'], ['C29', 'await loadCalendar(calWeek ?? todayKey())', 'page'], ['C30', 'function evOpen(', 'calendar'], ['C30', 'openCard(e.plan.id)', 'calendar'], ['S5', 'openTodayAt({ drift: e.drift })', 'calendar'], ['S5', 'openTodayAt({ offer: e.proposed })', 'calendar'],
+['C32', "placeholder: 'Dentist'", 'calendar'], ['C32', "'All day'", 'calendar'], ['C32', "'From'", 'calendar'], ['C32', "'To'", 'calendar'], ['C37', 'Nothing else at that time on ${listOf(out.checked)}.', 'calendar'], ['C37', 'There is no calendar to check it against yet.', 'calendar'], ['C42', "'Save'", 'calendar'],
+['C45', "'Change this event'", 'calendar'], ['C45', "'Ends on'", 'calendar'], ['C45', "node('span', 'quiet', 'For ')", 'calendar'], ['C47', 'Take it off the calendar for good?', 'calendar'], ['C47', "'Delete it'", 'calendar'], ['C47', "'Keep it'", 'calendar'], ['C48', 'so only its owner changes it.', 'calendar'], ['C48', 'so it is changed where it was made.', 'calendar'], ['C48', ', shared with you', 'calendar'],
+['C49', 'Kept for the household: ${heldNights(first, last)}', 'calendar'], ['C49', "'Why open them again'", 'calendar'], ['C49', 'Friends see these nights as taken.', 'calendar'], ['C51', "'Keep nights for the household'", 'calendar'], ['C51', "'First night'", 'calendar'], ['C51', "'Last night'", 'calendar'], ['C51', "placeholder: 'Family is here'", 'calendar'],
+['C58', 'marked.push(', 'calendarView'], ['C59', 'offCalendar: true', 'calendarView'], ['C60', "o.tool !== 'propose_event'", 'calendarView'], ['C61', 'driftOf(e.evt_id)', 'calendarView'], ['C62', 'export function markClashes(', 'calendarView'], ['C63', 'stayEvents', 'calendarView'], ['S28', 'by: b.by', 'calendarView'],
+['C64', 'if (mine === calFetch) showProblem(ex)', 'calendar'], ['C64', "$('loading').hidden = false", 'calendar'], ['C65', 'if (mine !== calFetch) return;', 'calendar'], ['C66', 'const bookingHere', 'calendar'], ['C67', 'const dsmCalendarUrl', 'calendar'],
+['S11', 'const keyAt', 'shared'], ['S11', 'const mondayOf', 'shared'], ['S14', 'myName = who.who', 'page'],
 ];
 /** What 0.7.0 brings, and what it deletes (the spec's "What is deleted"). Each page task adds its lines before it does the work. */
 const ADDED: readonly Line[] = [
@@ -280,6 +294,7 @@ describe('the page ledger', () => {
     assert.ok(REGIONS.plan.includes('function renderCard('), "the plan region holds the card's script");
     assert.ok(REGIONS.today.includes('function renderSetupNotes('), 'the today region holds its script');
     assert.ok(REGIONS.shared.includes('function icon('), 'the shared region holds the helpers');
+    assert.ok(REGIONS.calendar.includes('function evClasses('), 'the calendar region holds its script');
   });
   for (const [name, list, want] of [['kept', KEPT, true], ['added', ADDED, true], ['gone', GONE, false]] as const) {
     test(`what the ledger marks ${name}`, () => {
