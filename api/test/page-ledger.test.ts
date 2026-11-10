@@ -44,7 +44,7 @@ const KEPT: readonly Line[] = [
   ['P57', 'Search Contacts by name'], ['P58', 'Sign in again to reach Contacts.'], ['P59', 'Let it go'], ['P60', 'Put it on the calendar'],
   ['P61', "cardSection('History'"], ['P62', 'Remove this plan'], ['P62', 'Why remove it? The log keeps it, and your reason.'],
   ['P64', 'id="loading"', 'page'], ['P64', 'id="app-err"', 'page'], ['P64', 'Reading the log', 'page'], ['S7', 'function askAnswer(', 'page'], ['S7', 'function askCardNode(', 'page'],
-  ['S7', 'Waiting for you'], ['S9', 'const otherMember', 'shared'], ['S15', 'async function eventPlans(', 'page'], ['S18', 'function railChips(', 'page'], ['S11', 'const clockOf', 'shared'],
+  ['S7', "node('div', 'waiting', mine ? 'Waiting for you'", 'page'], ['S9', 'const otherMember', 'shared'], ['S15', 'async function eventPlans(', 'page'], ['S18', 'function railChips(', 'page'], ['S11', 'const clockOf', 'shared'],
   ['S11', 'const todayKey', 'shared'], ['S5', 'async function openTodayAt(', 'shared'], ['S2', 'async function reloadView(', 'page'], ['S6', 'function actionButton(', 'page'],
   ['shared', 'function icon(', 'shared'], ['shared', 'function lucide(', 'shared'], ['shared', 'function chip(', 'shared'], ['shared', 'function inlineForm(', 'shared'],
   ['card', 'function renderCard('], ['card', 'function checklistSection('], ['card', 'function attachmentsSection('], ['card', 'function claudeSection('],
@@ -52,7 +52,10 @@ const KEPT: readonly Line[] = [
   ['card', 'function factsCard('], ['card', 'async function openCard('],
 ];
 /** What 0.7.0 brings, and what it deletes (the spec's "What is deleted"). Each page task adds its lines before it does the work. */
-const ADDED: readonly Line[] = [];
+const ADDED: readonly Line[] = [
+  // A page from another build: the build is the shared region's first line, sent with every request, and linked on the stylesheet.
+  ['build', "'x-hp-build': BUILD", 'page'], ['build', "const BUILD = '", 'shared'], ['build', 'href="/tokens.css?v=', 'page'],
+];
 const GONE: readonly Line[] = [];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = [];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
@@ -77,6 +80,11 @@ describe('the page ledger: Plan, 0.7.0', () => {
   }
   test("Plan's markup has lost the old board's words", () => {
     assert.deepEqual(GONE_FROM_PLAN_MARKUP.filter((text) => uncommented(planMarkup).includes(text)), []);
+  });
+  test('the page, its stylesheet and the package are one build', () => {
+    const version = (JSON.parse(read('../package.json')) as { version: string }).version;
+    assert.equal(/^const BUILD = '([^']+)';$/m.exec(script)?.[1], version);
+    assert.equal(/href="\/tokens\.css\?v=([^"]+)"/.exec(markup)?.[1], version);
   });
   test('every route the page calls is one the server answers', () => {
     const called = new Set([...script.matchAll(/['"`](\/api\/[a-z0-9_/-]*)/g)].map((m) => m[1]!.replace(/\/$/, '')));

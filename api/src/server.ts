@@ -244,7 +244,7 @@ import {
 import type { BookingMail, BookingStatus } from './booking.ts';
 import { sendMail } from './mail.ts';
 import { Limiter } from './limiter.ts';
-import { softwareVersion } from './version.ts';
+import { softwareVersion, STALE } from './version.ts';
 import { buildProfile, caldavPath, PROFILE_CONTENT_TYPE, PROFILE_FILENAME } from './profile.ts';
 import { loadSigner, signedOrPlain } from './sign.ts';
 import type { SigningStatus } from './sign.ts';
@@ -1769,6 +1769,11 @@ export async function start(
     // The app shell, before the gate — the login page has to be reachable by
     // someone who is by definition not signed in yet.
     if (!path.startsWith('/api/')) return serveStatic(url.pathname, res);
+
+    // A page left open across an upgrade names its build; one that is not this build is told to reload,
+    // before any route runs. A caller that sends no build (the guest page, scripts) is never stale.
+    const build = req.headers['x-hp-build'];
+    if (typeof build === 'string' && build !== softwareVersion().version) return json(res, 409, { error: STALE, stale: true });
 
     // ── everything past here needs a session ─────────────────────────────────
     const { session, token } = sessionOf(req, sessions);

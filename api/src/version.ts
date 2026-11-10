@@ -114,3 +114,6 @@ const CURRENT = readVersion(PACKAGE_ROOT, process.env['VERSION_PATH'] || join(PA
 export function softwareVersion(): SoftwareVersion {
   return { ...CURRENT };
 }
+
+/** What a page from another build is told, by the server and by the page, when its build is not the one running. */
+export const STALE = 'Home Planner has been updated. Reload.';

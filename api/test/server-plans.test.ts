@@ -105,6 +105,17 @@ before(async () => {
 after(async () => { await close(); await nas.close(); });
 
 describe('the plan routes', () => {
+  test('a page from another build is told to reload before any route runs; no build passes', async () => {
+    const { softwareVersion } = await import('../src/version.ts');
+    const ask = (build?: string, path = '/api/plans') =>
+      fetch(base + path, { headers: { cookie: cookies['alice']!, ...(build ? { 'x-hp-build': build } : {}) } });
+    const stale = await ask('0.0.1');
+    assert.equal(stale.status, 409);
+    assert.deepEqual(await stale.json(), { error: 'Home Planner has been updated. Reload.', stale: true });
+    assert.equal((await ask(softwareVersion().version)).status, 200);
+    assert.equal((await ask()).status, 200);                              // the guest page and scripts send none
+    assert.equal((await ask('0.0.1', '/api/no-such-route')).status, 409);  // before the route is even looked for
+  });
   test('a member makes a plan directly: it is in planning, and theirs', async () => {
     const r = await call('alice', 'POST', '/api/plans', { title: 'Fix the gate', area: 'House' });
     assert.equal(r.status, 200);

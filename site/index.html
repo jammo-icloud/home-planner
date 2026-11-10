@@ -27,7 +27,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F9FE" />
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F131A" />
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/tokens.css" />
+<link rel="stylesheet" href="/tokens.css?v=0.6.0" />
 <style>
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -2062,7 +2062,7 @@ const monthLong = (m) => new Date(`${m}-01T12:00:00`).toLocaleDateString(undefin
 async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
   const res = await fetch(path, {
     method,
-    headers: body === undefined ? {} : { 'content-type': 'application/json' },
+    headers: { 'x-hp-build': BUILD, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
     body: body === undefined ? undefined : JSON.stringify(body),
     credentials: 'same-origin',
   });
@@ -2070,7 +2070,7 @@ async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
   // The household this page had open is gone (its owner removed it): the server has
   // already cleared it from this session, so show the picker rather than a stack of errors.
   if (res.status === 409 && /^no household is open/.test(data.error ?? '') && !$('app').hidden && !leaving) void backToPicker();
-  if (!res.ok) throw Object.assign(new Error(data.error || `request failed (${res.status})`), { status: res.status });
+  if (!res.ok) throw Object.assign(new Error(data.error || `request failed (${res.status})`), { status: res.status, stale: data.stale === true });
   return data;
 }
 
@@ -2206,6 +2206,7 @@ $('signout').addEventListener('click', async () => {
 });
 
 // ── shared: what every screen calls ───────────────────────────────────────
+const BUILD = '0.6.0';
 
 /** Everyone in the household, from whoami. "The other member" is whoever is not you. */
 let members = [];
@@ -4921,6 +4922,15 @@ async function refresh() {
  * that "no open month" was a thing they could fix.
  */
 function showProblem(ex) {
+  // A page from another build says so and offers the reload; it never reloads by itself, since a page whose BUILD is wrong would loop.
+  if (ex.stale) {
+    const box = $('app-err');
+    box.textContent = '';
+    box.hidden = false;
+    box.className = 'err';
+    box.append(`${ex.message} `, textBtn('Reload', 'btn', null, () => location.reload()));
+    return;
+  }
   // The picker is already on its way (see api()); an error box under it would only confuse.
   if (/^no household is open/.test(ex.message)) return;
   // "No budget yet" and "no open month" are Today's and Budget's to say: the
@@ -11349,7 +11359,18 @@ async function enterApp() {
   const check = await api('/api/auth/check').catch(() => ({ authenticated: false }));
   if (check.authenticated) {
     if (check.household) {
-      try { await enterApp(); return; } catch { /* the household went away */ }
+      try { await enterApp(); return; } catch (ex) {
+        // A page from another build says so, here too, rather than showing a household picker its calls cannot use.
+        if (ex.stale) {
+          $('login').hidden = true;
+          $('households').hidden = true;
+          $('app').hidden = false;
+          $('loading').hidden = true;
+          showProblem(ex);
+          return;
+        }
+        /* otherwise the household went away */
+      }
     }
     showHouseholds(check);
     return;
