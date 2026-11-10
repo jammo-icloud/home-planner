@@ -12607,7 +12607,7 @@ function calKey(e) {
 /** Whether the pressed calendar and the goal chip leave this row showing; the overlays are not asked. */
 function showsUnder(e, lens) {
   if (lens.pressed && calKey(e) !== lens.pressed) return false;
-  if (lens.goal && e.plan && String(e.plan.goal ?? '').toLowerCase() !== String(lens.goal).toLowerCase()) return false;
+  if (lens.goal && isPlanRow(e) && e.plan && String(e.plan.goal ?? '').toLowerCase() !== String(lens.goal).toLowerCase()) return false;
   return true;
 }
 
@@ -12742,7 +12742,9 @@ const MONEY_KIND_WORDS = { due: 'Due', autopay: 'Auto Pay', payby: 'Pay By', bil
 
 /** A money row's accessible name. */
 function moneyWords(m) {
-  const parts = [MONEY_KIND_WORDS[m.short ? m.billKind : m.kind] ?? 'Bill', m.label, m.name, m.amount ?? `about ${m.about}`];
+  const parts = [MONEY_KIND_WORDS[m.short ? m.billKind : m.kind] ?? 'Bill', m.label, m.name];
+  if (m.amount) parts.push(m.amount);
+  else if (m.about) parts.push(`about ${m.about}`);
   if (m.noReceipt) parts.push('no receipt yet');
   if (m.left) parts.push(`${m.left} left`);
   else if (m.over) parts.push(`${m.over} over`);

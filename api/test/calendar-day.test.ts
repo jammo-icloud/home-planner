@@ -38,6 +38,10 @@ describe('the count', () => {
   });
   test('a goal chip keeps only the plan rows that carry it, ignoring case', () =>
     assert.equal(marks(on([due('doing', 'New roof'), due('planning', 'Garden'), timed('Swim', 9, 10)]), lens({ goal: 'new roof' })).count, 2));
+  test('a goal chip leaves an appointment for another goal showing', () => {
+    const d = on([due('doing', 'New roof'), timed('Roofer visit', 9, 10, { kind: 'appointment', plan: plan('doing', 'Garden') })]);
+    assert.deepEqual([f.dayView(D, d, lens({ goal: 'New roof' })).shown.length, f.dayView(D, d, lens({ goal: 'New roof' })).hidden.length], [2, 0]);
+  });
 });
 
 describe('whose it is', () => {
@@ -121,6 +125,7 @@ describe('the card', () => {
     assert.equal(f.rowWords(due('doing'), D, 'alice'), 'due, Fix the gate, on Household, Doing');
     assert.equal(f.moneyWords({ kind: 'autopay', label: 'Utilities', name: 'Example Power', about: '$146', short: false }), 'Auto Pay, Utilities, Example Power, about $146');
     assert.equal(f.moneyWords({ kind: 'short', billKind: 'bill', label: 'Utilities', name: 'Example Power', about: '$146', left: '$14', short: true }), 'Bill, Utilities, Example Power, about $146, $14 left');
+    assert.equal(f.moneyWords({ kind: 'payby', label: 'Util', name: 'Example Power', short: false }), 'Pay By, Util, Example Power');
   });
   test('a deep link: a row a filter hides draws under Everyone; one no longer there opens the day', () => {
     const d = on([timed('Hers', 9, 10, { evt_id: 7, ...hers }), timed('Mine', 11, 12, { evt_id: 8 })]);
