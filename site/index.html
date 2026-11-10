@@ -916,7 +916,7 @@
   #plan-board .page-head{flex-direction:column;align-items:flex-start;gap:var(--sp-1)}
   #plan-people{margin-bottom:var(--sp-5)}
   #plan-areas{display:grid;gap:var(--sp-6)}
-  #plan-areas + #plan-quiet{margin-top:var(--sp-4)}
+  #plan-count:focus{outline:none}
   /* The gap keeps the heading's hit (--tap, centred on a shorter line) off the card's first row. */
   .area{display:grid;gap:var(--sp-3);margin:0;min-width:0}
   /* An area's heading is one link: its name in title weight, the count, a chevron, hit across --tap (.hit). */
@@ -948,13 +948,14 @@
   .pm-research .i{color:var(--claude-mark);fill:currentColor;stroke:none}
   .pm-env.neg{color:var(--problem)}
   .list > .add-form{padding:var(--sp-3) var(--sp-4);border-top:var(--stroke) solid var(--hair)}
-  #plan-areas > .add-row{margin-top:0}
+  #plan-areas > .add-row{margin-top:0;min-height:var(--tap)}
   /* Room under a form that opened near the bottom, so its field can be scrolled into the top half of a phone. */
   #plan-board:has(#plan-areas form){padding-bottom:50vh}
   /* desk at 1040: the areas are columns that wrap, each the same card, "A new area" a solid column at the end */
   @container page (min-width: 1040px){
     #plan-areas{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--sp-5);align-items:start}
     #plan-areas > .add-row{min-height:calc(var(--row) * 2)}
+    #plan-quiet{grid-column:1 / -1}
     .erow.add .add-where{display:none}
   }
 
@@ -1753,7 +1754,7 @@
          count line and the people bar; or one area's own page in its place. Drawn by renderPlan. -->
     <div id="plan" hidden>
       <div id="plan-board">
-        <div class="page-head"><h1>Plan</h1><p class="set-line" id="plan-count" aria-live="polite"></p></div>
+        <div class="page-head"><h1>Plan</h1><p class="set-line" id="plan-count" tabindex="-1" aria-live="polite"></p></div>
         <div id="plan-people"></div>
         <div class="filters" id="plan-goals" role="group" aria-label="Goals" hidden></div>
         <div id="plan-areas"></div>
@@ -2225,6 +2226,7 @@ const BANDS = [
 
 $('signout').addEventListener('click', async () => {
   pressPerson(null);
+  forgetBoard();
   await api('/api/auth/logout', {});
   location.reload();
 });
@@ -6836,6 +6838,18 @@ let planGoal = null;
 /** An area's own page while it stands in the board's place; null while the board shows. */
 let areaPage = null;
 let cardId = null;
+/** Each board read's number: only the latest read draws, says what went wrong, or puts the loading line away. */
+let planFetch = 0;
+/** Which household's board this is: moved on by a switch or a sign-out, so a reply or a form's post from before draws nothing. */
+let boardEpoch = 0;
+/** The board is the last household's: every read and form still out is let go, and nothing of it is kept. */
+function forgetBoard() {
+  planFetch++;
+  boardEpoch++;
+  planData = null;
+}
+/** The member is still on this household's board: the same epoch, the Plan view, and no area's page in its place. */
+const onBoard = (epoch) => epoch === boardEpoch && view === 'plan' && areaPage === null;
 
 /** An area's own page, from its heading or its done row. A stand-in until the Area page is built: it does nothing yet. */
 function openArea(area, o = {}) {}
@@ -6851,30 +6865,39 @@ const orList = (names) => (names.length < 2 ? names.join('') : `${names.slice(0,
  * screen changed, or once an area's page is open, draws nothing.
  */
 async function loadBoard() {
+  const mine = ++planFetch;
   $('loading').hidden = false;
   try {
     const q = new URLSearchParams({ who: personPressed ?? 'everyone' });
     if (planGoal) q.set('goal', planGoal);
     const b = await api(`/api/plans?${q}`);
+    // A newer read (another person pressed, the tab left and come back to, a household switched) has the say.
+    if (mine !== planFetch) return;
     planData = b;
     if (view === 'plan' && areaPage === null) renderPlan(b);
   } catch (ex) {
-    if (view === 'plan') showProblem(ex);
+    if (mine === planFetch && view === 'plan') showProblem(ex);
   } finally {
-    $('loading').hidden = true;
+    if (mine === planFetch) $('loading').hidden = true;
   }
 }
 
-/** The head's one line, counted from the rows in view: "12 plans in 4 areas · 5 doing", "bob's · 4 plans in 3 areas". */
+/**
+ * The head's one line, counted from the rows in view: "12 plans in 4 areas · 5 doing", "bob's · 4 plans in 3 areas".
+ * With nothing open it counts what is finished, "No plans open · 3 done"; the invitation is only for a household
+ * with no plans at all, finished ones included.
+ */
 function planCountLine(b) {
   const open = b.rows.flatMap((r) => r.plans);
   const areas = b.rows.filter((r) => r.plans.length).length;
   const doing = open.filter((c) => c.state === 'doing').length;
   const person = b.who !== 'everyone';
-  if (!open.length && !person && b.goal === null) return 'Nothing is planned yet. Anything the household means to do goes here.';
+  // Under a person, their finished plans in view; with no filter, every area's.
+  const done = b.rows.reduce((n, r) => n + (person ? r.done.length : r.all.done), 0);
+  if (!open.length && !done && !person && b.goal === null) return 'Nothing is planned yet. Anything the household means to do goes here.';
   const count = open.length
     ? `${plansWord(open.length)} in ${areas} area${areas === 1 ? '' : 's'}${doing ? ` · ${doing} doing` : ''}`
-    : 'No plans';
+    : done ? `No plans open · ${done} done` : 'No plans';
   return person ? `${b.who === myName ? 'Yours' : `${b.who}'s`} · ${count}` : count;
 }
 
@@ -6899,9 +6922,10 @@ function renderPlan(b) {
   bar.hidden = members.length < 2;
   if (bar.hidden) bar.textContent = '';
   else {
+    // A person pressed with only finished plans in view owns no open one, so is not among `members`: listed at 0, pressed.
     const people = peopleOrder().flatMap((m) => {
       const e = b.members.find((x) => x.member === m);
-      return e ? [{ key: m, label: m, n: e.plans }] : [];
+      return e ? [{ key: m, label: m, n: e.plans }] : m === b.who ? [{ key: m, label: m, n: 0 }] : [];
     });
     peopleBar(bar, {
       label: 'Whose plans', people, pressed: person ? b.who : null,
@@ -6910,6 +6934,8 @@ function renderPlan(b) {
   }
 
   const box = $('plan-areas');
+  // The quiet line is drawn among the areas, after the last and before "A new area": on the desk it spans the grid.
+  const quietLine = $('plan-quiet');
   box.textContent = '';
   // A plan added under another member is theirs; under yourself it is yours anyway.
   const owner = person && b.who !== myName ? b.who : null;
@@ -6944,11 +6970,11 @@ function renderPlan(b) {
     sec.append(h, list);
     box.appendChild(sec);
   });
-  if (b.goal === null) box.appendChild(newAreaRow());
-
   const quiet = planQuietLine(b);
-  $('plan-quiet').textContent = quiet;
-  $('plan-quiet').hidden = !quiet;
+  quietLine.textContent = quiet;
+  quietLine.hidden = !quiet;
+  box.appendChild(quietLine);
+  if (b.goal === null) box.appendChild(newAreaRow());
 }
 
 /**
@@ -7006,10 +7032,11 @@ function placeForm(input) {
 
 /**
  * One small form of the board's, in place of the row that opened it: one field, what it says under it, the error
- * slot, Cancel and Add it. Cancel and Escape put the row back with focus on it; `send` is given the trimmed words
- * and throws to refuse, and what was typed stays.
+ * slot, Cancel and Add it. Cancel and Escape put the row back with focus on it. `post` is given the trimmed words and
+ * throws to refuse, and what was typed stays; then `after` reads the board again and focus goes to `focusKey(words)`.
+ * A read that did not draw leaves the form standing: it is closed, and the error box says why.
  */
-function boardForm(row, { cls, label, placeholder, max, notes, send }) {
+function boardForm(row, { cls, label, placeholder, max, notes, post, after, focusKey }) {
   const input = node('input');
   input.maxLength = max;
   input.placeholder = placeholder;
@@ -7039,22 +7066,29 @@ function boardForm(row, { cls, label, placeholder, max, notes, send }) {
     if (!words) { say('Give it a name'); input.focus(); return; }
     say('');
     go.disabled = true;
+    const epoch = boardEpoch;
     try {
-      await send(words);
+      await post(words);
     } catch (ex) {
-      if (view !== 'plan') return;
+      if (!onBoard(epoch)) return;
       go.disabled = false;
       say(ex.message);
       input.focus();
+      return;
     }
+    if (!onBoard(epoch)) return;
+    await after();
+    if (!onBoard(epoch)) return;
+    if (form.isConnected) back();
+    else focusBoard(focusKey(words));
   });
   row.replaceWith(form);
   placeForm(input);
   return form;
 }
 
-/** Focus on a board's control by its key, once the board is drawn again. */
-const focusBoard = (key) => $('plan-areas').querySelector(`[data-key="${CSS.escape(key)}"]`)?.focus();
+/** Focus on a board's control by its key, once the board is drawn again; on the count line when it is not drawn. */
+const focusBoard = (key) => ($('plan-areas').querySelector(`[data-key="${CSS.escape(key)}"]`) ?? $('plan-count')).focus();
 
 /**
  * An area's add row: "A new plan in House", and ", for bob" with another member pressed. Pressed, it opens a form
@@ -7072,13 +7106,8 @@ function addPlanRow(area, { owner = null, goal = null, after }) {
   row.addEventListener('click', () => boardForm(row, {
     cls: 'ep-form add-form', label: 'The new plan', placeholder: 'e.g. Fix the fence gate', max: 200,
     notes: owner ? [`It will be ${owner}'s.`] : [],
-    send: async (title) => {
-      await api('/api/plans', { title, area, ...(owner ? { owner } : {}), ...(goal ? { goal } : {}) });
-      if (view !== 'plan') return;
-      await after();
-      if (view !== 'plan') return;
-      focusBoard(`add:${area}`);
-    },
+    post: (title) => api('/api/plans', { title, area, ...(owner ? { owner } : {}), ...(goal ? { goal } : {}) }),
+    after, focusKey: () => `add:${area}`,
   }));
   return row;
 }
@@ -7091,13 +7120,8 @@ function newAreaRow() {
   row.addEventListener('click', () => boardForm(row, {
     cls: 'ep-form ep-card new-area', label: 'The new area', placeholder: 'e.g. Garden', max: 60,
     notes: ['It joins the board at the bottom. Rename it, move it or remove it from its own page.'],
-    send: async (area) => {
-      await api('/api/settings/areas/add', { area });
-      if (view !== 'plan') return;
-      await loadBoard();
-      if (view !== 'plan') return;
-      focusBoard(`area:${area}`);
-    },
+    post: (area) => api('/api/settings/areas/add', { area }),
+    after: loadBoard, focusKey: (area) => `area:${area}`,
   }));
   return row;
 }
@@ -11294,8 +11318,9 @@ async function backToPicker() {
   settingsFrom = 'today';
   // An envelope's page is the household's being left: gone, with its Escape listener.
   clearEnvelopePage();
-  // The pressed person was this household's.
+  // The pressed person was this household's, and so was the board.
   pressPerson(null);
+  forgetBoard();
   for (const id of ['budget', 'walk', 'import', 'compare', 'plan', 'plan-card', 'calendar', 'settings', 'budget-head']) $(id).hidden = true;
   $('briefing').hidden = false;
   markTabs();
@@ -11321,6 +11346,7 @@ async function openHousehold(id) {
 
 $('hh-signout').addEventListener('click', async () => {
   pressPerson(null);
+  forgetBoard();
   await api('/api/auth/logout', {});
   location.reload();
 });
@@ -11461,6 +11487,8 @@ function hhPanel(title, fields, onSubmit) {
 let householdLabel = null;
 
 async function enterApp() {
+  // Whatever the last household's board had out is let go before this one is read.
+  forgetBoard();
   // A page of This NAS left open on the households screen is not carried into the household.
   settingsPage = null;
   settingsEditing = null;
