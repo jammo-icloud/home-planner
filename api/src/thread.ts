@@ -292,7 +292,9 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
     switch (e.op) {
       case 'assign': case 'envelope.define': return { budget: e.budget, envelope: e.envelope };
       case 'move': return { budget: e.budget, envelope: e.to };
-      case 'calendar.appointment': case 'calendar.appointment.change': return { calendar: householdDay(tz, e.start) };
+      case 'calendar.appointment': case 'calendar.appointment.change':
+        // An all-day start is a bare date; read as an instant it lands a day early west of UTC.
+        return { calendar: e.allDay && /^\d{4}-\d\d-\d\d/.test(e.start) ? e.start.slice(0, 10) : householdDay(tz, e.start) };
       case 'booking.block': return { calendar: e.from };
       case 'booking.confirm': return { calendar: e.arrive };
       case 'calendar.drift.resolve': {
