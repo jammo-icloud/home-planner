@@ -205,12 +205,14 @@ describe('the thread', () => {
 
     test('a move opens its destination envelope, a booking block its first day', async () => {
       const c = await ctx();
-      await c.store.append('alice', { op: 'move', budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amount: parseDollars('5.00'), why: 'x' } as never);
+      const [mv] = await c.store.append('alice', { op: 'move', budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amount: parseDollars('5.00'), why: 'x' } as never);
       await c.store.append('alice', { op: 'booking.block', from: '2026-09-01', to: '2026-09-03', why: 'us' } as never);
       await c.store.append('alice', { op: 'envelope.define', budget: 'harbor', envelope: 'fun', label: 'Fun', group: 'People',
         match: { categories: ['groceries'] }, template: parseDollars('50.00'), order: 2 } as never);
-      const opens = (await entries(c)).filter((e) => e.kind === 'change').map((e) => (e as Extract<ThreadEntry, { kind: 'change' }>).open);
-      assert.ok(opens.some((o) => o && 'envelope' in o && o.envelope === 'food' && o.budget === 'harbor'));
+      const all = await entries(c);
+      const moved = all.find((e) => e.id === mv!.id) as Extract<ThreadEntry, { kind: 'change' }>;
+      assert.deepEqual(moved.open, { budget: 'harbor', envelope: 'food' });
+      const opens = all.filter((e) => e.kind === 'change').map((e) => (e as Extract<ThreadEntry, { kind: 'change' }>).open);
       assert.ok(opens.some((o) => o && 'envelope' in o && o.envelope === 'fun'));
       assert.ok(opens.some((o) => o && 'calendar' in o && o.calendar === '2026-09-01'));
     });
