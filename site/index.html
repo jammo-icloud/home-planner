@@ -13562,7 +13562,8 @@ async function afterCalChange(day, key) {
   calPanelDay = null;
   await loadCalendar(day);
   // On a desk the day's card opens in the panel, so focus has a row to go to.
-  if (calDesk() && calWeekData) openPanelDay(day);
+  // Only when this reload is still the latest: an arrow pressed meanwhile asked for another week, and its day is not this one.
+  if (calDesk() && calWeekData && calWeek === mondayOf(day) && calWeekData.week === calWeek) openPanelDay(day);
   if (key === undefined) return;
   (calCardHost().querySelector(`[data-key="${CSS.escape(String(key))}"]`) ?? (calAlso.textContent ? calAlso : null))?.focus();
 }
