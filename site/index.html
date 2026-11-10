@@ -2422,13 +2422,6 @@ function laneIcon(lane) {
   return lucide(names[lane] ?? 'message-square');
 }
 
-/** The Calendar, on the week and the day given. */
-function openCalendarDay(day) {
-  calWeek = mondayOf(day);
-  calDay = day;
-  return showView('calendar');
-}
-
 /** A plan's state in words: the glyph's accessible name and the card's state buttons. */
 const STATE_WORDS = { planning: 'Planning', doing: 'Doing', done: 'Done' };
 /** Doing is the app's own glyph, a circle half filled; Planning and Done are Lucide's. */
@@ -3467,10 +3460,10 @@ function calendarRows(cal) {
   const today = todayKey();
   const tomorrow = addDayKey(today, 1);
   const weekday = keyWords(tomorrow, { weekday: 'short' });
-  const open = (e) => (e.plan ? openCard(e.plan.id) : showView('calendar'));
+  const open = (e, day) => openCalendarAt(day, e.evt_id);
   const rows = [];
-  for (const e of cal.today) rows.push({ lead: sourceDisc(e), text: e.summary || 'Busy', value: eventWhen(e, today, ''), valueCls: '', open: () => open(e) });
-  for (const e of cal.tomorrow) rows.push({ lead: sourceDisc(e), text: e.summary || 'Busy', value: eventWhen(e, tomorrow, weekday), valueCls: '', open: () => open(e) });
+  for (const e of cal.today) rows.push({ lead: sourceDisc(e), text: e.summary || 'Busy', value: eventWhen(e, today, ''), valueCls: '', open: () => open(e, today) });
+  for (const e of cal.tomorrow) rows.push({ lead: sourceDisc(e), text: e.summary || 'Busy', value: eventWhen(e, tomorrow, weekday), valueCls: '', open: () => open(e, tomorrow) });
   const parts = [];
   if (cal.missed?.length) parts.push(node('p', 'none', `${listOf(cal.missed)} could not be read just now.`));
   if (cal.unavailable) {
@@ -3558,7 +3551,7 @@ function yoursStrip() {
     text.appendChild(main);
     if (rows.length > 1) text.appendChild(node('span', 'strip-more', `and ${rows.length - 1} more`));
     b.append(laneIcon(lane), text, icon('go', 'i sm chev'));
-    b.addEventListener('click', () => { void showView(view); });
+    b.addEventListener('click', () => { void (lane === 'calendar' ? openCalendarAt(todayKey()) : showView(view)); });
     strip.appendChild(b);
   }
   return strip;
@@ -3719,7 +3712,7 @@ function openFor(e, text) {
   let link;
   if (o.plan) link = rowLink('Open the plan', () => void openCard(o.plan));
   else if (o.budget) link = rowLink('Open the envelope', () => void openBudgetAt(o.budget, o.envelope));
-  else if (o.calendar) link = rowLink('Open the day', () => void openCalendarDay(o.calendar));
+  else if (o.calendar) link = rowLink('Open the day', () => void openCalendarAt(o.calendar, o.key));
   if (link) text.appendChild(node('div', 'ent-actions')).appendChild(link);
 }
 
@@ -8931,7 +8924,7 @@ async function openCard(id) {
       view: onPlan ? 'plan' : view,
       area: areaPage ? { ...areaPage, from: { ...areaPage.from } } : null,
       // Another screen's scroll means nothing on the board.
-      scroll: view === 'plan' ? window.scrollY : 0,
+      scroll: (view === 'plan' || view === 'calendar') ? window.scrollY : 0,
       // Safari does not focus a button it presses: from Plan, the plan's own row is the fallback.
       row: document.activeElement?.closest?.('[data-plan]')?.dataset.plan ?? (onPlan ? id : null),
     };
@@ -8957,7 +8950,15 @@ async function closeCard({ removed = false } = {}) {
   const turn = householdTurn;
   // A box left with text in it saves on leaving, as it does when Back is clicked.
   document.activeElement?.blur?.();
-  if (!from || from.view !== 'plan') { await showView(from?.view ?? 'plan'); return; }
+  if (!from || from.view !== 'plan') {
+    await showView(from?.view ?? 'plan');
+    // The Calendar opens as it was: the same day, the scroll it had, and focus on the plan's row.
+    if (from?.view === 'calendar' && turn === householdTurn && view === 'calendar') {
+      window.scrollTo({ top: from.scroll });
+      calCardHost().querySelector(`[data-plan="${CSS.escape(from.row ?? '')}"]`)?.focus({ preventScroll: true });
+    }
+    return;
+  }
   const page = from.area;
   if (page) await openArea(page.area, { restore: page });
   else await showView('plan');
@@ -13002,6 +13003,11 @@ async function loadCalendar(weekStart) {
     // Another week was asked for while this one was on its way: that one is drawn, not this.
     if (mine !== calFetch) return;
     calWeekData = { ...r, week: calWeek };
+    // A link to a row: if this lens hides it, it is drawn under Everyone for this visit; a row that is gone leaves the day untinted.
+    if (calVisit && !calVisit.everyone) {
+      const need = visitNeedsEveryone(calVisit.day, calVisit.key, r, calLens());
+      if (need === 'absent') calVisit = null; else if (need) calVisit.everyone = true;
+    }
     if (calGoal !== null && !(r.goals || []).some((g) => String(g.goal).toLowerCase() === String(calGoal).toLowerCase())) calGoal = null;
     const off = $('cal-off');
     off.textContent = '';
@@ -13013,11 +13019,30 @@ async function loadCalendar(weekStart) {
       off.append(icon('cal', 'i'), node('span', '', `${listOf(r.missed)} could not be read just now; the rest is shown.`));
     }
     renderCalendar();
+    if (calVisit && !calVisit.landed) {
+      calVisit.landed = true;
+      const row = calCardHost().querySelector(`[data-key="${CSS.escape(calVisit.key)}"]`);
+      if (row) { row.scrollIntoView({ block: 'center' }); row.focus({ preventScroll: true }); }
+    }
   } catch (ex) {
     if (mine === calFetch) showProblem(ex);
   } finally {
     if (mine === calFetch) $('loading').hidden = true;
   }
+}
+
+/**
+ * The Calendar on `day`, from a link: the week and day chosen, and when `key` is given (an evt_id, a proposal's id or a
+ * plan's id) the row it names landed on, centred, focused and tinted until another day, a press or a reload.
+ */
+async function openCalendarAt(day, key) {
+  closeCalOpen();
+  shutPicker();
+  calDay = day;
+  calWeek = mondayOf(day);
+  calVisit = key == null ? null : { day, key: String(key), everyone: false };
+  calPanelDay = calDesk() ? day : null;
+  await showView('calendar');
 }
 
 // ── the calendar: the month picker ──

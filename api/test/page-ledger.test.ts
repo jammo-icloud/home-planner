@@ -227,7 +227,7 @@ const ADDED: readonly Line[] = [
   ['frame', '<h1>Today</h1>', 'todayMarkup'], ['frame', 'id="today-day"', 'todayMarkup'], ['frame', 'id="t-kinds"', 'todayMarkup'], ['frame', 'id="t-people"', 'todayMarkup'], ['frame', 'id="t-waiting"', 'todayMarkup'], ['frame', 'id="day-today"', 'todayMarkup'], ['frame', 'id="earlier-days"', 'todayMarkup'], ['frame', '.day-open{', 'css'], ['frame', '.day-body', 'css'],
   // A row is lane, who, what and when (Task 8).
   ['T21', 'function entShell(', 'today'], ['T21', 'left a note', 'today'], ['T21', 'asked Claude', 'today'], ['T22', 'planCrumb(e.plan)', 'today'], ['T23', "e.kind === 'ask' && e.plan", 'today'], ['T29', "node('span', 'ent-why'", 'today'], ['T31', 'refused.textContent = ex.message', 'page'], ['T33', 'No reason was given for this.', 'today'],
-  ['S11', 'clockOf(', 'shared'], ['S24', 'function openCalendarDay(', 'shared'], ['S24', 'calWeek = mondayOf(day)', 'shared'], ['S29', 'name ?? nameOf(who)', 'today'], ['S19', 'openBudgetAt(o.budget, o.envelope)', 'today'],
+  ['S11', 'clockOf(', 'shared'], ['S29', 'name ?? nameOf(who)', 'today'], ['S19', 'openBudgetAt(o.budget, o.envelope)', 'today'],
   ['hand', ' handed ', 'today'], ['hand', ' took ', 'today'], ['cal', ' added ', 'today'], ['cal', 'the Household calendar', 'today'], ['cal', 'their own calendar', 'today'], ['cal', 'your own calendar', 'today'], ['cal', ' renamed ', 'today'], ['late', 'Suggested on ', 'today'], ['open', "'Open the plan'", 'today'], ['open', "'Open the envelope'", 'today'], ['open', "'Open the day'", 'today'],
   ['lane', 'function laneIcon(', 'shared'], ['lane', "'message-square':", 'shared'], ['lane', 'function claudeDisc(', 'shared'], ['lane', '.who.claude', 'css'], ['ent', '.ent{', 'css'], ['ent', 'cursor:pointer;text-decoration:underline', 'css'],
   // A waiting card is a dashed block in its own row (Task 9).
@@ -236,7 +236,7 @@ const ADDED: readonly Line[] = [
   ['T120', 'why.focus()', 'today'], ['T120', 'arrive.focus()', 'today'], ['T121', 'b.disabled = true', 'today'], ['S6', '.is-decided', 'css'], ['S7', 'function askAnswer(', 'today'], ['S22', 'showProblem(ex)', 'today'], ['esc', 'function todayEscape(', 'today'], ['esc', 'cancelMark(row, closeDecline)', 'today'], ['esc', 'cancelMark(row, closeBooking)', 'today'],
   // The briefing opens its day (Task 10).
   // Yours is a strip on a phone and a column on the desk (Task 11).
-  ['T82', 'function yoursStrip(', 'today'], ['T85', ' more`', 'today'], ['T81', "'Yours'", 'today'], ['T86', 'e.plan ? openCard(e.plan.id)', 'today'], ['T87', 'function householdDisc(', 'shared'], ['T87', 'e.owner', 'today'], ['T96', 'yoursRails', 'today'], ['S10', 'householdDisc(e.label)', 'today'], ['S32', 'yoursStrip()', 'today'], ['strip', '.yours-strip', 'css'],
+  ['T82', 'function yoursStrip(', 'today'], ['T85', ' more`', 'today'], ['T81', "'Yours'", 'today'], ['T87', 'function householdDisc(', 'shared'], ['T87', 'e.owner', 'today'], ['T96', 'yoursRails', 'today'], ['S10', 'householdDisc(e.label)', 'today'], ['S32', 'yoursStrip()', 'today'], ['strip', '.yours-strip', 'css'],
   ['T14', "Claude · the day's briefing", 'today'], ['T14', 'Claude · briefing for ', 'today'], ['T14', '.day .claude', 'css'], ['T15', 'Briefing · written without Claude', 'today'], ['T16', "'headline'", 'today'], ['T17', 'Read the whole briefing', 'today'], ['T18', 'Reading the briefing…', 'today'],
   // Kinds, people, empty days and the earlier months (Task 12).
   ['T4', 'const KINDS = ', 'today'], ['T4', "['all', 'All']", 'today'], ['T4', "['notes', 'Notes']", 'today'], ['T4', 'function pressKind(', 'today'], ['T4', "label: 'Whose'", 'today'], ['T4', "plural: 'entries'", 'today'], ['T4', '.filters.kinds', 'css'], ['T6', '`Show ${', 'today'], ['T6', 'function showMonth(', 'today'], ['sort', 'function flipSort(', 'today'], ['sort', "'Newest first'", 'today'], ['sort', "'Oldest first'", 'today'], ['sort', "'arrow-up-down':", 'shared'], ['empty', 'function emptyLine(', 'today'], ['empty', 'Nothing under ${', 'today'], ['left', 'and are left out.', 'today'], ['left', 'and is left out.', 'today'], ['bar', 'plural', 'shared'],
@@ -269,6 +269,8 @@ const ADDED: readonly Line[] = [
   // The desk (Calendar Task 10): day heads, the panel of a day, owners named, money in the all-day row.
   ['C12', 'function dayHead(', 'calendar'], ['C8', 'calWeek === mondayOf(day) && calWeekData.week === calWeek) openPanelDay(day)', 'calendar'], ['C12', "node('button', `dh", 'calendar'], ['C12', '.week .dh[aria-current="date"]', 'css'], ['C8', 'function openPanelDay(', 'calendar'], ['C8', 'function pressDayHead(', 'calendar'], ['C18', 'e.owner', 'calendar'],
   ['C18', 'stateGlyph(e.plan.state, { small: true })', 'calendar'], ['C19', "el.setAttribute('aria-label', rowWords(", 'calendar'], ['desk', 'function moneyBox(', 'calendar'], ['desk', '.ev.money{', 'css'], ['desk', '.ev.money.paid{', 'css'], ['desk', '.ev.money.short{', 'css'], ['desk', 'new ResizeObserver(', 'calendar'],
+  // Deep links (Task 11 of the Calendar plan): Today lands on a day and a row, and Back from a plan returns there.
+  ['S24', 'async function openCalendarAt(', 'calendar'], ['S24', 'calWeek = mondayOf(day)', 'calendar'], ['T86', 'openCalendarAt(day, e.evt_id)', 'today'], ['S24', 'openCalendarAt(todayKey())', 'today'], ['S24', 'openCalendarAt(o.calendar, o.key)', 'today'], ['back', "view === 'plan' || view === 'calendar'", 'plan'], ['visit', 'visitNeedsEveryone(', 'calendar'], ['visit', '.erow.cal.landed{', 'css'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
@@ -310,6 +312,7 @@ const GONE: readonly Line[] = [
   ['spec', 'Block these nights', 'page'], ['C50', 'Unblock these nights', 'page'], ['C52', 'cannot be blocked', 'page'], ['C34', 'Where it goes', 'page'], ['C35', 'Plan (optional)', 'page'], ['C36', 'Notes (optional)', 'page'], ['C38', 'Clashes with ${', 'page'], ['C39', 'Free instead', 'page'], ['C40', 'check for clashes', 'page'], ['spec', 'closeCalPanel', 'page'], ['spec', 'Plan › ${e.plan.title}', 'calendar'],
   // The desk (Calendar Task 10): the title attribute and the tags go, the dimmed second line goes.
   ['C19', 'el.title = said.join', 'page'], ['C18', "parts.push('clash')", 'page'], ['C18', "parts.push('from Plan')", 'page'], ['S9', 'otherMember', 'page'], ['spec', '.ev .s{display:block;opacity', 'css'],
+  ['S24', 'openCalendarDay', 'page'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
