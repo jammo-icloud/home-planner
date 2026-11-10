@@ -668,8 +668,6 @@
   .link{font:inherit;font-size:var(--fs-small);font-weight:500;color:var(--accent-ink);background:none;border:none;padding:4px 0;cursor:pointer}
 
   /* ── activity, a day at a time ─────────────────────────────────────── */
-  .day{margin-bottom:20px}
-  .day h2{font-size:var(--fs-small);font-weight:600;color:var(--ink-soft);margin:0 0 8px}
   .act.review{box-shadow:inset 3px 0 var(--problem)}
 
   /* ── import ────────────────────────────────────────────────────────── */
@@ -702,10 +700,6 @@
   .banks a{color:var(--accent-ink);font-weight:500}
 
   /* ── the thread ── */
-  .thread-tools{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap}
-  .thread-tools .filters{margin-bottom:0}
-  .allb{font-size:var(--fs-micro);color:var(--ink-soft);display:flex;gap:6px;align-items:center;cursor:pointer}
-  #thread{display:flex;flex-direction:column;gap:12px;margin-top:12px}
   /* setup notices above the thread: quiet reminders, not cards; nothing to decide */
   .setup-notes{display:flex;flex-direction:column;gap:var(--sp-2);margin-bottom:12px}
   .setup-note{display:flex;gap:var(--sp-2);align-items:center;flex-wrap:wrap;padding:var(--sp-3);border-radius:var(--r-control);
@@ -719,7 +713,6 @@
   .home-banner ol{margin:0;padding:0;list-style:none;display:grid;gap:var(--sp-2);font-size:var(--fs-ui)}
   .home-banner li{display:flex;gap:10px;align-items:flex-start}
   .home-banner p{margin:0;font-size:var(--fs-small);color:var(--ink-soft)}
-  .tday{font-size:var(--fs-small);font-weight:600;color:var(--ink-soft);margin:12px 0 0}
   .tnew{display:flex;align-items:center;gap:10px;font-size:var(--fs-micro);font-weight:600;color:var(--accent-ink)}
   .tnew::before,.tnew::after{content:'';flex:1;height:1px;background:var(--accent-line)}
   .msg .by{font-size:var(--fs-micro);color:var(--ink-faint);margin-bottom:4px}
@@ -762,9 +755,6 @@
   .composer-row .quiet{margin-right:auto;font-size:var(--fs-micro)}
   /* While a card's form is open, the reply box stops floating over it. */
   .composer.resting{position:static}
-  .tray{font:inherit;font-size:var(--fs-micro);font-weight:600;background:var(--caution-line);color:var(--ink);border:none;
-    border-radius:999px;padding:5px 12px;cursor:pointer;margin-bottom:8px}
-  .tray:focus-visible,.allb:focus-within{outline:2px solid var(--focus);outline-offset:2px}
 
   /* ── Today: the shared thread, and yours beside it ──────────────────
      From components.css (today, yours, rail). Yours is one quiet card of
@@ -1477,6 +1467,26 @@
     table.rows td:first-child{color:var(--ink-faint);font-size:var(--fs-micro)}
     table.rows select{max-width:none;width:100%;margin-top:6px;font-size:var(--fs-input);padding:8px 10px}
   }
+
+  /* ── today: day cards ── */
+  .today-title{display:grid;gap:var(--sp-1);margin-bottom:var(--sp-4)}
+  .today-title p{margin:0;font-size:var(--fs-small);color:var(--ink-soft)}
+  #days{display:grid;gap:var(--sp-3)}
+  #day-today,#earlier-days{display:grid;gap:var(--sp-3)}
+  .day{margin-top:0}
+  .day-open{display:flex;align-items:center;gap:var(--sp-3);width:100%;min-height:var(--tap);padding:var(--sp-2) 0;
+    font:inherit;color:var(--ink);text-align:left;background:none;border:0;cursor:pointer}
+  .day-open:hover .day-first{text-decoration:underline}
+  .day-open:focus-visible{outline:var(--stroke-heavy) solid var(--focus);outline-offset:var(--stroke-heavy);border-radius:var(--r-inner)}
+  .day-lines{display:grid;gap:var(--sp-1);min-width:0;flex:1}
+  .day-first{font-size:var(--fs-title);font-weight:var(--fw-semibold);letter-spacing:var(--tracking-tight)}
+  .day-first small{font-size:var(--fs-small);font-weight:var(--fw-regular);color:var(--ink-soft)}
+  .day-second{font-size:var(--fs-micro);color:var(--ink-faint)}
+  .day-open .chev{flex:none;color:var(--ink-faint)}
+  .day-body{display:flex;flex-direction:column;gap:var(--sp-3);padding:var(--sp-3)}
+  #earlier{margin-top:var(--sp-6)}
+  .earlier-head h2{font-size:var(--fs-small);font-weight:var(--fw-semibold);color:var(--ink-soft);margin-bottom:var(--sp-2)}
+  /* ── end of today ── */
 </style>
 </head>
 <body>
@@ -1606,6 +1616,7 @@
          change made directly. Newest at the bottom, beside the reply box. -->
     <div id="briefing" class="today" hidden>
       <div class="today-main">
+      <header class="today-head" id="today-head"><div class="today-title"><h1>Today</h1><p id="today-day"></p></div></header>
       <!-- Shown by homeBanner when the page was opened from the Home Screen QR. -->
       <section class="home-banner" id="home-banner" aria-labelledby="home-banner-h" hidden>
         <h2 id="home-banner-h">Put Home Planner on your Home Screen</h2>
@@ -1614,38 +1625,32 @@
           <li><span class="n" aria-hidden="true">2</span><span>Choose Add to Home Screen, then Add.</span></li>
         </ol>
         <p>It opens full screen, like an app, signed in as you.</p>
-        <button class="btn" id="home-banner-done" type="button">Done</button>
+        <button class="btn hit" id="home-banner-done" type="button">Done</button>
       </section>
       <!-- What is not set up yet: reminders worked out on each load from
            GET /api/today's setup, above the thread and never among it. -->
       <div class="setup-notes" id="setup-notes" hidden></div>
-      <div class="thread-tools">
-        <div class="filters" id="t-filters" role="group" aria-label="Show">
-          <button type="button" data-filter="everything" aria-pressed="true">Everything</button>
-          <button type="button" data-filter="mine" aria-pressed="false">Mine</button>
-          <button type="button" data-filter="theirs" aria-pressed="false">Theirs</button>
-          <button type="button" data-filter="waiting" aria-pressed="false">Waiting</button>
-        </div>
-        <label class="allb"><input type="checkbox" id="t-all" /> All budgets</label>
+      <div class="filters kinds" id="t-kinds" role="group" aria-label="Show"></div>
+      <div id="t-people"></div>
+      <section id="t-waiting" aria-labelledby="t-waiting-h" hidden></section>
+      <div id="days">
+        <div id="day-today"></div>
+        <section id="earlier" aria-labelledby="earlier-h" hidden><div class="earlier-head"><h2 id="earlier-h">Earlier</h2></div><div id="earlier-days"></div></section>
       </div>
-      <button class="link" id="t-earlier" type="button" hidden>Show earlier</button>
-      <div id="thread" aria-live="polite"></div>
       <form class="composer" id="composer">
-        <button class="tray" id="tray" type="button" hidden></button>
         <label class="visually-hidden" for="say">Ask Claude, or leave a note</label>
         <textarea id="say" rows="2" maxlength="2000"
           placeholder="Ask Claude about the budget, or leave a note for each other"></textarea>
         <div class="composer-row">
           <span class="quiet" id="say-note"></span>
-          <button class="btn" id="leave-note" type="button">Leave a note</button>
-          <button class="btn primary" id="ask-claude" type="submit">Ask Claude</button>
+          <button class="btn hit" id="leave-note" type="button">Leave a note</button>
+          <button class="btn primary hit" id="ask-claude" type="submit">Ask Claude</button>
         </div>
       </form>
       </div>
       <!-- Yours: what the briefing was written from, as you have it. One
-           container, three hairline rails. On a phone it sits in the thread
-           right after the day's briefing (placeYours); on the desk it is its
-           own sticky column beside the thread. Drawn from GET /api/today. -->
+           container, three hairline rails; on the desk its own sticky column
+           beside the days. Drawn from GET /api/today. -->
       <section class="yours" id="yours" aria-labelledby="yours-h" hidden>
         <div class="eyebrow" id="yours-h"><span class="who mine" id="yours-me" aria-hidden="true"></span>Yours · what the briefing was written from</div>
         <div class="rail" id="rail-cal"><h4>Today and tomorrow</h4><div class="rail-body"></div></div>
@@ -2043,13 +2048,11 @@ async function searchAsk(words) {
   if (out.documents === 'not searched') notes.push('Sign in again to search briefings, answers and files too.');
   searchDraw(words, hits, notes);
 }
-/** The entry Today shows for a thread event, an answer's bubble or a card among them. */
-const atEvent = (id) => `[data-event="${CSS.escape(id)}"], [data-offer="${CSS.escape(id)}"]`;
 /**
  * Where a hit leads, by its kind first: a plan to its card, a file to itself,
  * a briefing to Today at it (or at its day's), an answer or the thread's words
- * to Today at the entry. Today reads further up for an older one; one it still
- * does not show is said under the hits, with the list left open.
+ * to Today at the entry. Today reads a month further up for an older one; one it
+ * still does not show is said under the hits, with the list left open.
  */
 async function searchGo(h) {
   const o = h.open ?? {};
@@ -2065,15 +2068,15 @@ async function searchGo(h) {
       }
       return;
     case 'briefing':
-      at = o.event ? atEvent(o.event) : o.day ? `[data-kind="briefing"][data-day="${CSS.escape(o.day)}"]` : null;
+      at = o.event ? { event: o.event } : o.day ? { day: o.day } : null;
       break;
     case 'answer':
     case 'thread':
-      at = o.event ? atEvent(o.event) : null;
+      at = o.event ? { event: o.event } : null;
       break;
   }
   if (!at) return;
-  if (await openTodayAt(at, { further: true })) { searchClose(); return; }
+  if (await openTodayAt(at)) { searchClose(); return; }
   searchSay("Today doesn't show that one as it is filtered now.");
   searchBox.focus();
   searchOpen();
@@ -2652,36 +2655,62 @@ const keyDate = (key) => new Date(`${key}T12:00:00Z`);
 /** An instant's time on the household's clock. */
 const clockOf = (sec) => inZone({ hour: 'numeric', minute: '2-digit' }).format(sec * 1000);
 
-/**
- * The filter Today was on before opening a card took it to Waiting; it comes
- * back the next time Today is opened, or as soon as a filter is chosen.
- */
-let filterBeforeDetour = null;
+/** A day in words, in the order weekday, day, month: ["Wednesday", "11 November"], with the year when asked or not this one. */
+function dayParts(key, { year = false } = {}) {
+  const weekday = keyWords(key, { weekday: 'long' });
+  const date = `${keyWords(key, { day: 'numeric' })} ${keyWords(key, { month: 'long' })}`;
+  return [weekday, year || key.slice(0, 4) !== todayKey().slice(0, 4) ? `${date} ${key.slice(0, 4)}` : date];
+}
+/** "Wednesday 11 November"; the year when it is not this one, or when asked. */
+function dayName(key, opts) { return dayParts(key, opts).join(' '); }
+/** "October", the year when not this one. A month is `YYYY-MM`. */
+function monthName(month) {
+  const name = keyWords(`${month}-01`, { month: 'long' });
+  return month.slice(0, 4) === todayKey().slice(0, 4) ? name : `${name} ${month.slice(0, 4)}`;
+}
+/** The time an instant fell at on the household's clock: "3:05 PM". */
+function clockAt(iso) { return inZone({ hour: 'numeric', minute: '2-digit' }).format(new Date(iso)); }
 
 /**
- * Today, with the card asked for in view: from the whole thread, or what is
- * waiting on you when it is older. With `further`, the thread is first read
- * further up, a page at a time, as Show earlier does, until the entry is there
- * or the thread's start is. True when it was found; when it was not, Today is
- * left on the filter it was on.
+ * Today, with what was asked for in view: `{ day }`, or `{ event }`, `{ offer }` or `{ drift }`, an id the day holds.
+ * Every kind is shown while it opens, a month not yet read is read, and a person pressed whose view does not hold it
+ * is let go. True when it was found; false when no day shows it.
  */
-async function openTodayAt(selector, { further = false } = {}) {
+async function openTodayAt(target) {
+  const turn = householdTurn;
+  todayKind = 'all';
   await showView('today');
-  let card = $('thread').querySelector(selector);
-  while (!card && further && threadData?.before) {
-    const from = threadData.before;
-    await loadThread({ before: from });
-    // A page that could not be read leaves the cursor where it was: stop rather than ask again.
-    if (threadData?.before === from) break;
-    card = $('thread').querySelector(selector);
+  if (turn !== householdTurn) return false;
+  const id = target.event ?? target.offer ?? target.drift;
+  let found;
+  try {
+    found = await api(`/api/thread?${threadParams(target.day !== undefined ? { day: target.day } : { at: id })}`);
+  } catch { return false; }
+  if (turn !== householdTurn || !found.days?.length) return false;
+  const day = found.days[0].day;
+  if (day === found.today) todayShut = false;
+  if (day.slice(0, 7) < (todayThrough ?? todayKey().slice(0, 7))) {
+    todayThrough = day.slice(0, 7);
+    if (day !== found.today) daysOpen.add(day);
+    await loadThread({ quiet: true });
+  } else {
+    if (day !== found.today) {
+      daysOpen.add(day);
+      if (!dayRows.has(day)) dayRows.set(day, found.entries);
+    }
+    renderToday();
   }
-  if (!card && threadFilter !== 'waiting') {
-    filterBeforeDetour = threadFilter;
-    threadFilter = 'waiting';
-    for (const b of $('t-filters').children) b.setAttribute('aria-pressed', String(b.dataset.filter === 'waiting'));
-    await loadThread();
-    card = $('thread').querySelector(selector);
-    if (!card) { endFilterDetour(); await loadThread(); }
+  if (turn !== householdTurn) return false;
+  const look = () => {
+    if (target.day !== undefined) return $('days').querySelector(`.day[data-day="${CSS.escape(day)}"] .day-open`);
+    return $('days').querySelector(`[data-event="${CSS.escape(id)}"], [data-offer="${CSS.escape(id)}"], [data-drift="${CSS.escape(id)}"]`);
+  };
+  let card = look();
+  if (!card && personPressed !== null) {
+    pressPerson(null);
+    await loadThread({ quiet: true });
+    if (turn !== householdTurn) return false;
+    card = look();
   }
   if (!card) return false;
   card.scrollIntoView({ block: 'center' });
@@ -2707,8 +2736,16 @@ const fmtDate = (iso) => new Date(iso + 'T12:00:00').toLocaleDateString(undefine
 // cards on the left, yours on the right, direct changes as quiet lines between.
 // Every string a person or Claude wrote is set as text, never as markup.
 let threadData = null;
-let threadFilter = 'everything';
-let threadAll = false;
+/** `'all'` or a lane; what the six kinds narrow every day to. */
+let todayKind = 'all';
+let todaySort = 'newest';
+/** The earliest month read, `YYYY-MM`, or null for today's month alone. */
+let todayThrough = null;
+/** The days other than today that are open, and whether today's card is shut. */
+const daysOpen = new Set();
+let todayShut = false;
+/** Each day's entries, as read: by day, in the order the server sent them. */
+const dayRows = new Map();
 let claudeOn = false;
 let myName = '';
 
@@ -2783,48 +2820,55 @@ function readDocText(id, what) {
   return docReads.get(key);
 }
 
+/** The newest read of the thread; an older one that lands after it draws nothing. */
+let loadTurn = 0;
+
+/** The query for `GET /api/thread`: the budget, the kind and person pressed, the months read, the days open, then `extra`. */
+function threadParams(extra = {}) {
+  const q = new URLSearchParams();
+  if (chosenBudget()) q.set('budget', chosenBudget());
+  if (todayKind !== 'all') q.set('lane', todayKind);
+  if (personPressed !== null) q.set('who', personPressed);
+  if (todayThrough !== null) q.set('through', todayThrough);
+  if (daysOpen.size) q.set('open', [...daysOpen].join(','));
+  for (const [k, v] of Object.entries(extra)) if (v !== undefined && v !== null) q.set(k, v);
+  return q;
+}
+
 async function loadThread(opts = {}) {
-  // A thread asked for in a household since left draws nothing and says nothing.
-  const turn = householdTurn;
+  // A thread asked for in a household since left, or overtaken by a newer read, draws nothing and says nothing.
+  const turn = ++loadTurn, household = householdTurn;
   $('loading').hidden = false;
   $('app-err').hidden = true;
   try {
-    const q = new URLSearchParams();
-    if (chosenBudget()) q.set('budget', chosenBudget());
-    if (threadFilter !== 'everything') q.set('filter', threadFilter);
-    if (threadAll) q.set('all', '1');
-    if (opts.before) q.set('before', opts.before);
     // Yours is read beside the thread, and never holds it up: a rail that
     // cannot be read leaves the last one drawn.
     const [page, rails] = await Promise.all([
-      api(`/api/thread?${q}`),
-      opts.before ? null : api(`/api/today${chosenBudget() ? `?budget=${encodeURIComponent(chosenBudget())}` : ''}`).catch(() => null),
+      api(`/api/thread?${threadParams(opts.quiet ? { quiet: '1' } : {})}`),
+      opts.quiet ? null : api(`/api/today${chosenBudget() ? `?budget=${encodeURIComponent(chosenBudget())}` : ''}`).catch(() => null),
     ]);
-    if (turn !== householdTurn) return;
-    threadData = opts.before && threadData
-      ? { ...page, entries: [...page.entries, ...threadData.entries] }
-      : page;
+    if (turn !== loadTurn || household !== householdTurn) return;
+    threadData = page;
     $('budget-label').textContent = budgets.find((x) => x.id === chosenBudget())?.label ?? '';
     if (rails) {
       renderYours(rails);
       renderSetupNotes(rails.setup ?? [], rails.budget ?? []);
     }
-    renderThread();
+    dayRows.clear();
+    for (const e of page.entries) {
+      if (!dayRows.has(e.day)) dayRows.set(e.day, []);
+      dayRows.get(e.day).push(e);
+    }
+    renderToday();
     $('briefing').hidden = view !== 'today';
-    // Where yours goes depends on Today's own layout, which it has only once shown.
-    placeYours();
     // The thread is still worth reading with nothing to brief on; the way
     // forward sits above it.
     if (page.noBudgets) showProblem(new Error('This household has no budgets yet. Create the first one to begin.'));
     else if (page.noOpenMonth) showProblem(new Error('no open month'));
-    // Newest is at the bottom. The reply box is sticky, so it always counts as
-    // in view; scroll the page itself. With the Home Screen banner up, the page
-    // stays at its top, where the banner is.
-    if (!opts.before && view === 'today' && $('home-banner').hidden) window.scrollTo({ top: document.documentElement.scrollHeight });
   } catch (ex) {
-    if (turn === householdTurn) showProblem(ex);
+    if (turn === loadTurn && household === householdTurn) showProblem(ex);
   } finally {
-    if (turn === householdTurn) $('loading').hidden = true;
+    if (turn === loadTurn && household === householdTurn) $('loading').hidden = true;
   }
 }
 
@@ -2842,7 +2886,7 @@ function renderSetupNotes(notes, budgetNotes = []) {
     p.append(icon(n.kind === 'moving' ? 'clock' : 'alert', 'i'), node('span', '', n.text));
     const a = n.action;
     if (a) {
-      p.appendChild(textBtn(a.label, 'btn small', `setup-${n.kind}`, () => void openSettings(a.group, a.row)));
+      p.appendChild(textBtn(a.label, 'btn small hit', `setup-${n.kind}`, () => void openSettings(a.group, a.row)));
     }
     box.appendChild(p);
   }
@@ -2853,81 +2897,158 @@ function renderSetupNotes(notes, budgetNotes = []) {
     p.dataset.kind = n.kind;
     p.append(icon('alert', 'i'), node('span', '', n.text));
     const a = n.action;
-    if (a) p.appendChild(textBtn(a.label, 'btn small', null, () => void openBudgetAt(a.budget, a.envelope, a.cover === true)));
+    if (a) p.appendChild(textBtn(a.label, 'btn small hit', null, () => void openBudgetAt(a.budget, a.envelope, a.cover === true)));
     box.appendChild(p);
   }
   box.hidden = notes.length + budgetNotes.length === 0;
 }
 
-function renderThread() {
-  const box = $('thread');
-  box.textContent = '';
-  const { entries, newSince, before, waiting } = threadData;
-  $('t-earlier').hidden = !before;
+// ── the day cards ───────────────────────────────────────────────────────────
 
-  const pending = new Set(waiting.flatMap((w) => (w.kind === 'offer' ? [w.offer.id] : [])));
-  const moved = new Set(waiting.flatMap((w) => (w.kind === 'offer' && w.moved ? [w.offer.id] : [])));
-  const flagged = new Set(waiting.flatMap((w) => (w.kind === 'flag' ? [w.event] : [])));
-  const ctx = { pending, moved, flagged };
+const dayIsOpen = (day) => (day === threadData?.today ? !todayShut : daysOpen.has(day));
 
-  // Receipts with no envelope are one standing item, not a card per receipt.
-  const unsorted = waiting.find((w) => w.kind === 'unsorted');
-  if (threadFilter === 'waiting' && unsorted) box.appendChild(unsortedItem(unsorted.count));
+/** What waits on the viewer, as the sets a card's buttons read. */
+function todayCtx() {
+  const waiting = threadData?.waiting ?? [];
+  return {
+    pending: new Set(waiting.flatMap((w) => (w.kind === 'offer' ? [w.offer.id] : []))),
+    moved: new Set(waiting.flatMap((w) => (w.kind === 'offer' && w.moved ? [w.offer.id] : []))),
+    flagged: new Set(waiting.flatMap((w) => (w.kind === 'flag' ? [w.event] : []))),
+  };
+}
 
-  if (!entries.length && !(threadFilter === 'waiting' && unsorted)) {
-    box.appendChild(node('p', 'quiet', threadFilter === 'waiting'
-      ? 'Nothing is waiting on you.'
-      : 'Nothing here yet. Ask Claude something, or leave a note.'));
+/** True while a card's form is open among the days: a redraw would take its fields from under the typing. */
+const rowFormOpen = () => !!$('days').querySelector('[data-cancel]');
+
+/** The first entry new to the viewer in the newest open day that has one: where "New since you last looked" goes. */
+function firstFresh() {
+  const days = (threadData?.days ?? []).filter((d) => dayIsOpen(d.day));
+  for (const d of days) {
+    const e = (dayRows.get(d.day) ?? []).find((x) => x.fresh);
+    if (e) return e.id;
   }
+  return null;
+}
 
-  let day = null;
-  entries.forEach((e, i) => {
-    const key = dayKey(e.at);
-    if (key !== day) { day = key; box.appendChild(node('h2', 'tday', fmtDate(key))); }
+/** A day's card: its head, which opens it, and, open, its rows. */
+function dayCard(row) {
+  const today = row.day === threadData.today;
+  const open = dayIsOpen(row.day);
+  const section = node('section', 'day');
+  section.dataset.day = row.day;
+  section.setAttribute('aria-labelledby', `dayhead-${row.day}`);
+  const h = node('h3', 'day-h');
+  const btn = node('button', 'day-open hit');
+  btn.type = 'button';
+  btn.id = `dayhead-${row.day}`;
+  btn.setAttribute('aria-expanded', String(open));
+  if (open) btn.setAttribute('aria-controls', `daybody-${row.day}`);
+  const first = node('span', 'day-first');
+  if (today) first.textContent = 'Today';
+  else {
+    const [weekday, date] = dayParts(row.day);
+    first.append(node('b', '', weekday), ' ', node('small', '', date));
+  }
+  const second = [];
+  if (row.total > 0) second.push(row.count === row.total ? `${row.count} ${row.count === 1 ? 'entry' : 'entries'}` : `${row.count} of ${row.total} entries`);
+  if (row.waiting > 0) second.push(`${row.waiting} waiting`);
+  if (!open && row.fresh > 0) second.push(`${row.fresh} new`);
+  if (row.by.length) second.push(row.by.map((b) => (b.who === 'claude' ? 'Claude' : (b.name ?? nameOf(b.who)))).join(', '));
+  const lines = node('span', 'day-lines');
+  lines.append(first, node('span', 'day-second', second.join(' · ')));
+  btn.append(lines, icon(open ? 'up' : 'down', 'i sm chev'));
+  btn.addEventListener('click', () => void pressDay(row.day));
+  h.appendChild(btn);
+  section.appendChild(h);
+  if (!open) return section;
+
+  const body = node('div', 'list day-body');
+  body.id = `daybody-${row.day}`;
+  const entries = dayRows.get(row.day) ?? [];
+  const ctx = todayCtx();
+  const fresh = firstFresh();
+  for (const e of entries) {
+    if (e.id === fresh) body.appendChild(node('div', 'tnew', 'New since you last looked'));
     const n = entryNode(e, ctx);
-    // For placeYours: which day each entry is, and which is the briefing.
-    n.dataset.day = key;
-    n.dataset.kind = e.kind;
-    // For search: the entry a hit opens Today at.
     n.dataset.event = e.id;
-    box.appendChild(n);
-    if (e.id === newSince && i < entries.length - 1) box.appendChild(node('div', 'tnew', 'New since you last looked'));
-  });
-  placeYours();
+    body.appendChild(n);
+  }
+  if (!entries.length && today) body.appendChild(node('p', 'quiet', 'Nothing yet today. Ask Claude something, or leave a note.'));
+  section.appendChild(body);
+  return section;
+}
 
-  const count = waiting.length;
-  $('tray').hidden = count === 0 || threadFilter === 'waiting';
-  $('tray').textContent = `${count} waiting on you`;
+/** Today's page: the date, today's card, and every earlier day that has entries, newest first. */
+function renderToday() {
+  const { today, days } = threadData;
+  $('today-day').textContent = dayName(todayKey(), { year: true });
+  const zero = { day: today, count: 0, total: 0, waiting: 0, fresh: 0, by: [] };
+  $('day-today').replaceChildren(dayCard(days.find((d) => d.day === today) ?? zero));
+  const earlier = days.filter((d) => d.day !== today && d.count > 0);
+  $('earlier-days').replaceChildren(...earlier.map(dayCard));
+  $('earlier').hidden = earlier.length === 0;
   $('ask-claude').disabled = !claudeOn;
   $('say-note').textContent = claudeOn ? '' : "Claude isn't set up on this server. Notes still work.";
+  watchLastRow();
+}
+
+/** Opens or shuts a day's card; an earlier day not yet read is read once, for the person the page applied. */
+async function pressDay(day) {
+  const turn = householdTurn, mine = loadTurn;
+  if (day === threadData.today) todayShut = !todayShut;
+  else if (daysOpen.has(day)) daysOpen.delete(day);
+  else {
+    daysOpen.add(day);
+    if (!dayRows.has(day)) {
+      try {
+        const read = await api(`/api/thread?${threadParams({ day, who: threadData.who })}`);
+        if (turn !== householdTurn || mine !== loadTurn) return;
+        dayRows.set(day, read.entries);
+      } catch (ex) {
+        daysOpen.delete(day);
+        if (turn === householdTurn) showProblem(ex);
+        return;
+      }
+    }
+  }
+  redrawDay(day);
+  watchLastRow();
+}
+
+/** One day's card drawn again in place, with focus back on its head. */
+function redrawDay(day) {
+  const row = threadData.days.find((d) => d.day === day);
+  const old = $('days').querySelector(`.day[data-day="${CSS.escape(day)}"]`);
+  if (!row || !old) return;
+  const fresh = dayCard(row);
+  old.replaceWith(fresh);
+  fresh.querySelector('.day-open').focus();
+}
+
+let lastRowWatch = null;
+/**
+ * Reaching the last row of today's open card is reading what is above it. Delivering the thread is not, so the cursor
+ * moves only when that row has actually been on screen, under every kind and everyone.
+ */
+function watchLastRow() {
+  lastRowWatch?.disconnect();
+  lastRowWatch = null;
+  const last = $('day-today').querySelector('.day-body')?.lastElementChild;
+  if (!last) return;
+  lastRowWatch = new IntersectionObserver((seen) => {
+    const reading = view === 'today' && todayKind === 'all' && threadData?.who === 'everyone';
+    if (!seen.some((x) => x.isIntersecting) || !reading) return;
+    if (!threadData.last || threadData.last === threadData.newSince) return;
+    threadData.newSince = threadData.last;
+    void api('/api/briefing/read', { upTo: threadData.last }).catch(() => {});
+  });
+  lastRowWatch.observe(last);
 }
 
 // ── Yours: the rails under the briefing ─────────────────────────────────────
 
-/** Kept by reference: on a phone it lives inside #thread, which is redrawn from empty. */
+/** Kept by reference: it is the desk's column beside the days. */
 const yoursEl = $('yours');
-
-/**
- * One container, in one of two places. On the desk (#briefing laid out as a
- * grid, from 1040px) it is the column beside the thread. On a phone it sits
- * in the thread right after today's briefing, so the order reads briefing,
- * yours, then the rest of the day; with no briefing in view, before today's
- * first entry, or at the end. Moves only when it is not already there.
- */
-function placeYours() {
-  const brief = $('briefing');
-  if (getComputedStyle(brief).display === 'grid') {
-    if (yoursEl.parentElement !== brief) brief.appendChild(yoursEl);
-    return;
-  }
-  const box = $('thread');
-  const today = dayKey(new Date().toISOString());
-  const todays = [...box.children].filter((n) => n !== yoursEl && n.dataset.day === today);
-  const briefing = todays.findLast((n) => n.dataset.kind === 'briefing');
-  if (briefing) { if (briefing.nextElementSibling !== yoursEl) briefing.after(yoursEl); }
-  else if (todays[0]) { if (todays[0].previousElementSibling !== yoursEl) todays[0].before(yoursEl); }
-  else if (box.lastElementChild !== yoursEl) box.appendChild(yoursEl);
-}
 
 /** A rail's row: something to the left (a source, perhaps), its name, and a value on the right. */
 function railRow(lead, text, value, open, valueCls = '') {
@@ -3076,7 +3197,6 @@ function entryNode(e, ctx) {
       if (docRead(e.id)) shown(docRead(e.id));
       else void readDocText(e.id, 'briefing').then(shown);
     } else spot.remove();
-    for (const o of e.cards) b.appendChild(offerCard(o, ctx));
     m.appendChild(b);
     return m;
   }
@@ -3469,7 +3589,6 @@ function answerNode(q, ctx) {
   }
   const looked = [...new Set(a.tools.flatMap((t) => (LOOKED[t] ? [LOOKED[t]] : [])))];
   if (looked.length) b.appendChild(node('div', 'looked', `Looked at ${looked.join(', ')}.`));
-  for (const o of a.cards) b.appendChild(offerCard(o, ctx));
   m.appendChild(b);
   return m;
 }
@@ -3686,45 +3805,22 @@ $('say').addEventListener('keydown', (ev) => {
   }
 });
 
-$('t-filters').addEventListener('click', (ev) => {
-  const btn = ev.target.closest('button[data-filter]');
-  if (!btn) return;
-  threadFilter = btn.dataset.filter;
-  filterBeforeDetour = null;
-  for (const b of btn.parentElement.children) b.setAttribute('aria-pressed', String(b === btn));
-  void loadThread();
-});
-
-// Typing into a card's form: the reply box goes back to the end of the thread
+// Typing into a card's form: the reply box goes back to the end of the days
 // rather than floating over the fields and buttons being used.
-$('thread').addEventListener('focusin', (ev) => {
+$('days').addEventListener('focusin', (ev) => {
   if (ev.target.matches('input, textarea')) $('composer').classList.add('resting');
 });
-$('thread').addEventListener('focusout', () => {
+$('days').addEventListener('focusout', () => {
   setTimeout(() => {
-    if (!$('thread').contains(document.activeElement)) $('composer').classList.remove('resting');
+    if (!$('days').contains(document.activeElement)) $('composer').classList.remove('resting');
   }, 0);
 });
 
-// Yours changes place when the page crosses into the desk's two columns, and back.
-new ResizeObserver(() => { if (!$('briefing').hidden) placeYours(); }).observe(document.querySelector('.hp'));
-$('t-all').addEventListener('change', (ev) => { threadAll = ev.target.checked; void loadThread(); });
-$('t-earlier').addEventListener('click', () => loadThread({ before: threadData?.before }));
-$('tray').addEventListener('click', () => $('t-filters').querySelector('[data-filter="waiting"]').click());
-
-// Reaching the reply box is reading what is above it. Delivering the thread is
-// not, so the cursor moves only when the bottom has actually been on screen.
-new IntersectionObserver((seen) => {
-  if (!seen.some((x) => x.isIntersecting) || view !== 'today' || threadFilter !== 'everything') return;
-  const last = threadData?.entries.at(-1)?.id;
-  if (!last || last === threadData.newSince) return;
-  threadData.newSince = last;
-  void api('/api/briefing/read', { upTo: last }).catch(() => {});
-}).observe($('composer'));
-
-// Coming back to the tab is when the other person's changes are worth seeing.
+// Coming back to the tab is when the household's changes are worth seeing, unless a row's form is half typed.
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible' && view === 'today' && !$('app').hidden) void loadThread();
+  if (document.visibilityState !== 'visible' || view !== 'today' || $('app').hidden) return;
+  if (rowFormOpen()) return;
+  void loadThread();
 });
 
 // ── budget ─────────────────────────────────────────────────────────────────
@@ -11694,8 +11790,8 @@ function evSub(e, long, clampedBefore, clampedAfter) {
 /** Where an event leads: a drift to its card in Today, a proposal to its card, one the app made to its form, a plan's event to the plan, any other to a read-only view. */
 function evOpen(e) {
   if (e.held?.kind === 'block') return () => openHeld(e);
-  if (e.drift) return () => openTodayAt(`[data-drift="${CSS.escape(e.drift)}"]`);
-  if (e.proposed) return () => openTodayAt(`[data-offer="${CSS.escape(e.proposed)}"]`);
+  if (e.drift) return () => openTodayAt({ drift: e.drift });
+  if (e.proposed) return () => openTodayAt({ offer: e.proposed });
   // One the app made opens the form, filled in, whether or not it is for a plan: the form shows the plan.
   if (editable(e)) return () => openEventForm(e);
   if (e.plan) return () => openCard(e.plan.id);
@@ -12437,21 +12533,12 @@ async function showView(next) {
   }
   // Fetched again on the way back: what was done on the other screens is part
   // of the thread.
-  if (view === 'today') await loadThread();
-}
-
-/** Today opened again after a card took it to Waiting: the filter it was on comes back. */
-function endFilterDetour() {
-  if (filterBeforeDetour === null) return;
-  threadFilter = filterBeforeDetour;
-  filterBeforeDetour = null;
-  for (const b of $('t-filters').children) b.setAttribute('aria-pressed', String(b.dataset.filter === threadFilter));
+  if (view === 'today') { window.scrollTo({ top: 0 }); await loadThread(); }
 }
 
 $('tabs-top').addEventListener('click', (ev) => {
   const btn = ev.target.closest('button[data-view]');
   if (!btn) return;
-  if (btn.dataset.view === 'today') endFilterDetour();
   void showView(btn.dataset.view === 'budget' ? budgetSub() : btn.dataset.view);
 });
 $('budget-seg').addEventListener('click', (ev) => {
@@ -12523,17 +12610,22 @@ function forgetHousehold() {
   cardFetch++;
   document.removeEventListener('keydown', cardEscape);
 
-  // Today: the thread, the Yours rails (taken home first, since a phone keeps them inside the thread), the setup
-  // notes, the waiting tray, and a note half typed.
+  // Today: the days and what they were read for, the Yours rails, the setup notes, and a note half typed.
+  loadTurn++;
   threadData = null;
-  $('briefing').appendChild(yoursEl);
+  todayKind = 'all';
+  todayThrough = null;
+  daysOpen.clear();
+  todayShut = false;
+  dayRows.clear();
+  lastRowWatch?.disconnect();
+  lastRowWatch = null;
   yoursEl.hidden = true;
   $('yours-me').textContent = '';
   for (const body of yoursEl.querySelectorAll('.rail-body')) body.textContent = '';
-  $('thread').textContent = '';
-  $('t-earlier').hidden = true;
-  $('tray').hidden = true;
-  $('tray').textContent = '';
+  for (const id of ['day-today', 'earlier-days', 't-kinds', 't-people', 't-waiting', 'today-day']) $(id).textContent = '';
+  $('earlier').hidden = true;
+  $('t-waiting').hidden = true;
   $('setup-notes').hidden = true;
   $('setup-notes').textContent = '';
   $('say').value = '';
