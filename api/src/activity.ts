@@ -106,7 +106,7 @@ export function changes(all: readonly Event[], state: State): Change[] {
  * for the `txn.add` that introduced it costs a pass over the file and saves the
  * other person going to look for something that is no longer there.
  */
-function findRemoved(events: readonly Event[], txnId: string, state: State): Removed | undefined {
+export function findRemoved(events: readonly Event[], txnId: string, state: State): Removed | undefined {
   for (let i = events.length - 1; i >= 0; i--) {
     const e = events[i]!;
     if (e.op !== 'txn.add') continue;

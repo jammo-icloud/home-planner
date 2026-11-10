@@ -9,16 +9,16 @@ import { Store } from '../src/store.ts';
 import { ProposalStore } from '../src/tools.ts';
 import type { ToolContext } from '../src/tools.ts';
 import { offer, decide } from '../src/offers.ts';
-import { thread, budgetOf } from '../src/thread.ts';
+import { thread, budgetOf, build, ordered, authorOf } from '../src/thread.ts';
 import type { ThreadEntry } from '../src/thread.ts';
 import type { Event } from '../src/types.ts';
 
-const NOW = '2026-08-13T09:00:00Z';
+const NOW = '2026-08-13T09:00:00.000Z';
 const DOC = { link: 'f3c1', file_id: '881', hash: 'abc', version_id: '1', path: '/team-folders/Planner/h1/today/2026-08-13-household.md' };
 
-async function ctx(): Promise<ToolContext> {
+async function ctx(clock = { now: NOW }): Promise<ToolContext> {
   const path = join(await mkdtemp(join(tmpdir(), 'pb-view-')), 'events.jsonl');
-  const store = new Store({ path, now: () => new Date(NOW) });
+  const store = new Store({ path, now: () => new Date(clock.now) });
   await store.load();
   await store.append('alice', [
     { op: 'household.claim', label: 'Home' },
@@ -44,11 +44,194 @@ const brief = (c: ToolContext, over: Record<string, unknown> = {}) =>
     headline: 'Food is running ahead', body: 'Longer account.', writtenBy: 'claude', ...over } as never)
     .then(([e]) => e!);
 
+const entries = async (c: ToolContext, who = 'alice') => build(await c.store.since(null), c.store.state, who);
 const kinds = (entries: readonly ThreadEntry[]) => entries.map((e) => e.kind);
 const page = (c: ToolContext, o: Partial<Parameters<typeof thread>[1]> = {}) =>
   thread(c.store, { who: 'alice', budget: 'harbor', ...o });
 
 describe('the thread', () => {
+  describe('flat entries', () => {
+    const MOVE = { budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amountCents: 5000, why: 'x' };
+    /** A card for a tool that needs the NAS to make, written as the log holds it. */
+    const raw = async (c: ToolContext, tool: string, args: Record<string, unknown>, prompt: { kind: string; ref: string | null }, by = 'claude') => {
+      const [o] = await c.store.append(by, { op: 'proposal.offer', tool, args, summary: 'Dinner', effects: [], events: [],
+        budget: null, month: null, envelopes: [], fingerprint: '', prompt } as never);
+      return o!;
+    };
+    const card = (all: ThreadEntry[], id: string) => all.find((e) => e.id === id) as Extract<ThreadEntry, { kind: 'card' }>;
+
+    test('a card is its own entry in its lane, raised by what raised it', async () => {
+      const c = await ctx();
+      const b = await brief(c);
+      const o = await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: b.id }, args: MOVE });
+      const [q] = await c.store.append('bob', { op: 'thread.ask', question: 'Dinner on Friday?', budget: 'harbor' });
+      const [a] = await c.store.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'Maybe.', tools: [], model: 'm' });
+      const ev = await raw(c, 'propose_event', { summary: 'Dinner', on: 'household' }, { kind: 'answer', ref: a!.id });
+      const all = await entries(c);
+      const first = card(all, o.id);
+      assert.equal(first.lane, 'budget');
+      assert.deepEqual(first.raised, { how: 'briefing', entry: b.id, day: '2026-08-13', at: NOW, by: 'claude' });
+      const second = card(all, ev.id);
+      assert.equal(second.lane, 'calendar');
+      assert.deepEqual([second.raised?.how, second.raised?.entry, second.raised?.by], ['answer', q!.id, 'bob']);
+      assert.ok(!('cards' in all.find((e) => e.id === b.id)!));
+    });
+
+    test('a card raised by a briefing that was replaced names the newer one', async () => {
+      const c = await ctx();
+      const old = await brief(c, { writtenBy: 'fallback' });
+      const o = await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: old.id }, args: MOVE });
+      const newer = await brief(c, { replaces: old.id });
+      assert.equal(card(await entries(c), o.id).raised?.entry, newer.id);
+    });
+
+    test('a day is the household\'s, not UTC\'s', async () => {
+      const c = await ctx({ now: '2026-08-14T04:30:00Z' });
+      await c.store.append('alice', { op: 'household.zone', zone: 'America/Denver' });
+      const [n] = await c.store.append('bob', { op: 'thread.note', text: 'late', budget: null });
+      assert.equal((await entries(c)).find((e) => e.id === n!.id)!.day, '2026-08-13');
+    });
+
+    test('a decision on a later day than its offer is an entry; on the same day it is not', async () => {
+      const clock = { now: NOW };
+      const c = await ctx(clock);
+      const same = await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: null }, args: MOVE });
+      await decide(c, same.id, 'approved');
+      assert.ok(!(await entries(c)).some((e) => e.kind === 'decision'));
+      const other = await offer(c, { tool: 'set_assignment', prompt: { kind: 'briefing', ref: null },
+        args: { budget: 'harbor', month: '2026-08', envelope: 'food', toCents: 65000, why: 'y' } });
+      clock.now = '2026-08-15T09:00:00Z';
+      await decide(c, other.id, 'declined', 'no');
+      const d = (await entries(c)).find((e) => e.kind === 'decision') as Extract<ThreadEntry, { kind: 'decision' }>;
+      assert.deepEqual([d.day, d.lane, d.decision, d.why, d.offer.day], ['2026-08-15', 'budget', 'declined', 'no', '2026-08-13']);
+    });
+
+    test('what an approval applied, and a drift let go by a plan\'s removal, are not change rows', async () => {
+      const c = await ctx();
+      const o = await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: null }, args: MOVE });
+      await decide(c, o.id, 'approved', 'ok');
+      assert.ok(!(await entries(c)).some((e) => e.kind === 'change' && /moved/.test(e.what)));
+    });
+
+    test('an appointment for someone\'s own calendar is absent for the others', async () => {
+      const c = await ctx();
+      const o = await raw(c, 'propose_event', { summary: 'Dentist', on: 'mine' }, { kind: 'briefing', ref: null }, 'alice');
+      assert.ok((await entries(c, 'alice')).some((e) => e.id === o.id));
+      assert.ok(!(await entries(c, 'bob')).some((e) => e.id === o.id));
+    });
+
+    test('a change says where it opens', async () => {
+      const c = await ctx();
+      await c.store.append('alice', { op: 'assign', budget: 'harbor', month: '2026-08', envelope: 'food', to: parseDollars('650.00'), why: 'a' });
+      await c.store.append('alice', { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' });
+      await c.store.append('bob', { op: 'plan.state', plan: 'gate', state: 'doing' });
+      await c.store.append('bob', { op: 'plan.create', plan: 'gone', title: 'Gone soon', area: 'House' });
+      await c.store.append('bob', { op: 'plan.state', plan: 'gone', state: 'doing' });
+      await c.store.append('bob', { op: 'plan.remove', plan: 'gone', why: 'x' });
+      const all = await entries(c);
+      const change = (re: RegExp) => all.find((e) => e.kind === 'change' && re.test(e.what)) as Extract<ThreadEntry, { kind: 'change' }>;
+      assert.deepEqual(change(/650/).open, { budget: 'harbor', envelope: 'food' });
+      assert.deepEqual(change(/Fix the gate to doing/).open, { plan: 'gate' });
+      assert.equal(change(/Gone soon to doing/).open, undefined);
+    });
+
+    test('an appointment says what it is, whose calendar it is on, and opens its day', async () => {
+      const c = await ctx();
+      const CAL = { cal_id: '/alice/hh/', original_cal_id: '/alice/hh/' };
+      await c.store.append('alice', [
+        { op: 'calendar.household', ...CAL, name: 'Home', by: 'alice' },
+        { op: 'calendar.appointment', ...CAL, evt_id: 5, ical_uid: 'u5', dav_etag: 'E', summary: 'Dentist',
+          start: '2026-08-20T15:00:00.000Z', end: '2026-08-20T16:00:00.000Z', allDay: false },
+        { op: 'calendar.appointment.change', evt_id: 5, summary: 'Dentist, later', start: '2026-08-21T15:00:00.000Z',
+          end: '2026-08-21T16:00:00.000Z', allDay: false, dav_etag: 'E2',
+          was: { summary: 'Dentist', start: '2026-08-20T15:00:00.000Z', end: '2026-08-20T16:00:00.000Z', allDay: false } },
+      ] as never);
+      const all = (await entries(c)).filter((e) => e.kind === 'change' && e.event);
+      const made = all[0] as Extract<ThreadEntry, { kind: 'change' }>;
+      assert.equal(made.event?.on, 'household');
+      assert.equal(made.event?.summary, 'Dentist');
+      assert.deepEqual(made.open, { calendar: '2026-08-20' });
+      const moved = all[1] as Extract<ThreadEntry, { kind: 'change' }>;
+      assert.equal(moved.event?.was?.summary, 'Dentist');
+      assert.deepEqual(moved.open, { calendar: '2026-08-21' });
+    });
+
+    test('fresh is what others wrote after what I last read', async () => {
+      const c = await ctx();
+      await c.store.append('bob', { op: 'thread.note', text: 'before any cursor', budget: null });
+      const all0 = await entries(c);
+      assert.ok(!all0.some((e) => e.fresh), 'no cursor: nothing is fresh');
+      const [read] = await c.store.append('bob', { op: 'thread.note', text: 'read one', budget: null });
+      await c.store.append('alice', { op: 'briefing.read', upTo: read!.id });
+      const [next] = await c.store.append('bob', { op: 'thread.note', text: 'next', budget: null });
+      const [mine] = await c.store.append('alice', { op: 'thread.note', text: 'mine', budget: null });
+      const all = await entries(c);
+      const at = (id: string) => all.find((e) => e.id === id)!;
+      assert.equal(at(next!.id).fresh, true);
+      assert.ok(!at(mine!.id).fresh);
+      assert.ok(!at(read!.id).fresh);
+    });
+
+    test('waits is what waits on me', async () => {
+      const c = await ctx();
+      const open = await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: null }, args: MOVE });
+      const done = await offer(c, { tool: 'set_assignment', prompt: { kind: 'briefing', ref: null },
+        args: { budget: 'ridge', month: '2026-08', envelope: 'food', toCents: 75000, why: 'y' } });
+      await decide(c, done.id, 'approved');
+      await c.store.append('alice', { op: 'txn.add', txns: [
+        { id: 't1', date: '2026-08-02', payee: 'A', amount: parseDollars('-1.00'), dedupeKey: 't1', category: null }] });
+      await c.store.append('bob', { op: 'txn.remove', txn: 't1', why: 'dupe' });
+      const all = await entries(c);
+      assert.equal(card(all, open.id).waits, true);
+      assert.ok(!card(all, done.id).waits);
+      const removal = all.find((e) => e.kind === 'change' && e.flag) as Extract<ThreadEntry, { kind: 'change' }>;
+      assert.equal(removal.waits, true);
+    });
+
+    test('a drift card is the app\'s, with no author', async () => {
+      const c = await ctx();
+      const CAL = { cal_id: '/alice/hh/', original_cal_id: '/alice/hh/' };
+      await c.store.append('alice', [
+        { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' },
+        { op: 'plan.due', plan: 'gate', due: '2026-11-07' },
+        { op: 'plan.calendar.link', plan: 'gate', kind: 'due', ...CAL, evt_id: 7, ical_uid: 'u7', dav_etag: 'E1' },
+      ]);
+      const [d] = await c.store.append('alice', { op: 'calendar.drift', plan: 'gate', evt_id: 7, theirs: null,
+        ours: { dtstart: 1_794_009_600, dtend: 1_794_096_000, summary: 'Fix the gate' } });
+      const o = await offer(c, { tool: 'resolve_drift', args: { drift: d!.id, plan: 'gate', choice: 'plan' },
+        prompt: { kind: 'drift', ref: d!.id }, by: 'alice' });
+      const e = card(await entries(c), o.id);
+      assert.equal(e.app, true);
+      assert.equal(authorOf(e), null);
+      assert.equal(e.lane, 'calendar');
+    });
+
+    test('an offer that removed a receipt, approved, is a card with the flag and no change', async () => {
+      const c = await ctx();
+      await c.store.append('alice', { op: 'txn.add', txns: [
+        { id: 't1', date: '2026-08-02', payee: 'Corner Shop', amount: parseDollars('-1.00'), dedupeKey: 't1', category: null }] });
+      const [o] = await c.store.append('claude', { op: 'proposal.offer', tool: 'move_money', args: {}, summary: 'Remove it',
+        effects: [], events: [{ op: 'txn.remove', txn: 't1', why: 'dupe' }], budget: null, month: null, envelopes: [],
+        fingerprint: 'f', prompt: { kind: 'briefing', ref: null } } as never);
+      const [, rm] = await c.store.append('alice', [{ op: 'proposal.decide', proposal: o!.id, decision: 'approved' },
+        { op: 'txn.remove', txn: 't1', why: 'dupe' }] as never);
+      const all = await entries(c, 'bob');
+      assert.ok(!all.some((e) => e.kind === 'change' && e.flag), 'no change row for the removal');
+      const e = card(all, o!.id);
+      assert.equal(e.flags?.[0]?.event, rm!.id);
+      assert.equal(e.flags?.[0]?.removed?.payee, 'Corner Shop');
+      assert.equal(e.flags?.[0]?.seenByMe, false);
+    });
+
+    test('ordered: newest day first; in a day the briefing, then time, then the log', () => {
+      const e = (id: string, day: string, at: string, kind: string) => ({ id, day, at, kind }) as unknown as ThreadEntry;
+      const list = [e('a', '2026-08-12', '2026-08-12T10:00:00Z', 'note'), e('b', '2026-08-13', '2026-08-13T10:00:00Z', 'note'),
+        e('b2', '2026-08-13', '2026-08-13T10:00:00Z', 'note'), e('c', '2026-08-13', '2026-08-13T11:00:00Z', 'note'),
+        e('z', '2026-08-13', '2026-08-13T12:00:00Z', 'briefing')];
+      assert.deepEqual(ordered(list).map((x) => x.id), ['z', 'b', 'b2', 'c', 'a']);
+    });
+  });
+
   test('answers attach to their question, and cards to what prompted them', async () => {
     const c = await ctx();
     const b = await brief(c);
@@ -61,15 +244,15 @@ describe('the thread', () => {
       args: { budget: 'harbor', month: '2026-08', envelope: 'food', toCents: 65000, why: 'y' } });
 
     const { entries } = await page(c);
-    const tail = entries.slice(-2);
-    assert.deepEqual(kinds(tail), ['briefing', 'ask']);
-    const [bb, qq] = tail as [Extract<ThreadEntry, { kind: 'briefing' }>, Extract<ThreadEntry, { kind: 'ask' | 'note' }>];
+    const tail = entries.slice(-4);
+    assert.deepEqual(kinds(tail), ['briefing', 'card', 'ask', 'card']);
+    const [, bc, qq, ac] = tail as [ThreadEntry, Extract<ThreadEntry, { kind: 'card' }>, Extract<ThreadEntry, { kind: 'ask' | 'note' }>, Extract<ThreadEntry, { kind: 'card' }>];
     // The second card replaced the first, since both touch Food in August.
-    assert.deepEqual(bb.cards.map((x) => [x.id, x.status]), [[card.id, 'replaced']]);
+    assert.deepEqual([bc.offer.id, bc.offer.status, bc.raised?.entry], [card.id, 'replaced', b.id]);
     assert.equal(qq.who, 'bob');
     assert.equal(qq.answer?.text, 'Yes, from Travel.');
     assert.deepEqual(qq.answer?.tools, ['get_month']);
-    assert.deepEqual(qq.answer?.cards.map((x) => x.id), [answerCard.id]);
+    assert.deepEqual([ac.offer.id, ac.raised?.entry], [answerCard.id, q!.id]);
   });
 
   test('a member\'s adjusted card stands on its own in the thread', async () => {
@@ -158,7 +341,9 @@ describe('the thread', () => {
     const briefings = (await page(c)).entries.filter((e) => e.kind === 'briefing');
     assert.equal(briefings.length, 1);
     const only = briefings[0]!;
-    assert.ok(only.kind === 'briefing' && only.writtenBy === 'claude' && only.cards.some((x) => x.id === card.id));
+    assert.ok(only.kind === 'briefing' && only.writtenBy === 'claude' && !('cards' in only));
+    const hung = (await page(c)).entries.find((e) => e.kind === 'card' && e.offer.id === card.id);
+    assert.ok(hung && hung.kind === 'card' && hung.raised?.entry === only.id);
   });
 
   test('direct changes are change entries, collapsed as Activity collapsed them; removals never collapse', async () => {
@@ -191,7 +376,7 @@ describe('the thread', () => {
     await c.store.append('alice', [{ op: 'briefing.read', upTo: b.id }, { op: 'flag.seen', event: 'zz' }]);
     const all = (await page(c)).entries;
     const after = all.slice(all.findIndex((e) => e.id === b.id));
-    assert.deepEqual(kinds(after), ['briefing']);
+    assert.deepEqual(kinds(after), ['briefing', 'card'], 'a declined card stays, as the card');
   });
 
   test('the default view is the budget in view plus household-wide entries', async () => {
@@ -226,10 +411,10 @@ describe('the thread', () => {
     const c = await ctx();
     await brief(c);
     const b2 = await brief(c, { budget: 'harbor', headline: 'Another' });
-    await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: b2.id },
+    const waitingCard = await offer(c, { tool: 'move_money', prompt: { kind: 'briefing', ref: b2.id },
       args: { budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amountCents: 5000, why: 'x' } });
     const w = await page(c, { filter: 'waiting' });
-    assert.deepEqual(w.entries.map((e) => e.id), [b2.id]);
+    assert.deepEqual(w.entries.map((e) => e.id), [waitingCard.id]);
     assert.equal(w.waiting.filter((x) => x.kind === 'offer').length, 1);
   });
 
@@ -269,7 +454,7 @@ describe('the thread', () => {
     await c.store.append('bob', { op: 'thread.note', text: 'after', budget: 'harbor' });
     const all = (await page(c)).entries;
     const tail = all.slice(all.findIndex((e) => e.id === b.id));
-    assert.deepEqual(kinds(tail), ['briefing', 'note']);
+    assert.deepEqual(kinds(tail), ['briefing', 'card', 'note']);
   });
 
   test('what is waiting counts only what this view can show', async () => {

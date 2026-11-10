@@ -766,9 +766,9 @@ describe('Today\'s rails, from the NAS', () => {
     const page = await as('GET', '/api/thread');
     // The card rides on Claude's answer to the question that asked for it.
     const asked = page.json.entries.find((e: any) => e.kind === 'ask' && /dentist/.test(e.text));
-    const cards = (asked?.answer?.cards ?? []).filter((o: any) => o.tool === 'propose_event');
+    const cards = page.json.entries.filter((e: any) => e.kind === 'card' && e.offer.tool === 'propose_event' && e.raised?.entry === asked.id);
     assert.equal(cards.length, 1, JSON.stringify(asked));
-    assert.match(cards[0].summary, /^Dentist · /);
+    assert.match(cards[0].offer.summary, /^Dentist · /);
   });
 });
 

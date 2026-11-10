@@ -15,7 +15,7 @@ import {
   brief, changesSinceSection, ensureSection, markRead, facts, scorePredictions,
   householdFacts, briefHousehold, ensureHousehold,
 } from '../src/briefing.ts';
-import { thread } from '../src/thread.ts';
+import { thread, ordered } from '../src/thread.ts';
 import { validate } from '../src/replay.ts';
 import { fakeDsm } from './fake-dsm-fetch.ts';
 import { fakeNas } from './fake-nas.ts';
@@ -975,7 +975,8 @@ describe('one briefing for the household', () => {
     await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
     const s = await ensureHousehold(store, opts({ sid: null }));
     const { entries } = await thread(store, { who: 'alice', budget: 'harbor' });
-    const firstToday = entries.find((e) => e.at.slice(0, 10) === TODAY)!;
+    // `ordered` puts the briefing first in its day (it is no longer moved up in the page's own order).
+    const firstToday = ordered(entries).find((e) => e.day === TODAY)!;
     assert.equal(firstToday.kind, 'briefing');
     assert.equal(firstToday.id, s.event);
     const briefings = entries.filter((e) => e.kind === 'briefing');

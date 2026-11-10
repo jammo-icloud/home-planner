@@ -314,12 +314,12 @@ describe('asking from a plan', () => {
     assert.equal((offered as { plan?: string }).plan, 'heater');
     assert.equal(c.store.state.plans.get('heater')!.due, null, 'nothing changed until someone approves it');
 
-    // The thread hangs the card under the answer, not on its own.
+    // The card is its own entry, raised by the answer to the question.
     const page = await thread(c.store, { who: 'alice', budget: null, allBudgets: true });
     const asked = page.entries.find((e) => e.id === r.question.id);
     assert.ok(asked && asked.kind === 'ask');
-    assert.deepEqual(asked.answer?.cards.map((x) => x.id), [o.id]);
-    assert.ok(!page.entries.some((e) => e.kind === 'card'));
+    const hung = page.entries.filter((e) => e.kind === 'card');
+    assert.deepEqual(hung.map((e) => e.kind === 'card' && [e.offer.id, e.raised?.entry]), [[o.id, r.question.id]]);
 
     // And the plan's card shows it as a suggestion on that research.
     const view = card(c.store.state, await c.store.since(null), 'heater', { who: 'alice', today: TODAY });

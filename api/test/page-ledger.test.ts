@@ -134,6 +134,8 @@ const ADDED: readonly Line[] = [
   // moves the turn on, so no read still out from the household left can draw into the next one.
   ['switch', 'function onlyToday() {\n  forgetHousehold();', 'page'], ['switch', 'function forgetHousehold() {\n  householdTurn++;', 'page'],
   ['switch', 'let householdTurn = 0;', 'shared'],
+  // Every card is its own entry (Task 4): the briefing that settles a replaced one, what an approval applied, and a guest's name.
+  ['S25', 'settle(', 'threadSrc'], ['S26', 'appliedBy', 'threadSrc'], ['S29', 'guestEmail(', 'threadSrc'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
@@ -155,6 +157,7 @@ const GONE: readonly Line[] = [
   // The card (Task 14): the old Back that always went to the board, the old note and placeholder, the ask chip, the head's owner.
   ['P51', "Also in Today's thread"], ['P50', 'Leave a note for '], ['P50', 'betweenSection(v, theirs)'], ['P32', 'asked ${v.asked.to}'],
   ['P22', "node('div', 'waiting', 'Waiting for you')"],
+  ['spec', 'function opensItsDay', 'threadSrc'], ['spec', 'const standalone', 'threadSrc'], ['spec', 'cardsFor', 'threadSrc'],
   ['P28', '/ask-to-take', 'page'], ['P28', 'Asking needs a reason'], ['P28', 'They read this on the card'], ['P28', 'Ask ${theirs}'], ['P27', "node('span', 'owner')"], ['card', '#plan-card .back{display:none}', 'css'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];

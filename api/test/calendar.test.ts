@@ -1502,7 +1502,7 @@ describe('due dates and blocks become events', () => {
       prompt: { kind: 'answer', ref: answer } });
 
     const ids = (page: Awaited<ReturnType<typeof thread>>) => new Set(page.entries.flatMap((e: ThreadEntry) =>
-      e.kind === 'card' ? [e.offer.id] : e.kind === 'ask' ? (e.answer?.cards ?? []).map((x) => x.id) : []));
+      e.kind === 'card' ? [e.offer.id] : []));
     const waits = (page: Awaited<ReturnType<typeof thread>>) =>
       new Set(page.waiting.flatMap((w) => (w.kind === 'offer' ? [w.offer.id] : [])));
 
