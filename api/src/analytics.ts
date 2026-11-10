@@ -12,7 +12,7 @@ import type { Cents } from './money.ts';
 import { monthView, envelopeFor } from './envelopes.ts';
 import type { EnvelopeView, MonthView } from './envelopes.ts';
 import { fundedFor, plannedFor } from './replay.ts';
-import { isSpend, monthKey, monthOf, partsOf, prevMonth } from './types.ts';
+import { MONTHS_SHORT, isSpend, monthKey, monthOf, partsOf, prevMonth } from './types.ts';
 import type { BillDate, BillRecord, BudgetId, Day, EnvelopeId, Month, State, Txn } from './types.ts';
 
 // ─── the month's clock ────────────────────────────────────────────────────────
@@ -732,4 +732,18 @@ export function billDateWords(date: BillDate): string {
   const [, m, d] = date.on.split('-').map(Number) as [number, number, number];
   const every = date.per === 'quarter' ? 'every quarter' : date.per === 'half-year' ? 'every six months' : 'every year';
   return `${verb} ${d} ${MONTHS_LONG[m - 1]}, ${every}`;
+}
+
+/** What a bill's row says under its name: what the receipts know, then its date if a member set one. */
+export function billLine(bill: Bill): string {
+  const parts: string[] = [];
+  if (bill.about !== null) parts.push(`about ${fmt(bill.about)}`);
+  parts.push(bill.lastPaid
+    ? `last paid ${Number(bill.lastPaid.day.slice(8, 10))} ${MONTHS_SHORT[Number(bill.lastPaid.day.slice(5, 7)) - 1]}`
+    : 'no receipts yet');
+  if (bill.date) {
+    const words = billDateWords(bill.date);
+    parts.push(words.charAt(0).toUpperCase() + words.slice(1));
+  }
+  return parts.join(' · ');
 }

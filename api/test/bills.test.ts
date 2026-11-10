@@ -6,12 +6,15 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { parseDollars } from '../src/money.ts';
+import type { Cents } from '../src/money.ts';
+import { Store } from '../src/store.ts';
 import { replay, apply } from '../src/replay.ts';
-import { billDateWords, billDatesIn, billKey, billOccurrences, billsExpected, billsOf, fixedCharges } from '../src/analytics.ts';
-import { describe as describeEvent } from '../src/tools.ts';
+import { billDateWords, billDatesIn, billKey, billLine, billOccurrences, billsExpected, billsOf, fixedCharges } from '../src/analytics.ts';
+import { describe as describeEvent, APPROVE_IN_ONE, ProposalStore, commit, toolByName, toolSchemas } from '../src/tools.ts';
+import type { Proposal, ToolContext } from '../src/tools.ts';
 import { newerBackup, parseBackup, planRestore, eventsToApply, scopeOf } from '../src/restore.ts';
 import { Households } from '../src/households.ts';
-import type { Bill } from '../src/analytics.ts';
+import type { Bill, BillPaid } from '../src/analytics.ts';
 import type { BillDate, Event, State, Txn } from '../src/types.ts';
 import type { DistributiveOmit } from '../src/util-types.ts';
 
@@ -348,5 +351,139 @@ describe('what a month still expects', () => {
   test('several bills add up', () => {
     const water = ['2026-09-30', '2026-10-30'].map((d) => pay(`w${d}`, d, 'EXAMPLE WATER #4471', '-48.00', 'water'));
     assert.equal(billsExpected(b(house([...POWER, ...water])), month), 14600 + 4800);
+  });
+});
+
+async function ctx(txns: readonly Txn[] = POWER, more: readonly Event[] = []): Promise<ToolContext> {
+  const path = join(await mkdtemp(join(tmpdir(), 'pb-bills-')), 'events.jsonl');
+  const store = new Store({ path, now: () => new Date('2026-11-12T18:00:00Z') });
+  await store.load();
+  await store.adopt(houseEvents(txns, more));
+  return { store, who: 'alice', today: '2026-11-12', proposals: new ProposalStore(), sid: null };
+}
+const run = (args: Record<string, unknown>, c: ToolContext) =>
+  toolByName.get('set_bill')!.run({ budget: 'harbor', envelope: 'util', ...args }, c);
+
+describe('the line a bill reads', () => {
+  const b = (over: Partial<Bill>): Bill => ({ envelope: 'util', key: 'k', name: 'N', byHand: false, date: null, since: null, about: null, charges: [], receipts: [], lastPaid: null, ...over });
+  const paid = { txnId: 't', day: '2026-10-14', amount: 14600, payee: 'X' } as BillPaid;
+  test('what the receipts know, then its date', () => {
+    assert.equal(billLine(b({ about: 14600 as Cents, lastPaid: paid, date: { kind: 'due', per: 'month', day: 16 } })), 'about $146 · last paid 14 Oct · Due on the 16th, every month');
+    assert.equal(billLine(b({ lastPaid: paid, date: { kind: 'payby', per: 'year', on: '2026-02-14' } })), 'last paid 14 Oct · Pay by 14 February, every year');
+    assert.equal(billLine(b({ date: { kind: 'autopay', per: 'month', day: 1 } })), 'no receipts yet · Auto Pay on the 1st, every month');
+    assert.equal(billLine(b({ about: 14600 as Cents, lastPaid: paid })), 'about $146 · last paid 14 Oct');
+  });
+  test('a day read from a receipt is never a date word', () => {
+    assert.doesNotMatch(billLine(b({ about: 14600 as Cents, lastPaid: paid })), /due|auto pay|pay by/i);
+  });
+});
+
+describe('set_bill', () => {
+  const d16 = { kind: 'due', per: 'month', day: 16 };
+  test('from the page and from Claude: a date on a bill the receipts show', async () => {
+    const c = await ctx();
+    const p = run({ bill: 'example power billp', ...d16 }, c) as Proposal;
+    assert.equal(p.tool, 'set_bill');
+    assert.equal(p.summary, 'EXAMPLE POWER BILLP: due on the 16th, every month');
+    assert.deepEqual(p.effects, ["Shows due on the 16th, every month on Utilities's page", 'No money moves']);
+    assert.deepEqual(p.events, [{ op: 'bill.set', budget: 'harbor', envelope: 'util', bill: 'example power billp', name: 'EXAMPLE POWER BILLP', date: d16 }]);
+    assert.equal(APPROVE_IN_ONE.has('set_bill'), true);
+    assert.equal(c.store.state.budgets.get('harbor')!.bills.size, 0, 'a proposal writes nothing');
+    await commit(p.id, c);
+    assert.equal(c.store.state.budgets.get('harbor')!.bills.size, 1);
+  });
+  test('Claude is offered it', () => assert.ok(toolSchemas().some((t) => t.name === 'set_bill')));
+  test('a longer period sends on', async () => {
+    const p = run({ bill: 'example power billp', kind: 'autopay', per: 'quarter', on: '2026-11-20' }, await ctx()) as Proposal;
+    assert.deepEqual((p.events[0] as { date: unknown }).date, { kind: 'autopay', per: 'quarter', on: '2026-11-20' });
+    assert.equal(p.summary, 'EXAMPLE POWER BILLP: Auto Pay on 20 November, every quarter');
+  });
+  test('a new name makes a bill by hand', async () => {
+    const p = run({ name: 'Example Water ', kind: 'payby', per: 'month', day: 3 }, await ctx()) as Proposal;
+    assert.deepEqual(p.events, [{ op: 'bill.set', budget: 'harbor', envelope: 'util', bill: 'example water', name: 'Example Water', byHand: true, date: { kind: 'payby', per: 'month', day: 3 } }]);
+  });
+  test('a name finds the bill it means', async () => {
+    const p = run({ name: 'power', ...d16 }, await ctx()) as Proposal;
+    assert.equal((p.events[0] as { bill: string }).bill, 'example power billp');
+  });
+  test('an exact key beats a looser match', async () => {
+    const hand = ev({ op: 'bill.set', budget: 'harbor', envelope: 'util', bill: 'example power billp gas', name: 'Example Power Billp Gas', byHand: true, date: null });
+    const p = run({ name: 'EXAMPLE POWER BILLP', ...d16 }, await ctx(POWER, [hand])) as Proposal;
+    assert.equal((p.events[0] as { bill: string }).bill, 'example power billp');
+  });
+  test('clear and remove', async () => {
+    const c = await ctx();
+    await commit((run({ bill: 'example power billp', ...d16 }, c) as Proposal).id, c);
+    const off = run({ bill: 'example power billp', clear: true }, c) as Proposal;
+    assert.deepEqual([off.summary, off.effects], ['EXAMPLE POWER BILLP: date cleared', ['Its day comes from its last receipt again', 'No money moves']]);
+    await commit((run({ name: 'Example Water', kind: 'due', per: 'month', day: 3 }, c) as Proposal).id, c);
+    const gone = run({ bill: 'example water', remove: true }, c) as Proposal;
+    assert.deepEqual([gone.summary, gone.effects, gone.events], ['Remove the bill Example Water', ["It leaves Utilities's page", 'No money moves'],
+      [{ op: 'bill.remove', budget: 'harbor', envelope: 'util', bill: 'example water', name: 'Example Water' }]]);
+  });
+  test('a followed bill is set where it is listed', async () => {
+    const move = POWER.map((t) => ev({ op: 'txn.categorize', txn: t.id, category: 'groceries' }));
+    const c = await ctx(POWER, [ev(SET), ...move]);
+    const off = run({ envelope: 'daily', bill: 'example power billp', clear: true }, c) as Proposal;
+    assert.equal((off.events[0] as { envelope: string }).envelope, 'daily');
+  });
+  test('refused, each in its own words', async () => {
+    const c = await ctx();
+    const no = (args: Record<string, unknown>, re: RegExp) => assert.throws(() => run(args, c), re);
+    no({ envelope: 'roof', name: 'Roof', ...d16 }, /a savings envelope has no bills/);
+    no({ envelope: 'nope', name: 'X', ...d16 }, /no envelope nope/);
+    no({ ...d16 }, /say which bill, or name a new one/);
+    no({ bill: 'example power billp', kind: 'due', per: 'month' }, /a date needs its kind/);
+    no({ bill: 'example power billp', kind: 'due', day: 3 }, /a date needs its kind/);
+    no({ bill: 'example power billp', per: 'month', day: 3 }, /a date needs its kind/);
+    no({ bill: 'example power billp', kind: 'due', per: 'quarter', day: 3 }, /a date needs its kind/);
+    no({ bill: 'example power billp', kind: 'due', per: 'month', on: '2026-11-20' }, /a date needs its kind/);
+    no({ bill: 'example power billp', kind: 'soon', per: 'month', day: 3 }, /a date needs its kind/);
+    no({ bill: 'example power billp', kind: 'due', per: 'year', on: 'tomorrow' }, /a date needs its kind/);
+    no({ bill: 'example power billp', kind: 'due', per: 'month', day: 32 }, /a day of the month is from 1 to 31/);
+    no({ name: 'x'.repeat(61), ...d16 }, /60 characters at most/);
+    no({ name: '1234', ...d16 }, /say the bill's name in letters/);
+    no({ bill: 'no such', ...d16 }, /no bill no such in Utilities/);
+    no({ bill: 'example power billp', clear: true }, /that bill has no date to clear/);
+    no({ bill: 'example power billp', remove: true }, /that bill comes from the receipts: clear its date instead/);
+  });
+  test('a name two bills match', async () => {
+    const paper = ['2026-09-20', '2026-10-20'].map((d) => pay(`pp${d}`, d, 'EXAMPLE PAPER', '-20.00', 'water'));
+    const c = await ctx([...POWER, ...paper]);
+    assert.throws(() => run({ name: 'example', kind: 'due', per: 'month', day: 3 }, c), /two bills match that name: say more of it/);
+  });
+  test('a hand-named bill the receipts have since found is not removed', async () => {
+    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'elec'));
+    const hand = ev({ op: 'bill.set', budget: 'harbor', envelope: 'util', bill: 'example gas', name: 'Example Gas', byHand: true, date: null });
+    const c = await ctx([...POWER, ...gas], [hand]);
+    assert.throws(() => run({ bill: 'example gas', remove: true }, c), /that bill comes from the receipts: clear its date instead/);
+  });
+});
+
+describe("get_month's bills", () => {
+  const gm = async (c: ToolContext, month = '2026-11') => toolByName.get('get_month')!.run({ budget: 'harbor', month }, c) as any;
+  test('each envelope lists its bills in the words of the page', async () => {
+    const out = await gm(await ctx());
+    const util = out.envelopes.find((e: any) => e.id === 'util');
+    assert.deepEqual(util.bills, [{ key: 'example power billp', name: 'EXAMPLE POWER BILLP', byHand: false, about: '$146', lastPaid: '2026-10-14', line: 'about $146 · last paid 14 Oct' }]);
+  });
+  test('a savings envelope has none, and one with nothing funded lists its own', async () => {
+    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'gas'));
+    const out = await gm(await ctx([...POWER, ...gas]));
+    assert.deepEqual(out.envelopes.find((e: any) => e.id === 'roof').bills, []);
+    assert.deepEqual(out.envelopes.find((e: any) => e.id === 'heat').bills.map((b: any) => b.line), ['about $50 · last paid 9 Oct']);
+    assert.equal(out.pace.some((p: any) => p.envelope === 'heat'), false);
+  });
+  test('a bill with no receipts sends no about or lastPaid', async () => {
+    const hand = ev({ op: 'bill.set', budget: 'harbor', envelope: 'util', bill: 'example water', name: 'Example Water', byHand: true, date: { kind: 'due', per: 'month', day: 3 } });
+    const out = await gm(await ctx([], [hand]));
+    const [b] = out.envelopes.find((e: any) => e.id === 'util').bills;
+    assert.deepEqual(Object.keys(b).sort(), ['byHand', 'date', 'key', 'line', 'name']);
+    assert.equal(b.line, 'no receipts yet · Due on the 3rd, every month');
+  });
+  test('a closed month lists them too', async () => {
+    const out = await gm(await ctx(POWER, [ev({ op: 'month.close', budget: 'harbor', month: '2026-10', closed: true, why: 'done' })]), '2026-10');
+    assert.equal(out.closed, true);
+    assert.equal(out.envelopes.find((e: any) => e.id === 'util').bills.length, 1);
   });
 });

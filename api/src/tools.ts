@@ -16,7 +16,7 @@
 import { ZERO, add, sub, cents, fmt, fmtExact } from './money.ts';
 import type { Cents } from './money.ts';
 import { carriedInto, monthView, latestMonth, openMonths, overlappingCategories } from './envelopes.ts';
-import { billDateWords, donors, drift, monthClock, pace, snapshot, unsorted } from './analytics.ts';
+import { billDateWords, billKey, billLine, billsOf, donors, drift, monthClock, pace, snapshot, unsorted } from './analytics.ts';
 import { fundedFor, plannedFor, categorize, splitProblem, guestEmail } from './replay.ts';
 import { filedLabel, ruleProblem } from './match.ts';
 import { removedTxn } from './activity.ts';
@@ -34,6 +34,7 @@ import {
   planChecklist, planChips, planDue, planEstimate, planGoal, planNotes, planState, planTitle, required, RETIRED,
 } from './plan-rules.ts';
 import { ToolError } from './errors.ts';
+import type { Bill } from './analytics.ts';
 import { resolvedEnv } from './connectors.ts';
 import { SynologyError, createContact, listAddressbooks, requireSid } from './synology.ts';
 import { syncBlock, syncDue, syncNames, undoMade, unsyncAll } from './calendar.ts';
@@ -47,10 +48,10 @@ import {
 } from './booking.ts';
 import type { BookingMail } from './booking.ts';
 import {
-  areaIndex, DRIFT_CHOICES, emailKey, isEmail, isGuest, isSpend, monthOf, monthKey, MONTHS_SHORT, partsOf, PERS, slug, SPLIT, TRANSFER, INCOME, zoneOf,
+  areaIndex, DRIFT_CHOICES, emailKey, isDay, isEmail, isGuest, isSpend, monthOf, monthKey, MONTHS_SHORT, partsOf, PERS, slug, SPLIT, TRANSFER, INCOME, zoneOf,
 } from './types.ts';
 import type {
-  Actor, Assignment, BudgetId, BudgetLocation, Day, DriftChoice, Envelope, Event, Match, Month, Per, Plan, PlanState, SinkingEstimate, SinkingGoal, SplitPart, State, Txn,
+  Actor, Assignment, BillDate, BudgetId, BudgetLocation, Day, DriftChoice, Envelope, Event, Match, Month, Per, Plan, PlanState, SinkingEstimate, SinkingGoal, SplitPart, State, Txn,
 } from './types.ts';
 import type { Store, NewEvent } from './store.ts';
 
@@ -254,11 +255,20 @@ const shortView = (c: Cover | null) => c === null ? null : {
   assignExact: c.assign === null ? null : fmtExact(c.assign),
 };
 
+/** A bill as the month's wire has it: nothing sent for what the receipts or a member have not said. */
+const billView = (b: Bill) => ({
+  key: b.key, name: b.name, byHand: b.byHand,
+  ...(b.about !== null ? { about: fmt(b.about) } : {}),
+  ...(b.lastPaid ? { lastPaid: b.lastPaid.day } : {}),
+  ...(b.date ? { date: b.date } : {}),
+  line: billLine(b),
+});
+
 const getMonth: Tool = {
   name: 'get_month',
   description:
     'How a budget is doing this month: every envelope with planned, funded, spent and left, ' +
-    'plus pace projections, plan drift, the unsorted queue and whether it balances. ' +
+    'plus its bills, with any date a member set, pace projections, plan drift, the unsorted queue and whether it balances. ' +
     'Start here for any "how are we doing" question.',
   kind: 'read',
   input: {
@@ -276,6 +286,7 @@ const getMonth: Tool = {
     const snap = snapshot(state, budget, month, ctx.today);
     if (!snap) throw new ToolError(`${month} is not open for ${budget}`, 404);
     const budgetRow = state.budgets.get(budget);
+    const billed = billsOf(state, budget);
     return {
       budget, month,
       dayOfMonth: snap.clock.dayOfMonth,
@@ -330,6 +341,7 @@ const getMonth: Tool = {
         short: e.envelope.needsFigure ? null : shortView(coverFor(state, snap.view, e.envelope.id, ctx.today)),
         // Saved in Savings: what it holds so far is what is left in it.
         sinking: sinkingView(state, budget, e.envelope, month, e.available),
+        bills: e.envelope.sinking ? [] : (billed.get(e.envelope.id) ?? []).map(billView),
       })),
       // The sinking envelopes against the savings account; null with none.
       savings: savingsView(state, budget, ctx.today),
@@ -2550,6 +2562,121 @@ const setEnvelopeFigure: Tool = {
   },
 };
 
+const DATE_WORDS = 'a date needs its kind, how often, and a day of the month or a next date';
+
+const setBill: Tool = {
+  name: 'set_bill',
+  description:
+    "Propose setting, clearing or removing a bill's date in an envelope: a Due, Auto Pay or Pay by date, " +
+    'every month (`day`, 1 to 31) or every quarter, half-year or year (`on`, the next date, YYYY-MM-DD). ' +
+    '`bill` is a key from the envelope\'s bills in get_month; a `name` may be part of a bill\'s name, and a ' +
+    'name that matches none makes a new bill by hand. `clear` takes the date off, so its day comes from its ' +
+    'last receipt again; `remove` deletes a bill made by hand that no receipt has found. No money moves. ' +
+    'Returns a proposal.',
+  kind: 'write',
+  input: {
+    type: 'object',
+    properties: {
+      budget: { type: 'string' },
+      envelope: { type: 'string', description: 'The envelope the bill is listed in.' },
+      bill: { type: 'string', description: "The bill's key, as get_month lists it." },
+      name: { type: 'string', description: "A bill's name, or part of it; a new name makes a bill by hand. 60 characters at most." },
+      kind: { type: 'string', enum: ['due', 'autopay', 'payby'] },
+      per: { type: 'string', enum: ['month', 'quarter', 'half-year', 'year'] },
+      day: { type: 'number', description: 'The day of the month, 1 to 31, for per: month.' },
+      on: { type: 'string', description: 'The next date, YYYY-MM-DD, for any other per.' },
+      clear: { type: 'boolean', description: 'Take the date off.' },
+      remove: { type: 'boolean', description: 'Remove a bill made by hand.' },
+    },
+    required: ['budget', 'envelope'],
+  },
+  run(args, ctx) {
+    const state = ctx.store.state;
+    const budget = str(args['budget'], 'budget');
+    const b = state.budgets.get(budget);
+    if (!b) throw new ToolError(`no budget ${budget}`, 404);
+    const id = str(args['envelope'], 'envelope');
+    const env = b.envelopes.get(id);
+    if (!env) throw new ToolError(`no envelope ${id}`, 404);
+    if (env.sinking) throw new ToolError('a savings envelope has no bills');
+    const listed = billsOf(state, budget).get(id) ?? [];
+    const noBill = (x: string) => new ToolError(`no bill ${x} in ${env.label}`, 404);
+
+    // the target
+    let target: Bill | null = null;
+    let key = '';
+    let name = '';
+    const given = (k: string): boolean => typeof args[k] === 'string' && (args[k] as string).trim() !== '';
+    if (given('bill')) {
+      const want = (args['bill'] as string).trim();
+      target = listed.find((x) => x.key === want) ?? null;
+      if (!target) throw noBill(want);
+      key = target.key;
+      name = target.name;
+    } else if (given('name')) {
+      name = (args['name'] as string).trim();
+      if (name.length > 60) throw new ToolError('a name is 60 characters at most');
+      key = billKey(name);
+      if (key === '') throw new ToolError("say the bill's name in letters");
+      const exact = listed.find((x) => x.key === key);
+      if (exact) target = exact;
+      else {
+        const near = listed.filter((x) => x.key !== '' && (key.includes(x.key) || x.key.includes(key)));
+        if (near.length > 1) throw new ToolError('two bills match that name: say more of it');
+        target = near[0] ?? null;
+      }
+      if (target) { key = target.key; name = target.name; }
+    } else {
+      throw new ToolError('say which bill, or name a new one');
+    }
+    const byHand = target ? target.byHand : true;
+    const label = env.label;
+
+    if (args['remove'] === true) {
+      if (!target) throw noBill(given('bill') ? (args['bill'] as string).trim() : name);
+      if (!target.byHand || target.receipts.length > 0) throw new ToolError('that bill comes from the receipts: clear its date instead');
+      return ctx.proposals.put({
+        tool: 'set_bill', who: ctx.who,
+        summary: `Remove the bill ${name}`,
+        effects: [`It leaves ${label}'s page`, 'No money moves'],
+        events: [{ op: 'bill.remove', budget, envelope: id, bill: key, name }],
+      }, ctx.today);
+    }
+    if (args['clear'] === true) {
+      if (!target || !target.date) throw new ToolError('that bill has no date to clear');
+      return ctx.proposals.put({
+        tool: 'set_bill', who: ctx.who,
+        summary: `${name}: date cleared`,
+        effects: ['Its day comes from its last receipt again', 'No money moves'],
+        events: [{ op: 'bill.set', budget, envelope: id, bill: key, name, ...(byHand ? { byHand: true as const } : {}), date: null }],
+      }, ctx.today);
+    }
+
+    const kind = args['kind'];
+    const per = args['per'];
+    if (kind !== 'due' && kind !== 'autopay' && kind !== 'payby') throw new ToolError(DATE_WORDS);
+    if (per !== 'month' && per !== 'quarter' && per !== 'half-year' && per !== 'year') throw new ToolError(DATE_WORDS);
+    const has = (k: string) => args[k] !== undefined && args[k] !== null;
+    let date: BillDate;
+    if (per === 'month') {
+      if (!has('day') || has('on')) throw new ToolError(DATE_WORDS);
+      const day = args['day'];
+      if (typeof day !== 'number' || !Number.isInteger(day) || day < 1 || day > 31) throw new ToolError('a day of the month is from 1 to 31');
+      date = { kind, per, day };
+    } else {
+      const on = args['on'];
+      if (has('day') || !isDay(on)) throw new ToolError(DATE_WORDS);
+      date = { kind, per, on };
+    }
+    return ctx.proposals.put({
+      tool: 'set_bill', who: ctx.who,
+      summary: `${name}: ${billDateWords(date)}`,
+      effects: [`Shows ${billDateWords(date)} on ${label}'s page`, 'No money moves'],
+      events: [{ op: 'bill.set', budget, envelope: id, bill: key, name, ...(byHand ? { byHand: true as const } : {}), date }],
+    }, ctx.today);
+  },
+};
+
 const setMonthIncome: Tool = {
   name: 'set_month_income',
   description:
@@ -3499,7 +3626,7 @@ const searchTool: Tool = {
 
 export const TOOLS: readonly Tool[] = [
   getMonth, explainEnvelope, findDonors, listTransactions, compareBudgets, getActivity, addStarterSet,
-  makeStarterEnvelopes, setMonthIncome, setEnvelopeFigure,
+  makeStarterEnvelopes, setMonthIncome, setEnvelopeFigure, setBill,
   moveMoney, setAssignment, categorizeTxn, openMonth, restoreTxn,
   createBudget, renameBudget, archiveBudget, defineEnvelope, setSinkingGoal, removeEnvelope,
   defineCategory, archiveCategory, closeMonth, discardMonth,
@@ -3525,7 +3652,7 @@ export const CARD_ONLY: ReadonlySet<string> = new Set([resolveDrift.name, approv
  */
 export const APPROVE_IN_ONE: ReadonlySet<string> = new Set([
   'create_budget', 'set_budget_location', 'open_month', 'set_month_income', 'define_income_source',
-  'make_starter_envelopes', 'set_envelope_figure', 'move_money', 'set_assignment',
+  'make_starter_envelopes', 'set_envelope_figure', 'set_bill', 'move_money', 'set_assignment',
 ]);
 
 /** Whether Claude may call it: the ones in TOOLS. */
