@@ -1543,6 +1543,16 @@
   .card.offer.provisional{border:var(--stroke-heavy) dashed var(--provisional);box-shadow:none;padding:var(--sp-4);margin-top:var(--sp-2)}
   .provisional .row.actions{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center;justify-content:flex-end}
   .provisional .row.actions .input{flex:1 1 100%}
+  .filters.kinds{flex-wrap:nowrap;gap:var(--sp-1);margin-bottom:var(--sp-3)}
+  .filters.kinds button{flex:none;min-width:var(--tap);padding-inline:var(--sp-2);margin-block:var(--sp-1);white-space:nowrap}
+  #t-people{margin-bottom:var(--sp-3)}
+  .earlier-head{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3)}
+  .earlier-head .link{display:inline-flex;align-items:center;gap:var(--sp-1);font-size:var(--fs-small)}
+  #earlier-top,#earlier-more{display:flex}
+  #earlier-top:not(:empty){margin-bottom:var(--sp-3)}
+  #earlier-more:not(:empty){margin-top:var(--sp-3)}
+  .empty-line,#left-out{margin:0;font-size:var(--fs-small);color:var(--ink-soft)}
+  #left-out:not([hidden]){margin-top:var(--sp-3)}
   /* ── end of today ── */
 </style>
 </head>
@@ -1692,7 +1702,7 @@
       <section id="t-waiting" aria-labelledby="t-waiting-h" hidden></section>
       <div id="days">
         <div id="day-today"></div>
-        <section id="earlier" aria-labelledby="earlier-h" hidden><div class="earlier-head"><h2 id="earlier-h">Earlier</h2></div><div id="earlier-days"></div></section>
+        <section id="earlier" aria-labelledby="earlier-h" hidden><div class="earlier-head"><h2 id="earlier-h">Earlier</h2><span id="earlier-sort"></span></div><div id="earlier-top"></div><div id="earlier-days"></div><p id="left-out" aria-live="polite" hidden></p><div id="earlier-more"></div></section>
       </div>
       <form class="composer" id="composer">
         <label class="visually-hidden" for="say">Ask Claude, or leave a note</label>
@@ -2435,6 +2445,7 @@ const ICONS = {
   leave: '<path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5"/>',
   home: '<path d="M2.5 7.5L8 3l5.5 4.5V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z"/><path d="M6.5 13.5v-3.5h3v3.5"/>',
   up: '<path d="M4 10l4-4 4 4"/>',
+  'arrow-up-down': '<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>',
   down: '<path d="M4 6l4 4 4-4"/>',
   plus: '<path d="M8 3v10M3 8h10"/>',
   alert: '<circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/>',
@@ -2547,9 +2558,9 @@ function goalFlag(label) {
 /**
  * The people bar: "Everyone" first, then a button per entry in the order given (peopleOrder's, as a rule), each
  * with its count. A press says whose key; the caller presses the person and draws again. A button's name reads
- * the count as words, "bob, 3 plans" (`noun` is what is counted), where its face shows "bob 3".
+ * the count as words, "bob, 3 plans" (`noun` is what is counted, `plural` its plural), where its face shows "bob 3".
  */
-function peopleBar(host, { label, people, pressed, onPress, noun = 'plan' }) {
+function peopleBar(host, { label, people, pressed, onPress, noun = 'plan', plural = `${noun}s` }) {
   host.textContent = '';
   const bar = node('div', 'seg people');
   bar.setAttribute('role', 'group');
@@ -2562,7 +2573,7 @@ function peopleBar(host, { label, people, pressed, onPress, noun = 'plan' }) {
     b.setAttribute('aria-pressed', String(p.key === pressed));
     if (p.n != null) {
       b.append(node('span', 'n', String(p.n)));
-      b.setAttribute('aria-label', `${p.label}, ${p.n} ${noun}${p.n === 1 ? '' : 's'}`);
+      b.setAttribute('aria-label', `${p.label}, ${p.n} ${p.n === 1 ? noun : plural}`);
     }
     b.addEventListener('click', () => onPress(p.key));
     if (p.key === pressed) on = b;
@@ -3082,15 +3093,115 @@ function dayCard(row) {
   return section;
 }
 
+/** The six kinds that narrow every day at once: what is pressed is `todayKind`. */
+const KINDS = [['all', 'All'], ['budget', 'Budget'], ['calendar', 'Calendar'], ['plans', 'Plans'], ['claude', 'Claude'], ['notes', 'Notes']];
+$('t-kinds').addEventListener('click', (ev) => {
+  const b = ev.target.closest('button[data-kind]');
+  if (b) pressKind(b.dataset.kind);
+});
+function pressKind(kind) {
+  todayKind = kind;
+  void loadThread({ quiet: true });
+}
+
+/** The people bar over every day: members with entries in view, counted from the days' `by`. */
+function drawPeople() {
+  const host = $('t-people');
+  const had = host.contains(document.activeElement) ? document.activeElement.dataset.key : null;
+  const count = new Map();
+  for (const d of threadData.days) for (const b of d.by) count.set(b.who, (count.get(b.who) ?? 0) + b.count);
+  const people = peopleOrder().filter((m) => count.has(m)).map((m) => ({ key: m, label: m, n: Math.max(1, count.get(m)) }));
+  const pressed = threadData.who === 'everyone' ? null : threadData.who;
+  host.hidden = pressed === null && people.length <= 1;
+  if (host.hidden) { host.textContent = ''; return; }
+  peopleBar(host, {
+    label: 'Whose', pressed, noun: 'entry', plural: 'entries',
+    onPress: (key) => { pressPerson(key); void loadThread({ quiet: true }); },
+    people,
+  });
+  if (had) host.querySelector(`[data-key="${CSS.escape(had)}"]`)?.focus({ preventScroll: true });
+}
+
+/** What the kind and person pressed leave out of a day, in words: "under Budget", "by Bob", "under Budget by Bob"; '' for neither. */
+function narrowedBy() {
+  const kind = KINDS.find(([k]) => k === todayKind)?.[1];
+  const who = threadData.who === 'everyone' ? null : (threadData.who === myName ? 'you' : threadData.who);
+  return { kind: todayKind === 'all' ? null : kind, who };
+}
+/** Today's card has nothing under what is pressed: "Nothing under Budget by Bob today."; '' when nothing is pressed. */
+function emptyLine() {
+  const { kind, who } = narrowedBy();
+  if (kind && who) return `Nothing under ${kind} by ${who} today.`;
+  if (kind) return `Nothing under ${kind} today.`;
+  if (who) return `Nothing by ${who} today.`;
+  return '';
+}
+/** The earlier days with nothing under what is pressed, said once after the last. `n` counts them. */
+function leftOutLine(n) {
+  const { kind, who } = narrowedBy();
+  const first = `${(todayThrough ?? todayKey().slice(0, 7))}-01`;
+  const since = `${Number(first.slice(8))} ${monthName(first.slice(0, 7))}`;
+  let nothing = 'nothing';
+  if (kind && who) nothing = `nothing under ${kind} by ${who}`;
+  else if (kind) nothing = `nothing under ${kind}`;
+  else if (who) nothing = `nothing by ${who}`;
+  return n === 1 ? `1 other day since ${since} has ${nothing} and is left out.` : `${n} other days since ${since} have ${nothing} and are left out.`;
+}
+/** Earlier days read a month further back: `month` is the `before` the answer gave. */
+async function showMonth(month) {
+  todayThrough = month;
+  await loadThread({ quiet: true });
+  ($('earlier-more').querySelector('button') ?? $('earlier-top').querySelector('button'))?.focus({ preventScroll: true });
+}
+/** Earlier days newest first or oldest first; today's card stays where it is. */
+function flipSort() {
+  todaySort = todaySort === 'newest' ? 'oldest' : 'newest';
+  renderToday();
+  $('earlier-sort-btn')?.focus({ preventScroll: true });
+}
+
 /** Today's page: the date, today's card, and every earlier day that has entries, newest first. */
 function renderToday() {
   const { today, days } = threadData;
   $('today-day').textContent = dayName(todayKey(), { year: true });
+  const kinds = $('t-kinds');
+  if (!kinds.children.length) {
+    for (const [k, label] of KINDS) {
+      const b = node('button', 'hit', label);
+      b.type = 'button';
+      b.dataset.kind = k;
+      kinds.appendChild(b);
+    }
+  }
+  for (const b of kinds.children) b.setAttribute('aria-pressed', String(b.dataset.kind === todayKind));
+  drawPeople();
   const zero = { day: today, count: 0, total: 0, waiting: 0, fresh: 0, by: [] };
-  $('day-today').replaceChildren(dayCard(days.find((d) => d.day === today) ?? zero));
+  const todayRow = days.find((d) => d.day === today) ?? zero;
+  const none = todayRow.count === 0 ? emptyLine() : '';
+  $('day-today').replaceChildren(...(none ? [node('p', 'empty-line', none)] : []), dayCard(todayRow));
   const earlier = days.filter((d) => d.day !== today && d.count > 0);
+  if (todaySort === 'oldest') earlier.reverse();
   $('earlier-days').replaceChildren(...earlier.map(dayCard));
-  $('earlier').hidden = earlier.length === 0;
+  const out = days.filter((d) => d.day !== today && d.count === 0).length;
+  const left = out ? leftOutLine(out) : '';
+  $('left-out').textContent = left;
+  $('left-out').hidden = !left;
+  const more = [];
+  if (threadData.before) {
+    const b = node('button', 'link hit', `Show ${monthName(threadData.before)}`);
+    b.type = 'button';
+    b.addEventListener('click', () => showMonth(threadData.before));
+    more.push(b);
+  }
+  $('earlier-top').replaceChildren(...(todaySort === 'oldest' ? more : []));
+  $('earlier-more').replaceChildren(...(todaySort === 'oldest' ? [] : more));
+  const sort = node('button', 'link hit', todaySort === 'oldest' ? 'Oldest first' : 'Newest first');
+  sort.type = 'button';
+  sort.id = 'earlier-sort-btn';
+  sort.prepend(icon('arrow-up-down', 'i sm'));
+  sort.addEventListener('click', flipSort);
+  $('earlier-sort').replaceChildren(sort);
+  $('earlier').hidden = earlier.length === 0 && !threadData.before && !left;
   $('ask-claude').disabled = !claudeOn;
   $('say-note').textContent = claudeOn ? '' : "Claude isn't set up on this server. Notes still work.";
   watchLastRow();
@@ -12982,6 +13093,7 @@ function forgetHousehold() {
   threadData = null;
   todayKind = 'all';
   todayThrough = null;
+  todaySort = 'newest';
   daysOpen.clear();
   todayShut = false;
   dayRows.clear();
@@ -12991,7 +13103,8 @@ function forgetHousehold() {
   yoursRails = null;
   $('yours-me').textContent = '';
   for (const body of yoursEl.querySelectorAll('.rail-body')) body.textContent = '';
-  for (const id of ['day-today', 'earlier-days', 't-kinds', 't-people', 't-waiting', 'today-day']) $(id).textContent = '';
+  for (const id of ['day-today', 'earlier-days', 'earlier-top', 'earlier-more', 'earlier-sort', 't-kinds', 't-people', 't-waiting', 'today-day']) $(id).textContent = '';
+  $('left-out').hidden = true;
   $('earlier').hidden = true;
   $('t-waiting').hidden = true;
   $('setup-notes').hidden = true;
