@@ -1096,19 +1096,6 @@
   .cal-bar{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
   .cal-bar .range{font-size:var(--fs-title);font-weight:var(--fw-semibold);letter-spacing:var(--tracking-tight);margin-right:auto}
   .cal-bar .btn{display:inline-flex;align-items:center;gap:6px}
-  .legend{display:flex;flex-wrap:wrap;gap:var(--sp-2) var(--sp-4);font-size:var(--fs-micro);color:var(--ink-soft)}
-  .legend span{display:inline-flex;align-items:center;gap:6px}
-  .sw{display:inline-block;width:16px;height:12px;border-radius:3px}
-  .sw.mine{background:var(--src-mine-fill)}
-  .sw.partner{background:var(--src-partner-fill);box-shadow:inset 0 0 0 1.5px var(--src-partner-line)}
-  .sw.household{background:var(--src-household-fill);box-shadow:inset 0 0 0 1.5px var(--src-household-line)}
-  .sw.due{border:var(--stroke-heavy) dashed var(--provisional)}
-  .sw.proposed{border:var(--stroke-heavy) dashed var(--accent)}
-  .sw.moved{box-shadow:0 0 0 2px var(--caution-line);background:var(--surface-raised)}
-  .sw.clash{box-shadow:0 0 0 2px var(--problem);background:var(--surface-raised)}
-  .sw.off{background:var(--surface-sunken);box-shadow:inset 0 0 0 1px var(--line-strong)}
-  .sw.held{background:repeating-linear-gradient(135deg,var(--hatch-line) 0 2px,transparent 2px 6px),var(--surface-sunken);
-    box-shadow:inset 0 0 0 1px var(--line)}
   /* an event, wherever it is drawn. Source is the fill; shape says what kind:
      solid is an appointment or time set aside, dashed is not yet real. */
   .ev{position:relative;display:block;padding:4px 7px;border-radius:7px;font-size:var(--fs-micro);line-height:1.3;
@@ -1185,15 +1172,6 @@
     font:inherit;color:var(--ink-soft);background:none;border:0;border-radius:var(--r-control);cursor:pointer}
   .daystrip .dn{font-size:var(--fs-micro);font-weight:var(--fw-medium)}
   .daystrip .dd{font-size:var(--fs-title);font-weight:var(--fw-semibold);color:var(--ink);line-height:1.1}
-  .daystrip .dots{display:flex;gap:3px;height:6px}
-  .daystrip .dots i{width:6px;height:6px;border-radius:50%}
-  .daystrip .dots i.mine{background:var(--src-mine-fill)}
-  .daystrip .dots i.partner{background:var(--src-partner-line)}
-  .daystrip .dots i.household{background:var(--src-household-line)}
-  .daystrip .dots i.due{box-shadow:inset 0 0 0 1.5px var(--provisional)}
-  .daystrip .dots i.off{box-shadow:inset 0 0 0 1.5px var(--ink-faint)}
-  .daystrip .dots i.proposed{box-shadow:inset 0 0 0 1.5px var(--accent)}
-  .daystrip .dots i.held{background:var(--hatch-line);box-shadow:inset 0 0 0 1px var(--line)}
   .daystrip [aria-current="date"]{background:var(--surface-raised);box-shadow:inset 0 0 0 1.5px var(--ink)}
   .daystrip .is-today .dd{color:var(--accent-ink)}
   .day-head{display:flex;align-items:baseline;gap:var(--sp-2)}
@@ -1549,6 +1527,37 @@
   #t-elsewhere h2{margin:0 0 var(--sp-2);font-size:var(--fs-title);font-weight:var(--fw-semibold)}
   #t-elsewhere .rowi{width:100%;text-align:left;font:inherit;color:var(--ink);background:none;border:0;cursor:pointer}
   /* ── end of today ── */
+  /* ── calendar: the day page ── */
+  .cal-name{display:flex;align-items:baseline;flex-wrap:wrap;gap:var(--sp-1) var(--sp-3);margin-right:auto;min-width:0}
+  .cal-name h1{font-size:var(--fs-title);font-weight:var(--fw-semibold);letter-spacing:var(--tracking-tight)}
+  .cal-name .range{margin-right:0}
+  .cal-nav{display:flex;align-items:center;gap:var(--sp-2)}
+  .cal-month{display:inline-flex;align-items:center;gap:var(--sp-1);font:inherit;font-size:var(--fs-title);font-weight:var(--fw-semibold);
+    color:var(--ink);background:none;border:0;padding:0;cursor:pointer}
+  .cal-month[aria-expanded="true"] svg{transform:rotate(180deg)}
+  .cal-bar .btn.small{min-height:var(--control)}
+  #cal-people .n{color:var(--ink-soft)}
+  @container page (max-width: 1039px){ #cal-people{flex:1 1 100%;min-width:0} }
+  .cal-under{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:var(--sp-2) var(--sp-4);min-width:0}
+  .cal-quiet{display:flex;align-items:center;gap:var(--sp-4);flex:none}
+  #cal-over{flex:1 1 0;min-width:0;flex-wrap:nowrap;align-items:center;margin:0;overflow-x:auto;overflow-y:hidden;scrollbar-width:none;
+    padding:var(--sp-2) var(--sp-5) var(--sp-2) 0;
+    -webkit-mask-image:linear-gradient(to right,var(--ink) calc(100% - var(--sp-5)),transparent);
+    mask-image:linear-gradient(to right,var(--ink) calc(100% - var(--sp-5)),transparent)}
+  #cal-over::-webkit-scrollbar{display:none}
+  #cal-over button{flex:none;display:inline-flex;align-items:center;gap:var(--sp-1);min-height:var(--sp-7);white-space:nowrap}
+  #cal-over button span.flag{color:inherit;max-width:none}
+  #cal-over button span.flag > span{overflow:visible;text-overflow:clip}
+  .daystrip .marks{display:flex;align-items:center;justify-content:center;gap:var(--sp-1);min-height:var(--sp-4)}
+  .daystrip .mk-n{font-size:var(--fs-micro);color:var(--ink-soft)}
+  .daystrip .mk-m{font-size:var(--fs-micro);line-height:1}
+  .daystrip .mk-m.due{color:var(--caution)}
+  .daystrip .mk-m.short{color:var(--problem);font-weight:var(--fw-semibold)}
+  .daystrip .mk-m.paid{color:var(--ink-soft)}
+  .daystrip .mk-c,.daystrip .mk-h{display:inline-block;width:var(--mark);height:var(--mark)}
+  .daystrip .mk-c{border-radius:50%;background:var(--problem)}
+  .daystrip .mk-h{background:repeating-linear-gradient(135deg,var(--line-strong) 0 var(--stroke),transparent var(--stroke) var(--sp-1))}
+  /* ── end of calendar ── */
 </style>
 </head>
 <body>
@@ -1892,26 +1901,31 @@
          drawn from GET /api/calendar by renderWeek. -->
     <div id="calendar" hidden>
       <div class="cal-bar" id="cal-bar">
-        <span class="range on-phone" id="cal-month"></span>
-        <button class="btn small" id="cal-prev" type="button" aria-label="Previous week"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 4L6 8l4 4"/></svg></button>
-        <button class="btn small" id="cal-next" type="button" aria-label="Next week"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg></button>
-        <button class="btn small on-desk" id="cal-this" type="button">This week</button>
-        <span class="range on-desk" id="cal-range"></span>
-        <!-- Block nights: only in the household friends book with. -->
-        <button class="btn small on-desk" id="cal-block" type="button" aria-expanded="false" hidden><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M3 3l10 10M3 8l5 5M8 3l5 5"/></svg>Block nights</button>
-        <!-- Synology Calendar itself, in a new tab: only when DSM's public address is set (settings.dsmPublicUrl). -->
-        <a class="btn small" id="cal-dsm" target="_blank" rel="noopener" aria-label="Open in Synology Calendar" hidden><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5"/></svg><span class="on-desk">Open in Synology Calendar</span></a>
-        <button class="btn small primary" id="cal-new" type="button" aria-label="New event"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg><span class="on-desk">New event</span></button>
+        <div class="cal-name"><h1>Calendar</h1>
+          <button class="cal-month on-phone hit" id="cal-month" type="button" aria-expanded="false"><span id="cal-month-t"></span><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg></button>
+          <span class="range on-desk" id="cal-range"></span></div>
+        <div class="cal-nav">
+          <button class="btn small hit" id="cal-prev" type="button" aria-label="Previous week"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M10 4L6 8l4 4"/></svg></button>
+          <button class="btn small hit on-phone" id="cal-today" type="button">Today</button>
+          <button class="btn small hit on-desk" id="cal-this" type="button">This week</button>
+          <button class="btn small hit" id="cal-next" type="button" aria-label="Next week"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M6 4l4 4-4 4"/></svg></button></div>
+        <div id="cal-people" hidden></div>
+        <button class="btn small primary hit on-desk" id="cal-new" type="button" aria-expanded="false"><svg class="i sm" viewBox="0 0 16 16" aria-hidden="true"><path d="M8 3v10M3 8h10"/></svg>New event</button>
       </div>
-      <div class="card cal-panel" id="cal-panel" hidden></div>
-      <div class="legend on-desk" id="cal-legend"></div>
+      <div class="cal-under">
+        <div class="filters" id="cal-over" role="group" aria-label="Over the calendar"></div>
+        <div class="cal-quiet on-desk">
+          <!-- Keep nights: only in the household friends book with. -->
+          <button class="link hit" id="cal-keep" type="button" aria-expanded="false" hidden>Keep nights</button>
+          <!-- Synology Calendar itself, in a new tab: only when DSM's public address is set (settings.dsmPublicUrl). -->
+          <a class="link hit" id="cal-dsm" target="_blank" rel="noopener" hidden>Open in Synology Calendar</a></div>
+      </div>
       <p class="unavailable" id="cal-off" hidden></p>
+      <div class="card cal-panel" id="cal-panel" hidden></div>
       <div class="week on-desk" id="cal-week"></div>
       <div class="daystrip on-phone" id="cal-strip" role="group" aria-label="This week"></div>
       <div class="day-head on-phone"><h1 id="cal-day-title"></h1><span id="cal-day-count"></span></div>
       <div class="dayview on-phone" id="cal-day"></div>
-      <div class="legend on-phone" id="cal-legend-phone"></div>
-      <p class="hint on-desk">Shows your calendar, Household, and the calendars you check for conflicts. Change which in Settings.</p>
     </div>
 
     <!-- ── Settings ──────────────────────────────────────────────────────── -->
@@ -2424,7 +2438,10 @@ function peopleBar(host, { label, people, pressed, onPress, noun = 'plan', plura
  * through pressPerson, which keeps it for this tab so a reload finds it again.
  */
 let personPressed = null;
+/** Whether the Calendar's bar has Household pressed: that is the Calendar's alone, and any person pressed clears it. */
+let calHousehold = false;
 function pressPerson(member) {
+  calHousehold = false;
   personPressed = member ?? null;
   try {
     if (personPressed === null) sessionStorage.removeItem('hp.person');
@@ -4238,6 +4255,7 @@ async function reloadView() {
   // With an area's page open, it is the page that is read again, not the board hidden under it.
   if (view === 'plan') await (areaPage ? loadAreaPage() : loadBoard());
   else if (view === 'plan-card') await loadCard();
+  else if (view === 'calendar') await loadCalendar(calWeek);
   else await loadThread();
 }
 
@@ -12551,8 +12569,28 @@ const CAL_CLOSE = 21;
 let calWeek = null;
 /** The day the phone shows, as a day key. */
 let calDay = null;
-/** The week's events as last fetched, kept so choosing a day on the phone redraws without a fetch. */
-let calEvents = [];
+/** The week as last fetched ({ events, money, thread, goals, week, ... }), kept so choosing a day redraws without a fetch. */
+let calWeekData = null;
+/** The month grid's fetch and its first day, while the picker is open; the grid and the bar read it, the card never. */
+let calGridData = null;
+let calGridFrom = null;
+/** The month the grid shows, as the day key of its first of the month. */
+let calGridMonth = null;
+/** The goal chip pressed, or null. */
+let calGoal = null;
+/** Which overlays are on: a per-device choice, kept in this browser. Unreadable means all on. */
+let calOver = (() => {
+  try {
+    const kept = JSON.parse(localStorage.getItem('hp.calOver'));
+    if (kept && ['plans', 'budget', 'record'].every((k) => typeof kept[k] === 'boolean')) return { plans: kept.plans, budget: kept.budget, record: kept.record };
+  } catch { /* private window, or not what we wrote */ }
+  return { plans: true, budget: true, record: true };
+})();
+/** A link that landed on a row: { day, key, everyone } while its tint, Everyone view and overlays last. */
+let calVisit = null;
+/** The day whose card is open in the panel, and what the panel holds; both null at rest. */
+let calPanelDay = null;
+let calOpen = null;
 /** Which fetch of the week is the latest: an answer to an older one is dropped, never drawn over a newer week. */
 let calFetch = 0;
 
@@ -12762,9 +12800,6 @@ function visitNeedsEveryone(day, key, data, lens) {
 const nightHeld = (day, events) => events.some((e) => { if (!e.held) return false; const { first, last } = daysOf(e); return first <= day && last >= day; });
 // ── the calendar: end of what a day shows ──────────────────────────────────
 
-/** Whose calendar, in a word: yours, the other member's, or the household's. */
-const sourceName = (e) => (e.calendar === 'mine' ? 'Yours' : e.calendar === 'household' ? 'Household' : `${otherMember() ?? e.label}'s`);
-
 function evClasses(e) {
   // Held nights are hatched whatever calendar their event is on, and nothing else.
   if (e.held) return 'ev held';
@@ -12903,21 +12938,6 @@ function hourLabels(cls) {
   return box;
 }
 
-function legend(box, full) {
-  box.textContent = '';
-  const other = otherMember();
-  const items = full
-    ? [['mine', 'Mine'], ['partner', other ? `${other}'s, shared with you` : 'Shared with you'], ['household', 'Household'],
-      ['due', 'Due date'], ['proposed', 'Proposed, not approved'], ['off', 'Not on the calendar'],
-      ['moved', 'Moved, plan disagrees'], ['clash', 'Clash'], ...(bookingHere() ? [['held', 'Held nights: a stay, or kept']] : [])]
-    : [['mine', 'Mine'], ['partner', other ? `${other}'s` : 'Shared'], ['household', 'Household'], ['due', 'Due'], ['proposed', 'Proposed']];
-  for (const [cls, text] of items) {
-    const s = node('span');
-    s.append(node('i', `sw ${cls}`), text);
-    box.appendChild(s);
-  }
-}
-
 async function loadCalendar(weekStart) {
   calWeek = mondayOf(weekStart);
   const days = weekDays(calWeek);
@@ -12928,19 +12948,22 @@ async function loadCalendar(weekStart) {
   const mine = ++calFetch;
   $('loading').hidden = false;
   try {
-    const r = await api(`/api/calendar?start=${days[0]}&end=${addDayKey(calWeek, 7)}`);
+    const budget = chosenBudget();
+    const r = await api(`/api/calendar?start=${days[0]}&end=${addDayKey(calWeek, 7)}${budget ? `&budget=${encodeURIComponent(budget)}` : ''}`);
     // Another week was asked for while this one was on its way: that one is drawn, not this.
     if (mine !== calFetch) return;
+    calWeekData = { ...r, week: calWeek };
+    if (calGoal !== null && !(r.goals || []).some((g) => String(g.goal).toLowerCase() === String(calGoal).toLowerCase())) calGoal = null;
     const off = $('cal-off');
     off.textContent = '';
     off.hidden = !r.unavailable && !r.missed?.length;
     if (r.unavailable) {
-      // Not an error: the calendars are out of reach, and the plans' dates are still drawn.
-      off.append(icon('cal', 'i'), node('span', '', `${r.unavailable.charAt(0).toUpperCase()}${r.unavailable.slice(1)}. Due dates from your plans are still shown.`));
+      // Not an error: the calendars are out of reach, and the plans' dates, held nights, money and the record are still drawn.
+      off.append(icon('cal', 'i'), node('span', '', `${r.unavailable.charAt(0).toUpperCase()}${r.unavailable.slice(1)}. Plans' dates, held nights, money and the record are still shown.`));
     } else if (r.missed?.length) {
-      off.append(icon('cal', 'i'), node('span', '', `${listOf(r.missed)} could not be read just now; the rest of the week is shown.`));
+      off.append(icon('cal', 'i'), node('span', '', `${listOf(r.missed)} could not be read just now; the rest is shown.`));
     }
-    renderWeek(r.events);
+    renderCalendar();
   } catch (ex) {
     if (mine === calFetch) showProblem(ex);
   } finally {
@@ -12948,24 +12971,150 @@ async function loadCalendar(weekStart) {
   }
 }
 
-function renderWeek(events) {
-  calEvents = events;
-  $('cal-block').hidden = !bookingHere();
-  const dsm = dsmCalendarUrl();
-  $('cal-dsm').hidden = !dsm;
-  if (dsm) $('cal-dsm').href = dsm;
+/** What the bar, the overlays and the strip read: the grid's fetch while the picker is open, else the week's. */
+const calData = () => (calGridFrom && calGridData) || calWeekData;
+/** The day keys of the window calData() covers: the grid's six weeks while the picker is open, else the week's seven. */
+const calDays = () => (calGridFrom ? Array.from({ length: 42 }, (_, i) => addDayKey(calGridFrom, i)) : weekDays(calWeekData.week));
+const calDesk = () => document.querySelector('.hp').getBoundingClientRect().width >= 1040;
+
+/** The lens everything on the Calendar draws through: who is pressed, the goal, and which overlays are on. */
+function calLens() {
+  // A link to a row shows it whatever was pressed: Everyone, no goal, and Plans on, the one overlay that can hide a row.
+  if (calVisit?.everyone) return { goal: null, pressed: null, over: { ...calOver, plans: true } };
+  const entries = barEntries(calData().events, calDays(), { goal: calGoal, over: calOver }, peopleOrder());
+  return { goal: calGoal, over: calOver, pressed: pressedOn(calHousehold ? CAL_HOUSEHOLD : personPressed, entries) };
+}
+
+/** A press in the bar: Household, a member or Everyone (null). The kept choice of person is Plan's and Today's too. */
+function calPress(key) {
+  calVisit = null;
+  if (key === CAL_HOUSEHOLD) calHousehold = true; else pressPerson(key);
+  renderCalendar();
+}
+
+function renderCalendar() {
+  if (!calWeekData) return;
+  calOpen = null;
+  renderHead();
+  renderPeople();
+  renderOverlays();
+  renderStrip();
+  renderDay();
+  renderWeek();
+}
+
+function renderHead() {
   const days = weekDays(calWeek);
-  const today = todayKey();
+  $('cal-month-t').textContent = keyWords(calDay, { month: 'long', year: 'numeric' });
   // "2–8 November 2026", or "November 2 – 8, 2026": the locale says which.
   $('cal-range').textContent = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
     .formatRange(keyDate(calWeek), keyDate(days[6]));
-  legend($('cal-legend'), true);
-  legend($('cal-legend-phone'), false);
+  $('cal-keep').hidden = !bookingHere();
+  const dsm = dsmCalendarUrl();
+  $('cal-dsm').hidden = !dsm;
+  if (dsm) $('cal-dsm').href = dsm;
+  $('cal-new').hidden = Boolean(calWeekData.unavailable);
+}
+
+function renderPeople() {
+  const entries = barEntries(calData().events, calDays(), calLens(), peopleOrder());
+  $('cal-people').hidden = !entries.length;
+  if (!entries.length) { $('cal-people').textContent = ''; return; }
+  peopleBar($('cal-people'), { label: 'Whose calendar', people: entries, pressed: calLens().pressed, noun: 'thing', onPress: calPress });
+}
+
+/** Plans, Budget and Record as chips over the calendar, then a chip per goal while Plans is on. */
+function renderOverlays() {
+  const host = $('cal-over');
+  host.textContent = '';
+  const lens = calLens();
+  const data = calData();
+  const icons = { plans: () => lucide('square-kanban'), budget: () => lucide('wallet'), record: () => lucide('sun') };
+  const names = [['plans', 'Plans'], ['budget', 'Budget'], ['record', 'Record']];
+  for (const [k, word] of names) {
+    if (k === 'budget' && data.money === null) continue;
+    const b = node('button', 'hit');
+    b.type = 'button';
+    b.setAttribute('aria-pressed', String(lens.over[k]));
+    if (lens.over[k]) b.append(icons[k]());
+    b.append(word);
+    b.addEventListener('click', () => {
+      calOver = { ...calOver, [k]: !calLens().over[k] };
+      try { localStorage.setItem('hp.calOver', JSON.stringify(calOver)); } catch { /* private window */ }
+      calVisit = null;
+      renderCalendar();
+    });
+    host.appendChild(b);
+  }
+  if (!lens.over.plans || !(data.goals || []).length) return;
+  host.appendChild(node('span', 'sep'));
+  let on = null;
+  for (const g of data.goals) {
+    const b = node('button', 'hit');
+    b.type = 'button';
+    const pressed = lens.goal !== null && String(lens.goal).toLowerCase() === String(g.goal).toLowerCase();
+    b.setAttribute('aria-pressed', String(pressed));
+    b.appendChild(goalFlag(g.goal));
+    b.addEventListener('click', () => { calGoal = pressed ? null : g.goal; calVisit = null; renderCalendar(); });
+    if (pressed) on = b;
+    host.appendChild(b);
+  }
+  // Into view inside the row only: the page itself does not move.
+  if (on) host.scrollLeft = Math.max(0, on.offsetLeft - (host.clientWidth - on.offsetWidth) / 2);
+}
+
+/** What each mark on a day is drawn as. */
+function drawMarks(host, m, list) {
+  for (const k of list) {
+    if (k === 'count') host.appendChild(node('span', 'mk-n', String(m.count)));
+    else if (k === 'glyph') host.appendChild(stateGlyph(m.glyph, { small: true }));
+    else if (k === 'money') {
+      const mk = node('span', `mk-m ${m.money}`);
+      if (m.money === 'paid') mk.appendChild(icon('check')); else mk.textContent = m.money === 'short' ? '$!' : '$';
+      host.appendChild(mk);
+    } else if (k === 'clash') host.appendChild(node('i', 'mk-c'));
+    else if (k === 'held') host.appendChild(node('i', 'mk-h'));
+  }
+}
+
+/** One day as a button: its weekday, its date and its marks, named in words; a press chooses it. */
+function dayCell(key, data, lens, limit, { outside = false } = {}) {
+  const b = node('button', `hit${key === todayKey() ? ' is-today' : ''}${outside ? ' outside' : ''}`);
+  b.type = 'button';
+  b.dataset.day = key;
+  const m = dayMarks(key, data, lens);
+  const marks = node('span', 'marks');
+  drawMarks(marks, m, markList(m, limit));
+  b.append(node('span', 'dn', weekdayShort(key)), node('span', 'dd', String(Number(key.slice(8)))), marks);
+  b.setAttribute('aria-label', marksWords(keyWords(key, { weekday: 'long', day: 'numeric', month: 'long' }), m));
+  if (key === calDay) b.setAttribute('aria-current', 'date');
+  b.addEventListener('click', () => {
+    calDay = key;
+    calVisit = null;
+    renderCalendar();
+    document.querySelector(`#cal-strip [data-day="${key}"]`)?.focus();
+  });
+  return b;
+}
+
+/** The phone's strip: the week's seven days, four marks at most to a day. */
+function renderStrip() {
+  const strip = $('cal-strip');
+  strip.textContent = '';
+  const lens = calLens();
+  for (const key of weekDays(calWeekData.week)) strip.appendChild(dayCell(key, calWeekData, lens, 4));
+}
+
+function renderWeek() {
+  const events = calWeekData.events;
+  const week = calWeekData.week;
+  const days = weekDays(week);
+  const today = todayKey();
 
   // The desk: day heads, the all-day strip, the hours and seven columns.
-  const week = $('cal-week');
-  week.textContent = '';
-  week.appendChild(node('div', 'dh'));
+  const grid = $('cal-week');
+  grid.textContent = '';
+  grid.appendChild(node('div', 'dh'));
   for (const key of days) {
     const date = String(Number(key.slice(8)));
     const h = node('div', `dh${key === today ? ' is-today' : ''}`, keyWords(key, { weekday: 'short' }));
@@ -12973,9 +13122,9 @@ function renderWeek(events) {
     if (key === today) b.appendChild(node('span', '', date)); else b.textContent = date;
     h.appendChild(b);
     if (key === today) h.setAttribute('aria-current', 'date');
-    week.appendChild(h);
+    grid.appendChild(h);
   }
-  week.appendChild(node('div', 'adlab', 'all day'));
+  grid.appendChild(node('div', 'adlab', 'all day'));
   const adrow = node('div', 'adrow');
   const allDay = events.filter((e) => e.is_all_day);
   for (const e of allDay) {
@@ -12987,41 +13136,23 @@ function renderWeek(events) {
     el.style.gridColumn = `${from + 1} / span ${Math.max(1, toIdx - from + 1)}`;
     adrow.appendChild(el);
   }
-  week.appendChild(adrow);
-  week.appendChild(hourLabels('hours'));
+  grid.appendChild(adrow);
+  grid.appendChild(hourLabels('hours'));
   for (const key of days) {
     const col = node('div', `col${key === today ? ' is-today' : ''}`);
     col.append(...timedBoxes(events, key, false));
     if (key === today) { const now = nowLine(key); if (now) col.appendChild(now); }
-    week.appendChild(col);
+    grid.appendChild(col);
   }
-  renderDay();
 }
 
-/** The phone: the strip of seven days, a dot per source, and the chosen day. */
+/** The phone's chosen day: its title, how many things, the all-day rows and the hours. */
 function renderDay() {
-  const days = weekDays(calWeek);
+  const events = calWeekData.events;
+  const days = weekDays(calWeekData.week);
   const today = todayKey();
   const chosen = days.includes(calDay) ? calDay : days[0];
-  $('cal-month').textContent = keyWords(chosen, { month: 'long', year: 'numeric' });
-  const on = (key) => calEvents.filter((e) => { const { first, last } = daysOf(e); return first <= key && last >= key; });
-
-  const strip = $('cal-strip');
-  strip.textContent = '';
-  for (const key of days) {
-    const b = node('button', key === today ? 'is-today' : '');
-    b.type = 'button';
-    const dots = node('span', 'dots');
-    // A proposal's dot is hollow, as its box is: nothing is on a calendar until someone approves it.
-    const kinds = new Set(on(key).map((e) => (e.held ? 'held' : e.proposed ? 'proposed' : e.kind === 'due' ? 'due' : e.offCalendar ? 'off' : e.calendar)));
-    for (const k of ['due', 'mine', 'partner', 'household', 'off', 'proposed', 'held']) if (kinds.has(k)) dots.appendChild(node('i', k));
-    b.append(node('span', 'dn', keyWords(key, { weekday: 'short' })), node('span', 'dd', String(Number(key.slice(8)))), dots);
-    b.setAttribute('aria-label', `${keyWords(key, { weekday: 'long', day: 'numeric', month: 'long' })}, ${on(key).length || 'nothing'} on`);
-    if (key === calDay) b.setAttribute('aria-current', 'date');
-    b.addEventListener('click', () => { calDay = key; renderDay(); });
-    strip.appendChild(b);
-  }
-
+  const on = (key) => events.filter((e) => { const { first, last } = daysOf(e); return first <= key && last >= key; });
   const mine = on(chosen);
   $('cal-day-title').textContent = keyWords(chosen, { weekday: 'long', day: 'numeric', month: 'long' });
   $('cal-day-count').textContent = mine.length ? `${mine.length} ${mine.length === 1 ? 'thing' : 'things'}` : 'nothing on';
@@ -13035,7 +13166,7 @@ function renderDay() {
   }
   dayBox.appendChild(hourLabels('hrs'));
   const col = node('div', 'col');
-  col.append(...timedBoxes(calEvents, chosen, true));
+  col.append(...timedBoxes(events, chosen, true));
   if (chosen === today) { const now = nowLine(chosen); if (now) col.appendChild(now); }
   dayBox.appendChild(col);
 }
@@ -13055,7 +13186,7 @@ function closeCalPanel(focus) {
   const p = $('cal-panel');
   p.hidden = true;
   p.textContent = '';
-  $('cal-block').setAttribute('aria-expanded', 'false');
+  $('cal-keep').setAttribute('aria-expanded', 'false');
   focus?.focus();
 }
 
@@ -13087,16 +13218,16 @@ function openBlockForm() {
   const acts = node('div', 'actions');
   const go = node('button', 'btn primary', 'Block these nights');
   go.type = 'submit';
-  acts.append(go, textBtn('Cancel', 'btn', null, () => closeCalPanel($('cal-block'))));
+  acts.append(go, textBtn('Cancel', 'btn', null, () => closeCalPanel($('cal-keep'))));
   f.append(h, pair, lw, node('p', 'hint', 'Friends see these nights as taken, and never why. A stay already confirmed cannot be blocked.'), acts);
-  f.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCalPanel($('cal-block')); });
+  f.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeCalPanel($('cal-keep')); });
   f.addEventListener('submit', async (e) => {
     e.preventDefault();
     go.disabled = true;
     try {
       await api('/api/bookings/block', { from: from.value, to: addDayKey(last.value, 1), why: why.value.trim() });
       $('app-err').hidden = true;
-      closeCalPanel($('cal-block'));
+      closeCalPanel($('cal-keep'));
       calDay = from.value;
       await loadCalendar(from.value);
     } catch (ex) {
@@ -13106,11 +13237,11 @@ function openBlockForm() {
   });
   p.appendChild(f);
   p.hidden = false;
-  $('cal-block').setAttribute('aria-expanded', 'true');
+  $('cal-keep').setAttribute('aria-expanded', 'true');
   from.focus();
 }
-$('cal-block').addEventListener('click', () => {
-  if ($('cal-block').getAttribute('aria-expanded') === 'true') closeCalPanel($('cal-block'));
+$('cal-keep').addEventListener('click', () => {
+  if ($('cal-keep').getAttribute('aria-expanded') === 'true') closeCalPanel($('cal-keep'));
   else openBlockForm();
 });
 
@@ -13119,7 +13250,7 @@ function openHeld(e) {
   const opener = document.activeElement;
   const p = $('cal-panel');
   p.textContent = '';
-  $('cal-block').setAttribute('aria-expanded', 'false');
+  $('cal-keep').setAttribute('aria-expanded', 'false');
   const { first, last } = daysOf(e);
   const h = node('h2', '', `Kept for the household: ${heldNights(first, last)}`);
   h.id = 'cal-panel-h';
@@ -13154,9 +13285,10 @@ function openHeld(e) {
   why.focus();
 }
 
-$('cal-prev').addEventListener('click', () => { calDay = null; void loadCalendar(addDayKey(calWeek, -7)); });
-$('cal-next').addEventListener('click', () => { calDay = null; void loadCalendar(addDayKey(calWeek, 7)); });
-$('cal-this').addEventListener('click', () => { calDay = null; void loadCalendar(todayKey()); });
+$('cal-prev').addEventListener('click', () => { calDay = null; calVisit = null; void loadCalendar(addDayKey(calWeek, -7)); });
+$('cal-next').addEventListener('click', () => { calDay = null; calVisit = null; void loadCalendar(addDayKey(calWeek, 7)); });
+$('cal-this').addEventListener('click', () => { calDay = null; calVisit = null; void loadCalendar(todayKey()); });
+$('cal-today').addEventListener('click', () => { calDay = todayKey(); calVisit = null; void loadCalendar(todayKey()); });
 
 // ── a new event, and one the app made ──
 //
@@ -13210,7 +13342,7 @@ async function openEventForm(e) {
   const changing = !!e;
   const p = $('cal-panel');
   p.textContent = '';
-  $('cal-block').setAttribute('aria-expanded', 'false');
+  $('cal-keep').setAttribute('aria-expanded', 'false');
   const plans = changing ? [] : await eventPlans();
 
   const spans = changing && daysOf(e).first !== daysOf(e).last;
@@ -13406,7 +13538,7 @@ function openEventView(e) {
   const opener = document.activeElement;
   const p = $('cal-panel');
   p.textContent = '';
-  $('cal-block').setAttribute('aria-expanded', 'false');
+  $('cal-keep').setAttribute('aria-expanded', 'false');
   const h = node('h2', '', e.summary || 'Busy');
   h.id = 'cal-panel-h';
   p.setAttribute('aria-labelledby', h.id);
@@ -13672,14 +13804,23 @@ function forgetHousehold() {
 
   // Calendar: a week still out draws nothing, and nothing of the last one is kept. The week looked at stays.
   calFetch++;
-  calEvents = [];
+  calWeekData = null;
+  calGridData = null;
+  calGridFrom = null;
+  calGridMonth = null;
+  calGoal = null;
+  calVisit = null;
+  calPanelDay = null;
+  calOpen = null;
+  calHousehold = false;
   closeCalPanel();
-  for (const id of ['cal-week', 'cal-strip', 'cal-day', 'cal-day-title', 'cal-day-count', 'cal-legend', 'cal-legend-phone',
-    'cal-range', 'cal-month', 'cal-off']) $(id).textContent = '';
+  for (const id of ['cal-week', 'cal-strip', 'cal-day', 'cal-day-title', 'cal-day-count', 'cal-people', 'cal-over',
+    'cal-range', 'cal-month-t', 'cal-off']) $(id).textContent = '';
   $('cal-off').hidden = true;
   // Whether this household books nights, and its link to Synology Calendar, are the next week's drawing to say.
-  $('cal-block').hidden = true;
+  $('cal-keep').hidden = true;
   $('cal-dsm').hidden = true;
+  $('cal-people').hidden = true;
 
   // Settings: its page, what it was read from, and the calendars it lists.
   settingsPage = null; settingsEditing = null; folderPick = null; restorePick = null; settingsSheetFrom = null;

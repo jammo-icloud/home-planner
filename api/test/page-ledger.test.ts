@@ -246,6 +246,13 @@ const ADDED: readonly Line[] = [
   ['srch', 'Elsewhere · ', 'today'], ['srch', 'A plan · ', 'today'], ['srch', 'A file on ', 'today'], ['srch', 'Searched every day since the record began.', 'today'], ['srch', 'Showing the newest 100. Add a word to narrow it.', 'today'], ['srch', 'function searchActive(', 'today'], ['srch', '  search: \'<path', 'shared'], ['srch', '  x: \'<path', 'shared'], ['mark', '--mark-fill', 'css'],
   // What a day shows, in one block (Calendar Task 5).
   ['block', '// ── the calendar: what a day shows ──', 'calendar'], ['C21', 'function dayMarks(', 'calendar'], ['C22', 'function marksWords(', 'calendar'], ['C20', "e.summary || 'Busy'", 'calendar'],
+  // The head, the calendars bar, the overlays and the strip of marks (Calendar Task 6).
+  ['C1', 'class="cal-month on-phone hit" id="cal-month"', 'calendarMarkup'], ['C5', 'id="cal-keep"', 'calendarMarkup'], ['C6', 'id="cal-dsm"', 'calendarMarkup'], ['C7', 'id="cal-new"', 'calendarMarkup'], ['btn', 'class="btn small hit" id="cal-prev"', 'calendarMarkup'], ['btn', 'class="btn small hit" id="cal-next"', 'calendarMarkup'], ['btn', 'class="btn small hit on-desk" id="cal-this"', 'calendarMarkup'], ['btn', 'class="btn small hit on-phone" id="cal-today"', 'calendarMarkup'], ['btn', '.cal-bar .btn.small{min-height:var(--control)', 'css'],
+  ['bar', 'id="cal-people"', 'calendarMarkup'], ['bar', "label: 'Whose calendar'", 'calendar'], ['bar', "noun: 'thing'", 'calendar'], ['bar', 'calHousehold = false', 'shared'], ['bar', 'function calPress(', 'calendar'],
+  ['over', 'aria-label="Over the calendar"', 'calendarMarkup'], ['over', "'hp.calOver'", 'calendar'], ['over', "lucide('sun')", 'calendar'], ['over', 'function renderOverlays(', 'calendar'], ['over', '#cal-over{', 'css'],
+  ['C21', 'function dayCell(', 'calendar'], ['C21', "node('span', 'marks')", 'calendar'], ['C21', '.daystrip .marks', 'css'], ['C22', 'marksWords(', 'calendar'], ['C23', 'calDay = key;', 'calendar'],
+  ['C56', "Plans' dates, held nights, money and the record are still shown.", 'calendar'], ['C57', 'could not be read just now; the rest is shown.', 'calendar'],
+  ['S2', "else if (view === 'calendar') await loadCalendar(calWeek)", 'page'], ['S21', 'chosenBudget()', 'calendar'], ['S27', 'bookingHere()', 'calendar'], ['S27', 'dsmCalendarUrl()', 'calendar'], ['S14', 'peopleOrder()', 'calendar'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
@@ -279,6 +286,8 @@ const GONE: readonly Line[] = [
   ['spec', '.thread-tools', 'css'], ['spec', '.allb', 'css'], ['spec', '.tday', 'css'], ['spec', '.msg .by', 'css'], ['spec', '.msg.claude', 'css'], ['spec', '.msg.member', 'css'], ['spec', '.bubble', 'css'], ['spec', '.turn{', 'css'], ['T33', '.line{', 'css'], ['T33', '.line b', 'css'], ['T33', '.line .why', 'css'], ['T33', '.line.flag', 'css'], ['T33', '.line .row', 'css'], ['T72', '.tray', 'css'], ['T92', '.chip.asked', 'css'],
   ['T34', 'border-left:3px solid var(--caution-line);box-shadow:none', 'css'], ['T34', '.card.offer.moved{border-left-color', 'css'], ['T97', '.search-list', 'css'], ['T97', '.search-hit', 'css'], ['T97', '.top-inner > .search', 'css'], ['T99', '#search-notes', 'css'],
   ['T97', 'id="search"', 'page'], ['T97', 'id="search-q"', 'page'], ['T97', 'id="search-list"', 'page'], ['T100', 'function searchMark(', 'page'], ['T106', 'function searchSay(', 'page'], ['T106', "Today doesn't show that one", 'page'], ['T108', 'function searchOpen(', 'page'], ['T99', 'function searchDraw(', 'page'], ['T102', 'function searchGo(', 'page'], ['spec', 'SEARCH_KINDS', 'page'], ['spec', 'function searchClose(', 'page'], ['spec', 'searchClear(', 'page'], ['spec', 'searchReset(', 'page'],
+  // The Calendar's legends, hint, dots and the helpers that served them (Calendar Task 6).
+  ['C9', 'function legend(', 'page'], ['C9', 'cal-legend', 'page'], ['C10', 'legend(', 'calendar'], ['C11', 'Shows your calendar', 'page'], ['S3', 'cal-block', 'page'], ['C21', '.dots', 'css'], ['spec', '.legend', 'css'], ['spec', '.sw{', 'css'], ['spec', '.sw.', 'css'], ['spec', 'sourceName', 'page'], ['C6', 'class="btn small" id="cal-dsm"', 'calendarMarkup'], ['C56', 'Due dates from your plans are still shown', 'page'], ['C57', 'the rest of the week is shown', 'page'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
