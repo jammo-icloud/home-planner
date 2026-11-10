@@ -828,6 +828,27 @@
   .check input[type=checkbox]:checked{background:var(--accent-fill);border-color:var(--accent-fill)}
   .check input[type=checkbox]:checked::after{content:'';width:5px;height:10px;margin-top:-2px;border:solid var(--on-accent);
     border-width:0 2px 2px 0;transform:rotate(45deg)}
+  /* A radio is the same box made round, and filled when it is checked, not tinted: it reads with no hue. */
+  .check input[type=radio]{appearance:none;flex:none;width:20px;height:20px;margin:1px 0 0;border-radius:50%;
+    border:var(--stroke-heavy) solid var(--line-strong);background:var(--surface-raised);display:grid;place-items:center}
+  .check input[type=radio]:checked{background:var(--accent-fill);border-color:var(--accent-fill)}
+  .check input[type=radio]:checked::after{content:'';width:8px;height:8px;border-radius:50%;background:var(--on-accent)}
+  /* A list of radios under its legend: a group, one choice to a line, the disc or count beside the name. */
+  fieldset.radios{display:grid;gap:0;min-width:0;margin:0;padding:0;border:0}
+  .radios legend{padding:0;margin-bottom:var(--sp-1);font-size:var(--fs-small);font-weight:var(--fw-medium);color:var(--ink-soft)}
+  .radios .check{padding:var(--sp-1) 0;align-items:center}
+  .radios .check input{margin:0}
+  .radios .rl-text{display:flex;flex-wrap:wrap;align-items:center;gap:0 var(--sp-2);min-width:0;font-size:var(--fs-ui);color:var(--ink)}
+  .radios .check .what{display:inline}
+  .s-owner .ep-form,.s-goal .ep-form{margin-top:var(--sp-3)}
+  /* Scrolled to the top when its form opens: the heading lands below the bar, which is two rows on a phone. */
+  .s-owner > p.hint:not(:empty),.s-goal > p.hint:not(:empty){margin:var(--sp-2) 0 0}
+  .s-owner,.s-goal{scroll-margin-top:72px}
+  @container page (max-width: 759px){ .s-owner,.s-goal{scroll-margin-top:100px} }
+  .ep-t .who{margin-right:var(--sp-2);vertical-align:middle}
+  /* A primary that says nothing would move: greyed in its own colours, still reachable and still read. */
+  .btn.primary[aria-disabled="true"],.btn.primary[aria-disabled="true"]:hover{background:var(--surface-sunken);
+    color:var(--ink-faint);border-color:var(--line);cursor:default}
   .seg{display:inline-flex;padding:3px;gap:2px;background:var(--surface-sunken);border:var(--stroke) solid var(--line);
     border-radius:var(--r-control)}
   .seg button{font:inherit;font-size:var(--fs-small);font-weight:var(--fw-medium);color:var(--ink-soft);
@@ -7004,6 +7025,11 @@ let boardSaid = '';
 let areaPage = null;
 let cardId = null;
 /**
+ * What Owner or Goal just did, for the next draw of the card to say once in that section and put focus on its button:
+ * `{ key: 'owner' | 'goal', text }`. Set after a write lands, before the card is read again; let go with the card.
+ */
+let cardSaid = null;
+/**
  * Where the card showing was opened from, so Back and Escape return there: the screen (`'plan'` is the board, or an
  * area's page when `area` is that page's state), the window's scroll then, and the plan's id when a row had focus.
  * Null while no card shows; kept when a card is opened from another card.
@@ -7872,6 +7898,7 @@ async function openCard(id) {
     // The last card is not this one: nothing of it shows while this one is read.
     $('plan-card').textContent = '';
   }
+  if (cardId !== id) cardSaid = null;
   cardId = id;
   if (view === 'plan-card') { await loadCard(); window.scrollTo({ top: 0 }); }
   else await showView('plan-card');
@@ -8044,11 +8071,290 @@ function cardTop(v) {
   return top;
 }
 
+/**
+ * A real group of radios under a legend: Tab reaches it once and the arrows move within it. Each option is
+ * `{ value, label, lead?, after? }`: `lead` a node drawn before the label, `after` a quiet word after it. A choice
+ * calls `onChange(value)`; `value()` reads the one checked.
+ */
+function radioList({ legend, name, options, value, onChange }) {
+  const el = node('fieldset', 'radios');
+  el.appendChild(node('legend', '', legend));
+  for (const o of options) {
+    const label = node('label', 'check');
+    const input = node('input');
+    input.type = 'radio';
+    input.name = name;
+    input.value = o.value;
+    input.checked = o.value === value;
+    input.addEventListener('change', () => { if (input.checked) onChange?.(o.value); });
+    const pick = node('span', 'rl-text');
+    if (o.lead) pick.appendChild(o.lead);
+    pick.appendChild(node('span', '', o.label));
+    if (o.after) pick.appendChild(node('span', 'what', o.after));
+    label.append(input, pick);
+    el.appendChild(label);
+  }
+  return { el, value: () => el.querySelector('input:checked')?.value ?? value };
+}
+
+/** A day of the household's, as the card says it: "Wed 21 Oct". */
+const cardDay = (iso) => keyWords(keyAt(Date.parse(iso)), { weekday: 'short', day: 'numeric', month: 'short' });
+
+/** Whether the card that started a write is still the one showing, in the household it started in. */
+const cardStill = (id, turn) => turn === householdTurn && view === 'plan-card' && cardId === id;
+
+/**
+ * A section's one line: a lead (a disc or a flag) before what it says, over what it means, and its one button beside it.
+ * `lead` may be null.
+ */
+function sectionLine(lead, text, sub, button) {
+  const line = envLine(text, sub, button);
+  if (lead) line.querySelector('.ep-t > span').prepend(lead);
+  return line;
+}
+
+/** The status a write left, said once. It is set once drawn, so the live region reads it. */
+function saidLine(key) {
+  const p = node('p', 'hint');
+  p.setAttribute('aria-live', 'polite');
+  const text = cardSaid?.key === key ? cardSaid.text : '';
+  if (text) queueMicrotask(() => { p.textContent = text; });
+  return p;
+}
+
+/**
+ * Who owns it and since when, and the one way to change it: any member hands the plan on, or takes it, at once, with a
+ * word if they like. An ask from before 0.7.0 that is still open is said quietly; handing the plan to anyone settles it.
+ */
+function ownerSection(v) {
+  const owner = v.owner;
+  const mine = owner === myName;
+  const since = v.ownerFrom
+    ? `since ${cardDay(v.ownerSince)} · from ${nameIn(v.ownerFrom)}`
+    : `since ${cardDay(v.ownerSince)} · ${nameIn(v.createdBy)} made it`;
+  const change = node('button', 'btn small hit', 'Change');
+  change.type = 'button';
+  change.setAttribute('aria-label', 'Change who owns it');
+  const line = sectionLine(memberDisc(owner), mine ? 'You own it' : `${owner} owns it`, since, change);
+  const parts = [line, saidLine('owner')];
+  if (v.asked) {
+    const to = v.asked.to === myName ? 'You were' : `${v.asked.to} was`;
+    parts.push(node('p', 'hint', `${to} asked to take it on ${cardDay(v.asked.at)}. It is answered on Today; handing it to anyone settles it.`));
+  }
+  const slot = node('div');
+  parts.push(slot);
+  change.addEventListener('click', () => {
+    const people = peopleOrder();
+    if (!people.includes(owner)) people.push(owner);
+    const options = people.map((m) => {
+      const d = memberDisc(m, { small: true });
+      // The name is the radio's own; the disc is only drawn.
+      d.removeAttribute('role');
+      d.removeAttribute('aria-label');
+      d.setAttribute('aria-hidden', 'true');
+      return { value: m, label: nameOf(m), lead: d };
+    });
+    const form = node('form', 'ep-form');
+    const live = node('p', 'hint');
+    live.setAttribute('aria-live', 'polite');
+    const word = node('input');
+    word.maxLength = 300;
+    word.placeholder = 'Why them, or what to know first';
+    const wordField = epField('A word', word);
+    const { err, say } = epErr();
+    const cancelOwner = node('button', 'btn', 'Cancel');
+    cancelOwner.type = 'button';
+    const go = node('button', 'btn primary', 'Hand it on');
+    go.type = 'submit';
+    const closeOwner = () => {
+      form.remove();
+      change.hidden = false;
+      change.focus({ preventScroll: true });
+    };
+    cancelOwner.addEventListener('click', closeOwner);
+    cancelMark(cancelOwner, closeOwner);
+    form.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeOwner(); } });
+    // What picking someone says, asks and offers; the owner picked again moves nothing.
+    const draw = () => {
+      const to = list.value();
+      const same = to === owner;
+      wordField.hidden = same;
+      go.setAttribute('aria-disabled', String(same));
+      if (same) {
+        live.textContent = mine ? 'It stays yours; nothing moves.' : `It stays ${owner}'s; nothing moves.`;
+        go.textContent = 'Hand it on';
+        return;
+      }
+      if (to === myName) {
+        live.textContent = 'It becomes yours at once and shows in Today.';
+        wordField.querySelector('label').textContent = 'A word about why (optional)';
+        go.textContent = 'Take it';
+        return;
+      }
+      live.textContent = mine
+        ? `It becomes ${to}'s at once and shows in Today. ${to} can hand it back.`
+        : `It becomes ${to}'s at once and shows in Today.`;
+      wordField.querySelector('label').textContent = `A word for ${to} (optional)`;
+      go.textContent = `Hand it to ${to}`;
+    };
+    const list = radioList({ legend: 'Who owns it?', name: `owner-${v.id}`, options, value: owner, onChange: draw });
+    draw();
+    const acts = node('div', 'ep-acts');
+    acts.append(cancelOwner, go);
+    form.append(list.el, live, wordField, err, acts);
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const to = list.value();
+      if (to === owner || go.disabled) return;
+      const why = word.value.trim();
+      const id = v.id;
+      const turn = householdTurn;
+      go.disabled = true;
+      say('');
+      try {
+        await api(planPath(id, '/hand'), why ? { to, why } : { to });
+      } catch (ex) {
+        // The choice and the word stay, with what went wrong in the form's own slot.
+        if (!cardStill(id, turn)) return;
+        say(ex.message);
+        go.disabled = false;
+        return;
+      }
+      if (!cardStill(id, turn)) return;
+      cardSaid = { key: 'owner', text: to === myName ? 'It is yours.' : `${to} has it.` };
+      await loadCard();
+      if (cardStill(id, turn)) cardSaid = null;
+    });
+    change.hidden = true;
+    slot.appendChild(form);
+    // The form opens with its section at the top of the window and the owner's radio focused, clear of a phone's keyboard.
+    form.querySelector('input:checked')?.focus({ preventScroll: true });
+    form.closest('[data-sec]')?.scrollIntoView({ block: 'start' });
+  });
+  const sec = cardSection('Owner', parts, null, { cls: 's-owner' });
+  sec.dataset.sec = 'owner';
+  return sec;
+}
+
+/**
+ * The one goal the plan is toward: said on a line, set or changed from a list that picks before it types. A goal begins
+ * when a plan carries it, so a new name is only a name until Save; no change is no write.
+ */
+function goalSection(v) {
+  const cur = v.goal;
+  const figure = (name) => v.goals.find((g) => g.goal === name) ?? null;
+  const here = cur ? figure(cur) : null;
+  const sub = !cur ? 'this plan stands on its own'
+    : !here || here.plans <= 1 ? 'the only plan toward it'
+      : `one of ${plansWord(here.plans)} toward it${here.done ? ` · ${here.done} done` : ''}`;
+  const change = node('button', 'btn small hit', cur ? 'Change' : 'Set a goal');
+  change.type = 'button';
+  if (cur) change.setAttribute('aria-label', 'Change the goal');
+  const line = cur ? sectionLine(goalFlag(cur), '', sub, change) : sectionLine(null, 'No goal', sub, change);
+  const slot = node('div');
+  const parts = [line, saidLine('goal'), slot];
+  change.addEventListener('click', () => {
+    // How many other plans the goal it has would keep when this one leaves.
+    const keeps = cur ? Math.max((here?.plans ?? 1) - 1, 0) : 0;
+    const others = `${keeps} other ${keeps === 1 ? 'plan' : 'plans'}`;
+    const NEW = 'new';
+    const NONE = 'none';
+    const options = [
+      { value: NONE, label: 'No goal' },
+      ...v.goals.map((g) => ({
+        value: `goal:${g.goal}`, label: g.goal, after: `${plansWord(g.plans)}${g.done ? ` · ${g.done} done` : ''}`,
+      })),
+      { value: NEW, label: 'A new goal…' },
+    ];
+    const form = node('form', 'ep-form');
+    const live = node('p', 'hint');
+    live.setAttribute('aria-live', 'polite');
+    const name = node('input');
+    name.maxLength = 60;
+    name.placeholder = 'e.g. New roof';
+    const nameField = epField('Call it', name);
+    nameField.hidden = true;
+    const { err, say } = epErr();
+    const cancelGoal = node('button', 'btn', 'Cancel');
+    cancelGoal.type = 'button';
+    const go = node('button', 'btn primary', 'Save');
+    go.type = 'submit';
+    const closeGoal = () => {
+      form.remove();
+      change.hidden = false;
+      change.focus({ preventScroll: true });
+    };
+    cancelGoal.addEventListener('click', closeGoal);
+    cancelMark(cancelGoal, closeGoal);
+    form.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeGoal(); } });
+    /** The goal this choice means, in its stored spelling; null is no goal, undefined a new name not yet typed. */
+    const target = () => {
+      const x = list.value();
+      if (x === NONE) return null;
+      if (x !== NEW) return x.slice(5);
+      const typed = name.value.trim();
+      if (!typed) return undefined;
+      return v.goals.find((g) => g.goal.toLowerCase() === typed.toLowerCase())?.goal ?? typed;
+    };
+    const unchanged = (t) => (cur ? typeof t === 'string' && t.toLowerCase() === cur.toLowerCase() : t === null);
+    const draw = () => {
+      const picked = list.value();
+      nameField.hidden = picked !== NEW;
+      const t = target();
+      if (unchanged(t)) live.textContent = cur ? `It stays toward ${cur}.` : 'It stays with no goal.';
+      else if (picked === NEW && !(typeof t === 'string' && figure(t))) live.textContent = 'A goal begins when a plan carries it. This plan will be its first.';
+      else if (picked === NEW) live.textContent = `${t} is already a goal; this plan joins it.`;
+      else if (t === null) live.textContent = keeps > 0 ? `It comes off ${cur}, which keeps ${others}.` : `${cur} ends here: no other plan carries it.`;
+      else if (!cur) live.textContent = `It joins ${t}.`;
+      else live.textContent = `It moves to ${t}. ${keeps > 0 ? `${cur} keeps ${others}.` : `${cur} ends here: no other plan carries it.`}`;
+    };
+    const list = radioList({
+      legend: 'What is it toward?', name: `goal-${v.id}`, options, value: cur ? `goal:${figure(cur)?.goal ?? cur}` : NONE,
+      onChange: (x) => { draw(); if (x === NEW) name.focus(); },
+    });
+    draw();
+    name.addEventListener('input', draw);
+    const acts = node('div', 'ep-acts');
+    acts.append(cancelGoal, go);
+    form.append(list.el, nameField, live, err, acts);
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      if (go.disabled) return;
+      const t = target();
+      if (t === undefined) { say('Call the goal something'); name.focus(); return; }
+      // No change is no write: the form just closes.
+      if (unchanged(t)) { closeGoal(); return; }
+      const id = v.id;
+      const turn = householdTurn;
+      go.disabled = true;
+      say('');
+      try {
+        await api(planPath(id, '/goal'), { goal: t });
+      } catch (ex) {
+        if (!cardStill(id, turn)) return;
+        say(ex.message);
+        go.disabled = false;
+        return;
+      }
+      if (!cardStill(id, turn)) return;
+      cardSaid = { key: 'goal', text: '' };
+      await loadCard();
+      if (cardStill(id, turn)) cardSaid = null;
+    });
+    change.hidden = true;
+    slot.appendChild(form);
+    form.querySelector('input:checked')?.focus({ preventScroll: true });
+    form.closest('[data-sec]')?.scrollIntoView({ block: 'start' });
+  });
+  const sec = cardSection('Goal', parts, null, { cls: 's-goal' });
+  sec.dataset.sec = 'goal';
+  return sec;
+}
+
 function renderCard(v) {
   const box = $('plan-card');
   box.textContent = '';
   const mine = v.owner === myName;
-  const theirs = otherMember();
   cardArea = v.area;
 
   // ── head: where it is, what it is, where it stands ──
@@ -8128,20 +8434,8 @@ function renderCard(v) {
   const acts = node('div', 'plan-acts');
   const more = node('div', 'actions');
   acts.append(now, node('span', 'vr'), more);
-  // The ask, the due date and the block open their small form here, under the actions.
+  // The due date and the block open their small form here, under the actions.
   const headForm = node('div');
-  // Only the owner can ask, one ask at a time, and only of someone else.
-  if (mine && theirs && !v.asked) {
-    const give = node('button', 'btn hit give', `Ask ${theirs} to take it`);
-    give.type = 'button';
-    give.prepend(icon('give'));
-    give.addEventListener('click', () => inlineForm(headForm, [
-      { name: 'why', label: `Why ${theirs}? They read this on the card, and it stays yours until they answer.` },
-    ], `Ask ${theirs}`, async (i) => {
-      await api(planPath(v.id, '/ask-to-take'), { to: theirs, why: need(i.why, 'Asking needs a reason') });
-    }));
-    more.appendChild(give);
-  }
   const dueBtn = node('button', 'btn hit', v.due ? 'Change the due date' : 'Due date');
   dueBtn.type = 'button';
   dueBtn.prepend(icon('cal'));
@@ -8165,7 +8459,7 @@ function renderCard(v) {
   more.append(dueBtn, blockBtn);
   head.append(acts, headForm);
 
-  // The card's own chips: free words you can add and take off, the ask, and the clock.
+  // The card's own chips: free words you can add and take off, and the clock.
   const chips = node('div', 'chips');
   v.chips.forEach((t, n) => {
     const c = chip('', t);
@@ -8219,7 +8513,7 @@ function renderCard(v) {
   notes.addEventListener('blur', () => {
     if (notes.value !== v.notes) void cardEdit(() => api(planPath(v.id), { notes: notes.value }));
   });
-  main.appendChild(cardSection('Notes', notes));
+  main.append(ownerSection(v), goalSection(v), cardSection('Notes', notes));
 
   main.appendChild(checklistSection(v));
   main.appendChild(attachmentsSection(v));
@@ -8251,6 +8545,10 @@ function renderCard(v) {
 
   body.append(factsCard(v), main, side);
   box.appendChild(body);
+  // What a hand or a goal change just said, said once, and focus back on the button of the section that did it.
+  const said = cardSaid;
+  cardSaid = null;
+  if (said) box.querySelector(`[data-sec="${said.key}"] .ep-line .btn`)?.focus({ preventScroll: true });
 }
 
 /** A quiet panel for what this server or this sign-in cannot do: a lock, a bold first line, no alarm. */
@@ -12054,7 +12352,7 @@ async function showView(next) {
   // Plan, the same: it opens on the board, with no area's page and its Escape left over.
   clearAreaPage();
   // The card the same: no Escape listener and no memory of where it was opened from once another screen shows.
-  if (next !== 'plan-card') { document.removeEventListener('keydown', cardEscape); cardFrom = null; cardFetch++; }
+  if (next !== 'plan-card') { document.removeEventListener('keydown', cardEscape); cardFrom = null; cardSaid = null; cardFetch++; }
   // A key pressed on the last screen (an envelope page's change or approve) is not this one's.
   pressedKey = null;
   view = next;
@@ -12177,6 +12475,7 @@ function forgetHousehold() {
   cardId = null;
   cardFrom = null;
   cardArea = null;
+  cardSaid = null;
   cardFetch++;
   document.removeEventListener('keydown', cardEscape);
 

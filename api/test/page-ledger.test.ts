@@ -97,6 +97,15 @@ const ADDED: readonly Line[] = [
   ['card', 'function cardEscape('], ['card', 'async function closeCard('], ['card', 'let cardFrom'], ['P51', "note: 'Also in Today'"], ['P50', 'Leave a note about this'],
   ['P21', "title.setAttribute('aria-label', `${v.title}, rename`)"], ['P25', "chip('', 'Done', 'check')"], ['P33', 'staleChip(v.daysInState)'],
   ['P31', 'Take off ${t}`'], ['P68', 'cancelMark(input, close)'], ['P68', 'cancelMark(row, close)'], ['P68', 'cancelMark(cancel, close)', 'shared'], ['P68', 'cancelMark(cancelSearch, closeSearch)'], ['P68', 'cancelMark(cancelMoney, closeMoney)'], ['P68', 'cancelMark(f, closeApprove)', 'page'], ['P68', 'cancelMark(amountField, closeAdjust)', 'page'], ['P50', 'keepTextOnEscape(q)'], ['P50', 'keepTextOnEscape(t)'], ['P23', "stateGlyph(s, { small: true })"],
+  // The card's Owner and Goal (Task 15): who owns it and since when, handed on or taken at once with a word, and the one goal.
+  ['P27', 'function ownerSection('], ['P27', 'Who owns it?'], ['P27', 'Why them, or what to know first'], ['P27', 'Hand it to '], ['P27', ' can hand it back.'],
+  ['P27', 'It becomes yours at once and shows in Today.'], ['P27', 'A word about why (optional)'], ['P27', '; nothing moves.'], ['P27', ' has it.'],
+  ['P27', 'It is yours.'], ['P27', 'It is answered on Today; handing it to anyone settles it.'], ['P27', "'/hand'"],
+  ['P27', 'cancelMark(cancelOwner, closeOwner)'], ['P27', 'function radioList('], ['P27', 'input[type=radio]:checked', 'css'],
+  ['goal', 'function goalSection('], ['goal', 'Set a goal'], ['goal', 'this plan stands on its own'], ['goal', 'the only plan toward it'],
+  ['goal', 'What is it toward?'], ['goal', 'A new goal…'], ['goal', 'e.g. New roof'],
+  ['goal', 'A goal begins when a plan carries it. This plan will be its first.'], ['goal', 'ends here: no other plan carries it.'],
+  ['goal', 'is already a goal; this plan joins it.'], ['goal', "'/goal'"], ['goal', 'cancelMark(cancelGoal, closeGoal)'],
   // Leaving a household (a switch, the picker, sign-out) goes through onlyToday, which empties every screen first and
   // moves the turn on, so no read still out from the household left can draw into the next one.
   ['switch', 'function onlyToday() {\n  forgetHousehold();', 'page'], ['switch', 'function forgetHousehold() {\n  householdTurn++;', 'page'],
@@ -119,7 +128,8 @@ const GONE: readonly Line[] = [
   ['spec', '#plan-form', 'css'], ['spec', '#plan-empty', 'css'],
   // The card (Task 14): the old Back that always went to the board, the old note and placeholder, the ask chip, the head's owner.
   ['P51', "Also in Today's thread"], ['P50', 'Leave a note for '], ['P50', 'betweenSection(v, theirs)'], ['P32', 'asked ${v.asked.to}'],
-  ['P22', "node('div', 'waiting', 'Waiting for you')"], ['P27', "node('span', 'owner')"], ['card', '#plan-card .back{display:none}', 'css'],
+  ['P22', "node('div', 'waiting', 'Waiting for you')"],
+  ['P28', '/ask-to-take'], ['P28', 'Asking needs a reason'], ['P28', 'They read this on the card'], ['P28', 'Ask ${theirs}'], ['P27', "node('span', 'owner')"], ['card', '#plan-card .back{display:none}', 'css'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
