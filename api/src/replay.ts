@@ -22,6 +22,8 @@ import {
   emailKey,
   GUEST_MAY,
   GUEST_PREFIX,
+  householdDay,
+  billSlot,
   isEmail,
   isDay,
   isGuest,
@@ -44,7 +46,7 @@ import {
   THREAD_TEXT_MAX,
 } from './types.ts';
 import type {
-  AccountBalance, Actor, Adjustment, Appearance, Appointment, Assignment, Budget, BudgetLocation, CalendarLink, CalendarRef, Category,
+  AccountBalance, Actor, BillRecord, Adjustment, Appearance, Appointment, Assignment, Budget, BudgetLocation, CalendarLink, CalendarRef, Category,
   DocRef, DocumentsFolder, DocumentsState, Drift, Envelope, Event, EventOf, EnvelopeId, EventId, Guest, Hand, MonthPlan, MoveFile, Offer, PageDrift,
   Per, Plan, PlanId, Prediction, Rule, State, Stay, SplitPart, StayBlock, Settings, Txn,
 } from './types.ts';
@@ -63,7 +65,7 @@ export class ReplayError extends Error {
 // Mutable mirrors of the readonly public shapes, used only inside the fold.
 interface Draft {
   categories: Map<string, Category>;
-  budgets: Map<string, { id: string; label: string; archived?: boolean; location?: BudgetLocation; envelopes: Map<EnvelopeId, Envelope> }>;
+  budgets: Map<string, { id: string; label: string; archived?: boolean; location?: BudgetLocation; envelopes: Map<EnvelopeId, Envelope>; bills: Map<string, BillRecord> }>;
   txns: Map<string, Txn>;
   rules: Rule[];
   months: Map<string, {
@@ -133,7 +135,7 @@ export const emptyState = (): State => freeze(emptyDraft());
 
 function freeze(d: Draft): State {
   const budgets = new Map<string, Budget>();
-  for (const [id, b] of d.budgets) budgets.set(id, { id: b.id, label: b.label, ...(b.archived ? { archived: true } : {}), ...(b.location ? { location: b.location } : {}), envelopes: b.envelopes });
+  for (const [id, b] of d.budgets) budgets.set(id, { id: b.id, label: b.label, ...(b.archived ? { archived: true } : {}), ...(b.location ? { location: b.location } : {}), envelopes: b.envelopes, bills: b.bills });
   const months = new Map<string, MonthPlan>();
   for (const [k, m] of d.months) months.set(k, { ...m });
   return {
@@ -170,8 +172,8 @@ export function apply(state: State, events: Iterable<Event>): State {
 }
 
 function thaw(s: State): Draft {
-  const budgets = new Map<string, { id: string; label: string; envelopes: Map<EnvelopeId, Envelope> }>();
-  for (const [id, b] of s.budgets) budgets.set(id, { id: b.id, label: b.label, ...(b.archived ? { archived: true } : {}), ...(b.location ? { location: b.location } : {}), envelopes: new Map(b.envelopes) });
+  const budgets = new Map<string, { id: string; label: string; envelopes: Map<EnvelopeId, Envelope>; bills: Map<string, BillRecord> }>();
+  for (const [id, b] of s.budgets) budgets.set(id, { id: b.id, label: b.label, ...(b.archived ? { archived: true } : {}), ...(b.location ? { location: b.location } : {}), envelopes: new Map(b.envelopes), bills: new Map(b.bills) });
   const months = new Map<string, Draft['months'] extends Map<string, infer V> ? V : never>();
   for (const [k, m] of s.months) {
     months.set(k, {
@@ -331,6 +333,7 @@ export function validate(e: Event): void {
     }
   }
   validateSinking(e);
+  validateBill(e);
   validateSettings(e);
   validatePlan(e);
   validateGoals(e);
@@ -367,6 +370,29 @@ function folderProblem(v: unknown, what: string, nested: boolean): string | null
 /** Whole cents, not below zero. */
 const wholeCents = (v: unknown): boolean => typeof v === 'number' && Number.isInteger(v) && v >= 0;
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/;
+
+/** A bill's lines, by shape: a hand-edited date is refused by name, not met as a NaN later. */
+function validateBill(e: Event): void {
+  if (e.op !== 'bill.set' && e.op !== 'bill.remove') return;
+  const refuse = (message: string) => new ReplayError(message, e);
+  const text = (v: unknown) => typeof v === 'string' && v.trim() !== '';
+  if (!text(e.bill)) throw refuse('a bill has a key');
+  if (!text(e.name)) throw refuse('a bill has a name');
+  if (e.op === 'bill.remove') return;
+  if (e.byHand !== undefined && (e.byHand as unknown) !== true) throw refuse("a bill's byHand is true or absent");
+  const bad = refuse("a bill's date is null or { kind, per, day | on }");
+  const date: unknown = e.date;
+  if (date === null) return;
+  if (typeof date !== 'object' || date === undefined) throw bad;
+  const d = date as Record<string, unknown>;
+  const keys = Object.keys(d).sort().join(',');
+  if (!['due', 'autopay', 'payby'].includes(d['kind'] as string)) throw bad;
+  if (d['per'] === 'month') {
+    if (keys !== 'day,kind,per' || !Number.isInteger(d['day']) || (d['day'] as number) < 1 || (d['day'] as number) > 31) throw bad;
+  } else if (['quarter', 'half-year', 'year'].includes(d['per'] as string)) {
+    if (keys !== 'kind,on,per' || typeof d['on'] !== 'string' || !isDay(d['on'])) throw bad;
+  } else throw bad;
+}
 
 /**
  * Sinking funds' lines, checked by shape for the same reason the settings ops
@@ -1118,7 +1144,7 @@ function fold(d: Draft, e: Event): void {
     }
 
     case 'budget.create': {
-      if (!d.budgets.has(e.budget)) d.budgets.set(e.budget, { id: e.budget, label: e.label, envelopes: new Map() });
+      if (!d.budgets.has(e.budget)) d.budgets.set(e.budget, { id: e.budget, label: e.label, envelopes: new Map(), bills: new Map() });
       else d.budgets.set(e.budget, { ...d.budgets.get(e.budget)!, label: e.label });
       return;
     }
@@ -1204,6 +1230,29 @@ function fold(d: Draft, e: Event): void {
 
     case 'envelope.remove': {
       budgetOrThrow(d, e.budget, e).envelopes.delete(e.envelope);
+      return;
+    }
+
+    case 'bill.set': {
+      const b = budgetOrThrow(d, e.budget, e);
+      if (!b.envelopes.has(e.envelope)) throw new ReplayError(`no such envelope: ${e.envelope}`, e);
+      const slot = billSlot(e.envelope, e.bill);
+      const prev = b.bills.get(slot);
+      const same = prev?.date && e.date && JSON.stringify(prev.date) === JSON.stringify(e.date);
+      b.bills.set(slot, {
+        envelope: e.envelope, key: e.bill, name: e.name, byHand: e.byHand === true || prev?.byHand === true, date: e.date,
+        since: e.date === null ? null : same ? prev.since : householdDay(d.zone, e.at),
+      });
+      return;
+    }
+
+    case 'bill.remove': {
+      const b = budgetOrThrow(d, e.budget, e);
+      const slot = billSlot(e.envelope, e.bill);
+      const record = b.bills.get(slot);
+      if (!record) throw new ReplayError(`no such bill: ${e.bill}`, e);
+      if (!record.byHand) throw new ReplayError('only a bill named by hand is removed', e);
+      b.bills.delete(slot);
       return;
     }
 

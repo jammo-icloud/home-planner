@@ -1009,11 +1009,11 @@ describe('a backup made by 0.7.0', () => {
   test('a backup holding an op this build does not know is refused whole, never read as if the line were absent', () => {
     const line = (e: object) => JSON.stringify({ at: '2026-12-01T09:00:00.000Z', who: 'alice', ...e });
     const claim = line({ id: 'x1', op: 'household.claim', label: 'Home' });
-    const backup = parseBackup([claim, line({ id: 'x2', op: 'bill.set', budget: 'b' }), line({ id: 'x3', op: 'bill.set', budget: 'b' }),
-      line({ id: 'x4', op: 'bill.remove', budget: 'b' })].join('\n'));
-    assert.deepEqual(backup.skipped.slice(0, 2), ['line 2: unknown op bill.set', 'line 3: unknown op bill.set']);
-    assert.deepEqual(backup.unknown, ['bill.set', 'bill.remove']);
-    assert.equal(newerBackup(backup), 'This backup was made by a newer Home Planner. It holds bill.set and bill.remove, which this version cannot read.');
+    const backup = parseBackup([claim, line({ id: 'x2', op: 'chore.set', budget: 'b' }), line({ id: 'x3', op: 'chore.set', budget: 'b' }),
+      line({ id: 'x4', op: 'chore.remove', budget: 'b' })].join('\n'));
+    assert.deepEqual(backup.skipped.slice(0, 2), ['line 2: unknown op chore.set', 'line 3: unknown op chore.set']);
+    assert.deepEqual(backup.unknown, ['chore.set', 'chore.remove']);
+    assert.equal(newerBackup(backup), 'This backup was made by a newer Home Planner. It holds chore.set and chore.remove, which this version cannot read.');
     assert.equal(newerBackup(parseBackup(claim)), null);
   });
 });

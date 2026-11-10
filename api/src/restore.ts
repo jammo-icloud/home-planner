@@ -31,7 +31,7 @@ export function scopeOf(e: Event): Scope {
     case 'rule.add': case 'rule.remove':
       return 'facts';
     case 'budget.create': case 'budget.rename': case 'budget.locate': case 'budget.archive':
-    case 'envelope.define': case 'envelope.remove':
+    case 'envelope.define': case 'envelope.remove': case 'bill.set': case 'bill.remove':
     case 'income.source.define': case 'income.source.remove':
       return 'budgets';
     case 'month.open': case 'month.close': case 'month.discard':

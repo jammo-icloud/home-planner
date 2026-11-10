@@ -13,7 +13,7 @@ import { monthView, envelopeFor } from './envelopes.ts';
 import type { EnvelopeView, MonthView } from './envelopes.ts';
 import { fundedFor, plannedFor } from './replay.ts';
 import { isSpend, monthKey, monthOf, prevMonth } from './types.ts';
-import type { Day, EnvelopeId, Month, State, Txn } from './types.ts';
+import type { BillDate, Day, EnvelopeId, Month, State, Txn } from './types.ts';
 
 // ─── the month's clock ────────────────────────────────────────────────────────
 
@@ -490,4 +490,20 @@ export function snapshot(state: State, budget: string, month: Month, today: Day)
     recurring: recurring(state).filter((r) => r.unruled),
     balanced: Math.abs(view.toAssign) < 100,
   };
+}
+
+const MONTHS_LONG = ['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'];
+
+const ordinal = (n: number): string => {
+  const teen = n % 100 >= 11 && n % 100 <= 13;
+  return `${n}${teen ? 'th' : ({ 1: 'st', 2: 'nd', 3: 'rd' } as Record<number, string>)[n % 10] ?? 'th'}`;
+};
+
+/** A bill's date in words, lower-case for a sentence: "due on the 16th, every month". */
+export function billDateWords(date: BillDate): string {
+  const verb = date.kind === 'due' ? 'due on' : date.kind === 'autopay' ? 'Auto Pay on' : 'pay by';
+  if (date.per === 'month') return `${verb} the ${ordinal(date.day)}, every month`;
+  const [, m, d] = date.on.split('-').map(Number) as [number, number, number];
+  const every = date.per === 'quarter' ? 'every quarter' : date.per === 'half-year' ? 'every six months' : 'every year';
+  return `${verb} ${d} ${MONTHS_LONG[m - 1]}, ${every}`;
 }

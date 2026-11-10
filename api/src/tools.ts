@@ -16,7 +16,7 @@
 import { ZERO, add, sub, cents, fmt, fmtExact } from './money.ts';
 import type { Cents } from './money.ts';
 import { carriedInto, monthView, latestMonth, openMonths, overlappingCategories } from './envelopes.ts';
-import { donors, drift, monthClock, pace, snapshot, unsorted } from './analytics.ts';
+import { billDateWords, donors, drift, monthClock, pace, snapshot, unsorted } from './analytics.ts';
 import { fundedFor, plannedFor, categorize, splitProblem, guestEmail } from './replay.ts';
 import { filedLabel, ruleProblem } from './match.ts';
 import { removedTxn } from './activity.ts';
@@ -767,6 +767,11 @@ export function describe(
         : `defined envelope ${env(e.budget, e.envelope)} in ${budget(e.budget)}`;
       break;
     case 'envelope.remove': what = `removed envelope ${env(e.budget, e.envelope)}`; break;
+    case 'bill.set':
+      what = e.date ? `set ${e.name} in ${env(e.budget, e.envelope)} to ${billDateWords(e.date)}`
+        : `cleared the date on ${e.name} in ${env(e.budget, e.envelope)}`;
+      break;
+    case 'bill.remove': what = `removed the bill ${e.name} from ${env(e.budget, e.envelope)}`; break;
     case 'budget.create': what = `created budget ${e.label}`; break;
     case 'category.define': what = `defined category ${e.label}`; break;
     case 'category.sinking':

@@ -208,7 +208,17 @@ export interface Budget {
   readonly id: BudgetId;
   readonly label: string;
   readonly envelopes: ReadonlyMap<EnvelopeId, Envelope>;
+  /** A date a member gave a bill, by `billSlot`. Kept when its envelope goes. */
+  readonly bills: ReadonlyMap<string, BillRecord>;
 }
+
+export type BillKind = 'due' | 'autopay' | 'payby';
+export type BillPer = 'month' | 'quarter' | 'half-year' | 'year';
+export type BillDate =
+  | { readonly kind: BillKind; readonly per: 'month'; readonly day: number }
+  | { readonly kind: BillKind; readonly per: Exclude<BillPer, 'month'>; readonly on: Day };
+export interface BillRecord { readonly envelope: EnvelopeId; readonly key: string; readonly name: string; readonly byHand: boolean; readonly date: BillDate | null; readonly since: Day | null }
+export const billSlot = (envelope: EnvelopeId, key: string): string => `${envelope}|${key}`;
 
 /** One in-month change to the plan. Ordered, attributed, and never rewritten. */
 export interface Adjustment {
@@ -360,6 +370,9 @@ export type Event = Meta &
      * needs a reason like any other decision that hides money.
      */
     | { op: 'envelope.remove'; budget: BudgetId; envelope: EnvelopeId; why: string }
+    /** A bill's date, or none (null). `bill` is the frozen key; `byHand` names a bill no receipt gives. */
+    | { op: 'bill.set'; budget: BudgetId; envelope: EnvelopeId; bill: string; name: string; byHand?: true; date: BillDate | null }
+    | { op: 'bill.remove'; budget: BudgetId; envelope: EnvelopeId; bill: string; name: string }
     /**
      * Opens a month by snapshotting the budget's templates. The plan of record.
      * `plan` names an envelope planned at something other than its template:

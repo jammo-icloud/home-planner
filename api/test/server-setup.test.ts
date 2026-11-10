@@ -329,9 +329,9 @@ describe('changing the folder', () => {
 
 describe('a backup from a newer build', () => {
   test('is refused whole by the preview and by the restore, in a sentence naming the op', async () => {
-    const content = [{ id: 'n1', op: 'household.claim', label: 'Home' }, { id: 'n2', op: 'bill.set', budget: 'b' }]
+    const content = [{ id: 'n1', op: 'household.claim', label: 'Home' }, { id: 'n2', op: 'chore.set', budget: 'b' }]
       .map((e) => JSON.stringify({ at: '2026-12-01T09:00:00.000Z', who: 'alice', ...e })).join('\n');
-    const said = 'This backup was made by a newer Home Planner. It holds bill.set, which this version cannot read.';
+    const said = 'This backup was made by a newer Home Planner. It holds chore.set, which this version cannot read.';
     const before = await readFile(households.path('home'), 'utf8');
     for (const [path, body] of [['/api/restore/preview', { content, scopes: ['settings'] }], ['/api/restore', { content, scopes: ['settings'] }],
       ['/api/restore', { content, asNewHousehold: 'Newer' }]] as const) {

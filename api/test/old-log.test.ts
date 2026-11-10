@@ -44,6 +44,10 @@ describe('a log from before sinking funds', () => {
       assert.deepEqual([p['goal'], p['ownerFrom'], p['ownerSince']], [null, null, p['createdAt']], "a plan from an old log has no goal and was always its maker's");
       for (const key of ['goal', 'ownerFrom', 'ownerSince']) delete p[key];
     }
+    for (const [, b] of state['budgets'] as [string, Record<string, unknown>][]) {
+      assert.deepEqual(b['bills'], [], 'a budget from an old log has no bills');
+      delete b['bills'];
+    }
     assert.deepEqual(state, JSON.parse(readFileSync(SNAPSHOT, 'utf8')));
   });
 
