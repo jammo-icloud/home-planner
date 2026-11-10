@@ -7,10 +7,11 @@ import { join } from 'node:path';
 
 import { parseDollars } from '../src/money.ts';
 import { replay, apply } from '../src/replay.ts';
-import { billDateWords, billKey, billsOf, fixedCharges } from '../src/analytics.ts';
+import { billDateWords, billDatesIn, billKey, billOccurrences, billsExpected, billsOf, fixedCharges } from '../src/analytics.ts';
 import { describe as describeEvent } from '../src/tools.ts';
 import { newerBackup, parseBackup, planRestore, eventsToApply, scopeOf } from '../src/restore.ts';
 import { Households } from '../src/households.ts';
+import type { Bill } from '../src/analytics.ts';
 import type { BillDate, Event, State, Txn } from '../src/types.ts';
 import type { DistributiveOmit } from '../src/util-types.ts';
 
@@ -264,5 +265,88 @@ describe('a date a member set is never orphaned', () => {
     assert.deepEqual(list(house(POWER, [...dated(), gone]), 'util'), []);
     const again = ev({ op: 'envelope.define', budget: 'harbor', envelope: 'util', label: 'Utilities', group: 'House', match: { categories: ['elec', 'water'] }, template: parseDollars('300.00'), rollover: false, order: 0 } as never);
     assert.deepEqual(date(house(POWER, [...dated(), gone, again]), 'util'), SET.date);
+  });
+});
+
+describe('the dates a bill falls on', () => {
+  const month = (day: number) => ({ kind: 'due', per: 'month', day }) as BillDate;
+  const every = (per: 'quarter' | 'half-year' | 'year', on: string) => ({ kind: 'due', per, on }) as BillDate;
+  test('held to the last day of a short month', () =>
+    assert.deepEqual(billDatesIn(month(31), '2026-02-01', '2026-04-30'), ['2026-02-28', '2026-03-31', '2026-04-30']));
+  test('a quarter either side, the holding never carried forward', () =>
+    assert.deepEqual(billDatesIn(every('quarter', '2026-01-31'), '2025-10-01', '2026-10-31'), ['2025-10-31', '2026-01-31', '2026-04-30', '2026-07-31', '2026-10-31']));
+  test('six months, a year, 29 February', () => {
+    assert.deepEqual(billDatesIn(every('half-year', '2026-02-14'), '2025-08-01', '2026-08-31'), ['2025-08-14', '2026-02-14', '2026-08-14']);
+    assert.deepEqual(billDatesIn(every('year', '2024-02-29'), '2026-01-01', '2028-12-31'), ['2026-02-28', '2027-02-28', '2028-02-29']);
+  });
+});
+
+describe('what pays a date', () => {
+  const dated = (date: BillDate, txns: Txn[]) => list(house(txns, [ev({ ...SET, date })]), 'util')[0]!;
+  const monthly = (day: number) => ({ kind: 'due', per: 'month', day }) as BillDate;
+  const at = (id: string, day: string) => pay(id, day, 'EXAMPLE POWER BILLP', '-146.00', 'elec');
+  const paidBy = (b: Bill, from: string, to: string) => billOccurrences(b, from, to).map((o) => [o.day, o.paid?.day ?? null]);
+
+  test('the nearest date, across the edge of a month', () =>
+    assert.deepEqual(paidBy(dated(monthly(1), [at('a', '2026-10-31')]), '2026-10-01', '2026-11-30'), [['2026-10-01', null], ['2026-11-01', '2026-10-31']]));
+  test('the earlier on a tie', () =>
+    assert.deepEqual(paidBy(dated(monthly(1), [at('a', '2026-11-16')]), '2026-11-01', '2026-12-01'), [['2026-11-01', '2026-11-16'], ['2026-12-01', null]]));
+  test('the first to do so is the payment; a second does not pay the next', () =>
+    assert.deepEqual(paidBy(dated(monthly(16), [at('a', '2026-11-10'), at('b', '2026-11-20')]), '2026-11-01', '2026-12-31'), [['2026-11-16', '2026-11-10'], ['2026-12-16', null]]));
+  test('a window holding only the receipt finds the occurrence it paid', () =>
+    assert.deepEqual(paidBy(dated(monthly(1), [at('a', '2026-10-31')]), '2026-10-31', '2026-10-31'), [['2026-11-01', '2026-10-31']]));
+  test('a refund pays nothing', () =>
+    assert.deepEqual(paidBy(dated(monthly(16), [pay('r', '2026-11-15', 'EXAMPLE POWER BILLP', '12.40', 'elec')]), '2026-11-01', '2026-11-30'), [['2026-11-16', null]]));
+  test('a quarterly date has nothing between its dates', () => {
+    const b = dated({ kind: 'due', per: 'quarter', on: '2026-08-14' }, POWER);
+    assert.deepEqual(billOccurrences(b, '2026-11-01', '2026-11-30').map((o) => o.day), ['2026-11-14']);
+    assert.deepEqual(billOccurrences(b, '2026-12-01', '2026-12-31'), []);
+  });
+  test("undated: a receipt in the month pays it; unpaid sits on the last receipt's day, held to the month", () => {
+    const b = list(house([...POWER, at('n', '2026-11-30')]), 'util')[0]!;
+    assert.deepEqual(billOccurrences(b, '2026-11-01', '2027-02-28').map((o) => [o.month, o.dated, o.day, o.paid?.day ?? null, o.about]),
+      [['2026-11', false, '2026-11-30', '2026-11-30', null], ['2026-12', false, '2026-12-30', null, 14600],
+       ['2027-01', false, '2027-01-30', null, 14600], ['2027-02', false, '2027-02-28', null, 14600]]);
+  });
+  test('undated: the first receipt of the month is the payment', () => {
+    const b = list(house([at('n', '2026-11-20'), at('m', '2026-11-21')], [ev({ ...SET, date: null })]), 'util')[0]!;
+    assert.deepEqual(billOccurrences(b, '2026-11-01', '2026-11-30').map((o) => [o.day, o.paid?.day]), [['2026-11-21', '2026-11-20']]);
+  });
+  test('undated with charges partly landed is not paid, and expects the rest', () => {
+    const p2p = (d: string, cat: string, amt: string) => pay(`${cat}${d}`, d, 'EXAMPLE P2P', amt, cat);
+    const txns = ['2026-08-05', '2026-09-05', '2026-10-05'].flatMap((d) => [p2p(d, 'elec', '-100.00'), p2p(d, 'water', '-60.00')]);
+    const b = list(house([...txns, p2p('2026-11-05', 'elec', '-100.00')]), 'util')[0]!;
+    assert.equal(b.charges.length, 2);
+    const [o, ...rest] = billOccurrences(b, '2026-11-01', '2026-11-30');
+    assert.deepEqual(rest, []);
+    assert.deepEqual([o!.paid, o!.about], [null, 6000]);
+  });
+  test('undated with only a refund this month: no occurrence', () => {
+    assert.deepEqual(billOccurrences(list(house([...POWER, pay('r', '2026-11-03', 'EXAMPLE POWER BILLP', '12.40', 'elec')]), 'util')[0]!, '2026-11-01', '2026-11-30'), []);
+  });
+});
+
+describe('what a month still expects', () => {
+  const month = '2026-11';
+  const b = (s: State) => list(s, 'util');
+  const with_ = (date: BillDate, txns = POWER) => b(house(txns, [ev({ ...SET, date })]));
+  test('undated: every month, as now', () => assert.equal(billsExpected(b(house(POWER)), month), 14600));
+  test('undated, landed: nothing', () => assert.equal(billsExpected(b(house([...POWER, pay('n', '2026-11-03', 'EXAMPLE POWER BILLP', '-146.00', 'elec')])), month), 0));
+  test('dated monthly and unpaid: its typical', () => assert.equal(billsExpected(with_({ kind: 'due', per: 'month', day: 16 }), month), 14600));
+  test('dated, paid by a receipt last month: nothing, then the next', () => {
+    const edge = ['2026-08-31', '2026-09-30', '2026-10-31'].map((d) => pay(`x${d}`, d, 'EXAMPLE POWER BILLP', '-146.00', 'elec'));
+    const d = with_({ kind: 'due', per: 'month', day: 1 }, edge);
+    assert.deepEqual([billsExpected(d, '2026-11'), billsExpected(d, '2026-12')], [0, 14600]);
+  });
+  test('a quarterly date counts only in a month one falls in', () => {
+    const q = with_({ kind: 'due', per: 'quarter', on: '2026-08-20' }, POWER.slice(0, 2));
+    assert.deepEqual([billsExpected(q, '2026-11'), billsExpected(q, '2026-12')], [14600, 0]);
+  });
+  test('a date with no typical amount adds nothing', () => {
+    assert.equal(billsExpected(b(house([pay('o', '2026-10-02', 'EXAMPLE WATER', '-48.00', 'water')], [ev({ ...SET, bill: 'example water', name: 'X' })])), month), 0);
+  });
+  test('several bills add up', () => {
+    const water = ['2026-09-30', '2026-10-30'].map((d) => pay(`w${d}`, d, 'EXAMPLE WATER #4471', '-48.00', 'water'));
+    assert.equal(billsExpected(b(house([...POWER, ...water])), month), 14600 + 4800);
   });
 });

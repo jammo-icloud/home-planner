@@ -538,6 +538,102 @@ export function billsOf(
   return out;
 }
 
+// ─── a bill's dates ───────────────────────────────────────────────────────────
+
+const lastDayOf = (y: number, m: number): number => new Date(Date.UTC(y, m, 0)).getUTCDate();
+const dayAt = (y: number, m: number, d: number): Day => `${y}-${String(m).padStart(2, '0')}-${String(Math.min(d, lastDayOf(y, m))).padStart(2, '0')}`;
+const ymOf = (day: Day): number => Number(day.slice(0, 4)) * 12 + Number(day.slice(5, 7)) - 1;
+const dayNumber = (day: Day): number => Date.UTC(Number(day.slice(0, 4)), Number(day.slice(5, 7)) - 1, Number(day.slice(8, 10))) / 86400000;
+const shiftDays = (day: Day, by: number): Day => new Date((dayNumber(day) + by) * 86400000).toISOString().slice(0, 10);
+const monthsIn = (from: Day, to: Day): Month[] => {
+  const out: Month[] = [];
+  for (let i = ymOf(from); i <= ymOf(to); i++) out.push(`${Math.floor(i / 12)}-${String((i % 12) + 1).padStart(2, '0')}`);
+  return out;
+};
+
+/** The days a date falls on within [from, to], ascending. A day past a short month's end is held to its last day, never carried forward. */
+export function billDatesIn(date: BillDate, from: Day, to: Day): readonly Day[] {
+  const out: Day[] = [];
+  if (from > to) return out;
+  const lo = ymOf(from), hi = ymOf(to);
+  if (date.per === 'month') {
+    for (let i = lo; i <= hi; i++) out.push(dayAt(Math.floor(i / 12), (i % 12) + 1, date.day));
+  } else {
+    const step = date.per === 'quarter' ? 3 : date.per === 'half-year' ? 6 : 12;
+    const base = ymOf(date.on), d = Number(date.on.slice(8, 10));
+    for (let k = Math.ceil((lo - base) / step); base + k * step <= hi; k++) {
+      const i = base + k * step;
+      out.push(dayAt(Math.floor(i / 12), (i % 12) + 1, d));
+    }
+  }
+  return out.filter((x) => x >= from && x <= to);
+}
+
+export interface BillOccurrence { readonly month: Month; readonly day: Day; readonly dated: boolean; readonly paid: BillPaid | null; readonly about: Cents | null }
+
+/** Each date of a dated bill with the receipt that paid it: every receipt pays its nearest date, the earlier on a tie, and a date keeps its first. */
+function datePayments(date: BillDate, receipts: readonly BillPaid[]): Map<Day, BillPaid> {
+  const paid = new Map<Day, BillPaid>();
+  for (const r of receipts) {
+    const near = billDatesIn(date, shiftDays(r.day, -400), shiftDays(r.day, 400));
+    let best: Day | null = null, gap = Infinity;
+    for (const d of near) {
+      const g = Math.abs(dayNumber(d) - dayNumber(r.day));
+      if (g < gap) { best = d; gap = g; }
+    }
+    if (best !== null && !paid.has(best)) paid.set(best, r);
+  }
+  return paid;
+}
+
+const landedIn = (c: BillCharge, month: Month): boolean => c.landed.has(month);
+
+export function billOccurrences(bill: Bill, from: Day, to: Day): readonly BillOccurrence[] {
+  const out: BillOccurrence[] = [];
+  if (from > to) return out;
+  if (bill.date) {
+    const paid = datePayments(bill.date, bill.receipts);
+    const days = new Set(billDatesIn(bill.date, shiftDays(from, -400), shiftDays(to, 400)));
+    for (const d of days) {
+      const p = paid.get(d) ?? null;
+      if (!((d >= from && d <= to) || (p !== null && p.day >= from && p.day <= to))) continue;
+      out.push({ month: monthOf(d), day: d, dated: true, paid: p, about: p ? null : bill.about });
+    }
+    return out.sort((a, b) => (a.day < b.day ? -1 : a.day > b.day ? 1 : 0));
+  }
+  const last = bill.lastPaid;
+  if (!last) return out;
+  for (const month of monthsIn(from, to)) {
+    const first = bill.receipts.find((r) => monthOf(r.day) === month) ?? null;
+    const allLanded = bill.charges.every((c) => landedIn(c, month));
+    if (bill.charges.length > 0 && allLanded && first === null) continue;
+    const paid = first && allLanded ? first : null;
+    const left = sum(bill.charges.filter((c) => !landedIn(c, month)).map((c) => c.typical));
+    const [y, m] = month.split('-').map(Number) as [number, number];
+    const day = dayAt(y, m, Number(last.day.slice(8, 10)));
+    if (!((day >= from && day <= to) || (paid !== null && paid.day >= from && paid.day <= to))) continue;
+    out.push({ month, day, dated: false, paid, about: paid || bill.charges.length === 0 || left <= 0 ? null : left });
+  }
+  return out;
+}
+
+/** What these bills still expect in a month: the short row's sum. */
+export function billsExpected(bills: readonly Bill[], month: Month): Cents {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  let total = 0;
+  for (const bill of bills) {
+    if (bill.date) {
+      const paid = datePayments(bill.date, bill.receipts);
+      for (const d of billDatesIn(bill.date, `${month}-01`, `${month}-${String(lastDayOf(y, m)).padStart(2, '0')}`)) {
+        if (!paid.has(d)) total += bill.about ?? 0;
+      }
+    } else {
+      total += sum(bill.charges.filter((c) => !landedIn(c, month)).map((c) => c.typical));
+    }
+  }
+  return cents(total);
+}
+
 // ─── the queue ────────────────────────────────────────────────────────────────
 
 export interface Unsorted {
