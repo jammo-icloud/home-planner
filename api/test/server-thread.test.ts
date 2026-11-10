@@ -64,6 +64,8 @@ before(async () => {
       match: { categories: ['travel'] }, template: parseDollars('400.00'), order: 1 },
     { op: 'month.open', budget: 'harbor', month, income: parseDollars('1000.00') },
     { op: 'budget.create', budget: 'cabin', label: 'Cabin' },
+    { op: 'budget.create', budget: 'attic', label: 'Attic' },
+    { op: 'budget.archive', budget: 'attic', archived: true, why: 'closed' },
     { op: 'rule.add', rule: 'r-bigbox', match: 'BIGBOX', category: '__split' },
   ]);
   const [kept] = await seed.append('claude', { op: 'thread.briefing', day: '2026-01-01', source: 'household', budget: null,
@@ -957,5 +959,18 @@ describe('the calendar on screen', () => {
     assert.equal((await as(cookie, 'GET', `/api/calendar?start=${inDays(3)}&end=${inDays(3)}`)).status, 400);
     assert.equal((await as(cookie, 'GET', '/api/calendar?start=2026-02-30&end=2026-03-02')).status, 400);
     assert.equal((await as(cookie, 'GET', '/api/calendar')).status, 400);
+  });
+
+  test('money: null with no budget, an array with one, the default for a budget it does not know, null for an archived one', async () => {
+    const q = `start=${inDays(0)}&end=${inDays(7)}`;
+    const mine = await as(cookie, 'GET', `/api/calendar?${q}`);
+    assert.equal(mine.status, 200, JSON.stringify(mine.json));
+    assert.ok(Array.isArray(mine.json.money));
+    const named = await as(cookie, 'GET', `/api/calendar?${q}&budget=harbor`);
+    const unknown = await as(cookie, 'GET', `/api/calendar?${q}&budget=nope`);
+    assert.deepEqual(unknown.json.money, named.json.money, 'an unknown budget reads the default one');
+    assert.equal((await as(cookie, 'GET', `/api/calendar?${q}&budget=attic`)).json.money, null, 'an archived budget is no live budget');
+    assert.equal((await as(aliceDsm, 'POST', '/api/households', { label: 'No budget' })).status, 200);
+    assert.equal((await as(aliceDsm, 'GET', `/api/calendar?${q}`)).json.money, null);
   });
 });

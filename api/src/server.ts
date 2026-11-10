@@ -101,9 +101,7 @@
  *   POST /api/calendars/household/name  rename the Household calendar, on the NAS and in the log
  *   POST /api/calendars/target      the calendar plans go on; the owner's
  *   POST /api/calendars/conflicts   your calendars that plans are checked against
- *   GET  /api/calendar?start&end    the Calendar screen: your calendars from start to end (days, end not
- *                                   included, at most 8), each event's kind and plan, plans' due dates,
- *                                   open appointment cards, open drifts and clashes marked
+ *   GET  /api/calendar?start&end&budget  the Calendar screen: 1 to 42 days of events, plans' dates, held nights, the record's numbers and one budget's money
  *   POST /api/calendar/check        look for plans' events changed on the calendar now (Today looks every ten minutes)
  *   POST /api/calendar/conflicts    { start, end, allDay, on, except? }: what clashes with the New event form's times on the
  *                                   calendars it is checked against, and up to three free times; only looks
@@ -245,6 +243,7 @@ import { changeEvent, formConflicts, removeEvent, saveNewEvent } from './appoint
 import { checkDrift, checkDriftNowAndThen, checkPagesNowAndThen } from './drift.ts';
 import { todayEvents, weekEvents, weekWindow } from './calendar-view.ts';
 import { addDays } from './calendar.ts';
+import { calendarMoney } from './calendar-money.ts';
 import {
   acceptSuggestion, aheadOf, aheadWords, allowGuest, availability, blockNights, bookingAvailability, bookUrl, bookingHousehold, bookingOffWords, bookingStatus,
   cancelStay, changeStay, finishSignIn, guestList, memberNights, NO_BOOKING_HOUSEHOLD,
@@ -2880,7 +2879,10 @@ export async function start(
     // a session without one still sees the plans' due dates, and a line saying why.
     if (path === '/api/calendar' && req.method === 'GET') {
       const window = weekWindow(url.searchParams.get('start'), url.searchParams.get('end'));
-      return json(res, 200, await weekEvents(ctx, window));
+      const week = await weekEvents(ctx, window);
+      const budget = budgetInView(ctx, url.searchParams.get('budget'));
+      const live = budget !== null && !ctx.store.state.budgets.get(budget)!.archived;
+      return json(res, 200, { ...week, money: live ? calendarMoney(ctx.store.state, budget, { from: window.start, to: addDays(window.end, -1), today: ctx.today }) : null });
     }
 
     // Look now, without waiting for Today's ten minutes: needs a NAS session.

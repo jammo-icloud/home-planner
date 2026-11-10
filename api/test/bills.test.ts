@@ -6,6 +6,9 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { parseDollars } from '../src/money.ts';
+import { calendarMoney } from '../src/calendar-money.ts';
+import type { MoneyRow } from '../src/calendar-money.ts';
+import { monthView } from '../src/envelopes.ts';
 import type { Cents } from '../src/money.ts';
 import { Store } from '../src/store.ts';
 import { replay, apply } from '../src/replay.ts';
@@ -508,5 +511,58 @@ describe("get_month's bills", () => {
     const out = await gm(await ctx(POWER, [ev({ op: 'month.close', budget: 'harbor', month: '2026-10', closed: true, why: 'done' })]), '2026-10');
     assert.equal(out.closed, true);
     assert.equal(out.envelopes.find((e: any) => e.id === 'util').bills.length, 1);
+  });
+});
+
+describe('a bill on the calendar', () => {
+  const rows = (s: State, from: string, to: string, today = '2026-11-02') => calendarMoney(s, 'harbor', { from, to, today });
+  const NOV = ['2026-11-01', '2026-11-30'] as const;
+  test('an undated bill sits on the day of its last receipt, in later months too, never in a month gone by unpaid', () => {
+    const [r, ...rest] = rows(house(POWER), ...NOV);
+    assert.deepEqual(rest, []);
+    assert.deepEqual([r!.day, r!.kind, r!.label, r!.name, r!.about, r!.short], ['2026-11-14', 'bill', 'Utilities', 'EXAMPLE POWER BILLP', '$146', false]);
+    assert.deepEqual(rows(house(POWER), '2026-12-01', '2026-12-31').map((x) => [x.day, x.kind]), [['2026-12-14', 'bill']]);
+    assert.deepEqual(rows(house(POWER), '2026-10-01', '2026-10-31').map((x) => [x.day, x.kind, x.amount]), [['2026-10-14', 'paid', '$146.00']]);
+  });
+  test('a date a member set reads its kind, and says no receipt once its day has gone', () => {
+    const s = house(POWER, [ev(SET)]);
+    assert.deepEqual(rows(s, ...NOV).map((r) => [r.day, r.kind, r.about, r.noReceipt]), [['2026-11-16', 'due', '$146', undefined]]);
+    assert.deepEqual(rows(s, ...NOV, '2026-11-20').map((r) => [r.day, r.kind, r.noReceipt]), [['2026-11-16', 'due', true]]);
+  });
+  test('a receipt takes the row to its own day', () => {
+    const s = house([...POWER, pay('n', '2026-11-15', 'EXAMPLE POWER BILLP', '-143.20', 'elec')], [ev(SET)]);
+    assert.deepEqual(rows(s, ...NOV).map((r) => [r.day, r.kind, r.amount]), [['2026-11-15', 'paid', '$143.20']]);
+  });
+  test('an unpaid date before it was set, in a month gone by, is not drawn', () => assert.deepEqual(rows(house([], [ev(SET)]), '2026-10-01', '2026-10-31'), []));
+  test('a savings envelope has no row', () => {
+    const roofing = ['2026-09-20', '2026-10-20'].map((d) => pay(`r${d}`, d, 'EXAMPLE ROOFING', '-80.00', 'roofing'));
+    assert.deepEqual(rows(house(roofing), ...NOV), []);
+  });
+  describe('less left than its bills', () => {
+    const room = (s: State) => monthView(s, 'harbor', '2026-11')!.envelopes.find((e) => e.envelope.id === 'util')!.available;
+    const leaving = (cents: number) => house([...POWER, pay('w', '2026-11-01', 'EXAMPLE WATER ONE OFF', `-${((room(house(POWER)) - cents) / 100).toFixed(2)}`, 'water')]);
+    test('util is funded for these tests', () => assert.ok(room(house(POWER)) >= 14600));
+    test('a short row on today, first, and on the bill it is about', () => {
+      const got = rows(leaving(1400), ...NOV);
+      const s = got[0]!;
+      assert.deepEqual([s.kind, s.day, s.left, s.over, s.about, s.bills, s.billDay, s.billKind, s.name, s.short], ['short', '2026-11-02', '$14', undefined, '$146', 1, '2026-11-14', 'bill', 'EXAMPLE POWER BILLP', true]);
+      const b = got.find((r) => r.kind === 'bill')!;
+      assert.deepEqual([b.short, b.left], [true, '$14']);
+    });
+    const anyShort = (r: readonly MoneyRow[]) => r.some((x) => x.kind === 'short');
+    test('over reads over; enough left, none; no window without today; no month not open', () => {
+      assert.equal(rows(leaving(-2000), ...NOV)[0]!.over, '$20');
+      assert.equal(rows(leaving(0), ...NOV)[0]!.left, '$0');
+      assert.equal(anyShort(rows(house(POWER), ...NOV)), false);
+      assert.equal(anyShort(rows(leaving(1400), '2026-11-08', '2026-11-30')), false);
+      assert.equal(anyShort(rows(leaving(1400), '2026-12-01', '2026-12-31', '2026-12-05')), false);
+    });
+    test('one still without a figure is never short', () => {
+      const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'gas'));
+      // houseEvents defines heat with no needsFigure; defined again here with it, so no other test's figures move.
+      const noFigure = house(gas, [envelope('heat', 'Heating', ['gas'], '0.00', 2, { needsFigure: true })]);
+      assert.equal(monthView(noFigure, 'harbor', '2026-11')!.envelopes.find((e) => e.envelope.id === 'heat')!.envelope.needsFigure, true, 'heat has no figure yet');
+      assert.equal(anyShort(rows(noFigure, ...NOV)), false);
+    });
   });
 });
