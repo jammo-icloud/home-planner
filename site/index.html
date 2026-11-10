@@ -182,7 +182,7 @@
   .erow .chev{color:var(--ink-faint)}
 
   /* An envelope's page: the Settings page frame, then the card and the sections under it. */
-  .ep{scroll-margin-top:72px}
+  .ep,.ep-q{scroll-margin-top:72px}
   .ep-body{display:grid;gap:var(--sp-5);min-width:0}
   .ep-card{display:grid;gap:var(--sp-3);padding:var(--sp-4);background:var(--surface-raised);
     border:var(--stroke) solid var(--line);border-radius:var(--r-card);box-shadow:var(--e-1)}
@@ -199,7 +199,7 @@
   .ep-sec-h{margin:0;font-size:var(--fs-small);font-weight:600;text-transform:uppercase;letter-spacing:.02em;
     color:var(--ink-faint);scroll-margin-top:72px}
   /* A phone's bar is two rows, the search box under the screens: the heading clears that too. */
-  @container page (max-width: 759px){ .ep,.ep-sec-h{scroll-margin-top:100px} }
+  @container page (max-width: 759px){ .ep,.ep-q,.ep-sec-h{scroll-margin-top:100px} }
   .ep-sec-h:focus{outline:none}
   .ep-sec-h .count{margin-left:var(--sp-1);padding:0;background:none;border:0;border-radius:0;box-shadow:none;
     font-weight:500;color:var(--ink-faint)}
@@ -226,6 +226,7 @@
     background:var(--surface-raised);color:var(--ink)}
   .ep-f input:focus,.ep-f select:focus{outline:2px solid var(--focus);outline-offset:2px}
   .ep-f .figure-live{margin:0}
+  .ep-f .seg{justify-self:start}
   .ep-f .note{margin:0;text-align:left;font-size:var(--fs-small);color:var(--ink-soft)}
   .ep-acts .btn,.ep-line .btn{min-height:var(--tap)}
   .ep-review{display:grid;gap:var(--sp-3);min-width:0}
@@ -5108,6 +5109,7 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
   each.el.hidden = asking;
   // The goal form in Each month's place: from Change on a savings envelope and from the foot's link.
   const openGoal = (back) => {
+    closeBillForm();
     each.el.hidden = false;
     each.el.querySelector('.ep-sec-h').scrollIntoView({ block: 'start' });
     void goalForm(each.slot, e, { onCancel: () => renderEnvelopePage({ focus: back }) });
@@ -5122,6 +5124,7 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
     }
     if (e.needsFigure && !open) { each.slot.replaceChildren(envLine('No figure yet', '', null)); return; }
     const change = open ? textBtn('Change', 'btn bare', 'change', () => {
+      closeBillForm();
       const amt = e.basis?.amount ?? e.templateExact;
       const { form, control } = envFigureForm(e, {
         amount: Number.isFinite(toCents(amt)) ? plainDollars(amt) : '',
@@ -5149,6 +5152,7 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
     now.slot.appendChild(envLine(`${e.funded} funded`, envAdjusted(e) ? `was ${e.planned}` : e.adjustedBy ? '' : 'as planned', adjust));
   }
   body.appendChild(now.el);
+  if (!e.sinking) body.appendChild(billsSection(e, open));
 
   // Receipts: the existing list, its head drawn as this section's once the count is known.
   const rec = envSection('Receipts');
@@ -5637,6 +5641,202 @@ function showProposal(body, proposal, trigger) {
   row.append(yes, no);
   body.append(ul, row);
   trigger.hidden = true;
+}
+
+// ── an envelope's bills ────────────────────────────────────────────────────
+// A bill is a payee the envelope's receipts show; a member may give it a date. The server says what each
+// one is (`e.bills`, its `line` in its own words); this block draws them and sends `set_bill`.
+const BILL_KINDS = [['due', 'Due'], ['autopay', 'Auto Pay'], ['payby', 'Pay by']];
+const BILL_PERS = [['month', 'every month'], ['quarter', 'every quarter'], ['half-year', 'every six months'], ['year', 'every year']];
+
+/** Cancel whatever form is open in a section, so only one is ever open (Ruling 17). */
+function closeEpForm() {
+  $('env-page').querySelector('.ep-slot [data-cancel]')?.click();
+}
+
+/** Cancel an open Bills form only: pressing a goal form's own Cancel would redraw the page under the form about to open. */
+function closeBillForm() {
+  $('env-page').querySelector('.ep-slot form[data-bill-form] [data-cancel]')?.click();
+}
+
+/** The Bills section: one row each, and "Add a bill" last. Not drawn on a savings envelope. */
+function billsSection(e, open) {
+  const sec = envSection('Bills', 'bills');
+  const list = node('div', 'ep-sec');
+  const bills = e.bills ?? [];
+  if (!bills.length) list.appendChild(envLine("No bills in this envelope's receipts yet.", '', null));
+  for (const b of bills) list.appendChild(billRow(e, b, open));
+  if (open) {
+    list.appendChild(textBtn('Add a bill', 'add-row hit', 'bill-add', () => openBillForm(e, null, 'bill-add')));
+  }
+  sec.slot.appendChild(list);
+  return sec.el;
+}
+
+/** A bill's row: its name over the server's words, and the one action. */
+function billRow(e, b, open) {
+  let action = null;
+  if (open) {
+    action = textBtn(b.date ? 'Change' : 'Set a date', 'btn bare', `bill:${b.key}`, () => openBillForm(e, b, `bill:${b.key}`));
+    action.setAttribute('aria-label', b.date ? `Change the date on ${b.name}` : `Set a date for ${b.name}`);
+  }
+  return envLine(b.name, b.line, action);
+}
+
+/** The form in the pressed row's place. The control is found again: a goal form's Cancel redraws the page. */
+function openBillForm(e, b, key) {
+  closeEpForm();
+  const control = $('env-page').querySelector(`[data-key="${CSS.escape(key)}"]`);
+  if (!control) return;
+  const line = control.closest('.ep-line') ?? control;
+  const { form, first } = billForm(e, b, { close: () => {
+    form.replaceWith(line);
+    line.querySelector('[data-key]')?.focus({ preventScroll: true });
+    if (line === control) control.focus({ preventScroll: true });
+  } });
+  line.replaceWith(form);
+  form.querySelector('.ep-q').scrollIntoView({ block: 'start' });
+  first.focus({ preventScroll: true });
+}
+
+/** The form: `b` null to add a bill, else the bill whose date is set, changed, cleared or whose record is removed. */
+function billForm(e, b, { close }) {
+  const page = envelopePage;
+  const form = node('form', 'ep-form');
+  form.dataset.billForm = '';
+  form.noValidate = true;
+  form.appendChild(node('h3', 'ep-q', b ? b.name : 'Add a bill'));
+
+  let name = null;
+  if (b === null) {
+    name = node('input');
+    name.type = 'text';
+    name.maxLength = 60;
+    name.placeholder = 'Example Water';
+    name.autocomplete = 'off';
+    form.appendChild(epField('Name', name));
+  }
+
+  // Kind: one pressed at a time.
+  let kind = b?.date?.kind ?? 'due';
+  const kindField = node('div', 'ep-f');
+  const kindLabel = node('label', '', 'Kind');
+  kindLabel.id = `ep-kind-${++epFieldIds}`;
+  const seg = node('div', 'seg');
+  seg.setAttribute('role', 'group');
+  seg.setAttribute('aria-labelledby', kindLabel.id);
+  const kindBtns = BILL_KINDS.map(([k, words]) => {
+    const btn = node('button', 'hit', words);
+    btn.type = 'button';
+    btn.dataset.kind = k;
+    btn.setAttribute('aria-pressed', String(k === kind));
+    btn.addEventListener('click', () => {
+      kind = k;
+      for (const o of kindBtns) o.setAttribute('aria-pressed', String(o.dataset.kind === kind));
+    });
+    return btn;
+  });
+  seg.append(...kindBtns);
+  kindField.append(kindLabel, seg);
+  form.appendChild(kindField);
+
+  const per = node('select');
+  for (const [v, words] of BILL_PERS) per.appendChild(new Option(words, v));
+  per.value = b?.date?.per ?? 'month';
+  form.appendChild(epField('How often', per));
+
+  const day = node('input');
+  day.type = 'text';
+  day.inputMode = 'numeric';
+  day.maxLength = 2;
+  day.value = String(b?.date?.day ?? (b?.lastPaid ? Number(b.lastPaid.slice(8, 10)) : ''));
+  const dayLine = node('p', 'note');
+  dayLine.setAttribute('aria-live', 'polite');
+  const dayField = epField('Day of the month', day, dayLine);
+  const sayDay = () => {
+    const t = day.value.trim();
+    const n = /^\d+$/.test(t) ? Number(t) : NaN;
+    dayLine.textContent = !t || (n >= 1 && n <= 28) ? ''
+      : n >= 29 && n <= 31 ? 'In a shorter month it falls on the last day.' : 'A day from 1 to 31.';
+  };
+  day.addEventListener('input', sayDay);
+  sayDay();
+  form.appendChild(dayField);
+
+  const on = node('input');
+  on.type = 'date';
+  on.value = b?.date?.on ?? '';
+  const onField = epField('Next date', on);
+  form.appendChild(onField);
+  const showFor = () => { dayField.hidden = per.value !== 'month'; onField.hidden = per.value === 'month'; };
+  per.addEventListener('change', showFor);
+  showFor();
+
+  const { err, say } = epErr();
+  form.appendChild(err);
+
+  const acts = node('div', 'ep-acts');
+  const cancel = textBtn('Cancel', 'btn', null, close);
+  cancel.dataset.cancel = '';
+  acts.appendChild(cancel);
+  const save = node('button', 'btn primary', 'Save');
+  save.type = 'submit';
+  const base = { budget: month.budget, envelope: e.id };
+  const buttons = () => [...form.querySelectorAll('button')];
+
+  // One door for save, clear and remove: a refusal is told in the form's own slot, what was typed kept.
+  const send = async (args, focus) => {
+    for (const x of buttons()) x.disabled = true;
+    say('');
+    try {
+      const r = await approveNow('set_bill', args);
+      if (envelopePage !== page) return;
+      page.focusNext = focus ?? `bill:${b?.key ?? r.proposal?.events?.[0]?.bill}`;
+      try { await loadBudget(); } catch { say('Saved. The screen could not be read again; go Back to see it.'); }
+    } catch (ex) {
+      if (envelopePage !== page) return;
+      say(ex.message);
+      for (const x of buttons()) x.disabled = false;
+      err.focus({ preventScroll: true });
+    }
+  };
+
+  if (b?.date) {
+    acts.appendChild(textBtn('Clear the date', 'btn', null, () => send({ ...base, bill: b.key, clear: true })));
+  }
+  acts.appendChild(save);
+  form.appendChild(acts);
+
+  if (b?.byHand) {
+    const foot = node('div', 'ep-foot');
+    foot.appendChild(textBtn('Remove this bill', 'link danger hit', null, () => send({ ...base, bill: b.key, remove: true }, 'bill-add')));
+    form.appendChild(foot);
+  }
+
+  form.addEventListener('submit', (ev) => {
+    ev.preventDefault();
+    if (name) {
+      name.value = name.value.trim();
+      if (!name.value) { say('Give it a name'); name.focus({ preventScroll: true }); return; }
+    }
+    say('');
+    if (per.value === 'month') {
+      const t = day.value.trim();
+      const n = /^\d+$/.test(t) ? Number(t) : NaN;
+      if (!(n >= 1 && n <= 31)) { dayLine.textContent = 'A day from 1 to 31.'; day.focus({ preventScroll: true }); return; }
+    } else if (!on.value) {
+      say('Choose the next date.');
+      on.focus({ preventScroll: true });
+      return;
+    }
+    void send({
+      ...base, ...(b ? { bill: b.key } : { name: name.value }), kind, per: per.value,
+      ...(per.value === 'month' ? { day: Number(day.value.trim()) } : { on: on.value }),
+    });
+  });
+
+  const first = name ?? kindBtns.find((x) => x.dataset.kind === kind);
+  return { form, first };
 }
 
 // ── the unsorted queue ─────────────────────────────────────────────────────

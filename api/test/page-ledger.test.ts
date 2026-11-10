@@ -34,6 +34,53 @@ const uncommented = (text: string): string => text.replace(/<!--[\s\S]*?-->/g, '
 const missing = (list: readonly Line[], want: boolean): string[] => list
   .filter(([, text, region = 'plan']) => (want ? REGIONS[region] : uncommented(REGIONS[region])).includes(text) !== want)
   .map(([row, text, region = 'plan']) => `${row} (${region}): ${text}`);
+// ── Bills on the envelope's page (0.9.0, Part 1): its own block, so a branch working elsewhere in this file merges beside it. ──
+const billsPage = between(script, "// ── an envelope's page", '// ── the unsorted queue');
+const billsCode = between(script, "// ── an envelope's bills", '// ── the unsorted queue');
+const BILLS_KEPT: readonly (readonly [row: string, text: string])[] = [
+  ['E1', "back: 'Budget', onBack: () => closeEnvelopePage()"], ['E2', 'function envCard('], ['E2', 'coverBlock(e)'],
+  ['E3', 'How much each month?'], ['E3', 'From this month on'], ['E4', "envSection('Each month')"], ['E4', "textBtn('Change', 'btn bare', 'change'"],
+  ['E5', 'goalForm(each.slot, e,'], ['E6', "envSection('This month')"], ['E6', "'adjust', () => openFundingPage()"],
+  ['E6', 'Nothing funded yet. Give it a figure first.'], ['E7', "envSection('Receipts')"], ['E7', 'void showReceipts(rcpts, e)'],
+  ['E8', 'Make this a savings goal'], ['E8', 'Change its goal'], ['E8', 'Remove this envelope'],
+  ['E9', "host.querySelector('.ep-slot [data-cancel]')"], ['E9', "document.addEventListener('keydown', envPageEscape)"],
+  ['E10', 'const open = !month.closed'], ['S19', 'async function openBudgetAt('],
+];
+const BILLS_ADDED: readonly (readonly [row: string, text: string])[] = [
+  ['B1', "envSection('Bills', 'bills')"], ['B2', 'if (!e.sinking) body.appendChild(billsSection(e, open))'],
+  ['B3', "No bills in this envelope's receipts yet."], ['B4', 'envLine(b.name, b.line'], ['B5', "'Set a date'"], ['B5', "'Change'"],
+  ['B6', "'Add a bill'"], ['B7', "'Example Water'"], ['B7', 'maxLength = 60'], ['B8', "'Auto Pay'"], ['B8', "'Pay by'"], ['B8', "['due', 'Due']"],
+  ['B9', "'every month'"], ['B9', "'every quarter'"], ['B9', "'every six months'"], ['B9', "'every year'"],
+  ['B10', "'Day of the month'"], ['B10', 'In a shorter month it falls on the last day.'], ['B10', 'A day from 1 to 31.'],
+  ['B11', "'Next date'"], ['B12', "'Clear the date'"], ['B12', "dataset.cancel = ''"], ['B13', "'Remove this bill'"],
+  ['form', "approveNow('set_bill'"], ['form', 'function closeEpForm('], ['form', 'function closeBillForm('], ['form', "'Give it a name'"], ['form', 'Choose the next date.'],
+];
+/** Words this part may never say, and shared rows it may not disturb: S22 one error box, S3 nothing bound at load, the household's clock. */
+const BILLS_NEVER: readonly string[] = ['showProblem(', 'new Date(', 'overdue', 'Overdue', 'missed', ' late'];
+describe("the page ledger: Bills on the envelope's page, 0.9.0 Part 1", () => {
+  test('the section is inside the envelope page, and the markers are found', () => {
+    assert.ok(billsPage.length > 500 && billsCode.length > 500);
+    const hook = billsPage.indexOf('billsSection(e, open)');
+    assert.ok(billsPage.indexOf("envSection('This month')") < hook && hook < billsPage.indexOf("envSection('Receipts')"));
+  });
+  test('what the envelope page keeps', () => {
+    assert.deepEqual(BILLS_KEPT.filter(([, t]) => !billsPage.includes(t)).map(([r, t]) => `${r}: ${t}`), []);
+    assert.ok(page.includes('const chosenBudget ='), 'S21');
+    assert.ok(page.includes('id="unsorted-q"'), 'S20');
+  });
+  test('what Bills adds', () => {
+    // B2 is the hook in renderEnvelopePage. Every other row is the new block's own: 'Change' alone is on the page already.
+    assert.deepEqual(BILLS_ADDED.filter(([r, t]) => !(r === 'B2' ? billsPage : billsCode).includes(t)).map(([r, t]) => `${r}: ${t}`), []);
+    assert.ok(between(billsPage, 'const openGoal =', 'const drawEach =').includes('closeBillForm()'), 'E5');
+    assert.ok(between(billsPage, 'const drawEach =', "const now = envSection('This month')").includes('closeBillForm()'), 'E4');
+  });
+  test('what Bills never does', () => {
+    const code = uncommented(billsCode);
+    assert.deepEqual(BILLS_NEVER.filter((t) => code.includes(t)), []);
+    assert.equal(/^(?!(?:async )?function )\S.*\$\('/m.test(code), false, 'S3: nothing is bound at load');
+  });
+});
+
 /** On the page before 0.7.0 and after it: the ledger's Kept rows, and what other screens lean on. */
 const KEPT: readonly Line[] = [
   // Region `page`: the page's own loading markup, and helpers that live outside Plan's code and the shared region (Today, the rails, the view loader).
