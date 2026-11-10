@@ -5788,16 +5788,22 @@ function billForm(e, b, { close }) {
   const send = async (args, focus) => {
     for (const x of buttons()) x.disabled = true;
     say('');
+    let r;
     try {
-      const r = await approveNow('set_bill', args);
-      if (envelopePage !== page) return;
-      page.focusNext = focus ?? `bill:${b?.key ?? r.proposal?.events?.[0]?.bill}`;
-      try { await loadBudget(); } catch { say('Saved. The screen could not be read again; go Back to see it.'); }
+      r = await approveNow('set_bill', args);
     } catch (ex) {
       if (envelopePage !== page) return;
       say(ex.message);
       for (const x of buttons()) x.disabled = false;
       err.focus({ preventScroll: true });
+      return;
+    }
+    // Committed: the budget is read again even if Back was pressed meanwhile.
+    page.focusNext = focus ?? `bill:${b?.key ?? r.proposal?.events?.[0]?.bill}`;
+    try { await loadBudget(); } catch {
+      page.focusNext = null;
+      if (envelopePage !== page) return;
+      say('Saved. The screen could not be read again; go Back to see it.');
     }
   };
 

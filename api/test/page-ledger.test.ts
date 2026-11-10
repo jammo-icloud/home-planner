@@ -68,6 +68,26 @@ describe("the page ledger: Bills on the envelope's page, 0.9.0 Part 1", () => {
     assert.ok(page.includes('const chosenBudget ='), 'S21');
     assert.ok(page.includes('id="unsorted-q"'), 'S20');
   });
+  test('a saved bill reads the budget again even when the page changed meanwhile', async () => {
+    const start = billsCode.indexOf('const send = async (args, focus) => {');
+    const end = billsCode.indexOf('\n  };', start);
+    assert.ok(start > 0 && end > start, 'the send door is found');
+    const body = billsCode.slice(start, end + 5).replace('const send =', 'return');
+    const run = async (changePage: boolean) => {
+      const calls: string[] = [];
+      const page: { focusNext?: unknown } = {};
+      const state = { envelopePage: page as unknown };
+      const fn = new Function('approveNow', 'loadBudget', 'buttons', 'say', 'err', 'b', 'getEnvelopePage', 'page',
+        `let envelopePage; Object.defineProperty(globalThis, '__x', { configurable: true, get: () => 0 });
+         const get = getEnvelopePage; ${body.replace(/envelopePage/g, 'get()')}`);
+      const send = fn(async () => { if (changePage) state.envelopePage = {}; calls.push('set_bill'); return { proposal: { events: [{ bill: 'k' }] } }; },
+        async () => { calls.push('loadBudget'); }, () => [], () => {}, { focus() {} }, { key: 'k' }, () => state.envelopePage, page);
+      await send({}, null);
+      return calls;
+    };
+    assert.deepEqual(await run(false), ['set_bill', 'loadBudget']);
+    assert.deepEqual(await run(true), ['set_bill', 'loadBudget']);
+  });
   test('what Bills adds', () => {
     // B2 is the hook in renderEnvelopePage. Every other row is the new block's own: 'Change' alone is on the page already.
     assert.deepEqual(BILLS_ADDED.filter(([r, t]) => !(r === 'B2' ? billsPage : billsCode).includes(t)).map(([r, t]) => `${r}: ${t}`), []);
