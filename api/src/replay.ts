@@ -27,6 +27,8 @@ import {
   isGuest,
   isSpend,
   MODES,
+  areaIndex,
+  areaMoved,
   monthKey,
   moveKey,
   PAGE_FIELDS,
@@ -1441,29 +1443,30 @@ function fold(d: Draft, e: Event): void {
     }
 
     case 'areas.add': {
-      if (d.areas.some((a) => a.toLowerCase() === e.area.toLowerCase())) return;
+      if (areaIndex(d.areas, e.area) >= 0) return;
       d.areas = [...d.areas, e.area];
       return;
     }
 
     case 'areas.remove': {
-      if (!d.areas.includes(e.area)) return;
+      const at = areaIndex(d.areas, e.area);
+      if (at < 0) return;
+      const name = d.areas[at]!;
       if (d.areas.length === 1) throw new ReplayError('keep at least one area', e);
       // As areas.set: its plans would have no row to sit in. Done plans count; a removed plan is history.
-      if ([...d.plans.values()].some((p) => p.area === e.area && !p.removed)) {
-        throw new ReplayError(`"${e.area}" still has plans in it`, e);
+      if ([...d.plans.values()].some((p) => p.area === name && !p.removed)) {
+        throw new ReplayError(`"${name}" still has plans in it`, e);
       }
-      d.areas = d.areas.filter((a) => a !== e.area);
+      d.areas = d.areas.filter((_, i) => i !== at);
       return;
     }
 
     case 'areas.move': {
-      const from = d.areas.indexOf(e.area);
+      const from = areaIndex(d.areas, e.area);
       if (from < 0) throw new ReplayError(`there is no area called ${e.area}`, e);
       const to = Math.min(e.to, d.areas.length - 1);
       if (to === from) return;
-      const rest = d.areas.filter((a) => a !== e.area);
-      d.areas = [...rest.slice(0, to), e.area, ...rest.slice(to)];
+      d.areas = areaMoved(d.areas, from, to);
       return;
     }
 

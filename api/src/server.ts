@@ -202,7 +202,7 @@ import type { Proposal, ToolContext } from './tools.ts';
 import { firstRun } from './first-run.ts';
 import { missingStarter } from './starter.ts';
 import {
-  ARRIVAL_MAX, DEFAULT_AREAS, GUEST_PREFIX, householdDay, isDay, isEmail, MODES, SCHEMES, SPLIT, SYSTEM, isSpend, monthKey, monthOf, movesLeft, sameCalendar, zoneOf,
+  areaIndex, ARRIVAL_MAX, DEFAULT_AREAS, GUEST_PREFIX, householdDay, isDay, isEmail, MODES, SCHEMES, SPLIT, SYSTEM, isSpend, monthKey, monthOf, movesLeft, sameCalendar, zoneOf,
 } from './types.ts';
 import type { Actor, Assignment, Event, Mode, NewEventShape, Scheme, SplitPart, State, Txn } from './types.ts';
 import { parse, dedupeKey } from './parse.ts';
@@ -2303,13 +2303,15 @@ export async function start(
       if (kind === 'add') {
         const clash = known.find((a) => a.toLowerCase() === area.toLowerCase());
         if (clash !== undefined) throw new ToolError(`"${clash}" is already an area`);
-      } else if (!known.includes(area)) {
+      } else if (areaIndex(known, area) < 0) {
         throw new ToolError(`there is no area called ${area}`);
       }
       let e: NewEventShape;
       if (kind === 'move') {
         const to = body?.to;
         if (typeof to !== 'number' || !Number.isInteger(to) || to < 0) throw new ToolError('where it moves to must be a whole number, zero or more');
+        // Where it already stands is no change, and no line in the log.
+        if (Math.min(to, known.length - 1) === areaIndex(known, area)) return json(res, 200, { areas: known });
         e = { op: 'areas.move', area, to };
       } else {
         e = { op: kind === 'add' ? 'areas.add' : 'areas.remove', area };

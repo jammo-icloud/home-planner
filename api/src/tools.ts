@@ -48,7 +48,7 @@ import {
 } from './booking.ts';
 import type { BookingMail } from './booking.ts';
 import {
-  DRIFT_CHOICES, emailKey, isEmail, isGuest, isSpend, monthOf, monthKey, MONTHS_SHORT, partsOf, PERS, slug, SPLIT, TRANSFER, INCOME, zoneOf,
+  areaIndex, DRIFT_CHOICES, emailKey, isEmail, isGuest, isSpend, monthOf, monthKey, MONTHS_SHORT, partsOf, PERS, slug, SPLIT, TRANSFER, INCOME, zoneOf,
 } from './types.ts';
 import type {
   Actor, Assignment, BudgetId, BudgetLocation, Day, DriftChoice, Envelope, Event, Match, Month, Per, Plan, PlanState, SinkingEstimate, SinkingGoal, SplitPart, State, Txn,
@@ -803,7 +803,13 @@ export function describe(
     case 'areas.rename': what = `renamed the area ${e.from} to ${e.to}`; break;
     case 'areas.add': what = `added the area ${e.area}`; break;
     case 'areas.remove': what = `removed the area ${e.area}`; break;
-    case 'areas.move': what = `moved the area ${e.area} to place ${e.to + 1}`; break;
+    case 'areas.move': {
+      // The place it reached, not the index asked for: a request past the end lands at the end.
+      const list = state?.settings.areas;
+      const last = list === undefined ? e.to : list.length - (areaIndex(list, e.area) >= 0 ? 1 : 0);
+      what = `moved the area ${e.area} to place ${Math.min(e.to, last) + 1}`;
+      break;
+    }
     case 'links.set': what = 'set the links'; break;
     // Never what it says: it is how to get in, for a guest's confirmation.
     case 'guests.arrival': what = e.text.trim() ? 'updated the arrival note' : 'cleared the arrival note'; break;

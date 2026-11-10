@@ -422,6 +422,18 @@ describe('areas, one at a time', () => {
     await refuses({ op: 'areas.move', area: 'Attic', to: 0 }, /there is no area called Attic/);
     await refuses({ op: 'areas.move', area: 'House', to: -1 }, /must be a whole number/);
   });
+  test('all three find an area ignoring case, and keep the household\'s spelling', async () => {
+    await s.append('alice', [{ op: 'areas.set', areas: ['House', 'garden', 'Trips'] }, { op: 'areas.move', area: 'GARDEN', to: 0 }]);
+    assert.deepEqual(areas(), ['garden', 'House', 'Trips']);
+    await s.append('alice', { op: 'areas.remove', area: 'Garden' });
+    assert.deepEqual(areas(), ['House', 'Trips']);
+  });
+  test('a move says the place it reached, not the index asked for', async () => {
+    await s.append('alice', { op: 'areas.set', areas: ['House', 'Money', 'Trips', 'Garden'] });
+    const [e] = await s.append('alice', { op: 'areas.move', area: 'House', to: 99 });
+    assert.deepEqual(areas(), ['Money', 'Trips', 'Garden', 'House']);
+    assert.equal(describeEvent(e!, s.state).what, 'moved the area House to place 4');
+  });
   test('they are settings; an add and a remove are lines in Today, a move is not', async () => {
     const written = await s.append('alice', [{ op: 'areas.add', area: 'Garden' }, { op: 'areas.move', area: 'Garden', to: 0 }, { op: 'areas.remove', area: 'Garden' }]);
     for (const e of written) assert.equal(scopeOf(e), 'settings');

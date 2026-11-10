@@ -847,6 +847,23 @@ export const MODES: ReadonlySet<string> = new Set<Mode>(['light', 'dark', 'match
 
 export interface Appearance { readonly scheme: Scheme; readonly mode: Mode }
 
+/**
+ * Where an area stands in a list, found ignoring case (-1 when it is not there).
+ * The one way areas.add, areas.remove and areas.move find an area, in the fold
+ * and in the restore walk; the list keeps the household's own spelling.
+ */
+export const areaIndex = (areas: readonly string[], name: string): number => {
+  const lower = name.toLowerCase();
+  return areas.findIndex((a) => a.toLowerCase() === lower);
+};
+
+/** The list with the area at index `from` moved to `to`, held within the list. */
+export const areaMoved = (areas: readonly string[], from: number, to: number): string[] => {
+  const rest = areas.filter((_, i) => i !== from);
+  rest.splice(Math.min(to, rest.length), 0, areas[from]!);
+  return rest;
+};
+
 /** What a new household starts with, until someone sets its areas. */
 export const DEFAULT_AREAS: readonly string[] = ['House', 'Money', 'People', 'Trips'];
 

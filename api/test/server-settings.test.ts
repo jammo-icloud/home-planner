@@ -190,6 +190,11 @@ describe('settings on the sandbox, with no DSM behind it', () => {
     const none = await post('/remove', { area: 'Garden' });
     assert.deepEqual([none.status, none.json.error], [400, 'there is no area called Garden']);
     assert.deepEqual([(await post('/move', { area: 'House', to: 'first' })).status, (await post('/add', {})).status], [400, 400]);
+    const before = (await call(alice, 'GET', '/api/settings')).json;
+    const stays = await post('/move', { area: 'house', to: 0 });
+    assert.deepEqual(stays.json, { areas: ['House', 'Money'] }, 'a move to where it stands answers the list');
+    assert.deepEqual((await call(alice, 'GET', '/api/settings')).json.areas, before.areas);
+    assert.equal((await post('/move', { area: 'house', to: 50 })).json.areas.at(-1), 'House', 'found by name in any case, held within the list');
   });
 
   test('links are replaced whole, and only web addresses are links', async () => {

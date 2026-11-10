@@ -16,7 +16,7 @@
  */
 
 import { guestEmail, validate } from './replay.ts';
-import { isGuest } from './types.ts';
+import { areaIndex, areaMoved, isGuest } from './types.ts';
 import type { Event, State } from './types.ts';
 
 export type Scope = 'facts' | 'budgets' | 'months' | 'people' | 'thread' | 'settings' | 'plans' | 'bookings';
@@ -257,31 +257,64 @@ export function planRestore(
   }
 
   // ── prerequisites ────────────────────────────────────────────────────────
-  if (wanted.has('plans')) {
+  if (wanted.has('plans') || wanted.has('settings')) {
     // A plan's area must be one of the household's when it is made. Walk the
     // events as they will be written, so areas the backup's own settings bring
-    // (when taken too) count, and areas only the backup knows are named.
+    // (when taken too) count, and areas only the backup knows are named. The
+    // same walk keeps the live plans by area, for an area removed under them.
     let areas = target.settings.areas;
+    const livePlans = new Map<string, string>();
+    const parents = new Map<string, string>();
+    for (const p of target.plans.values()) {
+      if (p.removed) continue;
+      livePlans.set(p.id, p.area);
+      if (p.parent !== null) parents.set(p.id, p.parent);
+    }
     const inBackup = new Set(backup.events.flatMap((e) =>
       e.op === 'areas.set' ? e.areas : e.op === 'areas.rename' ? [e.to] : e.op === 'areas.add' ? [e.area] : []));
     const said = new Set<string>();
     for (const e of take) {
       if (e.op === 'areas.set') { areas = e.areas; continue; }
-      if (e.op === 'areas.rename') { areas = areas.map((a) => (a === e.from ? e.to : a)); continue; }
+      if (e.op === 'areas.rename') {
+        areas = areas.map((a) => (a === e.from ? e.to : a));
+        for (const [id, a] of livePlans) if (a === e.from) livePlans.set(id, e.to);
+        continue;
+      }
       if (e.op === 'areas.add') {
-        if (!areas.some((a) => a.toLowerCase() === e.area.toLowerCase())) areas = [...areas, e.area];
+        if (areaIndex(areas, e.area) < 0) areas = [...areas, e.area];
         continue;
       }
-      if (e.op === 'areas.remove') { areas = areas.filter((a) => a !== e.area); continue; }
-      if (e.op === 'areas.move') {
-        // Only membership matters to the walk, but the order is kept as the log will have it.
-        if (!areas.includes(e.area)) continue;
-        const rest = areas.filter((a) => a !== e.area);
-        const to = Math.min(e.to, areas.length - 1);
-        areas = [...rest.slice(0, to), e.area, ...rest.slice(to)];
+      // The three ops find an area as the fold does, ignoring case. Each way the
+      // fold would refuse one is named here, once, instead of failing at adopt.
+      if (e.op === 'areas.remove' || e.op === 'areas.move') {
+        const at = areaIndex(areas, e.area);
+        const name = at < 0 ? e.area : areas[at]!;
+        if (e.op === 'areas.move') {
+          if (at >= 0) areas = areaMoved(areas, at, Math.min(e.to, areas.length - 1));
+          else if (!said.has(`move ${name}`)) {
+            said.add(`move ${name}`);
+            missingPrerequisites.push(`the area "${name}" cannot be moved: it does not exist here at that point`);
+          }
+        } else if (at >= 0) {
+          const why = areas.length === 1 ? 'it would leave no area'
+            : [...livePlans.values()].some((a) => a === name) ? 'plans are still in it' : null;
+          if (why !== null) {
+            if (!said.has(`remove ${name}`)) {
+              said.add(`remove ${name}`);
+              missingPrerequisites.push(`the area "${name}" cannot be removed: ${why}`);
+            }
+          } else areas = areas.filter((_, i) => i !== at);
+        }
         continue;
       }
-      const area = e.op === 'plan.create' || e.op === 'plan.set' ? e.area : undefined;
+      // Which plans are live, by area, as the walk goes: a remove is refused while any is in the area.
+      if (e.op === 'plan.create') livePlans.set(e.plan, e.area);
+      else if (e.op === 'plan.set' && e.area !== undefined) {
+        livePlans.set(e.plan, e.area);
+        for (const [id, parent] of parents) if (parent === e.plan && livePlans.has(id)) livePlans.set(id, e.area);
+      } else if (e.op === 'plan.remove') livePlans.delete(e.plan);
+      if (e.op === 'plan.create' && e.parent !== undefined) parents.set(e.plan, e.parent);
+      const area = wanted.has('plans') && (e.op === 'plan.create' || e.op === 'plan.set') ? e.area : undefined;
       if (area === undefined || areas.includes(area) || said.has(area)) continue;
       said.add(area);
       missingPrerequisites.push(inBackup.has(area)

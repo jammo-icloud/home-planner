@@ -637,6 +637,71 @@ describe('an old single-log install is brought forward, not stranded', () => {
 });
 
 describe('plans and settings in a backup', () => {
+  describe('areas one at a time in a backup are found as the fold finds them', () => {
+    /** The backup's text of a household that ran `ops`, without the lines whose op is in `drop`. */
+    const backupOfOps = async (ops: Parameters<Store['append']>[1], drop: readonly string[] = []) => {
+      const source = await new Households(await dir()).create('alice', 'Rivera');
+      await source.store.append('alice', ops);
+      const text = await readFile(source.store.path, 'utf8');
+      return parseBackup(text.split('\n').filter((l) => !drop.some((op) => l.includes(`"op":"${op}"`))).join('\n'));
+    };
+    const target = async (areas: string[]) => {
+      const { store } = await fresh();
+      await store.append('bob', { op: 'areas.set', areas });
+      return store;
+    };
+
+    test('a move of an area the household spells differently moves the household\'s own', async () => {
+      const backup = await backupOfOps([{ op: 'areas.add', area: 'Garden' }, { op: 'areas.move', area: 'Garden', to: 0 }]);
+      const store = await target(['House', 'garden']);
+      const plan = planRestore(store.state, backup, ['settings']);
+      assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
+      await store.adopt(eventsToApply(plan));
+      assert.deepEqual([...store.state.settings.areas], ['garden', 'House']);
+    });
+
+    test('a remove of an area the household spells differently removes the household\'s own', async () => {
+      const backup = await backupOfOps([{ op: 'areas.add', area: 'Garden' }, { op: 'areas.remove', area: 'Garden' }]);
+      const store = await target(['House', 'garden']);
+      const plan = planRestore(store.state, backup, ['settings']);
+      assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
+      await store.adopt(eventsToApply(plan));
+      assert.deepEqual([...store.state.settings.areas], ['House']);
+    });
+
+    test('a move of an area that is not there, a remove under plans and a remove of the last area are named, and adopt would refuse each', async () => {
+      const moveOnly = await backupOfOps([{ op: 'areas.add', area: 'Garden' }, { op: 'areas.move', area: 'Garden', to: 0 }], ['areas.add']);
+      const a = await target(['House', 'Money']);
+      const moved = planRestore(a.state, moveOnly, ['settings']);
+      assert.deepEqual(moved.missingPrerequisites, ['the area "Garden" cannot be moved: it does not exist here at that point']);
+      assert.throws(() => eventsToApply(moved), /nothing was restored/);
+
+      const removal = await backupOfOps([{ op: 'areas.add', area: 'Garden' }, { op: 'areas.remove', area: 'Garden' }], ['areas.add']);
+      const b = await target(['House', 'Garden']);
+      await b.append('bob', [{ op: 'plan.create', plan: 'beds', title: 'Dig the beds', area: 'Garden' },
+        { op: 'plan.state', plan: 'beds', state: 'done' }]);
+      const held = planRestore(b.state, removal, ['settings']);
+      assert.deepEqual(held.missingPrerequisites, ['the area "Garden" cannot be removed: plans are still in it']);
+      assert.throws(() => eventsToApply(held), /nothing was restored/);
+
+      const last = await target(['Garden']);
+      const lone = planRestore(last.state, removal, ['settings']);
+      assert.deepEqual(lone.missingPrerequisites, ['the area "Garden" cannot be removed: it would leave no area']);
+      assert.throws(() => eventsToApply(lone), /nothing was restored/);
+    });
+
+    test('an area emptied by the same restore may then be removed', async () => {
+      const backup = await backupOfOps([{ op: 'areas.add', area: 'Garden' },
+        { op: 'plan.create', plan: 'beds', title: 'Dig the beds', area: 'Garden' }, { op: 'plan.remove', plan: 'beds', why: 'done elsewhere' },
+        { op: 'areas.remove', area: 'Garden' }]);
+      const store = await target(['House']);
+      const plan = planRestore(store.state, backup, ['settings', 'plans']);
+      assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
+      await store.adopt(eventsToApply(plan));
+      assert.deepEqual([...store.state.settings.areas], ['House']);
+    });
+  });
+
   test('a plan in an area that areas.add made needs Settings taken with it, and then restores', async () => {
     const source = await new Households(await dir()).create('alice', 'Rivera');
     await source.store.append('alice', [{ op: 'areas.add', area: 'Garden' }, { op: 'areas.move', area: 'Garden', to: 0 },
