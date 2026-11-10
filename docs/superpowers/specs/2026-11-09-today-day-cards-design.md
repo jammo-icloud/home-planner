@@ -388,14 +388,13 @@ never scroll the page sideways and the composer never covers a focused field.
 ## Mockup
 
 The boards are on the owner's private canvas "Today, redesigned" (claude.ai artifact
-`SEySRupmbgydpMd6Qjf5sF`): Today, Earlier days, Budget only, Searching, On the desk. No static copies are in
-the tree. Where a board and this document disagree, this document is right:
+`SEySRupmbgydpMd6Qjf5sF`): Today, Earlier days, Budget only, Searching, On the desk. They were redrawn to this
+document; no static copies are in the tree. Where a board still disagrees, this document is right:
 
-- Every board uses the household's real first names (here Alex, the viewer, Bob and Casey), draws Approve
-  first, a people bar without counts (the owner has since ruled them in), and no search box in the top bar.
-- Today, Earlier days, On the desk: the "Take Fix the gutter" card with "Take it" and "Decline", and its row
-  in the waiting list, predate the ruling that "Hand it to" replaces asking. A hand-over is a notice row.
-- Today: the open head shows lane icons, which predates the ruling that a head names who wrote; the Yours rows
-  are hand-composed; the calendar row's quoted reason and "sorted 3 receipts" are not the server's.
-- Budget only: its bespoke counts and left-out line are replaced. Searching: the foot's second sentence goes.
+- Every board uses the household's real first names; here they are Alex (the viewer), Bob and Casey.
+- Today, On the desk: "Looked at this month's envelopes and the receipts." is not a line `LOOKED` writes.
+- Today, On the desk: in Yours, the plan's "from <member>" is the board's wording; the row shows the chips the
+  plans rail draws. On the desk, "Dining out · no figure yet" is not a row `moneyRail` draws, and the lane
+  icon and chevron on each rail row are not in the column as it is now.
+- Earlier days: the decided card keeps its from-line; here a decided card is its title and one settled line.
 

@@ -260,7 +260,8 @@ $146", "last paid 14 Oct", or "no receipts yet") and its date when it has one ("
 "Auto Pay on the 16th, every month", "Pay by the 16th, every month"; for a longer period "Due on 14 February,
 every quarter", "every six months", "every year"); and one action, "Set a date", or "Change" when it has one
 (neither in a closed month). The last row is "Add a bill". With no bills the section starts "No bills in this
-envelope's receipts yet." The action swaps the line for a form in place:
+envelope's receipts yet." The action swaps the line for a form in place, headed with the bill's name ("Add a
+bill" on the last row):
 
 - *Name*, on Add a bill only: text, required, 60 characters, placeholder "Example Water".
 - *Kind*: a group of three, "Due", "Auto Pay", "Pay by", starting on Due: a label, all three behave the same.
@@ -394,14 +395,14 @@ spec's rule): the chip is "Record" and the row is "The day's record".
 
 Every row, cell, chip and day head is a real button or link with a 44px target (the arrows, "Today" and the
 chips are drawn smaller and padded to it). A strip cell's name is the full date and every mark in words:
-"Saturday 14 November, 4 things, a plan in progress, money, a clash, nights held", or "nothing on". A row's
-name carries its time, whose calendar and its state words; a clashing row adds "clashes with another event",
-so red is never the only signal; a money row's is its word, envelope, bill, amount and "no receipt yet" when
-it says so. The bar and the overlays are groups of `aria-pressed` buttons; the month is `aria-expanded`; the
-chosen day is `aria-current="date"`. Every form field has a label; error slots are always rendered; live lines
-are `aria-live="polite"`. Escape closes an open form or the picker before anything else, and focus returns to
-what opened it. A committed change always reloads. At 375 × 812 the first field of a form opened in place is
-scrolled into the top half. Nothing depends on hover.
+"Saturday 14 November, 4 things, a plan in progress, money, a clash, nights held", or "nothing on"; a red `$`
+reads "money short". A row's name carries its time, whose calendar and its state words; a clashing row adds
+"clashes with another event", so red is never the only signal; a money row's is its word, envelope, bill,
+amount and "no receipt yet" when it says so. The bar and the overlays are groups of `aria-pressed` buttons;
+the month is `aria-expanded`; the chosen day is `aria-current="date"`. Every form field has a label; error
+slots are always rendered; live lines are `aria-live="polite"`. Escape closes an open form or the picker
+before anything else, and focus returns to what opened it. A committed change always reloads. At 375 × 812 the
+first field of a form opened in place is scrolled into the top half. Nothing depends on hover.
 
 ## Left to the builder
 
@@ -448,13 +449,11 @@ scrolled into the top half. Nothing depends on hover.
 ## Mockup
 
 The boards are on the owner's private canvas "Calendar, as a day" (claude.ai artifact
-`PB6RsPTZ33w9cdAAHKZpKz`; six boards: Day, Week, DayFiltered, New, Month, Desk). Static copies are not in the
-tree; the words above are the contract. Wrong in them:
+`PB6RsPTZ33w9cdAAHKZpKz`), redrawn to this document, seven of them: Day, Week, DayFiltered, New, Month, Bills
+(an envelope's page) and Desk. The words above are the contract. Beyond the household's real names:
 
-- *All of them* use the household's real names, say "Thread" for "Record", show a place and a person under
-  event titles (Call 13), link with addresses where the page links by function, and draw controls under 44px.
-- *Day, Month, Desk* predate the ruling on bills: their money row says "due" for a day nobody set, and no
-  board draws a kind, a PAID row or the Bills section (Calls 1 to 8).
-- *Day, Week, New, Desk:* a hatch on the morning a stay leaves; the code holds the nights before it.
-- *DayFiltered:* predates the reading of ruling 3 in Call 9, and words "also has" differently (Call 11).
-- *New:* no Notes field (Call 13); the overlap line's dash is "to" here.
+- *Bills:* "A day from 1 to 31." is drawn under a good day (3); it is said only of a value that is not one.
+- *New:* the chips read 5:30, 6:00 and 3:30 PM; `freeSlotsNear` offers no overlap, so 5:30, 3:30 and 6:30.
+- *Desk:* the two clashing boxes print "clash" in their second line; here only an accessible name says it.
+- *Accessible names:* DayFiltered's strip cells say the date and whose calendar, and Month's grid cells
+  nothing, where every cell names its date and marks. Error slots are `role="alert"`, not polite.
