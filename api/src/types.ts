@@ -530,6 +530,12 @@ export type Event = Meta &
      * still holds plans, and a set refuses to drop it.
      */
     | { op: 'areas.rename'; from: string; to: string }
+    /** One area added at the end of the list; nothing when one by that name (in any case) is there. */
+    | { op: 'areas.add'; area: string }
+    /** One area dropped; refused while any plan not removed sits in it, in any state, and for the last one. */
+    | { op: 'areas.remove'; area: string }
+    /** One area moved to index `to` of the list (held within it). */
+    | { op: 'areas.move'; area: string; to: number }
     /** The household's links, replaced whole. */
     | { op: 'links.set'; links: readonly { label: string; url: string }[] }
     /**

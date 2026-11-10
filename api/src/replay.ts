@@ -491,6 +491,15 @@ function validateSettings(e: Event): void {
       if (e.from === e.to) throw new ReplayError(`${e.from} is already its name`, e);
       return;
     }
+    case 'areas.add': case 'areas.remove': case 'areas.move': {
+      const area: unknown = e.area;
+      if (!named(area) || area !== area.trim()) throw new ReplayError('an area needs a name, with no spaces around it', e);
+      if (area.length > 60) throw new ReplayError("an area's name is at most 60 characters", e);
+      if (e.op === 'areas.move' && !(Number.isInteger(e.to) && e.to >= 0)) {
+        throw new ReplayError('where it moves to must be a whole number, zero or more', e);
+      }
+      return;
+    }
     case 'guests.arrival': {
       const text: unknown = e.text;
       if (typeof text !== 'string') throw new ReplayError('the arrival note is text', e);
@@ -1428,6 +1437,33 @@ function fold(d: Draft, e: Event): void {
       for (const p of d.plans.values()) {
         if (p.area === e.from && !p.removed) d.plans.set(p.id, { ...p, area: e.to });
       }
+      return;
+    }
+
+    case 'areas.add': {
+      if (d.areas.some((a) => a.toLowerCase() === e.area.toLowerCase())) return;
+      d.areas = [...d.areas, e.area];
+      return;
+    }
+
+    case 'areas.remove': {
+      if (!d.areas.includes(e.area)) return;
+      if (d.areas.length === 1) throw new ReplayError('keep at least one area', e);
+      // As areas.set: its plans would have no row to sit in. Done plans count; a removed plan is history.
+      if ([...d.plans.values()].some((p) => p.area === e.area && !p.removed)) {
+        throw new ReplayError(`"${e.area}" still has plans in it`, e);
+      }
+      d.areas = d.areas.filter((a) => a !== e.area);
+      return;
+    }
+
+    case 'areas.move': {
+      const from = d.areas.indexOf(e.area);
+      if (from < 0) throw new ReplayError(`there is no area called ${e.area}`, e);
+      const to = Math.min(e.to, d.areas.length - 1);
+      if (to === from) return;
+      const rest = d.areas.filter((a) => a !== e.area);
+      d.areas = [...rest.slice(0, to), e.area, ...rest.slice(to)];
       return;
     }
 

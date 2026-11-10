@@ -801,6 +801,9 @@ export function describe(
     case 'flag.seen': what = 'marked a change as seen'; break;
     case 'areas.set': what = `set the areas to ${e.areas.join(', ')}`; break;
     case 'areas.rename': what = `renamed the area ${e.from} to ${e.to}`; break;
+    case 'areas.add': what = `added the area ${e.area}`; break;
+    case 'areas.remove': what = `removed the area ${e.area}`; break;
+    case 'areas.move': what = `moved the area ${e.area} to place ${e.to + 1}`; break;
     case 'links.set': what = 'set the links'; break;
     // Never what it says: it is how to get in, for a guest's confirmation.
     case 'guests.arrival': what = e.text.trim() ? 'updated the arrival note' : 'cleared the arrival note'; break;

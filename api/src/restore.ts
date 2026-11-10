@@ -44,7 +44,7 @@ export function scopeOf(e: Event): Scope {
       return 'thread';
     // How the household is set up, apart from its money: areas, links, the
     // calendars and how the app looks.
-    case 'areas.set': case 'areas.rename': case 'links.set': case 'guests.arrival':
+    case 'areas.set': case 'areas.rename': case 'areas.add': case 'areas.remove': case 'areas.move': case 'links.set': case 'guests.arrival':
     case 'calendar.household': case 'calendar.household.rename': case 'calendar.target': case 'calendar.conflicts':
     case 'scheme.set': case 'savings.account':
     case 'household.zone': case 'guests.booking': case 'envelopes.model':
@@ -263,11 +263,24 @@ export function planRestore(
     // (when taken too) count, and areas only the backup knows are named.
     let areas = target.settings.areas;
     const inBackup = new Set(backup.events.flatMap((e) =>
-      e.op === 'areas.set' ? e.areas : e.op === 'areas.rename' ? [e.to] : []));
+      e.op === 'areas.set' ? e.areas : e.op === 'areas.rename' ? [e.to] : e.op === 'areas.add' ? [e.area] : []));
     const said = new Set<string>();
     for (const e of take) {
       if (e.op === 'areas.set') { areas = e.areas; continue; }
       if (e.op === 'areas.rename') { areas = areas.map((a) => (a === e.from ? e.to : a)); continue; }
+      if (e.op === 'areas.add') {
+        if (!areas.some((a) => a.toLowerCase() === e.area.toLowerCase())) areas = [...areas, e.area];
+        continue;
+      }
+      if (e.op === 'areas.remove') { areas = areas.filter((a) => a !== e.area); continue; }
+      if (e.op === 'areas.move') {
+        // Only membership matters to the walk, but the order is kept as the log will have it.
+        if (!areas.includes(e.area)) continue;
+        const rest = areas.filter((a) => a !== e.area);
+        const to = Math.min(e.to, areas.length - 1);
+        areas = [...rest.slice(0, to), e.area, ...rest.slice(to)];
+        continue;
+      }
       const area = e.op === 'plan.create' || e.op === 'plan.set' ? e.area : undefined;
       if (area === undefined || areas.includes(area) || said.has(area)) continue;
       said.add(area);

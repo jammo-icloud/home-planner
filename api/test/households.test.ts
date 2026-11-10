@@ -548,7 +548,8 @@ describe('the scope of every event is decided, not guessed', () => {
       ['budget.create', 'budgets'], ['envelope.define', 'budgets'], ['income.source.define', 'budgets'],
       ['month.open', 'months'], ['assign', 'months'], ['move', 'months'],
       ['household.claim', 'people'], ['member.add', 'people'], ['briefing.read', 'people'],
-      ['areas.set', 'settings'], ['calendar.household', 'settings'], ['calendar.household.rename', 'settings'],
+      ['areas.set', 'settings'], ['areas.add', 'settings'], ['areas.remove', 'settings'], ['areas.move', 'settings'],
+      ['calendar.household', 'settings'], ['calendar.household.rename', 'settings'],
     ];
     for (const [op, expected] of samples) {
       assert.equal(scopeOf({ op } as Event), expected, `${op} should be ${expected}`);
@@ -636,6 +637,19 @@ describe('an old single-log install is brought forward, not stranded', () => {
 });
 
 describe('plans and settings in a backup', () => {
+  test('a plan in an area that areas.add made needs Settings taken with it, and then restores', async () => {
+    const source = await new Households(await dir()).create('alice', 'Rivera');
+    await source.store.append('alice', [{ op: 'areas.add', area: 'Garden' }, { op: 'areas.move', area: 'Garden', to: 0 },
+      { op: 'plan.create', plan: 'beds', title: 'Dig the beds', area: 'Garden' }]);
+    const backup = parseBackup(await readFile(source.store.path, 'utf8'));
+    const { store } = await fresh();
+    assert.match(planRestore(store.state, backup, ['plans']).missingPrerequisites.join('\n'), /"Garden" need that area, which is in the backup but not selected/);
+    const plan = planRestore(store.state, backup, ['settings', 'plans']);
+    assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
+    await store.adopt(eventsToApply(plan));
+    assert.deepEqual([store.state.settings.areas[0], store.state.plans.get('beds')!.area], ['Garden', 'Garden']);
+  });
+
   /** A household with a board (in a custom area), a checklist, and a Household calendar. */
   const backupOf = async (): Promise<string> => {
     const hh = new Households(await dir());

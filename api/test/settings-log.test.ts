@@ -396,3 +396,37 @@ describe('where documents live', () => {
     assert.equal(d({ op: 'documents.moved', file: { link: DOC.link } }), 'left a document where Drive keeps it, outside the old folder');
   });
 });
+
+describe('areas, one at a time', () => {
+  const areas = () => [...s.state.settings.areas];
+  test('add, move and remove change the list, and nothing when it is already so', async () => {
+    await s.append('alice', { op: 'areas.set', areas: ['House', 'Money', 'Trips'] });
+    await s.append('bob', { op: 'areas.add', area: 'Garden' });
+    assert.deepEqual(areas(), ['House', 'Money', 'Trips', 'Garden']);
+    await s.append('bob', [{ op: 'areas.add', area: 'garden' }, { op: 'areas.remove', area: 'Attic' }, { op: 'areas.move', area: 'Garden', to: 99 }]);
+    assert.deepEqual(areas(), ['House', 'Money', 'Trips', 'Garden']);
+    await s.append('bob', { op: 'areas.move', area: 'Garden', to: 0 });
+    assert.deepEqual(areas(), ['Garden', 'House', 'Money', 'Trips']);
+    await s.append('bob', { op: 'areas.remove', area: 'Garden' });
+    assert.deepEqual(areas(), ['House', 'Money', 'Trips']);
+  });
+  test('the fold refuses an area that holds a plan in any state, the last area, a bad name and a move of nothing', async () => {
+    await s.append('alice', [{ op: 'areas.set', areas: ['House', 'Money'] },
+      { op: 'plan.create', plan: 'p1', title: 'Paint', area: 'House' }, { op: 'plan.state', plan: 'p1', state: 'done' }]);
+    const refuses = (e: NewEventShape, re: RegExp) => assert.rejects(() => s.append('alice', e), re);
+    await refuses({ op: 'areas.remove', area: 'House' }, /"House" still has plans in it/);
+    await s.append('alice', [{ op: 'areas.remove', area: 'Money' }, { op: 'plan.remove', plan: 'p1', why: 'painted' }]);
+    await refuses({ op: 'areas.remove', area: 'House' }, /keep at least one area/);
+    await refuses({ op: 'areas.add', area: ' Garden' }, /an area needs a name, with no spaces around it/);
+    await refuses({ op: 'areas.add', area: 'x'.repeat(61) }, /an area's name is at most 60 characters/);
+    await refuses({ op: 'areas.move', area: 'Attic', to: 0 }, /there is no area called Attic/);
+    await refuses({ op: 'areas.move', area: 'House', to: -1 }, /must be a whole number/);
+  });
+  test('they are settings; an add and a remove are lines in Today, a move is not', async () => {
+    const written = await s.append('alice', [{ op: 'areas.add', area: 'Garden' }, { op: 'areas.move', area: 'Garden', to: 0 }, { op: 'areas.remove', area: 'Garden' }]);
+    for (const e of written) assert.equal(scopeOf(e), 'settings');
+    assert.equal(describeEvent(written[1]!, s.state).what, 'moved the area Garden to place 1');
+    const lines = (await thread(s, { who: 'bob', budget: null })).entries.flatMap((e) => (e.kind === 'change' ? [e.what] : []));
+    assert.deepEqual(lines.filter((w) => /Garden/.test(w)), ['added the area Garden', 'removed the area Garden']);
+  });
+});

@@ -33,6 +33,8 @@ const NOT_A_CHANGE = new Set<string>(['briefing.read', 'prediction.record',
   // One member's own preferences: how the app looks to them, and which of
   // their calendars are checked. Not something the household decided.
   'scheme.set', 'calendar.conflicts',
+  // Where an area stands in the list: an order, not a decision about the household.
+  'areas.move',
   // The app keeping a plan's page in Drive written: the change was the plan's.
   'plan.doc',
   // A file carried to the household's new folder: the change was the choice of folder.

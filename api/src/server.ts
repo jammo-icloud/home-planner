@@ -75,6 +75,9 @@
  *   GET  /api/settings              the household's settings, your own appearance, whether documents go to Drive, and the software version
  *   POST /api/settings/areas        replace the household's areas
  *   POST /api/settings/areas/rename rename one area, and move its plans with it
+ *   POST /api/settings/areas/add    add one area at the end
+ *   POST /api/settings/areas/remove drop one area (refused while plans sit in it)
+ *   POST /api/settings/areas/move   move one area to a place in the list
  *   POST /api/settings/links        replace the household's links
  *   POST /api/settings/appearance   how the app looks to you
  *   POST /api/settings/zone         { zone }: the time zone the household's days are read in; the owner's, and a name ICU knows
@@ -201,7 +204,7 @@ import { missingStarter } from './starter.ts';
 import {
   ARRIVAL_MAX, DEFAULT_AREAS, GUEST_PREFIX, householdDay, isDay, isEmail, MODES, SCHEMES, SPLIT, SYSTEM, isSpend, monthKey, monthOf, movesLeft, sameCalendar, zoneOf,
 } from './types.ts';
-import type { Actor, Assignment, Event, Mode, Scheme, SplitPart, State, Txn } from './types.ts';
+import type { Actor, Assignment, Event, Mode, NewEventShape, Scheme, SplitPart, State, Txn } from './types.ts';
 import { parse, dedupeKey } from './parse.ts';
 import { thread } from './thread.ts';
 import { decide, refresh, adjust, raiseSavingsCard } from './offers.ts';
@@ -2289,6 +2292,36 @@ export async function start(
         throw err;
       }
       return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+    }
+
+    if (/^\/api\/settings\/areas\/(add|remove|move)$/.test(path) && req.method === 'POST') {
+      const kind = path.slice(path.lastIndexOf('/') + 1) as 'add' | 'remove' | 'move';
+      const body = (await readBody(req)) as { area?: unknown; to?: unknown } | null;
+      const area = typeof body?.area === 'string' ? body.area.trim() : '';
+      if (!area) throw new ToolError('say which area');
+      const known = active.state.settings.areas;
+      if (kind === 'add') {
+        const clash = known.find((a) => a.toLowerCase() === area.toLowerCase());
+        if (clash !== undefined) throw new ToolError(`"${clash}" is already an area`);
+      } else if (!known.includes(area)) {
+        throw new ToolError(`there is no area called ${area}`);
+      }
+      let e: NewEventShape;
+      if (kind === 'move') {
+        const to = body?.to;
+        if (typeof to !== 'number' || !Number.isInteger(to) || to < 0) throw new ToolError('where it moves to must be a whole number, zero or more');
+        e = { op: 'areas.move', area, to };
+      } else {
+        e = { op: kind === 'add' ? 'areas.add' : 'areas.remove', area };
+      }
+      try {
+        await active.append(who, e);
+      } catch (err) {
+        // A fold refusal (plans still in it, the last area, a name too long) is the caller's to fix.
+        if (err instanceof ReplayError) throw new ToolError(err.message.replace(/ \(event .*\)$/, ''), 400);
+        throw err;
+      }
+      return json(res, 200, { areas: active.state.settings.areas });
     }
 
     if (path === '/api/settings/links' && req.method === 'POST') {

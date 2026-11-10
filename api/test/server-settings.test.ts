@@ -179,6 +179,19 @@ describe('settings on the sandbox, with no DSM behind it', () => {
     assert.deepEqual((await call(tester, 'GET', '/api/settings')).json.areas, ['House', 'Yard']);
   });
 
+  test('an area is added, moved and removed by name, and a refusal is a 400 in words', async () => {
+    const post = (sub: string, body: unknown) => call(alice, 'POST', `/api/settings/areas${sub}`, body);
+    assert.equal((await post('', { areas: ['House', 'Money'] })).status, 200);
+    assert.deepEqual((await post('/add', { area: ' Garden ' })).json, { areas: ['House', 'Money', 'Garden'] });
+    const again = await post('/add', { area: 'garden' });
+    assert.deepEqual([again.status, again.json.error], [400, '"Garden" is already an area']);
+    assert.deepEqual((await post('/move', { area: 'Garden', to: 0 })).json, { areas: ['Garden', 'House', 'Money'] });
+    assert.deepEqual((await post('/remove', { area: 'Garden' })).json, { areas: ['House', 'Money'] });
+    const none = await post('/remove', { area: 'Garden' });
+    assert.deepEqual([none.status, none.json.error], [400, 'there is no area called Garden']);
+    assert.deepEqual([(await post('/move', { area: 'House', to: 'first' })).status, (await post('/add', {})).status], [400, 400]);
+  });
+
   test('links are replaced whole, and only web addresses are links', async () => {
     const bad = await call(tester, 'POST', '/api/settings/links',
       { links: [{ label: 'Oops', url: 'javascript:alert(1)' }] });
