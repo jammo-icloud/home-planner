@@ -240,3 +240,9 @@ test("Today's new rules name tokens, never literals", () => {
   assert.ok(css.length > 200, 'the section is found');
   assert.deepEqual(css.replace(/[^{}]+\{/g, '{').match(/#[0-9a-f]{3,8}\b|rgba?\(|\d(px|em|rem)\b|font-weight:\s*\d|letter-spacing:\s*-?[\d.]|opacity:/gi), null);
 });
+
+test("the people bar presses Everyone when the pressed member has nothing in view, the choice kept", () => {
+  const b = between(REGIONS.today, 'function drawPeople(', '/** What the kind and person pressed leave out');
+  assert.match(b, /people\.some\(\(p\) => p\.key === threadData\.who\)/, 'pressed is a member only when among the people shown');
+  assert.doesNotMatch(b, /pressPerson\(null\)/, 'the choice is not cleared');
+});

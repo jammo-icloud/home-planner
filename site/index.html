@@ -3111,8 +3111,9 @@ function drawPeople() {
   const count = new Map();
   for (const d of threadData.days) for (const b of d.by) count.set(b.who, (count.get(b.who) ?? 0) + b.count);
   const people = peopleOrder().filter((m) => count.has(m)).map((m) => ({ key: m, label: m, n: Math.max(1, count.get(m)) }));
-  const pressed = threadData.who === 'everyone' ? null : threadData.who;
-  host.hidden = pressed === null && people.length <= 1;
+  // A member with nothing in view has no button: Everyone shows pressed, while the choice (personPressed) is kept.
+  const pressed = threadData.who !== 'everyone' && people.some((p) => p.key === threadData.who) ? threadData.who : null;
+  host.hidden = threadData.who === 'everyone' && people.length <= 1;
   if (host.hidden) { host.textContent = ''; return; }
   peopleBar(host, {
     label: 'Whose', pressed, noun: 'entry', plural: 'entries',
