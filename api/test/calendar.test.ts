@@ -1564,10 +1564,22 @@ describe('due dates and blocks become events', () => {
     const c = await setup();
     await c.store.append('alice', { op: 'member.add', member: 'casey', why: 'a housemate' });
     await bobHasPT(c, '10:00', '11:00');
+    // The Household calendar exists once a sync has made it; put one event on it and one on alice's own, both today.
+    await syncDue(c, gate(c), '2026-11-07');
+    const hh = c.store.state.calendar.household!;
+    const todayAt = (hhmm: string) => at(`2026-10-29T${hhmm}:00-06:00`);
+    await createEvent(c.sid!, { cal_id: '/alice/home/', original_cal_id: '/alice/home/', summary: 'Dentist', description: '',
+      is_all_day: false, dtstart: todayAt('08:00'), dtend: todayAt('09:00'), tz_id: ZONE }, via);
+    await createEvent(c.sid!, { cal_id: hh.cal_id, original_cal_id: hh.original_cal_id, summary: 'Bin day', description: '',
+      is_all_day: false, dtstart: todayAt('12:00'), dtend: todayAt('12:30'), tz_id: ZONE }, via);
     const day = await todayEvents(c);
     const all = [...day.today, ...day.tomorrow];
-    for (const e of all.filter((x) => x.calendar === 'mine')) assert.equal(e.owner, 'alice');
-    for (const e of all.filter((x) => x.calendar === 'household')) assert.equal(e.owner, null);
+    const mine = all.filter((x) => x.calendar === 'mine');
+    const house = all.filter((x) => x.calendar === 'household');
+    assert.ok(mine.some((e) => e.summary === 'Dentist'), "alice's own event is read");
+    assert.ok(house.some((e) => e.summary === 'Bin day'), 'the Household event is read');
+    for (const e of mine) assert.equal(e.owner, 'alice');
+    for (const e of house) assert.equal(e.owner, null);
     const week = await weekEvents(c, { start: '2026-11-02', end: '2026-11-09' });
     assert.equal(week.events.find((e) => e.summary === 'PT')!.owner, 'bob');
     // A calendar whose id begins with a member's name is that member's, in any case; a stranger's is nobody's.
