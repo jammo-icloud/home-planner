@@ -96,7 +96,7 @@ const ADDED: readonly Line[] = [
   // and the head's keeps (the title, the chips row, a finished plan's "Done", Due date and Block time).
   ['card', 'function cardEscape('], ['card', 'async function closeCard('], ['card', 'let cardFrom'], ['P51', "note: 'Also in Today'"], ['P50', 'Leave a note about this'],
   ['P21', "title.setAttribute('aria-label', `${v.title}, rename`)"], ['P25', "chip('', 'Done', 'check')"], ['P33', 'staleChip(v.daysInState)'],
-  ['P31', 'Take off ${t}`'], ['P68', 'cancelMark(input, close)'], ['P68', 'cancelMark(row, close)'], ['P68', 'cancelMark(cancel, close)', 'shared'], ['P68', 'cancelMark(cancel, close)'], ['P23', "stateGlyph(s, { small: true })"],
+  ['P31', 'Take off ${t}`'], ['P68', 'cancelMark(input, close)'], ['P68', 'cancelMark(row, close)'], ['P68', 'cancelMark(cancel, close)', 'shared'], ['P68', 'cancelMark(cancelSearch, closeSearch)'], ['P68', 'cancelMark(cancelMoney, closeMoney)'], ['P68', 'cancelMark(f, closeApprove)', 'page'], ['P68', 'cancelMark(amountField, closeAdjust)', 'page'], ['P50', 'keepTextOnEscape(q)'], ['P50', 'keepTextOnEscape(t)'], ['P23', "stateGlyph(s, { small: true })"],
   // Leaving a household (a switch, the picker, sign-out) goes through onlyToday, which empties every screen first and
   // moves the turn on, so no read still out from the household left can draw into the next one.
   ['switch', 'function onlyToday() {\n  forgetHousehold();', 'page'], ['switch', 'function forgetHousehold() {\n  householdTurn++;', 'page'],

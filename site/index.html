@@ -3553,6 +3553,10 @@ function approveForm(card, row, o) {
   why.maxLength = 300;
   const f = field('Reason, as it will read in the record', why);
   card.insertBefore(f, row);
+  // Escape closes the form, drawing the suggestion's buttons again; on a card that is the press that does not go Back.
+  const closeApprove = () => { void reloadView(); };
+  cancelMark(f, closeApprove);
+  why.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeApprove(); } });
   row.appendChild(actionButton(`Approve: ${o.summary}`, 'btn primary', async () => {
     if (!why.value.trim()) { why.focus(); throw new Error('Approving needs a reason, the same as moving money'); }
     await api('/api/thread/decide', { offer: o.id, decision: 'approved', why: why.value.trim() });
@@ -3572,8 +3576,13 @@ function adjustForm(card, row, o) {
   amount.value = ((o.args?.[key] ?? 0) / 100).toFixed(2);
   const why = node('input');
   why.value = o.args?.why ?? '';
-  card.insertBefore(field(o.tool === 'move_money' ? 'Amount to move' : 'Fund it at', amount), row);
+  const amountField = field(o.tool === 'move_money' ? 'Amount to move' : 'Fund it at', amount);
+  card.insertBefore(amountField, row);
   card.insertBefore(field('Reason', why), row);
+  // Escape closes the form as its Cancel does, from either box; on a card that is the press that does not go Back.
+  const closeAdjust = () => { void reloadView(); };
+  cancelMark(amountField, closeAdjust);
+  for (const box of [amount, why]) box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeAdjust(); } });
   row.appendChild(actionButton('Suggest this instead', 'btn primary', async () => {
     const cents = toCents(amount.value);
     if (!Number.isFinite(cents) || cents <= 0) { amount.focus(); throw new Error('Enter an amount in dollars'); }
@@ -7857,7 +7866,8 @@ async function openCard(id) {
       area: areaPage ? { ...areaPage, from: { ...areaPage.from } } : null,
       // Another screen's scroll means nothing on the board.
       scroll: view === 'plan' ? window.scrollY : 0,
-      row: document.activeElement?.closest?.('[data-plan]')?.dataset.plan ?? null,
+      // Safari does not focus a button it presses: from Plan, the plan's own row is the fallback.
+      row: document.activeElement?.closest?.('[data-plan]')?.dataset.plan ?? (onPlan ? id : null),
     };
     // The last card is not this one: nothing of it shows while this one is read.
     $('plan-card').textContent = '';
@@ -7913,9 +7923,20 @@ function cardEscape(ev) {
   void closeCard();
 }
 
+/** One-line box on the card that is always there: with text in it Escape only moves focus to Back, the text kept. */
+function keepTextOnEscape(box) {
+  box.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape' || !box.value.trim()) return;
+    e.preventDefault();
+    $('plan-card').querySelector('.back')?.focus();
+  });
+}
+
 async function loadCard() {
   // A card asked for in a household since left, or on a screen since left, or that a later read has replaced, is not
   // drawn, and its failure is not said.
+  // Nothing is read for a card that no longer shows (an edit or an answer landing after Back).
+  if (view !== 'plan-card') return;
   const turn = householdTurn;
   const id = cardId;
   const mine = ++cardFetch;
@@ -7941,7 +7962,8 @@ async function loadCard() {
       if (!box.firstChild) box.appendChild(cardTop(null));
     }
   } finally {
-    if (mine === cardFetch && turn === householdTurn) $('loading').hidden = true;
+    // Let go with the card left for a screen that has no loader of its own: the line must not stay up.
+    if (turn === householdTurn && (mine === cardFetch || view !== 'plan-card')) $('loading').hidden = true;
   }
 }
 
@@ -8422,13 +8444,13 @@ function contactSearch(v, slot, msg, noNas) {
   q.setAttribute('aria-label', 'Search Contacts by name');
   const list = node('ul');
   list.setAttribute('aria-live', 'polite');
-  const cancel = node('button', 'btn small', 'Cancel');
-  cancel.type = 'button';
-  const close = () => { slot.textContent = ''; msg.textContent = ''; };
-  cancel.addEventListener('click', close);
-  cancelMark(cancel, close);
+  const cancelSearch = node('button', 'btn small', 'Cancel');
+  cancelSearch.type = 'button';
+  const closeSearch = () => { slot.textContent = ''; msg.textContent = ''; };
+  cancelSearch.addEventListener('click', closeSearch);
+  cancelMark(cancelSearch, closeSearch);
   const acts = node('div', 'actions');
-  acts.appendChild(cancel);
+  acts.appendChild(cancelSearch);
   box.append(q, list, acts);
   slot.appendChild(box);
   const linked = new Set(v.contacts.map((c) => c.contact_id));
@@ -8465,7 +8487,7 @@ function contactSearch(v, slot, msg, noNas) {
   };
   let timer = null;
   q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 250); });
-  q.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+  q.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeSearch(); } });
   q.focus();
   void search();
 }
@@ -8587,6 +8609,7 @@ function claudeSection(v) {
   };
   go.addEventListener('click', ask);
   q.addEventListener('keydown', (e) => { if (e.key === 'Enter') void ask(); });
+  keepTextOnEscape(q);
   go.disabled = !claudeOn;
   q.disabled = !claudeOn;
   row.append(q, go);
@@ -8618,6 +8641,7 @@ function betweenSection(v) {
   };
   go.addEventListener('click', leave);
   t.addEventListener('keydown', (e) => { if (e.key === 'Enter') leave(); });
+  keepTextOnEscape(t);
   row.append(t, go);
   return cardSection('Between us', [v.between.length ? ul : node('p', 'hint', 'Nothing said about this yet.'), row],
     null, { note: 'Also in Today' });
@@ -8722,14 +8746,14 @@ async function moneyForm(v, sec, btn) {
     save.disabled = true;
     void cardEdit(() => api(planPath(v.id), { ...envelope, estimateCents })).finally(() => { save.disabled = false; });
   });
-  const cancel = node('button', 'btn', 'Cancel');
-  cancel.type = 'button';
-  const close = () => { form.remove(); btn.hidden = false; };
-  cancel.addEventListener('click', close);
-  cancelMark(cancel, close);
-  form.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+  const cancelMoney = node('button', 'btn', 'Cancel');
+  cancelMoney.type = 'button';
+  const closeMoney = () => { form.remove(); btn.hidden = false; };
+  cancelMoney.addEventListener('click', closeMoney);
+  cancelMark(cancelMoney, closeMoney);
+  form.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeMoney(); } });
   const acts = node('div', 'actions');
-  acts.append(save, cancel);
+  acts.append(save, cancelMoney);
   form.append(lab('Budget', budgetSel), lab('Envelope', envSel), lab('Estimated cost, in dollars', est), msg, acts);
   sec.appendChild(form);
   await fillEnvelopes();
