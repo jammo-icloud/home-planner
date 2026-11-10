@@ -2631,6 +2631,16 @@ const setBill: Tool = {
     }
     const byHand = target ? target.byHand : true;
     const label = env.label;
+    // a bill that follows its receipts keeps one record, under its own envelope: write there, never a second
+    const home = target?.home && b.envelopes.has(target.home) ? target.home : id;
+    // a new name that some other envelope's receipts already hold would be listed there at once
+    if (!target && args['remove'] !== true && args['clear'] !== true) {
+      for (const [other, there] of billsOf(state, budget)) {
+        if (other === id) continue;
+        const hit = there.find((x) => x.receipts.length > 0 && x.key.includes(key));
+        if (hit) throw new ToolError(`${name} is already a bill in ${b.envelopes.get(other)?.label ?? other}: set its date there`);
+      }
+    }
 
     if (args['remove'] === true) {
       if (!target) throw noBill(given('bill') ? (args['bill'] as string).trim() : name);
@@ -2639,7 +2649,7 @@ const setBill: Tool = {
         tool: 'set_bill', who: ctx.who,
         summary: `Remove the bill ${name}`,
         effects: [`It leaves ${label}'s page`, 'No money moves'],
-        events: [{ op: 'bill.remove', budget, envelope: id, bill: key, name }],
+        events: [{ op: 'bill.remove', budget, envelope: home, bill: key, name }],
       }, ctx.today);
     }
     if (args['clear'] === true) {
@@ -2648,7 +2658,7 @@ const setBill: Tool = {
         tool: 'set_bill', who: ctx.who,
         summary: `${name}: date cleared`,
         effects: ['Its day comes from its last receipt again', 'No money moves'],
-        events: [{ op: 'bill.set', budget, envelope: id, bill: key, name, ...(byHand ? { byHand: true as const } : {}), date: null }],
+        events: [{ op: 'bill.set', budget, envelope: home, bill: key, name, ...(byHand ? { byHand: true as const } : {}), date: null }],
       }, ctx.today);
     }
 
@@ -2672,7 +2682,7 @@ const setBill: Tool = {
       tool: 'set_bill', who: ctx.who,
       summary: `${name}: ${billDateWords(date)}`,
       effects: [`Shows ${billDateWords(date)} on ${label}'s page`, 'No money moves'],
-      events: [{ op: 'bill.set', budget, envelope: id, bill: key, name, ...(byHand ? { byHand: true as const } : {}), date }],
+      events: [{ op: 'bill.set', budget, envelope: home, bill: key, name, ...(byHand ? { byHand: true as const } : {}), date }],
     }, ctx.today);
   },
 };

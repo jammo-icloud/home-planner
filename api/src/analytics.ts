@@ -395,6 +395,8 @@ export interface BillCharge { readonly key: string; readonly typical: Cents; rea
 export interface Bill {
   /** Where it is listed and drawn now: it follows its receipts. */
   readonly envelope: EnvelopeId;
+  /** The envelope its record lives under (where a change is written); null when no record exists. */
+  readonly home: EnvelopeId | null;
   readonly key: string;
   readonly name: string;
   readonly byHand: boolean;
@@ -505,7 +507,7 @@ export function billsOf(
         key: f.key, typical: f.typical, lastDate: f.lastDate, landed: landed.get(env.id)?.get(f.key) ?? new Set<Month>(),
       }));
       bills.push({
-        envelope: env.id, key: a.key,
+        envelope: env.id, home: a.rec?.envelope ?? null, key: a.key,
         name: a.rec?.byHand ? a.rec.name : lastPaid?.payee ?? a.rec?.name ?? a.charges[0]!.payee,
         byHand: a.rec?.byHand ?? false,
         date: a.rec?.date ?? null, since: a.rec?.since ?? null,

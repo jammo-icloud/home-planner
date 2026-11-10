@@ -366,7 +366,7 @@ const run = (args: Record<string, unknown>, c: ToolContext) =>
   toolByName.get('set_bill')!.run({ budget: 'harbor', envelope: 'util', ...args }, c);
 
 describe('the line a bill reads', () => {
-  const b = (over: Partial<Bill>): Bill => ({ envelope: 'util', key: 'k', name: 'N', byHand: false, date: null, since: null, about: null, charges: [], receipts: [], lastPaid: null, ...over });
+  const b = (over: Partial<Bill>): Bill => ({ envelope: 'util', home: null, key: 'k', name: 'N', byHand: false, date: null, since: null, about: null, charges: [], receipts: [], lastPaid: null, ...over });
   const paid = { txnId: 't', day: '2026-10-14', amount: 14600, payee: 'X' } as BillPaid;
   test('what the receipts know, then its date', () => {
     assert.equal(billLine(b({ about: 14600 as Cents, lastPaid: paid, date: { kind: 'due', per: 'month', day: 16 } })), 'about $146 · last paid 14 Oct · Due on the 16th, every month');
@@ -429,11 +429,26 @@ describe('set_bill', () => {
     assert.deepEqual([gone.summary, gone.effects, gone.events], ['Remove the bill Example Water', ["It leaves Utilities's page", 'No money moves'],
       [{ op: 'bill.remove', budget: 'harbor', envelope: 'util', bill: 'example water', name: 'Example Water' }]]);
   });
-  test('a followed bill is set where it is listed', async () => {
+  test('a followed bill is written to its own record, never a second one', async () => {
     const move = POWER.map((t) => ev({ op: 'txn.categorize', txn: t.id, category: 'groceries' }));
     const c = await ctx(POWER, [ev(SET), ...move]);
     const off = run({ envelope: 'daily', bill: 'example power billp', clear: true }, c) as Proposal;
-    assert.equal((off.events[0] as { envelope: string }).envelope, 'daily');
+    assert.equal((off.events[0] as { envelope: string }).envelope, 'util');
+    await commit(off.id, c);
+    const after = billsOf(c.store.state, 'harbor');
+    assert.deepEqual(after.get('util')!.map((x) => x.key), [], 'nothing left behind at home');
+    assert.deepEqual(after.get('daily')!.map((x) => [x.key, x.date]), [['example power billp', null]]);
+    const set = run({ envelope: 'daily', bill: 'example power billp', kind: 'due', per: 'month', day: 20 }, c) as Proposal;
+    await commit(set.id, c);
+    const again = billsOf(c.store.state, 'harbor');
+    assert.deepEqual([again.get('util')!.length, again.get('daily')![0]!.date], [0, { kind: 'due', per: 'month', day: 20 }]);
+    assert.equal(c.store.state.budgets.get('harbor')!.bills.size, 1);
+  });
+  test('a new name that another envelope\'s receipts hold is refused, not lost', async () => {
+    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'gas'));
+    const c = await ctx([...POWER, ...gas]);
+    assert.throws(() => run({ name: 'Example Gas', kind: 'due', per: 'month', day: 3 }, c), /Example Gas is already a bill in Heating: set its date there/);
+    assert.ok(run({ envelope: 'heat', name: 'Example Gas', kind: 'due', per: 'month', day: 3 }, c));
   });
   test('refused, each in its own words', async () => {
     const c = await ctx();
