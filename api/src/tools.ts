@@ -3419,7 +3419,7 @@ const listPlans: Tool = {
     'Doing only, how many days it has been there. Nothing in Planning has an age, and a finished plan has ' +
     'none: daysInState is null for both, so never say how long something has waited to be started. ' +
     "Each row's `all` counts the whole area whatever you filtered. The answer also lists the household's " +
-    'goals (each with how many plans are toward it and how many are done) and how many plans each member owns. ' +
+    'goals (each with how many plans are toward it and how many are done) and how many open plans each member owns (with the finished ones of a goal, when a goal is asked for). ' +
     'Use it to find a plan and its id before suggesting anything about one.',
   kind: 'read',
   input: {

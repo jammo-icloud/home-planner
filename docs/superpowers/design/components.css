@@ -376,14 +376,17 @@ textarea.input { resize: vertical; line-height: var(--lh-body); }
 /* phone: one area at a time, Planning then Doing stacked full width */
 .area { display: grid; gap: var(--sp-3); }
 .area + .area { margin-top: var(--sp-6); }
+/* superseded 2026-11-09: see specs/2026-11-09-plan-by-area-design.md */
 .area-head { display: flex; align-items: baseline; gap: var(--sp-2); }
 .area-head h2 { font-size: var(--fs-title); }
 .area-head .count { font-size: var(--fs-micro); color: var(--ink-faint); }
+/* superseded 2026-11-09: see specs/2026-11-09-plan-by-area-design.md */
 .lane { display: grid; gap: var(--sp-2); }
 .lane-label { display: flex; align-items: center; gap: 6px; font-size: var(--fs-micro); font-weight: var(--fw-semibold);
   color: var(--ink-faint); }
 .lane-label .i { width: 12px; height: 12px; }
 .lane-empty { font-size: var(--fs-small); color: var(--ink-faint); padding: 2px 0; }
+/* superseded 2026-11-09: see specs/2026-11-09-plan-by-area-design.md */
 /* desk at 1040: the grid. Area labels down the side, two lanes across. */
 .board-head { display: none; }
 @container page (min-width: 1040px) {
@@ -403,6 +406,7 @@ textarea.input { resize: vertical; line-height: var(--lh-body); }
   .area:first-of-type > .lane { border-top: 0; }
   .area > .shelf { grid-column: 2 / -1; margin: 0 var(--sp-3) var(--sp-3); }
 }
+/* superseded 2026-11-09: see specs/2026-11-09-plan-by-area-design.md */
 .bcard { display: block; padding: 10px 12px; background: var(--surface-raised); border: var(--stroke) solid var(--line);
   border-radius: var(--r-control); box-shadow: var(--e-1); color: var(--ink); text-decoration: none; }
 .bcard .title { display: block; font-size: var(--fs-ui); font-weight: var(--fw-medium); line-height: var(--lh-snug); }
@@ -413,6 +417,7 @@ textarea.input { resize: vertical; line-height: var(--lh-body); }
   border-radius: var(--r-control); }
 .bcard .ask-line { display: block; margin-top: 4px; font-size: var(--fs-small); color: var(--ink-soft); }
 .bcard .actions { margin-top: var(--sp-2); }
+/* superseded 2026-11-09: see specs/2026-11-09-plan-by-area-design.md */
 /* a shelf: a plan that holds items. Solid and sunken, never dashed. */
 .shelf { display: flex; align-items: center; gap: var(--sp-2); min-height: 40px; padding: 0 var(--sp-3);
   background: var(--surface-sunken); border: var(--stroke) solid var(--line); border-radius: var(--r-control);

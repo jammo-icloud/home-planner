@@ -27,7 +27,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F9FE" />
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F131A" />
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/tokens.css?v=0.6.0" />
+<link rel="stylesheet" href="/tokens.css?v=0.7.0" />
 <style>
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -896,9 +896,6 @@
   .chip.block{color:var(--surface-raised);background:var(--ink-soft);border-color:var(--ink-soft)}
   .chip.stale{color:var(--caution);background:var(--caution-tint);border-color:var(--caution-line)}
   .chip.research{color:var(--claude-ink);background:var(--claude-paper);border-color:var(--claude-line)}
-  .chip.money{color:var(--ink-soft)}
-  .chip.money b{color:var(--ink);font-weight:var(--fw-semibold)}
-  .chip.money.over,.chip.money.over b{color:var(--problem);border-color:var(--problem-line)}
   .chip.asked{color:var(--ink);border:var(--stroke-heavy) dashed var(--provisional);background:transparent}
   .chip.moved{color:var(--caution);background:var(--caution-tint);border-color:var(--caution-line)}
   .chip.off{color:var(--ink-soft);background:var(--surface-sunken)}
@@ -933,7 +930,6 @@
   /* the board: the head and its count line, the people bar, then a card of rows per area, "A new area" last */
   .page-head{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3);margin-bottom:var(--sp-5)}
   .page-head h1{font-size:var(--fs-headline);letter-spacing:-0.02em;margin-right:auto}
-  .page-head .filters{margin-bottom:0}
   #plan-board .page-head{flex-direction:column;align-items:flex-start;gap:var(--sp-1)}
   #plan-people{margin-bottom:var(--sp-5)}
   #plan-areas{display:grid;gap:var(--sp-6)}
@@ -1016,7 +1012,6 @@
   @container page (max-width: 759px){
     .plan-acts{display:grid;gap:var(--sp-2)}
     .plan-acts .actions > .btn{flex:1 1 auto}
-    .plan-acts .actions > .give{flex-basis:100%}
   }
   .plan-body{display:grid;gap:var(--sp-6);padding-block:var(--sp-5) var(--sp-8)}
   .plan-main,.plan-side{display:grid;gap:var(--sp-6);align-content:start;min-width:0}
@@ -1088,7 +1083,7 @@
   .byline.claude-by{color:var(--claude-ink);font-weight:var(--fw-medium)}
   .byline .mark{width:14px;height:14px;color:var(--claude-mark);fill:currentColor;stroke:none}
   .asof{color:var(--ink-faint);font-weight:var(--fw-regular)}
-  #plan-card .empty,#plan .empty{padding:var(--sp-5) var(--sp-4);text-align:center;color:var(--ink-soft);font-size:var(--fs-small);
+  #plan-card .empty{padding:var(--sp-5) var(--sp-4);text-align:center;color:var(--ink-soft);font-size:var(--fs-small);
     border:var(--stroke) solid var(--line);border-radius:var(--r-card);background:var(--surface-raised)}
   /* attachments: files on the NAS, and the way to add one. The drop zone is
      solid: a dashed edge is reserved for what waits on a person. */
@@ -2339,7 +2334,7 @@ $('signout').addEventListener('click', async () => {
 });
 
 // ── shared: what every screen calls ───────────────────────────────────────
-const BUILD = '0.6.0';
+const BUILD = '0.7.0';
 
 /**
  * Which household's screens these are: moved on whenever a household is left (a switch, the picker, sign-out), so a
@@ -2370,7 +2365,6 @@ const ICONS = {
   go: '<path d="M6 4l4 4-4 4"/>',
   back: '<path d="M10 4L6 8l4 4"/>',
   check: '<path d="M3.5 8.5l3 3 6-7"/>',
-  give: '<path d="M3 8h10M9 4l4 4-4 4"/>',
   mark: '<path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/>',
   image: '<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M2.5 11l3.5-3.5 3 3 2-2 2.5 2.5"/>',
   doc: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/>',
@@ -2576,7 +2570,7 @@ function inlineForm(slot, fields, submitLabel, onSubmit, after = reloadView) {
   const acts = node('div', 'actions');
   acts.append(go, cancel);
   form.append(msg, acts);
-  form.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
+  form.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); close(); } });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     go.disabled = true;
@@ -3512,14 +3506,26 @@ function offerCard(o, ctx) {
 
   const row = node('div', 'row');
   card.appendChild(row);
-  if (ctx.moved.has(o.id)) {
-    card.insertBefore(node('p', 'moved-note', 'The numbers have moved since this was suggested.'), row);
+  const moved = ctx.moved.has(o.id);
+  if (moved) card.insertBefore(node('p', 'moved-note', 'The numbers have moved since this was suggested.'), row);
+  offerButtons(card, row, o, moved);
+  return card;
+}
+
+/**
+ * The suggestion's own buttons, drawn into its row: also how a form that closes without a write puts them back, in
+ * place, so the rest of the screen (an unsent note on a plan's card) is left as it is.
+ */
+function offerButtons(card, row, o, moved) {
+  row.textContent = '';
+  if (moved) {
     row.appendChild(actionButton('Work it out again', 'btn primary', async () => {
       await api('/api/thread/refresh', { offer: o.id });
     }));
   } else {
     const approve = node('button', 'btn primary', 'Approve');
     approve.type = 'button';
+    approve.dataset.opens = 'approve';
     approve.addEventListener('click', () => approveForm(card, row, o));
     row.appendChild(approve);
   }
@@ -3529,6 +3535,7 @@ function offerCard(o, ctx) {
   if (o.tool === 'move_money' || o.tool === 'set_assignment') {
     const adj = node('button', 'btn', 'Adjust');
     adj.type = 'button';
+    adj.dataset.opens = 'adjust';
     adj.addEventListener('click', () => adjustForm(card, row, o));
     row.appendChild(adj);
   }
@@ -3537,7 +3544,6 @@ function offerCard(o, ctx) {
   row.appendChild(actionButton('Decline', 'btn', async () => {
     await api('/api/thread/decide', { offer: o.id, decision: 'declined' });
   }));
-  return card;
 }
 
 /** The screen a button acted on, read again: the board, a plan's card, or the thread. */
@@ -3574,8 +3580,13 @@ function approveForm(card, row, o) {
   why.maxLength = 300;
   const f = field('Reason, as it will read in the record', why);
   card.insertBefore(f, row);
-  // Escape closes the form, drawing the suggestion's buttons again; on a card that is the press that does not go Back.
-  const closeApprove = () => { void reloadView(); };
+  // Escape closes the form, drawing the suggestion's buttons again, in place and with focus back on Approve; on a card
+  // that is the press that does not go Back.
+  const closeApprove = () => {
+    f.remove();
+    offerButtons(card, row, o, false);
+    row.querySelector('[data-opens="approve"]')?.focus();
+  };
   cancelMark(f, closeApprove);
   why.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeApprove(); } });
   row.appendChild(actionButton(`Approve: ${o.summary}`, 'btn primary', async () => {
@@ -3599,9 +3610,16 @@ function adjustForm(card, row, o) {
   why.value = o.args?.why ?? '';
   const amountField = field(o.tool === 'move_money' ? 'Amount to move' : 'Fund it at', amount);
   card.insertBefore(amountField, row);
-  card.insertBefore(field('Reason', why), row);
-  // Escape closes the form as its Cancel does, from either box; on a card that is the press that does not go Back.
-  const closeAdjust = () => { void reloadView(); };
+  const reasonField = field('Reason', why);
+  card.insertBefore(reasonField, row);
+  // Escape closes the form as its Cancel does, from either box, in place and with focus back on Adjust; on a card that
+  // is the press that does not go Back.
+  const closeAdjust = () => {
+    amountField.remove();
+    reasonField.remove();
+    offerButtons(card, row, o, false);
+    row.querySelector('[data-opens="adjust"]')?.focus();
+  };
   cancelMark(amountField, closeAdjust);
   for (const box of [amount, why]) box.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeAdjust(); } });
   row.appendChild(actionButton('Suggest this instead', 'btn primary', async () => {
@@ -3610,7 +3628,10 @@ function adjustForm(card, row, o) {
     if (!why.value.trim()) { why.focus(); throw new Error('It needs a reason'); }
     await api('/api/thread/adjust', { offer: o.id, args: { [key]: cents, why: why.value.trim() } });
   }));
-  row.appendChild(actionButton('Cancel', 'btn', async () => {}));
+  const cancel = node('button', 'btn', 'Cancel');
+  cancel.type = 'button';
+  cancel.addEventListener('click', closeAdjust);
+  row.appendChild(cancel);
   amount.focus();
 }
 
@@ -7021,6 +7042,8 @@ let planData = null;
 let planGoal = null;
 /** One sentence the next draw of the board says in its quiet line and then lets go: "New roof is off 4 plans." */
 let boardSaid = '';
+/** The last board read of this household failed: the chip that was pressed for it is pressed again to try the read once more. */
+let boardReadFailed = false;
 /** An area's own page while it stands in the board's place; null while the board shows. */
 let areaPage = null;
 let cardId = null;
@@ -7050,8 +7073,10 @@ function forgetBoard() {
   planData = null;
   planGoal = null;
   boardSaid = '';
+  boardReadFailed = false;
   // What was drawn of it goes too, so the next household's Plan or card never shows it while its own is read.
   for (const id of ['plan-count', 'plan-people', 'plan-goals', 'plan-foot', 'plan-card']) $(id).textContent = '';
+  $('plan-goals').hidden = true;
   $('plan-quiet').hidden = true;
   $('plan-areas').replaceChildren($('plan-quiet'));
 }
@@ -7158,7 +7183,7 @@ function closeArea({ refocus = true, key = null } = {}) {
  */
 function areaEscape(ev) {
   if (!areaPage) { document.removeEventListener('keydown', areaEscape); return; }
-  if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+  if (ev.key !== 'Escape' || ev.isComposing || ev.defaultPrevented) return;
   if (!$('cat-sec').hidden || !$('phone-sec').hidden) return;
   const host = $('area-page');
   const t = ev.target;
@@ -7310,9 +7335,11 @@ function renderAreaPage(b, { focus: asked = null, said = '' } = {}) {
     closeArea({ key: 'new-area' });
   });
   if (!removable) remove.setAttribute('aria-disabled', 'true');
+  const held = holds === 1 ? `${page.area} holds 1 plan${all.done ? ', which is done' : ''}.`
+    : `${page.area} holds ${plansWord(holds)}${all.done ? `, ${all.done} of them done` : ''}.`;
   const why = node('p', 'set-line', n < 2 ? 'A household keeps at least one area.'
     : holds === 0 ? 'Nothing is in it, so removing it loses nothing.'
-      : `${page.area} holds ${plansWord(holds)}${all.done ? `, ${all.done} of them done` : ''}. An area is removed once it holds nothing.`);
+      : `${held} An area is removed once it holds nothing.`);
   why.id = 'area-remove-why';
   remove.setAttribute('aria-describedby', why.id);
   foot.append(remove, why);
@@ -7404,6 +7431,7 @@ async function loadBoard() {
     const b = await api(`/api/plans?${q}`);
     // A newer read (another person pressed, the tab left and come back to, a household switched) has the say.
     if (mine !== planFetch) return false;
+    boardReadFailed = false;
     planData = b;
     // The answer says which goal this is, in its stored spelling: null when none by that name exists any more
     // (renamed or removed elsewhere), and then All goals reads pressed.
@@ -7412,6 +7440,7 @@ async function loadBoard() {
     renderPlan(b);
     return true;
   } catch (ex) {
+    if (mine === planFetch) boardReadFailed = true;
     if (mine === planFetch && view === 'plan') showProblem(ex);
     return false;
   } finally {
@@ -7492,14 +7521,16 @@ function goalRow(b) {
 
 /** Press a goal chip (null for All goals): the goal is Plan's own, and the board is read again for it. */
 function pressGoal(goal) {
-  if (goal === planGoal) return;
+  // The same chip pressed again reads again only when the last read failed.
+  if (goal === planGoal && !boardReadFailed) return;
   planGoal = goal;
   void loadBoard();
 }
 
 /**
- * The board: the count line, the people bar, then a card of rows per area (its open plans, the add row, the done
- * row) and "A new area" last. Under a person an area with nothing of theirs is not drawn, and the quiet line names it.
+ * The board: the count line, the people bar, the goal row (when the household has a goal), then a card of rows per
+ * area (its open plans, the add row, the done row) and "A new area" last. Under a person or a goal an area with
+ * nothing in view is not drawn, and the quiet line names it. Under a goal the foot renames or removes that goal.
  */
 function renderPlan(b) {
   const person = b.who !== 'everyone';
@@ -7531,7 +7562,7 @@ function renderPlan(b) {
   // The quiet line is drawn among the areas, after the last and before "A new area": on the desk it spans the grid.
   const quietLine = $('plan-quiet');
   box.textContent = '';
-  // A plan added under another member is theirs; under yourself it is yours anyway.
+  // A plan added under another member's person is that member's; under yourself it is yours anyway.
   const owner = person && b.who !== myName ? b.who : null;
   b.rows.forEach((r, i) => {
     if ((person || underGoal) && !r.plans.length && !r.done.length) return;
@@ -7542,7 +7573,7 @@ function renderPlan(b) {
     const head = node('button', 'hit');
     head.type = 'button';
     head.dataset.key = `area:${r.area}`;
-    // An area with no open plan at all says so, under a person too (drawn there for a done one of theirs).
+    // An area with no open plan at all says so, under a person too (drawn there for one of that member's done plans).
     const count = underGoal ? `${r.plans.length + r.done.length} toward it` : !r.all.plans ? 'No plans' : person ? `${r.plans.length} of ${plansWord(r.all.plans)}`
       : `${plansWord(r.all.plans)}${r.all.doing ? ` · ${r.all.doing} doing` : ''}`;
     head.append(node('span', 'area-name', r.area), node('span', 'count', count), icon('go', 'i sm chev'));
@@ -7699,7 +7730,7 @@ const focusBoard = (key, how) => ($('plan-board').querySelector(`[data-key="${CS
 
 // The board's one Escape: it cancels a form open on it, focus back on the row that opened it. An area's page has its own.
 $('plan-board').addEventListener('keydown', (ev) => {
-  if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+  if (ev.key !== 'Escape' || ev.isComposing || ev.defaultPrevented) return;
   if (cancelOpen($('plan-board'))) ev.preventDefault();
 });
 
@@ -7766,8 +7797,9 @@ function goalFoot(b) {
   // Plans in any state carry it; "done ones included" only when some are done.
   const rename = textBtn('Rename this goal', 'link hit', 'goal-rename', () => openRename());
   const remove = textBtn('Remove this goal', 'link danger hit', 'goal-remove', () => openRemove());
-  const both = g.plans === 1 ? 'Both act on the 1 plan that carries it' : `Both act on all ${g.plans} plans that carry it`;
-  const line = node('p', 'set-line', `${both}${g.done ? ', done ones included' : ''}.`);
+  const both = g.plans === 1 ? `Both act on the 1 plan that carries it${g.done ? ', which is done' : ''}`
+    : `Both act on all ${g.plans} plans that carry it${g.done ? ', done ones included' : ''}`;
+  const line = node('p', 'set-line', `${both}.`);
   box.append(rename, remove, line);
   foot.appendChild(box);
 
@@ -7779,7 +7811,10 @@ function goalFoot(b) {
   /** The write is committed: only a board of this household is read again, and the form is put away if that read did not draw. */
   const committed = async (open, key) => {
     if (epoch !== boardEpoch) return;
-    if (!(await loadBoard()) && open.isConnected) back(key);
+    if (await loadBoard()) return;
+    // The read did not draw: what the change said is let go, so it never surfaces on a later, unrelated draw.
+    if (epoch === boardEpoch) boardSaid = '';
+    if (open.isConnected) back(key);
   };
 
   const openRename = () => {
@@ -7805,6 +7840,8 @@ function goalFoot(b) {
       // As the fold tidies it: inner runs of space made one, so the new name is found again as written.
       const to = input.value.trim().replace(/\s+/g, ' ');
       if (!to) { say('Give it a name'); input.focus(); return; }
+      // The spelling it already has: nothing to write, as an area's rename closes quietly.
+      if (to === g.goal) { close(); return; }
       say('');
       go.disabled = true;
       try {
@@ -7832,7 +7869,8 @@ function goalFoot(b) {
     h.tabIndex = -1;
     const ul = node('ul', 'effects');
     const take = node('li', '', 'Take ');
-    take.append(node('strong', '', g.goal), ` off ${plansWord(g.plans)}${g.done ? `, ${g.done} of them done` : ''}`);
+    take.append(node('strong', '', g.goal), g.plans === 1 ? ` off 1 plan${g.done ? ', which is done' : ''}`
+      : ` off ${plansWord(g.plans)}${g.done ? `, ${g.done} of them done` : ''}`);
     ul.append(take, node('li', '', 'Leave the plans as they are'));
     const small = node('p', 'set-line', 'The goal ends here: it leaves the filter row. Putting the same words on a plan later starts it again.');
     const { err, say } = epErr();
@@ -7940,7 +7978,7 @@ async function closeCard({ removed = false } = {}) {
  */
 function cardEscape(ev) {
   if (view !== 'plan-card') { document.removeEventListener('keydown', cardEscape); return; }
-  if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+  if (ev.key !== 'Escape' || ev.isComposing || ev.defaultPrevented) return;
   if (!$('cat-sec').hidden || !$('phone-sec').hidden) return;
   const host = $('plan-card');
   const t = ev.target;
@@ -7953,7 +7991,7 @@ function cardEscape(ev) {
 /** One-line box on the card that is always there: with text in it Escape only moves focus to Back, the text kept. */
 function keepTextOnEscape(box) {
   box.addEventListener('keydown', (e) => {
-    if (e.key !== 'Escape' || !box.value.trim()) return;
+    if (e.key !== 'Escape' || e.isComposing || !box.value.trim()) return;
     e.preventDefault();
     $('plan-card').querySelector('.back')?.focus();
   });
@@ -7989,8 +8027,9 @@ async function loadCard() {
       if (!box.firstChild) box.appendChild(cardTop(null));
     }
   } finally {
-    // Let go with the card left for a screen that has no loader of its own: the line must not stay up.
-    if (turn === householdTurn && (mine === cardFetch || view !== 'plan-card')) $('loading').hidden = true;
+    // A read that is still the card's puts the line away. One that settles after the card was left leaves it to the
+    // screen now showing, which reads with the same line and puts it away itself; only Import has no loader to do so.
+    if (turn === householdTurn && (mine === cardFetch || view === 'import')) $('loading').hidden = true;
   }
 }
 
@@ -8113,12 +8152,11 @@ function sectionLine(lead, text, sub, button) {
   return line;
 }
 
-/** The status a write left, said once. It is set once drawn, so the live region reads it. */
+/** A section's status slot, always in the tree and empty: renderCard fills it once it is in the page, so the live region reads it. */
 function saidLine(key) {
   const p = node('p', 'hint');
   p.setAttribute('aria-live', 'polite');
-  const text = cardSaid?.key === key ? cardSaid.text : '';
-  if (text) queueMicrotask(() => { p.textContent = text; });
+  p.dataset.said = key;
   return p;
 }
 
@@ -8173,7 +8211,7 @@ function ownerSection(v) {
     };
     cancelOwner.addEventListener('click', closeOwner);
     cancelMark(cancelOwner, closeOwner);
-    form.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeOwner(); } });
+    form.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); closeOwner(); } });
     // What picking someone says, asks and offers; the owner picked again moves nothing.
     const draw = () => {
       const to = list.value();
@@ -8242,7 +8280,8 @@ function ownerSection(v) {
  */
 function goalSection(v) {
   const cur = v.goal;
-  const figure = (name) => v.goals.find((g) => g.goal === name) ?? null;
+  // Found as the server finds a goal, whatever the case it is spelled in.
+  const figure = (name) => v.goals.find((g) => g.goal.toLowerCase() === name.toLowerCase()) ?? null;
   const here = cur ? figure(cur) : null;
   const sub = !cur ? 'this plan stands on its own'
     : !here || here.plans <= 1 ? 'the only plan toward it'
@@ -8286,7 +8325,7 @@ function goalSection(v) {
     };
     cancelGoal.addEventListener('click', closeGoal);
     cancelMark(cancelGoal, closeGoal);
-    form.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeGoal(); } });
+    form.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); closeGoal(); } });
     /** The goal this choice means, in its stored spelling; null is no goal, undefined a new name not yet typed. */
     const target = () => {
       const x = list.value();
@@ -8354,7 +8393,6 @@ function goalSection(v) {
 function renderCard(v) {
   const box = $('plan-card');
   box.textContent = '';
-  const mine = v.owner === myName;
   cardArea = v.area;
 
   // ── head: where it is, what it is, where it stands ──
@@ -8394,7 +8432,7 @@ function renderCard(v) {
     };
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') void keep();
-      if (e.key === 'Escape') { e.preventDefault(); done = true; input.replaceWith(title); }
+      if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); done = true; input.replaceWith(title); }
     });
     input.addEventListener('blur', () => void keep());
     title.replaceWith(input);
@@ -8482,7 +8520,7 @@ function renderCard(v) {
     const close = () => { input.replaceWith(addChip); addChip.focus({ preventScroll: true }); };
     cancelMark(input, close);
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); close(); }
       if (e.key === 'Enter' && input.value.trim()) {
         void postFrom(input, () => api(planPath(v.id), { chips: [...v.chips, input.value.trim()] }));
       }
@@ -8548,7 +8586,12 @@ function renderCard(v) {
   // What a hand or a goal change just said, said once, and focus back on the button of the section that did it.
   const said = cardSaid;
   cardSaid = null;
-  if (said) box.querySelector(`[data-sec="${said.key}"] .ep-line .btn`)?.focus({ preventScroll: true });
+  if (said) {
+    box.querySelector(`[data-sec="${said.key}"] .ep-line .btn`)?.focus({ preventScroll: true });
+    // Said after the empty live region has been in the page for a moment: one filled in the step it is drawn is often not read.
+    const slot = box.querySelector(`[data-said="${said.key}"]`);
+    if (said.text && slot) setTimeout(() => { if (slot.isConnected) slot.textContent = said.text; }, 100);
+  }
 }
 
 /** A quiet panel for what this server or this sign-in cannot do: a lock, a bold first line, no alarm. */
@@ -8785,7 +8828,7 @@ function contactSearch(v, slot, msg, noNas) {
   };
   let timer = null;
   q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 250); });
-  q.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeSearch(); } });
+  q.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); closeSearch(); } });
   q.focus();
   void search();
 }
@@ -8831,7 +8874,7 @@ function checklistSection(v) {
     cancelMark(row, close);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') add();
-      if (e.key === 'Escape') { e.preventDefault(); close(); }
+      if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); close(); }
     });
     go.addEventListener('click', add);
     row.append(input, go);
@@ -9049,7 +9092,7 @@ async function moneyForm(v, sec, btn) {
   const closeMoney = () => { form.remove(); btn.hidden = false; };
   cancelMoney.addEventListener('click', closeMoney);
   cancelMark(cancelMoney, closeMoney);
-  form.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); closeMoney(); } });
+  form.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); closeMoney(); } });
   const acts = node('div', 'actions');
   acts.append(save, cancelMoney);
   form.append(lab('Budget', budgetSel), lab('Envelope', envSel), lab('Estimated cost, in dollars', est), msg, acts);
@@ -9067,7 +9110,7 @@ function whenSection(v) {
 /**
  * A date kept on the plan with no event (set signed in without the NAS, or
  * its event deleted and left that way): said quietly beside it. The plan says
- * which, so it reads the same after a reload and for both of you.
+ * which, so it reads the same after a reload and for every member.
  */
 const offNote = () => node('span', 'off-cal', 'not on the calendar');
 
@@ -9659,17 +9702,6 @@ function textBtn(label, cls, key, act) {
   b.type = 'button';
   if (key) b.dataset.key = key;
   b.addEventListener('click', (e) => { pressedKey = key ?? null; return act(e); });
-  return b;
-}
-function iconBtn(glyph, label, key, disabled, act) {
-  const b = node('button', 'btn bare small');
-  b.type = 'button';
-  b.appendChild(icon(glyph));
-  b.setAttribute('aria-label', label);
-  b.title = label;
-  b.dataset.key = key;
-  b.disabled = disabled;
-  b.addEventListener('click', act);
   return b;
 }
 function addRow(label, key, act) {

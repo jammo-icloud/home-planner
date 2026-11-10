@@ -44,7 +44,7 @@ const KEPT: readonly Line[] = [
   ['P57', 'Search Contacts by name'], ['P58', 'Sign in again to reach Contacts.'], ['P59', 'Let it go'], ['P60', 'Put it on the calendar'],
   ['P61', "cardSection('History'"], ['P62', 'Remove this plan'], ['P62', 'Why remove it? The log keeps it, and your reason.'],
   ['P64', 'id="loading"', 'page'], ['P64', 'id="app-err"', 'page'], ['P64', 'Reading the log', 'page'], ['S7', 'function askAnswer(', 'page'], ['S7', 'function askCardNode(', 'page'],
-  ['S7', "node('div', 'waiting', mine ? 'Waiting for you'", 'page'], ['S9', 'const otherMember', 'shared'], ['S15', 'async function eventPlans(', 'page'], ['S18', 'function railChips(', 'page'], ['S11', 'const clockOf', 'shared'],
+  ['S7', "node('div', 'waiting', mine ? 'Waiting for you'", 'page'], ['S9', 'const otherMember', 'shared'], ['S15', 'async function eventPlans(', 'page'], ['S15', "(await api('/api/plans')).rows.flatMap((r) => r.plans)", 'page'], ['S18', 'function railChips(', 'page'], ['S11', 'const clockOf', 'shared'],
   ['S11', 'const todayKey', 'shared'], ['S5', 'async function openTodayAt(', 'shared'], ['S2', 'async function reloadView(', 'page'], ['S6', 'function actionButton(', 'page'],
   ['shared', 'function icon(', 'shared'], ['shared', 'function lucide(', 'shared'], ['shared', 'function chip(', 'shared'], ['shared', 'function inlineForm(', 'shared'],
   ['card', 'function renderCard('], ['card', 'function checklistSection('], ['card', 'function attachmentsSection('], ['card', 'function claudeSection('],
@@ -87,7 +87,7 @@ const ADDED: readonly Line[] = [
   ['P3', "focus: 'done'"], ['P3', "'Done', 'done'"], ['P3', 'pm-done'],
   // Goals on the board (Task 13): the goal row, what a pressed goal changes, and the foot that renames or removes it.
   ['goals', "'All goals'"], ['goals', 'function pressGoal('], ['goals', 'function goalFoot('], ['goals', "'Toward '"], ['goals', "'toward '"], ['goals', ' toward it'],
-  ['goals', 'toward this goal'], ['goals', "'Rename this goal'"], ['goals', "'Remove this goal'"], ['goals', 'Both act on all '],
+  ['goals', 'toward this goal'], ['goals', "'Rename this goal'"], ['goals', "'Remove this goal'"], ['goals', 'Both act on all '], ['goals', 'Both act on the 1 plan that carries it${g.done ? \', which is done\''], ['goals', 'off 1 plan${g.done ? \', which is done\''], ['goals', 'holds 1 plan${all.done ? \', which is done\'', 'page'],
   ['goals', 'The new name goes on all '], ['goals', 'Rename it on '], ['goals', "'Leave the plans as they are'"],
   ['goals', 'The goal ends here: it leaves the filter row. Putting the same words on a plan later starts it again.'],
   ['goals', "'Remove the goal'"], ['goals', '/api/goals/rename'], ['goals', '/api/goals/remove'],
@@ -96,7 +96,7 @@ const ADDED: readonly Line[] = [
   // and the head's keeps (the title, the chips row, a finished plan's "Done", Due date and Block time).
   ['card', 'function cardEscape('], ['card', 'async function closeCard('], ['card', 'let cardFrom'], ['P51', "note: 'Also in Today'"], ['P50', 'Leave a note about this'],
   ['P21', "title.setAttribute('aria-label', `${v.title}, rename`)"], ['P25', "chip('', 'Done', 'check')"], ['P33', 'staleChip(v.daysInState)'],
-  ['P31', 'Take off ${t}`'], ['P68', 'cancelMark(input, close)'], ['P68', 'cancelMark(row, close)'], ['P68', 'cancelMark(cancel, close)', 'shared'], ['P68', 'cancelMark(cancelSearch, closeSearch)'], ['P68', 'cancelMark(cancelMoney, closeMoney)'], ['P68', 'cancelMark(f, closeApprove)', 'page'], ['P68', 'cancelMark(amountField, closeAdjust)', 'page'], ['P50', 'keepTextOnEscape(q)'], ['P50', 'keepTextOnEscape(t)'], ['P23', "stateGlyph(s, { small: true })"],
+  ['P31', 'Take off ${t}`'], ['P68', 'cancelMark(input, close)'], ['P68', 'cancelMark(row, close)'], ['P68', 'cancelMark(cancel, close)', 'shared'], ['P68', 'cancelMark(cancelSearch, closeSearch)'], ['P68', 'cancelMark(cancelMoney, closeMoney)'], ['P68', 'cancelMark(f, closeApprove)', 'page'], ['P68', 'function offerButtons(', 'page'], ['P68', 'cancelMark(amountField, closeAdjust)', 'page'], ['P50', 'keepTextOnEscape(q)'], ['P50', 'keepTextOnEscape(t)'], ['P23', "stateGlyph(s, { small: true })"],
   // The card's Owner and Goal (Task 15): who owns it and since when, handed on or taken at once with a word, and the one goal.
   ['P27', 'function ownerSection('], ['P27', 'Who owns it?'], ['P27', 'Why them, or what to know first'], ['P27', 'Hand it to '], ['P27', ' can hand it back.'],
   ['P27', 'It becomes yours at once and shows in Today.'], ['P27', 'A word about why (optional)'], ['P27', '; nothing moves.'], ['P27', ' has it.'],
@@ -124,12 +124,14 @@ const GONE: readonly Line[] = [
   ['spec', 'the two of you', 'page'], ['spec', 'the clock runs', 'page'], ['spec', 'no clock', 'page'], ['spec', 'On a shelf', 'page'],
   ['spec', 'Not on a shelf', 'page'], ['spec', 'On this shelf', 'page'], ['spec', 'Add an item', 'page'], ['spec', 'The item'],
   ['spec', '· holds '], ['spec', 'shelf:', 'shared'], ['spec', "icon('shelf'", 'page'], ['spec', 'v.shelf'],
+  // Names the spec lists that no entry above said: the filter's showDone, any shelf, and the shelf helpers.
+  ['spec', 'showDone', 'page'], ['spec', 'shelf', 'page'], ['spec', 'Shelf', 'page'], ['spec', 'shelfFor', 'page'], ['spec', 'liveChildren', 'page'],
   ['spec', '.board', 'css'], ['spec', '.lane', 'css'], ['spec', '.bcard', 'css'], ['spec', '.shelf', 'css'], ['spec', '.ask-line', 'css'],
   ['spec', '#plan-form', 'css'], ['spec', '#plan-empty', 'css'],
   // The card (Task 14): the old Back that always went to the board, the old note and placeholder, the ask chip, the head's owner.
   ['P51', "Also in Today's thread"], ['P50', 'Leave a note for '], ['P50', 'betweenSection(v, theirs)'], ['P32', 'asked ${v.asked.to}'],
   ['P22', "node('div', 'waiting', 'Waiting for you')"],
-  ['P28', '/ask-to-take'], ['P28', 'Asking needs a reason'], ['P28', 'They read this on the card'], ['P28', 'Ask ${theirs}'], ['P27', "node('span', 'owner')"], ['card', '#plan-card .back{display:none}', 'css'],
+  ['P28', '/ask-to-take', 'page'], ['P28', 'Asking needs a reason'], ['P28', 'They read this on the card'], ['P28', 'Ask ${theirs}'], ['P27', "node('span', 'owner')"], ['card', '#plan-card .back{display:none}', 'css'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */

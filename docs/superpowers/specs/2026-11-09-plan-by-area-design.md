@@ -260,7 +260,7 @@ fold's own, so nothing checks it. `state.hands` joins `Draft`, `emptyDraft`, `fr
   to `<log>.before-0.7.0` (`copyFile`, `COPYFILE_EXCL`: never overwritten); if either fails, the open fails
   loudly. An older build cannot open a log holding an op it does not know: going back is that file put back.
 - **`goal.rename`, `goal.remove`.** Both are refused when no goal matches ("there is no goal called New
-  roof"). Rename is also refused when `to` is exactly `from`, or matches another goal: "Summer trip" is
+  roof"). Rename is also refused when `to` is exactly the spelling the goal is stored in (whatever case `from` was typed in), or matches another goal: "Summer trip" is
   already a goal. No merge; a change of case alone is a rename. Each acts on every live plan carrying it.
 - **`areas.add`, `areas.remove`, `areas.move`.** A name follows the rule of `areas.set`, at most 60
   characters. Each changes nothing when already true (an add of an area that is there, ignoring case; a remove

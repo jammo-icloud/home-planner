@@ -9,10 +9,10 @@ Status: design, for review. Written 28 October 2026 against the brief of the sam
 - **A scheme changes the accent and the neutrals, nothing else.** Good, caution, problem, Claude, the provisional dash and the three calendar sources are fixed, tuned once per mode. That is why Alice in Lapis and Bob in Graphite read the same household with one set of signals. See [The core that never moves](#the-core-that-never-moves).
 - **Stamped on `<html>`:** `data-scheme` and `data-mode`. An explicit mode beats the device; the device beats nothing; nothing is light. No attributes means Quartz, following the device.
 - **The scheme lives in the household log** as a `scheme.set` event by the member, cached in `localStorage` for the first paint. It follows each of you to a new phone and is in the backup. See [Where the scheme preference lives](#where-the-scheme-preference-lives).
-- **One visual law for proposals:** dashed means a person still has to say yes; solid means it happened. A decided card collapses to one line. Red means a problem and nothing else. See [Conventions](#conventions).
+- **One visual law for proposals:** dashed means not real yet: a person still has to say yes, or a date is only an intention; solid means it happened or is settled. A decided card collapses to one line. Red means a problem and nothing else. See [Conventions](#conventions).
 - **Claude is set apart by four channels everywhere it writes:** a mark, a by-line, a gold rule and its own paper. Humans never get those; Claude never gets the accent.
-- **Calendar sources** are told apart by lightness, structure and a letter or mark, not by hue alone: mine solid, partner a plum ring with their initial, Household a stone ring with a house. They survive every scheme and colour blindness. See [Source shades](#the-three-source-shades).
-- **Phone first:** the board and the calendar week re-form on a phone rather than shrinking. The board stacks Planning over Doing per area; the calendar shows one day under a week strip. See [Layout](#layout).
+- **Calendar sources** are told apart by lightness, structure and a letter or mark, not by hue alone: yours solid, every other member a plum ring with their initial; two members whose initials match show two letters, Household a stone ring with a house. They survive every scheme and colour blindness. See [Source shades](#the-three-source-shades).
+- **Phone first:** the board and the calendar week re-form on a phone rather than shrinking. Plan is one card of rows per area with the state as a glyph; the Calendar is a strip of days with marks over one day's card of rows; Today is one card per day. See [Layout](#layout).
 - **The guest page** loads the same tokens with a place layer, `data-place="placitas"`: adobe neutrals, the sky blue of a New Mexico door, and a flat illustration of the Sandias. It never takes a member's scheme. See [The guest page](#the-guest-page-in-placitas).
 - **Migration, not rewrite:** `tokens.css` carries the app's old token names as aliases, so it can land first and change nothing visible. The note [`2026-10-28-style-migration.md`](2026-10-28-style-migration.md) lists what to keep, rename and retire.
 - **Satoshi has been a fake bold.** Fontshare has no static 600, so every heading in the app today is synthesized. Load the variable cut (`satoshi@1`). See [Type](#type).
@@ -105,8 +105,10 @@ These tokens are set once for light and once for dark, before any scheme, and no
 Each calendar is drawn relative to whoever is looking, as the spec says: mine, partner, Household.
 
 - **Mine**: solid, the darkest thing on the grid in light mode and the lightest in dark. No hue at all, so it cannot clash with any accent.
-- **Partner**: a pale plum fill inside a plum ring, with the partner's initial.
+- **Another member**: a pale plum fill inside a plum ring, with their initial. Every member but the viewer shares it; there is no third colour.
 - **Household**: a pale stone fill inside a stone ring, with a small house.
+
+A state glyph or lane icon drawn on a source fill takes that fill's ink, never the accent.
 
 The same treatments mark a person anywhere in the app. The owner disc on a board card is mine-solid or partner-ringed, so "Bob's" looks the same on a card, in a rail and on the grid.
 
@@ -218,7 +220,7 @@ These answer the brief's section 5, and they hold in every scheme. The canvas's 
 
 **On the calendar**, a proposed event (from a card nobody has approved) is hollow and dashed in the accent. Drift (a plan and its event disagree) is an amber ring offset from the event, and the event says "moved" in words. A clash is a red ring: the only red on the grid. Held nights (a guest's stay or a member's block) are hatched and never say why.
 
-**Asked, not assigned.** On the recipient's board the plan is a **dashed** card with "Bob asked you" and the reason, and Take it and Decline inline. On the asker's board it stays solid and theirs, with a dashed "asked Alice" chip, until she answers. There is no other path onto someone's board, and nothing draws a plan as yours before you take it.
+**Handed, not asked.** A plan changes hands at once, and Today says who moved it, from whom, to whom and why. Nothing on Plan is dashed for it. An ask from before 0.7.0 keeps its dashed card on Today until it is answered or the plan moves.
 
 **The Doing clock** is an amber chip with a clock, "3 wks", and appears only in Doing and only from 14 days. Nothing in Planning ever shows an age, and nothing about time is ever red.
 
@@ -226,7 +228,7 @@ These answer the brief's section 5, and they hold in every scheme. The canvas's 
 
 **The error box.** One per screen, directly under the top bar and above everything else on that screen, cleared when the screen changes (as today). It says what happened and then what to do, in that order: "The due date wasn't saved. The NAS didn't answer, so nothing changed on the plan or the calendar. Try again in a minute." A section that is off for a reason is not an error and does not use the box: "Calendars need you to sign in again. The budget and your plans still work." sits in place, in a quiet grey panel with a lock.
 
-**Dashed is reserved.** Nothing else in the app is dashed: drop zones and shelves are solid. Import's suggested rows, already dashed today, are correct under the law and stay.
+**Dashed is reserved.** Nothing else has a dashed edge: drop zones, add rows, the desk's "A new area" column and a read-back before a change are solid. The Planning glyph is a dashed circle, which says the same thing in small: not begun. Import's suggested rows, already dashed today, are correct under the law and stay.
 
 ---
 
@@ -238,12 +240,12 @@ The vocabulary, by job:
 
 - **Shell**: `top`, `pill` (household and member), `tabs-top` (desk), `tabbar` (phone, five slots), `menu-list` and `menu-item`, `more-sheet`, `scrim`, `page-head`, `back`. *(Superseded 2026-10-30: `tabs-top` serves both widths; `tabbar`, `more-sheet` and `scrim` are retired. See [the amendment](#amended-2026-10-30).)*
 - **Controls**: `btn` (`primary`, `bare`, `small`, `danger`), `link`, `field` and `input`, `check`, `seg` (segmented: the chosen option is a raised shape), `filters`.
-- **People and chips**: `who` (`mine`, `partner`), `chips` and `chip` (`due`, `block`, `stale`, `research`, `money`, `asked`, `moved`).
+- **People and chips**: `who` (`mine`, `partner`; gains `other`, `household`, `claude`), `chips` and `chip` (`due`, `block`, `stale`, `research`, `money`, `asked`, `moved`).
 - **Waiting and settled**: `provisional` (with `waiting`, `why`, `effects`, `moved-note`), `decided`.
 - **Claude**: `claude` (the block), `byline` (`claude-by`, `mark`, `asof`), `looked`.
-- **Today**: `today` (three regions), `brief`, `briefing`, `day-head`, `newsince`, `msg` (`mine`, `theirs`), `line` (`flag`), `yours` and `rail`, `composer`, `tray`.
-- **Plan**: `board`, `area`, `lane`, `lane-label`, `bcard`, `shelf`; on the card `crumb`, `plan-head`, `plan-title`, `plan-body`, `plan-main`, `plan-side`, `sec-head`, `md`, `checklist`, `files` and `file`, `dropzone`, `kv`, `person`, `notes-list`, `history`, `askrow`.
-- **Calendar**: `cal-bar`, `legend` and `sw`, `ev` (`mine`, `partner`, `household`, `proposed`, `drift`, `clash`, `due`, `held`), `week` (desk), `daystrip` and `dayview` (phone).
+- **Today**: `today` (three regions), `brief`, `briefing`, `yours` and `rail`, `composer`, `day`, `ent`, `seg people`, `tnew`.
+- **Plan**: `area`, `erow plan`, `erow add`, `erow fold`, `st`, `list`; on the card `crumb`, `plan-head`, `plan-title`, `plan-body`, `plan-main`, `plan-side`, `sec-head`, `md`, `checklist`, `files` and `file`, `dropzone`, `kv`, `person`, `notes-list`, `history`, `askrow`.
+- **Calendar**: `cal-bar`, `marks`, `erow cal`, `ev` (`mine`, `partner`, `household`, `proposed`, `drift`, `clash`, `due`, `held`), `week` (desk), `daystrip` (phone).
 - **Settings**: `settings`, `set-index`, `set-group`, `set-sec`, `rows` and `rowi`, `schemes` and `scheme`, `readonly`, `state-on`.
 - **Errors and empties**: `err`, `unavailable`, `empty`.
 - **Guest**: `guest`, `letter`, `letterhead`, `banner`, `month-bar`, `nights` and `night` (`taken`, `pending`, `confirmed`, `inrange`), `key`, `request`, and for the place layer `landscape`, `place-line`, `fence`, `know`.

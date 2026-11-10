@@ -547,7 +547,7 @@ const dayWords = (day: Day): string =>
  * date makes it news, and never with an age: the only clock the briefing reads
  * is the one that runs in Doing. Due and overdue are facts, not reproaches.
  */
-function plansBlock(state: State, events: readonly Event[], who: Actor, today: Day, tz: string): Gathered['plans'] {
+function plansBlock(state: State, events: readonly Event[], today: Day, tz: string): Gathered['plans'] {
   const cards = board(state, events, { who: 'everyone', today, tz }).rows.flatMap((r) => r.plans);
   const weekOut = addDays(today, 7);
   const where = (c: BoardCard) => `${c.area}, ${c.state === 'doing' ? 'in Doing' : 'in Planning'}, ${c.owner}'s`;
@@ -668,7 +668,7 @@ async function gather(store: Store, o: HouseholdOptions): Promise<Gathered> {
   const events = await store.since(null);
   const budget = openBudget(state, o.today);
   const month = budget ? await monthPart(store, budget, o.today, monthOf(o.today)) : null;
-  const plans = plansBlock(state, events, o.who, o.today, tz);
+  const plans = plansBlock(state, events, o.today, tz);
   const calendar = await calendarBlock(state, o, tz);
 
   const text = [

@@ -1,10 +1,10 @@
 /**
- * What the two of you did directly, one line per decision.
+ * What the members did directly, one line per decision.
  *
  * This is not a log viewer. A log viewer answers "what happened"; the question
- * that matters in a shared budget is "did my partner decide something I should
+ * that matters in a shared budget is "did a member decide something I should
  * know about". So a removal carries enough detail to act on without going
- * looking for the transaction, and the thread flags it for the other person.
+ * looking for the transaction, and the thread flags it for the others.
  */
 
 import { describe } from './tools.ts';

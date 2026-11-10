@@ -1,5 +1,5 @@
 /**
- * The reply box: a question for Claude, or a note for the other members.
+ * The reply box: a question for Claude, or a note for the household.
  *
  * Both go in the log, because the question that led to a decision is as much
  * the record as the decision. A note costs nothing and works with no key;
@@ -28,7 +28,7 @@ const checked = (text: string): string => {
   return t;
 };
 
-/** A note for the other members. Left on a plan's card, it carries the plan, and the plan must be there. */
+/** A note for the household. Left on a plan's card, it carries the plan, and the plan must be there. */
 export async function note(ctx: ToolContext, text: string, budget: BudgetId | null, plan?: PlanId): Promise<Event> {
   const t = checked(text);
   if (plan !== undefined) {

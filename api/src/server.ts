@@ -11,7 +11,7 @@
  *   GET  /api/today                 yours, under the briefing: your calendars today and tomorrow,
  *                                   your plans due this week or in Doing, and this month's money
  *   POST /api/thread/ask            ask Claude in the thread; it calls the same tools
- *   POST /api/thread/note           leave the other members a note
+ *   POST /api/thread/note           leave the household a note
  *   POST /api/thread/decide         approve, decline or put off a card; { args: { choice } } for a drift's choice
  *   POST /api/thread/refresh        work a card out again from today's numbers
  *   POST /api/thread/adjust         your own version of a card
@@ -28,7 +28,6 @@
  *   POST /api/plans/:id/ask         ask Claude about it, from its card { question }
  *   POST /api/plans/:id/hand        hand it to a member at once { to, why? }
  *   POST /api/plans/:id/goal        its one goal { goal }, or null for none
- *   POST /api/plans/:id/ask-to-take closed since 0.7.0: always 410, "Home Planner has been updated. Reload."
  *   POST /api/plans/:id/answer      the member asked takes it, or declines with a reason
  *   POST /api/plans/:id/checklist   the whole checklist
  *   POST /api/plans/:id/due         a due date, or null; on the calendar as an all-day event

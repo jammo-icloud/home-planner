@@ -67,15 +67,22 @@ inventing a figure. Zillow needs no key; Census and EIA keys are free.
 
 ### Plans and documents
 
-Plan is the household's board: areas of life as rows, Planning and Doing as
-columns, with Done kept as an archive. A card holds notes, a checklist, the
-people involved, an envelope and an estimate, a due date and files.
+Plan is the household's board: one card of rows per area, each plan's state a
+mark on its row, and finished plans kept on the area's own page. An area's name
+opens its page, where it is renamed, moved and removed. Any member hands a plan
+to another, or takes one, at once, and Today says who moved it, from whom, to
+whom and why. A plan may carry one goal; pressing a goal on Plan shows every
+plan toward it.
 Briefings, Claude's answers and each plan's page are kept as Markdown documents
 in Synology Drive, in a folder inside a Team Folder that the household's owner
 chooses in Settings. Files attached to a card go beside its page. Nothing is
 written to Drive until the owner has chosen. A plan's page can be edited in
 Drive, and the app asks on Today whether to take the change. Changing the folder
 later moves the documents in the background, and every link in the log follows.
+
+**Upgrading to 0.7.0.** Shelves are gone. Each is now an ordinary plan, and it
+and the plans that sat on it carry a goal with its name: press that goal on Plan
+to see them together. Back up first (see DEPLOY.md).
 
 ### Calendar
 

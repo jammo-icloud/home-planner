@@ -906,6 +906,24 @@ the NAS's Docker dropped `.git` from the build despite
 `BUILDKIT_CONTEXT_KEEP_GIT_DIR` in `docker.yml`, and the build time is the
 thing to check instead.
 
+### Upgrading to 0.7.0
+
+Back up first: download each household's backup from Settings, and copy the
+`data` folder. The first time 0.7.0 opens a household that has a shelf, it
+copies that household's log beside itself, under the log's own name with
+`.before-0.7.0` added, and then writes one line that turns each shelf into a
+goal. The copy is made once and never overwritten. The copy is written beside
+the log and then given its final name with a hard link, so the folder that
+holds the data must be on a volume that supports them (the NAS's own volumes
+do; some network or FUSE mounts do not), and on one that does not a household
+with a shelf will not open until the data is moved. An older build cannot open
+a log that holds that line, or any of this release's new lines: to go back,
+stop the container, put the copy back under the log's name, and start the old
+image; whatever was written after the upgrade is lost. A backup made by 0.7.0
+is refused by an older build, and a backup from a newer build is refused by
+this one, in words. A page left open on a phone across the upgrade says "Home
+Planner has been updated. Reload."
+
 ## TLS
 
 Only for TLS. DSM's reverse proxy (Control Panel → Login Portal → Advanced →

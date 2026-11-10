@@ -473,7 +473,7 @@ export type Event = Meta &
         calendarUnread?: true;
       }
     | { op: 'thread.ask'; question: string; budget: BudgetId | null; plan?: PlanId }
-    /** A member writing to the other member. Claude reads these, and never answers them. */
+    /** A member writing to the household. Claude reads these, and never answers them. */
     | { op: 'thread.note'; text: string; budget: BudgetId | null; plan?: PlanId }
     | {
         op: 'thread.answer';
