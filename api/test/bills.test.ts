@@ -1,12 +1,13 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 import { mkdtemp, readFile } from 'node:fs/promises';
+import { readFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { parseDollars } from '../src/money.ts';
 import { replay, apply } from '../src/replay.ts';
-import { billDateWords } from '../src/analytics.ts';
+import { billDateWords, billKey, billsOf, fixedCharges } from '../src/analytics.ts';
 import { describe as describeEvent } from '../src/tools.ts';
 import { newerBackup, parseBackup, planRestore, eventsToApply, scopeOf } from '../src/restore.ts';
 import { Households } from '../src/households.ts';
@@ -141,5 +142,127 @@ describe('a backup holding bills', () => {
     await fresh.adopt(eventsToApply(plan));
     assert.equal(bills(store.state).length, 1);
     assert.deepEqual([...fresh.state.budgets.get('harbor')!.bills.values()], [...store.state.budgets.get('harbor')!.bills.values()]);
+  });
+});
+
+describe('billKey is frozen', () => {
+  for (const [payee, key] of [
+    ['EXAMPLE POWER BILLP 8842193', 'example power billp'], ['EXAMPLE MKTPL*1A2B3C4D5', 'example mktpl'],
+    ['EXAMPLE WATER #4471', 'example water'], ['  Example   Power ', 'example power'],
+    ['ACH 123-456 PAYMENT', 'ach payment'], ['STORE 12', 'store 12'],
+    ['EXAMPLE MUTUAL INSURANCE AUTO PREMIUM', 'example mutual insurance'],
+    ['EXAMPLE POWER COMPANY OF THE VALLEY', 'example power company of'],
+    ['#12345', ''], ['1234', ''], ['', ''],
+  ] as const) test(JSON.stringify(payee), () => assert.equal(billKey(payee), key));
+  test('it does not call the general normaliser', () => {
+    const src = readFileSync(new URL('../src/analytics.ts', import.meta.url), 'utf8');
+    const body = src.slice(src.indexOf('export function billKey'), src.indexOf('\n}\n', src.indexOf('export function billKey')));
+    assert.equal(body.includes('normalisePayee'), false);
+  });
+});
+
+const list = (s: State, envelope: string, opts?: Parameters<typeof billsOf>[2]) => billsOf(s, 'harbor', opts).get(envelope) ?? [];
+
+describe("an envelope's bills", () => {
+  test('a fixed charge that landed here is a bill', () => {
+    const [b, ...rest] = list(house(POWER), 'util');
+    assert.deepEqual(rest, []);
+    assert.deepEqual([b!.key, b!.name, b!.byHand, b!.date, b!.since, b!.about, b!.lastPaid?.day, b!.receipts.length],
+      ['example power billp', 'EXAMPLE POWER BILLP', false, null, null, 14600, '2026-10-14', 3]);
+    assert.equal(fixedCharges(house(POWER))[0]!.lastDate, '2026-10-14');
+  });
+  test('every live envelope has an entry, one with nothing funded listing its bills', () => {
+    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'gas'));
+    const s = house(gas);
+    assert.deepEqual([...billsOf(s, 'harbor').keys()].sort(), ['daily', 'heat', 'roof', 'util']);
+    assert.equal(list(s, 'heat')[0]!.about, 5000);
+  });
+  test('an unknown budget gives an empty map', () => assert.equal(billsOf(house(POWER), 'nope').size, 0));
+  test('dated first, then by name', () => {
+    const s = house(POWER, [
+      ev({ ...SET, bill: 'zed', name: 'Zed', byHand: true }),
+      ev({ ...SET, bill: 'abel', name: 'Abel', byHand: true, date: null }),
+      ev(SET),
+    ]);
+    const t = house(POWER, [ev({ ...SET, bill: 'zed', name: 'Zed', byHand: true }), ev({ ...SET, bill: 'abel', name: 'Abel', byHand: true, date: null })]);
+    assert.deepEqual(list(t, 'util').map((b) => b.name), ['Zed', 'Abel', 'EXAMPLE POWER BILLP']);
+  });
+  test('a bill named by hand takes a payee that contains it; its name stays', () => {
+    const water = ['2026-09-30', '2026-10-30'].map((d) => pay(`w${d}`, d, 'EXAMPLE WATER #4471', '-48.00', 'water'));
+    const s = house(water, [ev({ ...SET, bill: 'water', name: 'The water', byHand: true })]);
+    assert.deepEqual(list(s, 'util').map((b) => [b.key, b.name, b.about, b.receipts.length]), [['water', 'The water', 4800, 2]]);
+  });
+  test('seen once, it has a date and no figure', () => {
+    const s = house([pay('o', '2026-10-02', 'EXAMPLE WATER', '-48.00', 'water')], [ev({ ...SET, bill: 'example water', name: 'EXAMPLE WATER' })]);
+    assert.deepEqual(list(s, 'util').map((b) => [b.about, b.lastPaid?.day]), [[null, '2026-10-02']]);
+  });
+  test('two fixed charges of one payee in one envelope are one bill, charge by charge', () => {
+    const s = house([...['2026-09-05', '2026-10-05'].map((d) => pay(`a${d}`, d, 'P2P PAYMENT', '-100.00', 'elec')),
+                     ...['2026-09-12', '2026-10-12'].map((d) => pay(`b${d}`, d, 'P2P PAYMENT', '-60.00', 'water'))]);
+    const [b, ...rest] = list(s, 'util');
+    assert.deepEqual([rest.length, b!.about, b!.charges.map((c) => c.typical).sort()], [0, 16000, [10000, 6000].sort()]);
+  });
+  test('a refund lands but is no receipt', () => {
+    const s = house([...POWER, pay('r', '2026-11-03', 'EXAMPLE POWER BILLP', '12.40', 'elec')]);
+    const b = list(s, 'util')[0]!;
+    assert.deepEqual([b.receipts.length, b.lastPaid?.day, b.charges[0]!.landed.has('2026-11')], [3, '2026-10-14', true]);
+  });
+  test('a split part is a receipt for its share', () => {
+    const one = pay('sp', '2026-11-02', 'EXAMPLE POWER BILLP', '-146.00', 'elec');
+    const cut = ev({ op: 'txn.split', txn: 'sp', parts: [{ category: 'elec', amount: parseDollars('-100.00') }, { category: 'groceries', amount: parseDollars('-46.00') }] });
+    const b = list(house([...POWER, one], [cut]), 'util')[0]!;
+    assert.deepEqual([b.receipts.length, b.lastPaid?.amount, b.charges[0]!.landed.has('2026-11')], [4, 10000, true]);
+  });
+  test('a receipt goes to the longest key it contains', () => {
+    const rows = ['2026-09-30', '2026-10-30'].map((d) => pay(`w${d}`, d, 'EXAMPLE WATER #4471', '-48.00', 'water'));
+    const d = { kind: 'due', per: 'month', day: 20 } as const;
+    const s = house(rows, [ev({ ...SET, bill: 'example', name: 'Example', byHand: true, date: d }), ev({ ...SET, bill: 'example water', name: 'Example Water', byHand: true, date: d })]);
+    assert.deepEqual(list(s, 'util').map((b) => [b.key, b.receipts.length]).sort((x, y) => (x[0]! < y[0]! ? -1 : 1)), [['example', 0], ['example water', 2]]);
+  });
+  test("an all-digit payee is nobody's bill", () => {
+    const s = house(['2026-09-04', '2026-10-04'].map((d) => pay(`n${d}`, d, '1234', '-30.00', 'water')));
+    assert.deepEqual(list(s, 'util'), []);
+  });
+  test('the same receipts are listed under each live budget, each with its own date', () => {
+    const second = [
+      ev({ op: 'budget.create', budget: 'other', label: 'Other' }),
+      ev({ op: 'envelope.define', budget: 'other', envelope: 'power', label: 'Power', group: 'House', match: { categories: ['elec'] }, template: parseDollars('100.00'), rollover: false, order: 0 } as never),
+      ev({ op: 'month.open', budget: 'other', month: '2026-11', income: parseDollars('1000.00') }),
+    ];
+    const s = house(POWER, [...second, ev(SET)]);
+    const mine = list(s, 'util')[0]!;
+    const theirs = billsOf(s, 'other').get('power')![0]!;
+    assert.deepEqual([mine.key, theirs.key, mine.date, theirs.date, theirs.receipts.length], ['example power billp', 'example power billp', SET.date, null, 3]);
+  });
+});
+
+describe('a date a member set is never orphaned', () => {
+  const dated = () => [ev(SET)];
+  const date = (s: State, env: string) => list(s, env).find((b) => b.key === 'example power billp')?.date;
+  const sortAll = (cat: string) => POWER.map((t) => ev({ op: 'txn.categorize', txn: t.id, category: cat }));
+  test('re-sorted to another category of its envelope, nothing changes', () => {
+    assert.deepEqual(date(house(POWER, [...dated(), ...sortAll('water')]), 'util'), SET.date);
+  });
+  test('re-sorted into another envelope, it follows; back, it comes home', () => {
+    const away = house(POWER, [...dated(), ...sortAll('groceries')]);
+    assert.deepEqual([date(away, 'daily'), date(away, 'util')], [SET.date, undefined]);
+    assert.deepEqual(date(house(POWER, [...dated(), ...sortAll('groceries'), ...sortAll('elec')]), 'util'), SET.date);
+  });
+  test('it stops following once a bill.set says so', () => {
+    const s = house(POWER, [...dated(), ...sortAll('groceries'), ev({ ...SET, envelope: 'daily', date: null })]);
+    assert.deepEqual([date(s, 'daily'), date(s, 'util')], [null, SET.date]);
+  });
+  test('it does not follow into a savings envelope', () => {
+    const s = house(POWER, [...dated(), ...sortAll('roofing')]);
+    assert.deepEqual([date(s, 'util'), date(s, 'roof')], [SET.date, null]);
+  });
+  test('whatever the general normaliser finds, the date still shows', () => {
+    assert.deepEqual(list(house(POWER, dated()), 'util', { fixed: [] }).map((b) => [b.key, b.date, b.receipts.length]), [['example power billp', SET.date, 3]]);
+  });
+  test('an envelope removed takes its bill off the list; defined again, it is back', () => {
+    const gone = ev({ op: 'envelope.remove', budget: 'harbor', envelope: 'util', why: 'moved' });
+    assert.deepEqual(list(house(POWER, [...dated(), gone]), 'util'), []);
+    const again = ev({ op: 'envelope.define', budget: 'harbor', envelope: 'util', label: 'Utilities', group: 'House', match: { categories: ['elec', 'water'] }, template: parseDollars('300.00'), rollover: false, order: 0 } as never);
+    assert.deepEqual(date(house(POWER, [...dated(), gone, again]), 'util'), SET.date);
   });
 });

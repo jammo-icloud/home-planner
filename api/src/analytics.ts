@@ -12,8 +12,8 @@ import type { Cents } from './money.ts';
 import { monthView, envelopeFor } from './envelopes.ts';
 import type { EnvelopeView, MonthView } from './envelopes.ts';
 import { fundedFor, plannedFor } from './replay.ts';
-import { isSpend, monthKey, monthOf, prevMonth } from './types.ts';
-import type { BillDate, Day, EnvelopeId, Month, State, Txn } from './types.ts';
+import { isSpend, monthKey, monthOf, partsOf, prevMonth } from './types.ts';
+import type { BillDate, BillRecord, BudgetId, Day, EnvelopeId, Month, State, Txn } from './types.ts';
 
 // ─── the month's clock ────────────────────────────────────────────────────────
 
@@ -51,6 +51,8 @@ export interface FixedCharge {
   /** What it bills, averaged across the months it has been seen in. */
   readonly typical: Cents;
   readonly months: readonly Month[];
+  /** The date of its latest receipt. */
+  readonly lastDate: Day;
 }
 
 /**
@@ -111,6 +113,7 @@ export function fixedCharges(
     out.push({
       key, payee: txns[0]!.payee, category: txns[0]!.category as string,
       typical: typical as Cents, months: [...perMonth.keys()].sort(),
+      lastDate: txns.reduce((d, t) => (t.date > d ? t.date : d), txns[0]!.date),
     });
   }
   return out.sort((a, b) => b.typical - a.typical);
@@ -378,6 +381,21 @@ export function recurring(state: State, opts: { minMonths?: number; tolerance?: 
   return out.sort((a, b) => b.typical - a.typical);
 }
 
+/**
+ * How a bill is known: the payee with its reference tail stripped. This is a
+ * format in the log (a bill's key is written into `bill.set`), so it is never
+ * changed, and it does not call `normalisePayee`, which may be.
+ */
+export function billKey(text: string): string {
+  return (text ?? '')
+    .toLowerCase()
+    .replace(/[#*]\s*\w+/g, ' ')
+    .replace(/\b\d[\d-]{2,}\b/g, ' ')
+    .replace(/\s+/g, ' ')
+    .trim()
+    .slice(0, 24);
+}
+
 /** Strip the reference tail so the same merchant groups across months. */
 export function normalisePayee(payee: string): string {
   return (payee ?? '')
@@ -387,6 +405,137 @@ export function normalisePayee(payee: string): string {
     .replace(/\s+/g, ' ')
     .trim()
     .slice(0, 24);
+}
+
+// ─── bills ────────────────────────────────────────────────────────────────────
+
+export interface BillPaid { readonly txnId: string; readonly day: Day; readonly amount: Cents; readonly payee: string }
+export interface BillCharge { readonly key: string; readonly typical: Cents; readonly lastDate: Day; readonly landed: ReadonlySet<Month> }
+export interface Bill {
+  /** Where it is listed and drawn now: it follows its receipts. */
+  readonly envelope: EnvelopeId;
+  readonly key: string;
+  readonly name: string;
+  readonly byHand: boolean;
+  readonly date: BillDate | null;
+  readonly since: Day | null;
+  /** The typical amount; null when the receipts give none. */
+  readonly about: Cents | null;
+  readonly charges: readonly BillCharge[];
+  readonly receipts: readonly BillPaid[];
+  readonly lastPaid: BillPaid | null;
+}
+
+interface BillPart extends BillPaid { readonly month: Month; readonly charge: string; readonly key: string }
+
+/**
+ * Each live envelope's bills: the fixed charges that land in it, and the dates
+ * and names members gave. Receipts are counted by part, as `pace` counts them,
+ * and a charge is placed by the receipt's own category, as `pace` places it:
+ * the two walks stay apart so no figure moves.
+ */
+export function billsOf(
+  state: State,
+  budget: BudgetId,
+  opts: { fixed?: readonly FixedCharge[] } = {},
+): ReadonlyMap<EnvelopeId, readonly Bill[]> {
+  const out = new Map<EnvelopeId, readonly Bill[]>();
+  const b = state.budgets.get(budget);
+  if (!b) return out;
+  const fixed = opts.fixed ?? fixedCharges(state);
+  const byKey = new Map(fixed.map((f) => [f.key, f]));
+
+  const parts = new Map<EnvelopeId, BillPart[]>();
+  const landed = new Map<EnvelopeId, Map<string, Set<Month>>>();
+  const charged = new Map<EnvelopeId, Map<string, FixedCharge>>();
+  for (const t of state.txns.values()) {
+    // whole receipts place a charge, by the receipt's category
+    const f = byKey.get(chargeKey(t.payee, t.category));
+    const home = f ? envelopeFor(b, t) : null;
+    if (f && home) (charged.get(home.id) ?? charged.set(home.id, new Map()).get(home.id)!).set(f.key, f);
+    // parts say what landed and what was paid
+    for (const p of partsOf(t)) {
+      if (!isSpend(p.category)) continue;
+      const env = envelopeFor(b, { ...t, category: p.category });
+      if (!env) continue;
+      const charge = chargeKey(t.payee, p.category);
+      const month = monthOf(t.date);
+      (parts.get(env.id) ?? parts.set(env.id, []).get(env.id)!).push({
+        txnId: t.id, day: t.date, month, amount: cents(-p.amount), payee: t.payee, charge, key: billKey(t.payee),
+      });
+      const byCharge = landed.get(env.id) ?? landed.set(env.id, new Map()).get(env.id)!;
+      (byCharge.get(charge) ?? byCharge.set(charge, new Set()).get(charge)!).add(month);
+    }
+  }
+
+  const isFor = (part: BillPart, rec: BillRecord): boolean => rec.key !== '' && part.key.includes(rec.key);
+  const records = [...b.bills.values()];
+
+  // where each record is listed
+  const listed = new Map<EnvelopeId, BillRecord[]>();
+  const list = (id: EnvelopeId, rec: BillRecord) => (listed.get(id) ?? listed.set(id, []).get(id)!).push(rec);
+  for (const rec of records) {
+    const own = b.envelopes.get(rec.envelope);
+    if (own && (parts.get(own.id) ?? []).some((p) => isFor(p, rec))) { list(own.id, rec); continue; }
+    let best: { id: EnvelopeId; day: Day; order: number } | null = null;
+    for (const env of b.envelopes.values()) {
+      if (env.id === rec.envelope || env.sinking) continue;
+      if (records.some((r) => r.envelope === env.id && r.key === rec.key)) continue;
+      let day: Day | null = null;
+      for (const p of parts.get(env.id) ?? []) if (isFor(p, rec) && (day === null || p.day > day)) day = p.day;
+      if (day === null) continue;
+      if (!best || day > best.day || (day === best.day && env.order < best.order)) best = { id: env.id, day, order: env.order };
+    }
+    if (best) list(best.id, rec);
+    else if (own) list(own.id, rec);
+  }
+
+  for (const env of b.envelopes.values()) {
+    const recs = (listed.get(env.id) ?? []).slice().sort((x, y) => (x.key < y.key ? -1 : x.key > y.key ? 1 : 0));
+    // the listed record that takes a key: the exact one, else the longest it contains
+    const taker = (key: string): BillRecord | null => {
+      if (key === '') return null;
+      const exact = recs.find((r) => r.key === key);
+      if (exact) return exact;
+      let found: BillRecord | null = null;
+      for (const r of recs) if (r.key !== '' && key.includes(r.key) && (!found || r.key.length > found.key.length)) found = r;
+      return found;
+    };
+    interface Acc { rec: BillRecord | null; key: string; charges: FixedCharge[]; parts: BillPart[] }
+    const accs = new Map<string, Acc>();
+    for (const r of recs) accs.set(r.key, { rec: r, key: r.key, charges: [], parts: [] });
+    for (const f of (charged.get(env.id) ?? new Map<string, FixedCharge>()).values()) {
+      const key = billKey(f.payee) || f.key;
+      const into = taker(key)?.key ?? key;
+      (accs.get(into) ?? accs.set(into, { rec: null, key: into, charges: [], parts: [] }).get(into)!).charges.push(f);
+    }
+    for (const p of parts.get(env.id) ?? []) {
+      const rec = taker(p.key);
+      const acc = accs.get(rec ? rec.key : p.key);
+      if (acc) acc.parts.push(p);
+    }
+    const bills: Bill[] = [];
+    for (const a of accs.values()) {
+      const receipts = a.parts.filter((p) => p.amount > 0)
+        .sort((x, y) => (x.day < y.day ? -1 : x.day > y.day ? 1 : x.txnId < y.txnId ? -1 : x.txnId > y.txnId ? 1 : 0))
+        .map((p): BillPaid => ({ txnId: p.txnId, day: p.day, amount: p.amount, payee: p.payee }));
+      const lastPaid = receipts.length ? receipts[receipts.length - 1]! : null;
+      const charges = a.charges.map((f): BillCharge => ({
+        key: f.key, typical: f.typical, lastDate: f.lastDate, landed: landed.get(env.id)?.get(f.key) ?? new Set<Month>(),
+      }));
+      bills.push({
+        envelope: env.id, key: a.key,
+        name: a.rec?.byHand ? a.rec.name : lastPaid?.payee ?? a.rec?.name ?? a.charges[0]!.payee,
+        byHand: a.rec?.byHand ?? false,
+        date: a.rec?.date ?? null, since: a.rec?.since ?? null,
+        about: charges.length ? sum(charges.map((c) => c.typical)) : null,
+        charges, receipts, lastPaid,
+      });
+    }
+    bills.sort((x, y) => (x.date === null ? 1 : 0) - (y.date === null ? 1 : 0) || x.name.localeCompare(y.name) || (x.key < y.key ? -1 : x.key > y.key ? 1 : 0));
+    out.set(env.id, bills);
+  }
+  return out;
 }
 
 // ─── the queue ────────────────────────────────────────────────────────────────
