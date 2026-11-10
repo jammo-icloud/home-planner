@@ -306,6 +306,7 @@ describe('an ask to take a plan', () => {
     await assert.rejects(decide(c, ask!.id, 'approved'), closed('Nobody is asked to take a plan any more. Hand it from its card.'));
     await assert.rejects(refresh(c, ask!.id), closed('Nobody is asked to take a plan any more. Hand it from its card.'));
     await assert.rejects(adjust(c, ask!.id, { why: 'x' }), closed('Nobody is asked to take a plan any more. Hand it from its card.'));
+    await assert.rejects(decide(c, ask!.id, 'snoozed'), closed('Nobody is asked to take a plan any more. Hand it from its card.'));
     await assert.rejects(decide(c, shelf!.id, 'approved'), closed('Plans no longer sit on shelves. Give it a goal instead.'));
     await decide(c, ask!.id, 'declined', 'not needed');
     assert.equal(c.store.state.thread.offers.get(ask!.id)!.status, 'declined');

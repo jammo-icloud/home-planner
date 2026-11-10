@@ -198,8 +198,9 @@ export async function decide(ctx: ToolContext, offerId: EventId,
       return refusedAs409(ctx.store.append(ctx.who, choice));
     });
   }
+  // A card that would ask or shelve can only be declined: not put off, not approved.
+  if (decision !== 'declined') open(o);
   if (decision !== 'approved') return refusedAs409(ctx.store.append(ctx.who, choice));
-  open(o);
 
   const b = o.budget ? state.budgets.get(o.budget) : null;
   if (o.budget && (!b || b.archived)) {

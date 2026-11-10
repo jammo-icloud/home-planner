@@ -806,6 +806,13 @@ describe('plan tools', () => {
     await run('set_plan_state', { plan: 'p1', state: 'doing' });            // a former shelf has a state like any plan
   });
 
+  test('a member who does not own the plan approves a hand_plan card and the plan changes hands', async () => {
+    const c = await planCtx();
+    const p = await runTool(toolByName.get('hand_plan')!, { plan: 'p3', to: 'bob' }, { ...c, who: 'bob' }) as Proposal;
+    await commit(p.id, { ...c, who: 'bob' });     // alice owns p3; bob approves handing it to himself
+    assert.equal(c.store.state.plans.get('p3')!.owner, 'bob');
+  });
+
   test('hand_plan and set_plan_goal refuse before any proposal exists, and a blank reason is no reason', async () => {
     const { c, puts } = counting(await planCtx());
     const run = (name: string, args: Record<string, unknown>) => runTool(toolByName.get(name)!, args, c);

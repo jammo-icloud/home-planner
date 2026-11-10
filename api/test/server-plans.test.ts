@@ -234,6 +234,24 @@ describe('the plan routes', () => {
     assert.ok(!still.json.entries.some((e: any) => e.kind === 'card' && e.offer.id === card.offer.id));
   });
 
+  test('Take it on an old ask: the member asked accepts through /answer, owns the plan, and the card is approved by them', async () => {
+    const id = await make('Trim the hedge');
+    await seedAsk(id, 'bob', 'you have the shears');
+    const r = await call('bob', 'POST', `/api/plans/${id}/answer`, { answer: 'accept' });
+    assert.equal(r.status, 200);
+    assert.deepEqual([r.json.plan.owner, r.json.plan.asked, r.json.plan.ownerFrom], ['bob', null, 'alice']);
+    const card = (await call('alice', 'GET', '/api/thread')).json.entries
+      .find((e: any) => e.kind === 'card' && e.offer.tool === 'answer_ask' && e.offer.args.plan === id);
+    assert.deepEqual([card.offer.status, card.offer.decidedBy], ['approved', 'bob']);
+  });
+
+  test('a plan made for a non-member is refused whole: nothing is written', async () => {
+    const before = (await log()).length;
+    const r = await call('alice', 'POST', '/api/plans', { title: 'Nobody home', area: 'House', owner: 'carol', goal: 'Reroof' });
+    assert.deepEqual([r.status, r.json.error], [400, 'carol is not in this household']);
+    assert.equal((await log()).length, before);
+  });
+
   test('the card\'s generic Approve takes it on, and only for the member asked', async () => {
     const id = await make('Sort the shed');
     await seedAsk(id, 'bob', 'your tools are in there');

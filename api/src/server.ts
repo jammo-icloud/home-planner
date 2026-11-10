@@ -11,7 +11,7 @@
  *   GET  /api/today                 yours, under the briefing: your calendars today and tomorrow,
  *                                   your plans due this week or in Doing, and this month's money
  *   POST /api/thread/ask            ask Claude in the thread; it calls the same tools
- *   POST /api/thread/note           leave the other person a note
+ *   POST /api/thread/note           leave the other members a note
  *   POST /api/thread/decide         approve, decline or put off a card; { args: { choice } } for a drift's choice
  *   POST /api/thread/refresh        work a card out again from today's numbers
  *   POST /api/thread/adjust         your own version of a card
@@ -2720,7 +2720,7 @@ export async function start(
       const noOpenMonth = !!budget && active.state.budgets.has(budget)
         && !active.state.months.has(monthKey(budget, ctx.today.slice(0, 7)));
       // The day opens with the household's briefing: the money, the plans and
-      // the Household calendar, one for both of you. A calendar that cannot be
+      // the Household calendar, one for every member. A calendar that cannot be
       // read is a line in it. Should the briefing itself fail, the budget in
       // view still gets its own section, as before there was a household one.
       try {
