@@ -956,8 +956,15 @@
     #plan-areas{grid-template-columns:repeat(auto-fill,minmax(280px,1fr));gap:var(--sp-5);align-items:start}
     #plan-areas > .add-row{min-height:calc(var(--row) * 2)}
     #plan-quiet{grid-column:1 / -1}
-    .erow.add .add-where{display:none}
+    #plan-areas .erow.add .add-where{display:none}
   }
+  /* An area's page: the envelope page's frame. The rename form opens at the top, under the line, full width. */
+  #area-page .set-page-head > .ep-slot{justify-self:stretch}
+  #area-page .set-page-head > .ep-slot:not(:empty){margin-top:var(--sp-3)}
+  .ep-sec-bar{display:flex;align-items:center;justify-content:space-between;gap:var(--sp-3);min-width:0}
+  /* Its foot's one line, under the links; a link that cannot act is greyed by its ink and says why in that line. */
+  .ep-foot > .set-line{flex-basis:100%;font-size:var(--fs-small)}
+  .ep-foot .link[aria-disabled="true"]{color:var(--ink-faint);cursor:default}
 
   /* the card */
   .crumb{display:flex;flex-wrap:wrap;gap:6px;align-items:center;font-size:var(--fs-small);color:var(--ink-faint)}
@@ -2479,6 +2486,28 @@ const need = (input, what) => {
   return v;
 };
 
+/** What closes each open form marked by `cancelMark`: its own close, kept off the element. */
+const cancels = new WeakMap();
+/**
+ * Mark the control that cancels an open form (its Cancel, or the form itself): one Escape on the page finds it with
+ * `cancelOpen` and runs `close`, so a form is cancelled before the page goes Back.
+ */
+function cancelMark(el, close) {
+  el.dataset.cancel = '';
+  cancels.set(el, close);
+}
+/**
+ * Cancel the first open form in `host`: its remembered close, or a click on the marked control when it has none (a
+ * Cancel button marked by hand). Whether there was one, so the caller's Escape goes Back only when nothing was open.
+ */
+function cancelOpen(host) {
+  const el = [...host.querySelectorAll('[data-cancel]')].find((x) => !x.closest('[hidden]'));
+  if (!el) return false;
+  const close = cancels.get(el);
+  if (close) close(); else el.click();
+  return true;
+}
+
 // ── days where the household is ──
 //
 // The server reads its days in the household's zone (TZ, served as
@@ -3396,7 +3425,8 @@ function offerCard(o, ctx) {
 
 /** The screen a button acted on, read again: the board, a plan's card, or the thread. */
 async function reloadView() {
-  if (view === 'plan') await loadBoard();
+  // With an area's page open, it is the page that is read again, not the board hidden under it.
+  if (view === 'plan') await (areaPage ? loadAreaPage() : loadBoard());
   else if (view === 'plan-card') await loadCard();
   else await loadThread();
 }
@@ -4055,16 +4085,16 @@ function envPageEscape(ev) {
 
 /**
  * The page's frame: Back, the envelope's name as the heading, a line under it,
- * and the body the sections go in.
+ * and the body the sections go in. An area's page is drawn in the same frame, its heading under its own `id`.
  */
-function envFrame({ back, onBack, title, line }) {
+function envFrame({ id = 'env-page-h', back, onBack, title, line }) {
   const section = node('section', 'set-page ep');
-  section.setAttribute('aria-labelledby', 'env-page-h');
+  section.setAttribute('aria-labelledby', id);
   const head = node('div', 'set-page-head');
   const b = textBtn('', 'back', null, onBack);
   b.append(icon('back', 'i'), back);
   const h = node('h1', '', title);
-  h.id = 'env-page-h';
+  h.id = id;
   h.tabIndex = -1;
   h.dataset.key = 'heading';
   head.append(b, h, node('p', 'set-line', line));
@@ -5027,7 +5057,7 @@ async function refresh() {
   try {
     if (view === 'today') await loadThread();
     else if (view === 'budget') await loadBudget();
-    else if (view === 'plan') await loadBoard();
+    else if (view === 'plan') await (areaPage ? loadAreaPage() : loadBoard());
     else if (view === 'plan-card') await loadCard();
   } catch (ex) { showProblem(ex); }
 }
@@ -6847,12 +6877,340 @@ function forgetBoard() {
   planFetch++;
   boardEpoch++;
   planData = null;
+  // What was drawn of it goes too, so the next household's Plan or card never shows it while its own is read.
+  for (const id of ['plan-count', 'plan-people', 'plan-goals', 'plan-foot', 'plan-card']) $(id).textContent = '';
+  $('plan-quiet').hidden = true;
+  $('plan-areas').replaceChildren($('plan-quiet'));
 }
 /** The member is still on this household's board: the same epoch, the Plan view, and no area's page in its place. */
 const onBoard = (epoch) => epoch === boardEpoch && view === 'plan' && areaPage === null;
 
-/** An area's own page, from its heading or its done row. A stand-in until the Area page is built: it does nothing yet. */
-function openArea(area, o = {}) {}
+// ── an area's page ──
+//
+// An area's heading (or its done row) hides the board and draws the area's page in its place, as an envelope's page
+// is drawn in the Budget: the board's scroll and the control that opened it kept for Back, the window at the top
+// once, focus moved without scrolling, Escape cancelling an open form and then going Back, and every reply checked
+// against the page it was asked from (`areaPage === page`), so one that lands after Back draws nothing.
+
+/** Where an area stands on the board, in words: "first", "last", "2 of 4"; nothing while it is the only one. */
+const areaPlace = (i, n) => (n < 2 ? '' : i === 0 ? 'first' : i === n - 1 ? 'last' : `${i + 1} of ${n}`);
+
+/** Back on the board, with no page and no Escape listener: what every way off an area's page starts from. */
+function clearAreaPage() {
+  areaPage = null;
+  document.removeEventListener('keydown', areaEscape);
+  $('plan-board').hidden = false;
+  $('area-page').hidden = true;
+  $('area-page').textContent = '';
+}
+
+/**
+ * Open an area's page, read whole for everyone whatever the board has pressed. `linked`: opened from another screen,
+ * so Back returns there and the board was never seen at a scroll. `focus` may name `'done'`, which opens Done and
+ * starts on its heading. `said` goes in the status line. `restore`, an earlier `areaPage`, gives back the board's
+ * scroll and what opened it. False for an area the household does not have, which leaves the board showing.
+ */
+async function openArea(area, { linked = false, focus = null, said = '', restore = null } = {}) {
+  const fromView = view;
+  // From another screen, the board is what shows under the page and what an unknown area leaves showing.
+  if ((linked || restore) && view !== 'plan') await showView('plan');
+  const epoch = boardEpoch;
+  const scroll = window.scrollY;
+  // What opened it: this area's heading or its done row, whichever has focus. Safari does not focus a button it
+  // presses, and "A new area" opens it from its form, so with neither focused it is the one `focus` says.
+  const own = [`area:${area}`, `done:${area}`];
+  const had = document.activeElement?.dataset?.key;
+  const key = own.includes(had) ? had : focus === 'done' ? own[1] : own[0];
+  const mine = ++planFetch;
+  $('loading').hidden = false;
+  let b;
+  try {
+    b = await api('/api/plans');
+  } catch (ex) {
+    if (mine === planFetch && epoch === boardEpoch && view === 'plan') showProblem(ex);
+    return false;
+  } finally {
+    if (mine === planFetch) $('loading').hidden = true;
+  }
+  // A newer read, another screen, another household, or another page opened meanwhile: this one is let go.
+  if (mine !== planFetch || epoch !== boardEpoch || view !== 'plan' || areaPage !== null) return false;
+  if (!b.areas.includes(area)) return false;
+  areaPage = {
+    area,
+    boardScroll: restore ? restore.boardScroll : linked ? null : scroll,
+    from: restore ? { ...restore.from } : { key: linked ? null : key, view: linked ? fromView : null },
+    doneOpen: focus === 'done' || !!restore?.doneOpen,
+  };
+  // Whatever opened it gives focus up to the page.
+  document.activeElement?.blur?.();
+  $('plan-board').hidden = true;
+  $('area-page').hidden = false;
+  renderAreaPage(b, { focus: focus === 'done' ? 'done' : 'heading', said });
+  window.scrollTo({ top: 0 });
+  // From a done row, Done's heading is brought under the bar when the page's top would leave it below the screen.
+  const doneH = focus === 'done' ? $('area-page').querySelector('[data-key="done"]') : null;
+  if (doneH && doneH.getBoundingClientRect().bottom > window.innerHeight) doneH.scrollIntoView({ block: 'start' });
+  // Escape cancels a form and then goes Back while the page is open.
+  document.addEventListener('keydown', areaEscape);
+  return true;
+}
+
+/**
+ * Back to where the page was opened from: the board, shown at once at the scroll it was left at with focus on what
+ * opened it (or on `key`), then drawn again from a fresh read with focus put back; from another screen, that screen.
+ */
+function closeArea({ refocus = true, key = null } = {}) {
+  const page = areaPage;
+  clearAreaPage();
+  if (!page) return;
+  if (page.from.view && page.from.view !== 'plan') { void showView(page.from.view); return; }
+  const to = key ?? page.from.key ?? `area:${page.area}`;
+  const target = () => $('plan-areas').querySelector(`[data-key="${CSS.escape(to)}"]`);
+  if (page.boardScroll === null) target()?.scrollIntoView({ block: 'center' }); else window.scrollTo({ top: page.boardScroll });
+  // A key named by the caller ("A new area" after a removal) is brought into view; the one that opened the page is where it was.
+  const how = { preventScroll: key === null };
+  if (refocus) (target() ?? $('plan-count')).focus(how);
+  const epoch = boardEpoch;
+  void loadBoard().then(() => {
+    // The redraw put away the control that had focus: it goes back on the same one, unless focus has gone elsewhere.
+    const a = document.activeElement;
+    if (!refocus || !onBoard(epoch) || (a && a !== document.body && !$('plan-board').contains(a))) return;
+    (target() ?? $('plan-count')).focus(how);
+  });
+}
+
+/**
+ * Escape on the page: from inside it, or with focus fallen to the page itself; not from the bar above (the search
+ * box), a menu or a sheet, which have their own. An open form is cancelled first; with none open it goes Back.
+ */
+function areaEscape(ev) {
+  if (!areaPage) { document.removeEventListener('keydown', areaEscape); return; }
+  if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+  if (!$('cat-sec').hidden || !$('phone-sec').hidden) return;
+  const host = $('area-page');
+  const t = ev.target;
+  if (!(t === document.body || t === document.documentElement || host.contains(t))) return;
+  ev.preventDefault();
+  if (cancelOpen(host)) return;
+  closeArea();
+}
+
+/**
+ * Read the open page again and draw it, focus on the control `focus` names (else the one that had it, else the
+ * heading), `said` in its status line. Only the latest read draws; true when this one did.
+ */
+async function loadAreaPage({ focus = null, said = '' } = {}) {
+  const page = areaPage;
+  if (!page) return false;
+  const mine = ++planFetch;
+  $('loading').hidden = false;
+  try {
+    const b = await api('/api/plans');
+    if (mine !== planFetch || areaPage !== page) return false;
+    renderAreaPage(b, { focus, said });
+    return areaPage === page;
+  } catch (ex) {
+    if (mine === planFetch && areaPage === page) showProblem(ex);
+    return false;
+  } finally {
+    if (mine === planFetch) $('loading').hidden = true;
+  }
+}
+
+/**
+ * A change committed from a page the member has since left for the board: the board is read again for it, and focus
+ * goes back on the control that had it, which the redraw replaced.
+ */
+async function boardAfterCommit(epoch) {
+  if (!onBoard(epoch)) return;
+  const a = document.activeElement;
+  const k = a && $('plan-board').contains(a) ? a.dataset?.key ?? null : null;
+  await loadBoard();
+  const now = document.activeElement;
+  if (k && onBoard(epoch) && (!now || now === document.body)) focusBoard(k, { preventScroll: true });
+}
+
+/**
+ * The open area's page, drawn whole from an unfiltered board: its head and line, the rename slot and the status line,
+ * its open plans and the add row, Done folded or open, and the foot. An area that is gone (renamed or removed
+ * elsewhere) closes the page.
+ */
+function renderAreaPage(b, { focus: asked = null, said = '' } = {}) {
+  const page = areaPage;
+  if (!page) return;
+  const i = b.areas.indexOf(page.area);
+  const r = b.rows.find((x) => x.area === page.area);
+  if (i < 0 || !r) { closeArea({ refocus: false }); return; }
+  const n = b.areas.length;
+  const host = $('area-page');
+  const active = document.activeElement;
+  const inPage = !!active && host.contains(active);
+  const had = inPage ? active.dataset?.key ?? null : null;
+  const takeFocus = asked !== null || inPage || !active || active === document.body || $('plan-board').contains(active);
+  const { all } = r;
+
+  // "5 plans · 2 doing · 3 done · first on the board": each part left off at 0, the place with one area.
+  const counts = [all.plans ? plansWord(all.plans) : '', all.doing ? `${all.doing} doing` : '', all.done ? `${all.done} done` : ''].filter(Boolean);
+  const place = areaPlace(i, n);
+  const line = [counts.length ? counts.join(' · ') : 'Nothing planned yet', place ? `${place} on the board` : ''].filter(Boolean).join(' · ');
+  const { section, body } = envFrame({ id: 'area-page-h', back: 'Plan', onBack: () => closeArea(), title: page.area, line });
+
+  // At the top, under the line: the slot the rename form opens in, and the status line a change speaks in.
+  const head = section.querySelector('.set-page-head');
+  const slot = node('div', 'ep-slot');
+  const status = node('p', 'set-line area-said');
+  status.setAttribute('aria-live', 'polite');
+  head.append(slot, status);
+
+  // The open plans, Doing first, then the add row: a plan made here lands here, with focus back on the add row.
+  const list = node('div', 'list');
+  for (const c of r.plans) list.appendChild(planRow(c));
+  list.appendChild(addPlanRow(page.area, { after: () => loadAreaPage() }));
+  body.appendChild(list);
+
+  // Done, newest first, folded unless it was opened (from a done row, or by Show); a redraw keeps it as it was.
+  if (r.done.length) {
+    const done = envSection('Done', 'done');
+    const h = done.el.querySelector('.ep-sec-h');
+    h.appendChild(node('span', 'count', `· ${r.done.length}`));
+    const rows = node('div', 'list');
+    rows.id = 'area-done';
+    for (const c of r.done) rows.appendChild(planRow(c));
+    rows.hidden = !page.doneOpen;
+    const fold = textBtn(page.doneOpen ? 'Hide' : 'Show', 'btn bare small hit', 'done-fold', () => {
+      page.doneOpen = !page.doneOpen;
+      rows.hidden = !page.doneOpen;
+      fold.textContent = page.doneOpen ? 'Hide' : 'Show';
+      fold.setAttribute('aria-expanded', String(page.doneOpen));
+    });
+    fold.setAttribute('aria-expanded', String(page.doneOpen));
+    fold.setAttribute('aria-controls', rows.id);
+    const bar = node('div', 'ep-sec-bar');
+    h.replaceWith(bar);
+    bar.append(h, fold);
+    done.slot.appendChild(rows);
+    body.appendChild(done.el);
+  }
+
+  // The foot: rename, the moves that can happen, remove, and one line saying whether it can be removed.
+  const foot = node('div', 'ep-foot');
+  const rename = textBtn('Rename this area', 'link hit', 'rename', () => openRename());
+  foot.appendChild(rename);
+  const move = async (to, key) => {
+    const btn = foot.querySelector(`[data-key="${key}"]`);
+    if (btn.disabled) return;
+    btn.disabled = true;
+    const epoch = boardEpoch;
+    let answer;
+    try {
+      answer = await api('/api/settings/areas/move', { area: page.area, to });
+    } catch (ex) {
+      if (areaPage !== page) return;
+      btn.disabled = false;
+      showProblem(ex);
+      return;
+    }
+    // Committed: the board is read again if Back was pressed meanwhile, and nothing is drawn over it.
+    if (areaPage !== page) { void boardAfterCommit(epoch); return; }
+    const where = areaPlace(answer.areas.indexOf(page.area), answer.areas.length);
+    await loadAreaPage({ focus: key, said: `${page.area} is now ${where}.` });
+  };
+  if (i > 0) foot.appendChild(textBtn('Move up', 'link hit', 'up', () => move(i - 1, 'up')));
+  if (i < n - 1) foot.appendChild(textBtn('Move down', 'link hit', 'down', () => move(i + 1, 'down')));
+  // Open plans and done ones both keep an area: the log keeps a plan's area, so it is removed once it holds nothing.
+  const holds = all.plans + all.done;
+  const removable = n > 1 && holds === 0;
+  const remove = textBtn('Remove this area', 'link danger hit', 'remove', async () => {
+    if (!removable || remove.disabled) return;
+    remove.disabled = true;
+    const epoch = boardEpoch;
+    try {
+      await api('/api/settings/areas/remove', { area: page.area });
+    } catch (ex) {
+      if (areaPage !== page) return;
+      remove.disabled = false;
+      showProblem(ex);
+      return;
+    }
+    if (areaPage !== page) { void boardAfterCommit(epoch); return; }
+    // The one change that goes Back: the page's area is gone. Focus lands on "A new area".
+    closeArea({ key: 'new-area' });
+  });
+  if (!removable) remove.setAttribute('aria-disabled', 'true');
+  const why = node('p', 'set-line', n < 2 ? 'A household keeps at least one area.'
+    : holds === 0 ? 'Nothing is in it, so removing it loses nothing.'
+      : `${page.area} holds ${plansWord(holds)}${all.done ? `, ${all.done} of them done` : ''}. An area is removed once it holds nothing.`);
+  why.id = 'area-remove-why';
+  remove.setAttribute('aria-describedby', why.id);
+  foot.append(remove, why);
+  body.appendChild(foot);
+
+  // Rename, in the slot at the top with focus in it: "Call it", prefilled. An unchanged name closes with no write;
+  // a refusal stays in the form with what was typed; the page is drawn again under the new name.
+  const openRename = () => {
+    if (slot.firstChild) { slot.querySelector('input')?.focus(); return; }
+    const input = node('input');
+    input.maxLength = 60;
+    input.autocomplete = 'off';
+    input.value = page.area;
+    const { err, say } = epErr();
+    const cancel = node('button', 'btn', 'Cancel');
+    cancel.type = 'button';
+    const go = node('button', 'btn primary', 'Rename it');
+    go.type = 'submit';
+    const acts = node('div', 'ep-acts');
+    acts.append(cancel, go);
+    const form = node('form', 'ep-form');
+    form.append(epField('Call it', input, node('p', 'note', 'Its plans go with it.')), err, acts);
+    const close = () => {
+      slot.textContent = '';
+      host.querySelector('[data-key="rename"]')?.focus({ preventScroll: true });
+    };
+    cancel.addEventListener('click', close);
+    cancelMark(cancel, close);
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      const to = input.value.trim();
+      if (!to) { say('Give it a name'); input.focus(); return; }
+      if (to === page.area) { close(); return; }
+      say('');
+      go.disabled = true;
+      const from = page.area;
+      const epoch = boardEpoch;
+      try {
+        await api('/api/settings/areas/rename', { from, to });
+      } catch (ex) {
+        if (areaPage !== page) return;
+        go.disabled = false;
+        say(ex.message);
+        input.focus();
+        return;
+      }
+      if (areaPage !== page) { void boardAfterCommit(epoch); return; }
+      // The rename answers Settings, not the board: the page takes the new name before it is read again, and Back
+      // looks for the heading or done row under the new name.
+      page.area = to;
+      if (page.from.key === `area:${from}`) page.from.key = `area:${to}`;
+      if (page.from.key === `done:${from}`) page.from.key = `done:${to}`;
+      const drew = await loadAreaPage({ focus: 'rename' });
+      // A read that did not draw leaves the form standing: it is closed, and the error box says why.
+      if (!drew && areaPage === page && form.isConnected) close();
+    });
+    slot.replaceChildren(form);
+    placeForm(input);
+  };
+
+  host.replaceChildren(section);
+  // Set once the line is in the page, so it is read out.
+  if (said) status.textContent = said;
+  if (!takeFocus) return;
+  // A move's button gone with the move (the top has no Move up) hands focus to its neighbour.
+  const near = asked === 'up' ? 'down' : asked === 'down' ? 'up' : null;
+  for (const k of [asked, near, had, 'heading'].filter(Boolean)) {
+    const to = host.querySelector(`[data-key="${CSS.escape(k)}"]`);
+    if (to && !to.disabled && !to.closest('[hidden]')) { to.focus({ preventScroll: true }); return; }
+  }
+}
 
 /** "1 plan", "3 plans": a count is a number and a noun, singular at one. */
 const plansWord = (n) => `${n} plan${n === 1 ? '' : 's'}`;
@@ -6998,11 +7356,17 @@ function planRow(c, { underGoal = false } = {}) {
 /**
  * What a row says under its title, each only when it applies: whose it is, its chips, the Doing clock, the due day,
  * its blocks, Claude's research, its envelope (in the problem colour when it is over), and its goal. The marks are
- * an icon and words, no box: only a free chip is a chip.
+ * an icon and words, no box: only a free chip is a chip. A finished plan says whose, "done Tue 3 Nov", and its goal.
  */
 function planMeta(c, { flag = true } = {}) {
   const m = node('span', 'erow-meta');
   m.appendChild(memberDisc(c.owner, { small: true }));
+  // A finished plan says when it was finished, in the household's days, and what it was toward: nothing else is still going.
+  if (c.state === 'done') {
+    if (c.doneAt) m.appendChild(node('span', 'pm pm-done', `done ${keyWords(keyAt(Date.parse(c.doneAt)), { weekday: 'short', day: 'numeric', month: 'short' })}`));
+    if (flag && c.goal) m.appendChild(goalFlag(c.goal));
+    return m;
+  }
   for (const t of c.chips) m.appendChild(chip('', t));
   const mark = (cls, glyph, text) => {
     const s = node('span', `pm ${cls}`);
@@ -7031,10 +7395,12 @@ function placeForm(input) {
 }
 
 /**
- * One small form of the board's, in place of the row that opened it: one field, what it says under it, the error
- * slot, Cancel and Add it. Cancel and Escape put the row back with focus on it. `post` is given the trimmed words and
- * throws to refuse, and what was typed stays; then `after` reads the board again and focus goes to `focusKey(words)`.
- * A read that did not draw leaves the form standing: it is closed, and the error box says why.
+ * One small form of the board's or an area page's, in place of the row that opened it: one field, what it says under
+ * it, the error slot, Cancel and Add it. Cancel and Escape (through the Plan's one Escape, `cancelOpen`) put the row
+ * back with focus on it. `post` is given the trimmed words and throws to refuse, and what was typed stays; then
+ * `after(words)` reads the screen again and focus goes to `focusKey(words)` on it. A read that did not draw leaves
+ * the form standing: it is closed, and the error box says why. Every step checks the screen it was opened on (the
+ * board, or that very area's page, of this household) is still the one showing.
  */
 function boardForm(row, { cls, label, placeholder, max, notes, post, after, focusKey }) {
   const input = node('input');
@@ -7044,7 +7410,6 @@ function boardForm(row, { cls, label, placeholder, max, notes, post, after, focu
   const { err, say } = epErr();
   const cancel = node('button', 'btn', 'Cancel');
   cancel.type = 'button';
-  cancel.dataset.cancel = '';
   const go = node('button', 'btn primary', 'Add it');
   go.type = 'submit';
   const acts = node('div', 'ep-acts');
@@ -7053,34 +7418,32 @@ function boardForm(row, { cls, label, placeholder, max, notes, post, after, focu
   form.append(epField(label, input, ...notes.map((t) => node('p', 'note', t))), err, acts);
   const back = () => { form.replaceWith(row); row.focus(); };
   cancel.addEventListener('click', back);
-  // Its own Escape, until the page has one mechanism for every open form.
-  form.addEventListener('keydown', (ev) => {
-    if (ev.key !== 'Escape') return;
-    ev.preventDefault();
-    ev.stopPropagation();
-    back();
-  });
+  cancelMark(cancel, back);
+  const page = areaPage;
+  const epoch = boardEpoch;
+  const here = () => epoch === boardEpoch && view === 'plan' && areaPage === page;
   form.addEventListener('submit', async (ev) => {
     ev.preventDefault();
     const words = input.value.trim();
     if (!words) { say('Give it a name'); input.focus(); return; }
     say('');
     go.disabled = true;
-    const epoch = boardEpoch;
     try {
       await post(words);
     } catch (ex) {
-      if (!onBoard(epoch)) return;
+      if (!here()) return;
       go.disabled = false;
       say(ex.message);
       input.focus();
       return;
     }
-    if (!onBoard(epoch)) return;
-    await after();
-    if (!onBoard(epoch)) return;
-    if (form.isConnected) back();
-    else focusBoard(focusKey(words));
+    if (!here()) return;
+    await after(words);
+    if (!here()) return;
+    if (form.isConnected) { back(); return; }
+    const key = focusKey(words);
+    if (page) $('area-page').querySelector(`[data-key="${CSS.escape(key)}"]`)?.focus();
+    else focusBoard(key);
   });
   row.replaceWith(form);
   placeForm(input);
@@ -7088,7 +7451,13 @@ function boardForm(row, { cls, label, placeholder, max, notes, post, after, focu
 }
 
 /** Focus on a board's control by its key, once the board is drawn again; on the count line when it is not drawn. */
-const focusBoard = (key) => ($('plan-areas').querySelector(`[data-key="${CSS.escape(key)}"]`) ?? $('plan-count')).focus();
+const focusBoard = (key, how) => ($('plan-areas').querySelector(`[data-key="${CSS.escape(key)}"]`) ?? $('plan-count')).focus(how);
+
+// The board's one Escape: it cancels a form open on it, focus back on the row that opened it. An area's page has its own.
+$('plan-board').addEventListener('keydown', (ev) => {
+  if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+  if (cancelOpen($('plan-board'))) ev.preventDefault();
+});
 
 /**
  * An area's add row: "A new plan in House", and ", for bob" with another member pressed. Pressed, it opens a form
@@ -7112,16 +7481,25 @@ function addPlanRow(area, { owner = null, goal = null, after }) {
   return row;
 }
 
-/** The board's last card: "A new area", opened in place. Until the Area page is built, the board is read again with focus on the new heading. */
+/**
+ * The board's last card: "A new area", opened in place. Added, the new area's page opens saying where it went:
+ * "Garden is on the board, under Trips." A page that cannot be read leaves the board, read again, focus on its heading.
+ */
 function newAreaRow() {
   const row = node('button', 'add-row', 'A new area');
   row.type = 'button';
   row.dataset.key = 'new-area';
+  let areas = [];
   row.addEventListener('click', () => boardForm(row, {
     cls: 'ep-form ep-card new-area', label: 'The new area', placeholder: 'e.g. Garden', max: 60,
     notes: ['It joins the board at the bottom. Rename it, move it or remove it from its own page.'],
-    post: (area) => api('/api/settings/areas/add', { area }),
-    after: loadBoard, focusKey: (area) => `area:${area}`,
+    post: async (area) => { ({ areas } = await api('/api/settings/areas/add', { area })); },
+    after: async (area) => {
+      const i = areas.indexOf(area);
+      const said = i > 0 ? `${area} is on the board, under ${areas[i - 1]}.` : `${area} is on the board.`;
+      if (!(await openArea(area, { said }))) await loadBoard();
+    },
+    focusKey: (area) => `area:${area}`,
   }));
   return row;
 }
@@ -11197,6 +11575,8 @@ async function showView(next) {
   }
   // Any screen, Budget included, opens on the list: a page left open would be shown stale.
   clearEnvelopePage();
+  // Plan, the same: it opens on the board, with no area's page and its Escape left over.
+  clearAreaPage();
   // A key pressed on the last screen (an envelope page's change or approve) is not this one's.
   pressedKey = null;
   view = next;
@@ -11309,21 +11689,30 @@ function showHouseholds(state) {
  * it may be gone. Every screen is put away first, so the next one opened starts
  * at Today instead of on Settings of a household that no longer exists.
  */
+/**
+ * Every screen put away at once and Today's place shown, its tab marked: where leaving a household and opening one
+ * both start, so nothing of the last household's (its board, a card, its week, its budget, Settings) stays drawn.
+ */
+function onlyToday() {
+  view = 'today';
+  settingsFrom = 'today';
+  for (const id of ['budget', 'walk', 'import', 'compare', 'plan', 'plan-card', 'calendar', 'settings', 'budget-head']) $(id).hidden = true;
+  $('briefing').hidden = false;
+  markTabs();
+}
+
 // Several requests in flight can all meet the same 409; only the first sends the page to the picker.
 let leaving = false;
 async function backToPicker() {
   if (leaving) return;
   leaving = true;
-  view = 'today';
-  settingsFrom = 'today';
-  // An envelope's page is the household's being left: gone, with its Escape listener.
+  // An envelope's page and an area's are the household's being left: gone, with their Escape listeners.
   clearEnvelopePage();
+  clearAreaPage();
   // The pressed person was this household's, and so was the board.
   pressPerson(null);
   forgetBoard();
-  for (const id of ['budget', 'walk', 'import', 'compare', 'plan', 'plan-card', 'calendar', 'settings', 'budget-head']) $(id).hidden = true;
-  $('briefing').hidden = false;
-  markTabs();
+  onlyToday();
   closeMenus();
   $('manage-panel').textContent = '';
   $('app-err').hidden = true;
@@ -11493,8 +11882,12 @@ async function enterApp() {
   settingsPage = null;
   settingsEditing = null;
   document.removeEventListener('keydown', pageEscape);
-  // Nor is another household's envelope page, its listener or its buttons.
+  // Nor is another household's envelope page or area page, their listeners or their buttons.
   clearEnvelopePage();
+  clearAreaPage();
+  // A switch from the menu opens on Today, as signing in does: the screen that was showing was the last household's.
+  onlyToday();
+  closeMenus();
   const who = await api('/api/whoami');
   householdLabel = who.household?.label ?? null;
   docHousehold = `${who.sandbox ? 'sandbox' : 'nas'}:${who.who}:${who.household?.id ?? ''}`;

@@ -75,6 +75,16 @@ const ADDED: readonly Line[] = [
   ['board', 'It joins the board at the bottom. Rename it, move it or remove it from its own page.'], ['board', "'/api/settings/areas/add'"],
   ['board', '#plan-areas{', 'css'], ['board', '.erow.plan{', 'css'], ['board', '.erow.fold{', 'css'], ['board', '.erow.add{', 'css'],
   ['S33', 'STATE_WORDS[s]'],
+  // The Area page (Task 12): opened from an area's heading or its done row, renamed, moved and removed from its foot.
+  // One Escape cancels an open form before it goes Back, through the shared mark every form on Plan carries.
+  ['area', 'async function openArea('], ['area', 'function closeArea('], ['area', 'function areaEscape('], ['area', 'function clearAreaPage('],
+  ['area', 'function cancelOpen(', 'shared'], ['area', 'function cancelMark(', 'shared'],
+  ['area', "'Rename this area'"], ['area', "'Move up'"], ['area', "'Move down'"], ['area', "'Remove this area'"],
+  ['area', "'Its plans go with it.'"], ['area', "'Rename it'"], ['area', "'A household keeps at least one area.'"],
+  ['area', "'Nothing is in it, so removing it loses nothing.'"], ['area', 'An area is removed once it holds nothing.'],
+  ['area', "'Nothing planned yet'"], ['area', 'on the board'], ['area', "'/api/settings/areas/rename'"],
+  ['area', "'/api/settings/areas/move'"], ['area', "'/api/settings/areas/remove'"], ['area', "id: 'area-page-h'"],
+  ['P3', "focus: 'done'"], ['P3', "'Done', 'done'"], ['P3', 'pm-done'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
