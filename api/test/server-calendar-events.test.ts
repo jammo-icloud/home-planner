@@ -30,6 +30,8 @@ const { Households } = await import('../src/households.ts');
 const { COOKIE, Sessions } = await import('../src/auth.ts');
 const { getEvent, listCalendars, listEvents } = await import('../src/synology.ts');
 const { checkWithDsm } = await import('../src/auth.ts');
+const { changeEvent } = await import('../src/appointment-edits.ts');
+const { ProposalStore } = await import('../src/tools.ts');
 
 let base = '';
 let close: () => Promise<void> = async () => {};
@@ -242,9 +244,80 @@ describe('POST /api/calendar/events/:id: a member changes one the app made', () 
     const r = await call('alice', 'POST', `/api/calendar/events/${id}`, form({ summary: 'Linked, renamed', plan: 'dentist' }));
     assert.equal(r.status, 200, JSON.stringify(r.json));
     const added = (await log()).slice(before);
-    assert.deepEqual(added.map((e) => e.op), ['plan.calendar.etag']);
-    assert.equal(added[0].evt_id, id);
-    assert.equal(added[0].dav_etag, (await onNas('alice', id)).dav_etag);
+    assert.deepEqual(added.map((e) => e.op), ['calendar.appointment.change', 'plan.calendar.etag']);
+    assert.equal(added[1].evt_id, id);
+    assert.equal(added[1].dav_etag, (await onNas('alice', id)).dav_etag);
+  });
+
+  test('a move writes one line, with what it was as the NAS had it', async () => {
+    const id = await make('alice', { summary: 'Swim', start: `${day(2)}T16:00`, end: `${day(2)}T17:00` });
+    const r = await call('alice', 'POST', `/api/calendar/events/${id}`, form({ summary: 'Swim', start: `${day(2)}T16:30`, end: `${day(2)}T17:30` }));
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    const line = (await log()).findLast((e) => e.op === 'calendar.appointment.change');
+    assert.equal(line.evt_id, id);
+    assert.equal(line.start, new Date(`${day(2)}T16:30:00Z`).toISOString());
+    assert.equal(line.end, new Date(`${day(2)}T17:30:00Z`).toISOString());
+    assert.deepEqual(line.was, {
+      summary: 'Swim', start: new Date(`${day(2)}T16:00:00Z`).toISOString(), end: new Date(`${day(2)}T17:00:00Z`).toISOString(), allDay: false,
+    });
+    assert.ok(line.dav_etag);
+  });
+
+  test('a rename writes one line; a save of the notes alone writes none', async () => {
+    const id = await make('alice', { summary: 'Swim', start: `${day(2)}T16:00`, end: `${day(2)}T17:00` });
+    const same = { summary: 'Swim', start: `${day(2)}T16:00`, end: `${day(2)}T17:00`, allDay: false };
+    const before = (await log()).length;
+    let r = await call('alice', 'POST', `/api/calendar/events/${id}`, { ...same, notes: 'bring a towel' });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    assert.equal((await log()).length, before);
+    r = await call('alice', 'POST', `/api/calendar/events/${id}`, { ...same, summary: 'Swim practice' });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    const line = (await log()).findLast((e) => e.op === 'calendar.appointment.change');
+    assert.deepEqual([line.was.summary, line.summary], ['Swim', 'Swim practice']);
+    assert.equal((await log()).length, before + 1);
+  });
+
+  test('with a plan linked, the change and the etag are one write', async () => {
+    const id = await make('alice', { summary: 'Linked again', plan: 'dentist' });
+    const r = await call('alice', 'POST', `/api/calendar/events/${id}`, form({ summary: 'Linked again, renamed', plan: 'dentist' }));
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    const last = (await log()).slice(-2);
+    assert.deepEqual(last.map((e) => e.op), ['calendar.appointment.change', 'plan.calendar.etag']);
+    assert.equal(last[0].at, last[1].at);
+  });
+
+  describe('the log refusing', () => {
+    const ctxFor = () => ({ store: home.store, who: 'alice', today: day(0), proposals: new ProposalStore(), sid: aliceSid });
+    const refusing = async (run: () => Promise<unknown>) => {
+      const real = home.store.append;
+      home.store.append = (async () => { throw new Error('the log would not take it'); }) as typeof real;
+      try { return await run(); } finally { home.store.append = real; }
+    };
+
+    test('puts the event back as it was read', async () => {
+      const id = await make('alice', { summary: 'Swim', start: `${day(2)}T16:00`, end: `${day(2)}T17:00` });
+      const before = await onNas('alice', id);
+      const body = { summary: 'Swim practice', start: `${day(2)}T16:30`, end: `${day(2)}T17:30`, allDay: false };
+      await refusing(() => assert.rejects(changeEvent(ctxFor(), id, body), /would not take it/));
+      const ev = await onNas('alice', id);
+      assert.equal(ev.summary, 'Swim');
+      assert.equal(ev.dtstart, before.dtstart);
+      assert.equal(ev.dtend, before.dtend);
+    });
+
+    test('and the undo failing says so', async () => {
+      const id = await make('alice', { summary: 'Swim', start: `${day(2)}T16:00`, end: `${day(2)}T17:00` });
+      let sets = 0;
+      const f = (async (url: string | URL | Request, init?: RequestInit) => {
+        const params = new URLSearchParams(String(init?.body ?? ''));
+        if (params.get('api') === 'SYNO.Cal.Event' && params.get('method') === 'set' && ++sets === 2) {
+          return new Response(JSON.stringify({ success: false, error: { code: 100 } }), { headers: { 'content-type': 'application/json' } });
+        }
+        return fetch(url, init);
+      }) as typeof fetch;
+      const body = { summary: 'Swim practice', start: `${day(2)}T16:30`, end: `${day(2)}T17:30`, allDay: false };
+      await refusing(() => assert.rejects(changeEvent(ctxFor(), id, body, f), /could not be put back/));
+    });
   });
 
   test('a partner\'s own calendar is refused: bob cannot change what alice put on hers', async () => {

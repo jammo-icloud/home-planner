@@ -108,7 +108,7 @@ const standalone = (kind: OfferPrompt['kind']): boolean =>
 const PLAN_LINES = new Set<string>([
   'plan.create', 'plan.state', 'plan.remove', 'plan.hand', 'goal.rename', 'goal.remove',
   'plan.due', 'plan.block', 'plan.unblock', 'plan.attach', 'plan.detach',
-  'calendar.drift.resolve', 'calendar.appointment', 'calendar.appointment.remove',
+  'calendar.drift.resolve', 'calendar.appointment', 'calendar.appointment.remove', 'calendar.appointment.change',
 ]);
 const quiet = (e: Event): boolean => !planShaped(e.op) || PLAN_LINES.has(e.op);
 

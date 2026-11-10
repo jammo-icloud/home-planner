@@ -10,7 +10,7 @@ const lane = (op: string, extra = {}) => laneOf({ op, ...extra } as never, state
 
 const WANT = {
   budget: ['assign', 'move', 'income.set', 'month.open', 'month.close', 'month.discard', 'txn.add', 'txn.categorize', 'txn.split', 'txn.remove', 'rule.add', 'rule.remove', 'envelope.define', 'envelope.remove', 'envelopes.model', 'budget.create', 'budget.rename', 'budget.locate', 'budget.archive', 'category.define', 'category.archive', 'category.sinking', 'income.source.define', 'income.source.remove', 'account.balance', 'savings.account'],
-  calendar: ['calendar.appointment', 'calendar.appointment.remove', 'calendar.household', 'calendar.household.rename', 'calendar.target', 'guest.allow', 'guest.revoke', 'guests.arrival', 'guests.booking', 'booking.block', 'booking.unblock', 'booking.confirm', 'booking.cancel', 'booking.suggest', 'booking.release'],
+  calendar: ['calendar.appointment', 'calendar.appointment.remove', 'calendar.appointment.change', 'calendar.household', 'calendar.household.rename', 'calendar.target', 'guest.allow', 'guest.revoke', 'guests.arrival', 'guests.booking', 'booking.block', 'booking.unblock', 'booking.confirm', 'booking.cancel', 'booking.suggest', 'booking.release'],
   plans: ['plan.create', 'plan.state', 'plan.remove', 'plan.due', 'plan.block', 'plan.unblock', 'plan.attach', 'plan.detach', 'plan.hand', 'areas.set', 'areas.rename', 'areas.add', 'areas.remove', 'goal.rename', 'goal.remove'],
   notes: ['household.claim', 'member.add', 'member.remove', 'household.zone', 'links.set', 'documents.folder', 'thread.note'],
   claude: ['thread.briefing', 'thread.ask'],

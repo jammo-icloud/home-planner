@@ -13,7 +13,7 @@
 
 import { appointmentTimes, conflictsFor, descriptionOf, freeSlotsNear, makeAppointment, partsOfDescription } from './appointments.ts';
 import type { Seen } from './appointments.ts';
-import { capital, isGone, listingFor, notShared, undoMade } from './calendar.ts';
+import { at, capital, isGone, listingFor, notShared, undoMade } from './calendar.ts';
 import { ToolError } from './errors.ts';
 import { writePlan } from './plan-edits.ts';
 import { appointmentAsked } from './tools.ts';
@@ -106,8 +106,31 @@ export async function changeEvent(ctx: ToolContext, evt_id: number, body: unknow
   // A reply without the new etag would leave the plan's link unable to change it again; ask for it.
   const etag = now.dav_etag || (await getEvent(sid, found.ref, f)).dav_etag;
   const plan = appt.plan ? ctx.store.state.plans.get(appt.plan) : undefined;
+  const lines: NewEvent[] = [];
+  if (asked.summary !== current.summary.trim() || !unchanged) {
+    lines.push({
+      op: 'calendar.appointment.change', evt_id, summary: asked.summary, start: at(asked.dtstart).toISOString(),
+      end: at(asked.dtend).toISOString(), allDay: asked.allDay, dav_etag: etag || current.dav_etag,
+      was: { summary: current.summary.trim(), start: at(current.dtstart).toISOString(), end: at(current.dtend).toISOString(), allDay: current.is_all_day },
+    });
+  }
   if (plan && !plan.removed && etag && plan.links.some((l) => l.evt_id === evt_id)) {
-    await writePlan(ctx, { op: 'plan.calendar.etag', plan: plan.id, evt_id, dav_etag: etag });
+    lines.push({ op: 'plan.calendar.etag', plan: plan.id, evt_id, dav_etag: etag });
+  }
+  if (!lines.length) return;
+  try {
+    await writePlan(ctx, lines);
+  } catch (err) {
+    // The log refused what the NAS took: the event goes back as it was read.
+    try {
+      await setEvent(sid, { ...now, dav_etag: etag || now.dav_etag }, {
+        summary: current.summary, description: current.description, is_all_day: current.is_all_day,
+        dtstart: current.dtstart, dtend: current.dtend, tz_id: zoneOf(ctx.store.state),
+      }, f);
+    } catch {
+      throw new ToolError('the change was saved on the calendar but could not be recorded, and it could not be put back: look at it in Synology Calendar', 502);
+    }
+    throw err;
   }
 }
 

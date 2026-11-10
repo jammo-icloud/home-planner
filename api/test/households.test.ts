@@ -760,6 +760,31 @@ describe('plans and settings in a backup', () => {
     assert.equal(store.state.plans.get('gate')!.state, 'doing');
   });
 
+  test('a moved appointment restores with its change, and a change for one not recorded is refused', async () => {
+    const hh = new Households(await dir());
+    const source = await hh.create('alice', 'Rivera');
+    const cal = { cal_id: 'c1', original_cal_id: 'c1' };
+    await source.store.append('alice', [
+      { op: 'calendar.appointment', evt_id: 7, ...cal, ical_uid: 'u7', dav_etag: 'E1', summary: 'Swim',
+        start: '2026-11-12T16:00:00.000Z', end: '2026-11-12T17:00:00.000Z', allDay: false },
+      { op: 'calendar.appointment.change', evt_id: 7, summary: 'Swim practice', start: '2026-11-12T16:30:00.000Z',
+        end: '2026-11-12T17:30:00.000Z', allDay: false, dav_etag: 'E2',
+        was: { summary: 'Swim', start: '2026-11-12T16:00:00.000Z', end: '2026-11-12T17:00:00.000Z', allDay: false } },
+    ]);
+    const backup = parseBackup(await readFile(source.store.path, 'utf8'));
+    const { store } = await hh.create('bob', 'Fresh');
+    await store.append('bob', { op: 'member.add', member: 'alice', why: 'the appointment is hers' });
+    const plan = planRestore(store.state, backup, ['plans']);
+    assert.deepEqual(plan.collisions, []);
+    await store.adopt(eventsToApply(plan));
+    assert.equal(store.state.appointments.get(7)!.summary, 'Swim practice');
+
+    const was = { summary: 'Swim', start: '2026-11-12T16:00:00.000Z', end: '2026-11-12T17:00:00.000Z', allDay: false };
+    const change = { op: 'calendar.appointment.change' as const, summary: 'x', start: was.start, end: was.end, allDay: false, dav_etag: 'E', was };
+    await assert.rejects(store.append('alice', { ...change, evt_id: 99 }), /not recorded/);
+    await assert.rejects(store.append('alice', { ...change, evt_id: 7, summary: '' }), /summary/);
+  });
+
   test('a second restore collides on the plan id, and says so in the preview', async () => {
     const { store } = await fresh();
     await store.append('bob', { op: 'areas.set', areas: ['House', 'Garden'] });

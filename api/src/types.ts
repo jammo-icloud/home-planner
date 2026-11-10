@@ -691,6 +691,15 @@ export type Event = Meta &
      * own `plan.calendar.unlink` just before. `summary` is for the words.
      */
     | { op: 'calendar.appointment.remove'; evt_id: number; summary: string }
+    /**
+     * An appointment the app made, renamed or moved by a member (the
+     * Calendar's form, Save). `start` and `end` are ISO instants as
+     * `calendar.appointment` writes them; `was` is what the NAS had.
+     */
+    | {
+        op: 'calendar.appointment.change'; evt_id: number; summary: string; start: string; end: string; allDay: boolean;
+        dav_etag: string; was: { summary: string; start: string; end: string; allDay: boolean };
+      }
     // ─── booking ────────────────────────────────────────────────────────────
     //
     // Friends asking to come and stay. The guest list is the household's,
@@ -741,7 +750,7 @@ export type Op = Event['op'];
  * ones a member would want to see.
  */
 const BOARD_CALENDAR_OPS: ReadonlySet<string> = new Set<Op>([
-  'calendar.drift', 'calendar.drift.resolve', 'calendar.appointment', 'calendar.appointment.remove',
+  'calendar.drift', 'calendar.drift.resolve', 'calendar.appointment', 'calendar.appointment.remove', 'calendar.appointment.change',
 ]);
 export const planShaped = (op: Op): boolean =>
   op.startsWith('plan.') || op === 'goal.rename' || op === 'goal.remove' || BOARD_CALENDAR_OPS.has(op);

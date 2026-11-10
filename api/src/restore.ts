@@ -62,7 +62,7 @@ export function scopeOf(e: Event): Scope {
     // Its events on the calendar, and what became of them. An appointment
     // need not be a plan's, but it is the board's to keep all the same.
     case 'plan.calendar.link': case 'plan.calendar.unlink': case 'plan.calendar.etag':
-    case 'calendar.drift': case 'calendar.drift.resolve': case 'calendar.appointment': case 'calendar.appointment.remove':
+    case 'calendar.drift': case 'calendar.drift.resolve': case 'calendar.appointment': case 'calendar.appointment.remove': case 'calendar.appointment.change':
     // What was last written of its page in Drive, and what was found changed there.
     case 'plan.doc': case 'plan.page.drift':
       return 'plans';

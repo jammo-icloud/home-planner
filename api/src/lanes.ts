@@ -26,7 +26,7 @@ export function laneOf(e: Event | NewEventShape, state: Pick<State, 'pageDrifts'
     case 'income.source.define': case 'income.source.remove':
     case 'account.balance': case 'savings.account':
       return 'budget';
-    case 'calendar.appointment': case 'calendar.appointment.remove':
+    case 'calendar.appointment': case 'calendar.appointment.remove': case 'calendar.appointment.change':
     case 'calendar.household': case 'calendar.household.rename': case 'calendar.target':
     case 'guest.allow': case 'guest.revoke': case 'guests.arrival': case 'guests.booking':
     case 'booking.block': case 'booking.unblock': case 'booking.confirm': case 'booking.cancel':

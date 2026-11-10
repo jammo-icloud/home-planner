@@ -805,7 +805,7 @@ const isDriftSide = (v: unknown): boolean => {
  */
 function validateCalendarLines(e: Event): void {
   if (e.op !== 'calendar.drift' && e.op !== 'calendar.drift.resolve' && e.op !== 'calendar.appointment'
-      && e.op !== 'calendar.appointment.remove') return;
+      && e.op !== 'calendar.appointment.remove' && e.op !== 'calendar.appointment.change') return;
   const { refuse, whole } = refusalsFor(e);
   switch (e.op) {
     case 'calendar.drift':
@@ -853,6 +853,24 @@ function validateCalendarLines(e: Event): void {
       whole(e.evt_id, 'evt_id');
       if (!named(e.summary)) throw refuse('an appointment taken back names what it was (its summary)');
       return;
+    case 'calendar.appointment.change': {
+      whole(e.evt_id, 'evt_id');
+      if (!named(e.dav_etag)) throw refuse("an event's etag cannot be empty");
+      const side = (x: unknown, what: string): void => {
+        const o = (typeof x === 'object' && x !== null ? x : {}) as { summary?: unknown; start?: unknown; end?: unknown; allDay?: unknown };
+        if (!named(o.summary)) throw refuse(`${what} needs a name (its summary)`);
+        const start = typeof o.start === 'string' ? Date.parse(o.start) : NaN;
+        const end = typeof o.end === 'string' ? Date.parse(o.end) : NaN;
+        if (!Number.isFinite(start)) throw refuse(`${what}'s start is a date or a date and time`);
+        if (!Number.isFinite(end)) throw refuse(`${what}'s end is a date or a date and time`);
+        if (end < start) throw refuse(`${what} cannot end before it starts`);
+        if (typeof o.allDay !== 'boolean') throw refuse(`${what} is all day (allDay) or not`);
+      };
+      side(e, 'a changed appointment');
+      if (typeof e.was !== 'object' || e.was === null) throw refuse('a changed appointment says what it was (was)');
+      side(e.was, "an appointment's earlier form");
+      return;
+    }
   }
 }
 
@@ -1927,6 +1945,13 @@ function fold(d: Draft, e: Event): void {
           : {}),
         who: e.who, at: e.at,
       });
+      return;
+    }
+
+    case 'calendar.appointment.change': {
+      const a = d.appointments.get(e.evt_id);
+      if (!a) throw new ReplayError(`appointment ${e.evt_id} is not recorded`, e);
+      d.appointments.set(e.evt_id, { ...a, summary: e.summary, start: e.start, end: e.end, allDay: e.allDay, dav_etag: e.dav_etag });
       return;
     }
 

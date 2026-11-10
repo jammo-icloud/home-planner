@@ -893,6 +893,11 @@ export function describe(
       break;
     }
     case 'calendar.appointment': what = `made an appointment: ${e.summary}`; break;
+    case 'calendar.appointment.change': {
+      const w = e.was;
+      what = e.start !== w.start || e.end !== w.end || e.allDay !== w.allDay ? `moved ${e.summary}` : `renamed ${w.summary} to ${e.summary}`;
+      break;
+    }
     case 'calendar.appointment.remove': what = `took an appointment off the calendar: ${e.summary}`; break;
     // ─── booking ────────────────────────────────────────────────────────────
     case 'guest.allow': what = `allowed guest ${e.name.trim()} (${e.email.trim().toLowerCase()})`; break;
