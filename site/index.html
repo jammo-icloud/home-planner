@@ -984,7 +984,19 @@
   .plan-head{display:grid;gap:var(--sp-3);padding-block:0 var(--sp-5);border-bottom:var(--stroke) solid var(--line)}
   .plan-title{font-size:var(--fs-headline);font-weight:var(--fw-semibold);line-height:var(--lh-tight);letter-spacing:-0.02em;cursor:text}
   .plan-head .vr{width:var(--stroke);align-self:stretch;background:var(--line);margin:0 var(--sp-1)}
-  .plan-head .owner{display:inline-flex;align-items:center;gap:6px;font-size:var(--fs-small)}
+  /* Back and the crumb share a line, and wrap together on a narrow screen. */
+  .plan-top{display:flex;flex-wrap:wrap;align-items:center;justify-content:space-between;gap:0 var(--sp-3)}
+  @container page (min-width: 760px){ .plan-top{justify-content:flex-start;gap:0 var(--sp-5)} }
+  /* The head's controls: the state row, a divider, then the rest; one row of them on the desk. */
+  .plan-acts{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-2) var(--sp-3)}
+  .plan-head .seg button{display:inline-flex;align-items:center;gap:var(--sp-1)}
+  /* A phone stacks the two groups; the buttons in a group share its row and grow to fill it, so a row that wraps
+     is full to both edges at one gap and nothing stands alone mid-row. */
+  @container page (max-width: 759px){
+    .plan-acts{display:grid;gap:var(--sp-2)}
+    .plan-acts .actions > .btn{flex:1 1 auto}
+    .plan-acts .actions > .give{flex-basis:100%}
+  }
   .plan-body{display:grid;gap:var(--sp-6);padding-block:var(--sp-5) var(--sp-8)}
   .plan-main,.plan-side{display:grid;gap:var(--sp-6);align-content:start;min-width:0}
   .plan-main > section,.plan-side > section{margin-top:0}
@@ -1038,7 +1050,6 @@
     font:inherit;font-size:var(--fs-ui);font-weight:var(--fw-medium);color:var(--accent-ink);background:none;border:0;
     text-decoration:none;cursor:pointer}
   #plan-card .back{justify-self:start}
-  @container page (min-width: 760px){ #plan-card .back{display:none} }
   /* the dividers between groups of actions only read on one line; a phone wraps them */
   @container page (max-width: 759px){ .plan-head .vr{display:none} }
   /* Claude's research on a card: mark, by-line, gold rule, paper */
@@ -2531,11 +2542,20 @@ function inlineForm(slot, fields, submitLabel, onSubmit, after = reloadView) {
   go.type = 'submit';
   const cancel = node('button', 'btn', 'Cancel');
   cancel.type = 'button';
-  cancel.addEventListener('click', () => { slot.textContent = ''; });
+  // Closing puts focus back on what opened the form, when it was inside the form.
+  const opener = document.activeElement;
+  const close = () => {
+    const inside = slot.contains(document.activeElement);
+    slot.textContent = '';
+    if (inside && opener?.isConnected) opener.focus({ preventScroll: true });
+  };
+  cancel.addEventListener('click', close);
+  // One Escape on the page finds this and closes it; the next goes Back.
+  cancelMark(cancel, close);
   const acts = node('div', 'actions');
   acts.append(go, cancel);
   form.append(msg, acts);
-  form.addEventListener('keydown', (e) => { if (e.key === 'Escape') slot.textContent = ''; });
+  form.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
   form.addEventListener('submit', async (e) => {
     e.preventDefault();
     go.disabled = true;
@@ -6974,6 +6994,16 @@ let boardSaid = '';
 /** An area's own page while it stands in the board's place; null while the board shows. */
 let areaPage = null;
 let cardId = null;
+/**
+ * Where the card showing was opened from, so Back and Escape return there: the screen (`'plan'` is the board, or an
+ * area's page when `area` is that page's state), the window's scroll then, and the plan's id when a row had focus.
+ * Null while no card shows; kept when a card is opened from another card.
+ */
+let cardFrom = null;
+/** The area of the card last drawn: where focus lands when its plan is removed. */
+let cardArea = null;
+/** Each card read's number: only the latest read draws, and one that lands after the card was left draws nothing. */
+let cardFetch = 0;
 /** Each board read's number: only the latest read draws, says what went wrong, or puts the loading line away. */
 let planFetch = 0;
 /** Which household's board this is: moved on by a switch or a sign-out, so a reply or a form's post from before draws nothing. */
@@ -7811,30 +7841,107 @@ function goalFoot(b) {
 
 // ── the card ──
 
+/** Where a card's Back reads: the screen it was opened from, or the area's name when that was an Area page. */
+const cardBackWord = () => (cardFrom?.view === 'today' ? 'Today' : cardFrom?.view === 'calendar' ? 'Calendar' : cardFrom?.area?.area ?? 'Plan');
+
+/**
+ * Open a plan's card. Unless a card is already showing, it remembers where it was opened from: Today or the Calendar
+ * when one of them shows, else Plan (the board or an area's page, as it stands, with its scroll and the row that had
+ * focus). A card opened from another card keeps the first one's place.
+ */
 async function openCard(id) {
+  if (view !== 'plan-card') {
+    const onPlan = view !== 'today' && view !== 'calendar';
+    cardFrom = {
+      view: onPlan ? 'plan' : view,
+      area: areaPage ? { ...areaPage, from: { ...areaPage.from } } : null,
+      // Another screen's scroll means nothing on the board.
+      scroll: view === 'plan' ? window.scrollY : 0,
+      row: document.activeElement?.closest?.('[data-plan]')?.dataset.plan ?? null,
+    };
+    // The last card is not this one: nothing of it shows while this one is read.
+    $('plan-card').textContent = '';
+  }
   cardId = id;
   if (view === 'plan-card') { await loadCard(); window.scrollTo({ top: 0 }); }
   else await showView('plan-card');
 }
 
-async function loadCard() {
-  // A card asked for in a household since left is not drawn, and its failure is not said.
+/**
+ * Back to where the card was opened from. Today and the Calendar open as they do. Plan opens the area's page as it was
+ * (which area, Done open or not, its scroll) or the board, then scrolls to where it was and puts focus on the row;
+ * after a removal focus goes to the area's heading instead, the row being gone. Nothing is done to a screen the
+ * member has left for another while this was out.
+ */
+async function closeCard({ removed = false } = {}) {
+  if (view !== 'plan-card') return;
+  const from = cardFrom;
+  const area = cardArea;
   const turn = householdTurn;
+  // A box left with text in it saves on leaving, as it does when Back is clicked.
+  document.activeElement?.blur?.();
+  if (!from || from.view !== 'plan') { await showView(from?.view ?? 'plan'); return; }
+  const page = from.area;
+  if (page) await openArea(page.area, { restore: page });
+  else await showView('plan');
+  if (turn !== householdTurn || view !== 'plan' || (page ? areaPage?.area !== page.area : areaPage !== null)) return;
+  const host = page ? $('area-page') : $('plan-areas');
+  window.scrollTo({ top: from.scroll });
+  if (removed) {
+    const heading = page ? host.querySelector('[data-key="heading"]') : host.querySelector(`[data-key="${CSS.escape(`area:${area}`)}"]`);
+    // Brought to the middle of the screen, not just into view: the bar above would cover a heading at the edge.
+    (heading ?? $('plan-count')).scrollIntoView({ block: 'center' });
+    (heading ?? $('plan-count')).focus({ preventScroll: true });
+    return;
+  }
+  host.querySelector(`[data-plan="${CSS.escape(from.row ?? '')}"]`)?.focus({ preventScroll: true });
+}
+
+/**
+ * Escape on a card: from inside it, or with focus fallen to the page itself; not from the bar above (the search box),
+ * a menu or a sheet, which have their own. An open form closes first, one at a time; with none open it goes Back.
+ */
+function cardEscape(ev) {
+  if (view !== 'plan-card') { document.removeEventListener('keydown', cardEscape); return; }
+  if (ev.key !== 'Escape' || ev.defaultPrevented) return;
+  if (!$('cat-sec').hidden || !$('phone-sec').hidden) return;
+  const host = $('plan-card');
+  const t = ev.target;
+  if (!(t === document.body || t === document.documentElement || host.contains(t))) return;
+  ev.preventDefault();
+  if (cancelOpen(host)) return;
+  void closeCard();
+}
+
+async function loadCard() {
+  // A card asked for in a household since left, or on a screen since left, or that a later read has replaced, is not
+  // drawn, and its failure is not said.
+  const turn = householdTurn;
+  const id = cardId;
+  const mine = ++cardFetch;
+  const live = () => mine === cardFetch && turn === householdTurn && view === 'plan-card' && id === cardId;
+  // Escape goes Back from the moment a card shows, drawn or not.
+  document.addEventListener('keydown', cardEscape);
   $('loading').hidden = false;
   try {
     // Whether cards keep files is kept only from this household's answer: a late one from the last is let go.
     if (attachmentsOn === null) {
       const st = await api('/api/settings').catch(() => null);
-      if (turn !== householdTurn) return;
+      if (!live()) return;
       keepFilesFrom(st);
     }
-    const v = await api(planPath(cardId));
-    if (turn !== householdTurn) return;
+    const v = await api(planPath(id));
+    if (!live()) return;
     renderCard(v);
   } catch (ex) {
-    if (turn === householdTurn) showProblem(ex);
+    if (live()) {
+      showProblem(ex);
+      // A card that could not be read still has a way back.
+      const box = $('plan-card');
+      if (!box.firstChild) box.appendChild(cardTop(null));
+    }
   } finally {
-    if (turn === householdTurn) $('loading').hidden = true;
+    if (mine === cardFetch && turn === householdTurn) $('loading').hidden = true;
   }
 }
 
@@ -7873,7 +7980,7 @@ function cardSection(title, body, onAdd, o = {}) {
   head.appendChild(h);
   if (o.note) head.appendChild(node('span', 'n', o.note));
   if (onAdd) {
-    const b = node('button', 'btn small', o.addLabel ?? 'Add');
+    const b = node('button', 'btn small hit', o.addLabel ?? 'Add');
     b.type = 'button';
     b.addEventListener('click', () => onAdd(sec, b));
     head.appendChild(b);
@@ -7883,28 +7990,48 @@ function cardSection(title, body, onAdd, o = {}) {
   return sec;
 }
 
+/**
+ * The card's top line: Back, saying where it returns, and the crumb Plan › House, Plan being the board and the area
+ * its page. A card that could not be read has Back alone.
+ */
+function cardTop(v) {
+  const top = node('div', 'plan-top');
+  const back = node('button', 'back hit');
+  back.type = 'button';
+  back.append(icon('back', 'i'), cardBackWord());
+  back.addEventListener('click', () => void closeCard());
+  top.appendChild(back);
+  if (!v) return top;
+  const crumb = node('nav', 'crumb');
+  crumb.setAttribute('aria-label', 'Where this is');
+  // Each part is the board, or the area's page over it: opened from the card, so Back from that page is the board.
+  const crumbTo = (label, go) => {
+    const b = node('button', 'hit', label);
+    b.type = 'button';
+    b.addEventListener('click', async () => {
+      const turn = householdTurn;
+      await showView('plan');
+      if (turn !== householdTurn || view !== 'plan') return;
+      window.scrollTo({ top: 0 });
+      await go();
+    });
+    return b;
+  };
+  crumb.append(crumbTo('Plan', async () => {}), node('span', '', '›'), crumbTo(v.area, () => openArea(v.area)));
+  top.appendChild(crumb);
+  return top;
+}
+
 function renderCard(v) {
   const box = $('plan-card');
   box.textContent = '';
   const mine = v.owner === myName;
   const theirs = otherMember();
+  cardArea = v.area;
 
   // ── head: where it is, what it is, where it stands ──
   const head = node('div', 'plan-head');
-  const back = node('button', 'back');
-  back.type = 'button';
-  back.append(icon('back', 'i'), 'Plan');
-  back.addEventListener('click', () => showView('plan'));
-  const crumb = node('nav', 'crumb');
-  crumb.setAttribute('aria-label', 'Where this is');
-  const crumbTo = (label, go) => {
-    const b = node('button', '', label);
-    b.type = 'button';
-    b.addEventListener('click', go);
-    return b;
-  };
-  crumb.append(crumbTo('Plan', () => showView('plan')), node('span', '', '›'), crumbTo(v.area, () => showView('plan')));
-  head.append(back, crumb);
+  head.appendChild(cardTop(v));
 
   // The title edits where it is: it becomes a text box when it takes focus,
   // by click or by Tab, and Enter or leaving keeps it. The heading stays a
@@ -7939,7 +8066,7 @@ function renderCard(v) {
     };
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') void keep();
-      if (e.key === 'Escape') { done = true; input.replaceWith(title); }
+      if (e.key === 'Escape') { e.preventDefault(); done = true; input.replaceWith(title); }
     });
     input.addEventListener('blur', () => void keep());
     title.replaceWith(input);
@@ -7949,46 +8076,41 @@ function renderCard(v) {
   title.addEventListener('focus', editTitle);
   head.appendChild(title);
 
-  // Asked of you: waiting on you, dashed, with your answer inline.
-  if (v.asked?.to === myName) {
-    const ask = node('div', 'provisional');
-    ask.appendChild(node('div', 'waiting', 'Waiting for you'));
-    const why = node('p', 'why', `${v.owner} asked you · `);
-    why.appendChild(node('q', '', v.asked.why));
-    ask.appendChild(why);
-    ask.appendChild(askAnswer(v));
-    head.appendChild(ask);
-  }
-
-  const acts = node('div', 'actions');
+  // Two groups of controls: where the plan stands, then the rest. A phone stacks them; the desk has one row.
+  const now = node('div', 'actions');
   const seg = node('div', 'seg');
   seg.setAttribute('role', 'group');
   seg.setAttribute('aria-label', 'State');
   for (const s of ['planning', 'doing']) {
-    const b = node('button', '', STATE_WORDS[s]);
+    const b = node('button', 'hit');
     b.type = 'button';
+    // The word names the button, so its glyph is only drawn.
+    const glyph = stateGlyph(s, { small: true });
+    glyph.setAttribute('aria-hidden', 'true');
+    glyph.removeAttribute('role');
+    glyph.removeAttribute('aria-label');
+    b.append(glyph, STATE_WORDS[s]);
     b.setAttribute('aria-pressed', String(v.state === s));
     b.addEventListener('click', () => {
       if (v.state !== s) void cardEdit(() => api(planPath(v.id, '/state'), { state: s }));
     });
     seg.appendChild(b);
   }
-  acts.appendChild(seg);
-  if (v.state === 'done') acts.appendChild(chip('', 'Done', 'check'));
+  now.appendChild(seg);
+  if (v.state === 'done') now.appendChild(chip('', 'Done', 'check'));
   else {
-    const done = actionButton('Mark done', 'btn', () => api(planPath(v.id, '/state'), { state: 'done' }));
+    const done = actionButton('Mark done', 'btn hit', () => api(planPath(v.id, '/state'), { state: 'done' }));
     done.prepend(icon('check'));
-    acts.appendChild(done);
+    now.appendChild(done);
   }
-  acts.appendChild(node('span', 'vr'));
-  const owner = node('span', 'owner');
-  owner.append(memberDisc(v.owner), mine ? 'You own it' : `${v.owner} owns it`);
-  acts.appendChild(owner);
+  const acts = node('div', 'plan-acts');
+  const more = node('div', 'actions');
+  acts.append(now, node('span', 'vr'), more);
   // The ask, the due date and the block open their small form here, under the actions.
   const headForm = node('div');
   // Only the owner can ask, one ask at a time, and only of someone else.
   if (mine && theirs && !v.asked) {
-    const give = node('button', 'btn', `Ask ${theirs} to take it`);
+    const give = node('button', 'btn hit give', `Ask ${theirs} to take it`);
     give.type = 'button';
     give.prepend(icon('give'));
     give.addEventListener('click', () => inlineForm(headForm, [
@@ -7996,10 +8118,9 @@ function renderCard(v) {
     ], `Ask ${theirs}`, async (i) => {
       await api(planPath(v.id, '/ask-to-take'), { to: theirs, why: need(i.why, 'Asking needs a reason') });
     }));
-    acts.appendChild(give);
+    more.appendChild(give);
   }
-  acts.appendChild(node('span', 'vr'));
-  const dueBtn = node('button', 'btn', v.due ? 'Change the due date' : 'Due date');
+  const dueBtn = node('button', 'btn hit', v.due ? 'Change the due date' : 'Due date');
   dueBtn.type = 'button';
   dueBtn.prepend(icon('cal'));
   dueBtn.addEventListener('click', () => inlineForm(headForm, [
@@ -8007,7 +8128,7 @@ function renderCard(v) {
   ], 'Set the due date', async (i) => {
     await api(planPath(v.id, '/due'), { due: need(i.due, 'Pick a day') });
   }));
-  const blockBtn = node('button', 'btn', 'Block time');
+  const blockBtn = node('button', 'btn hit', 'Block time');
   blockBtn.type = 'button';
   blockBtn.prepend(icon('clock'));
   blockBtn.addEventListener('click', () => inlineForm(headForm, [
@@ -8019,31 +8140,33 @@ function renderCard(v) {
     if (end <= start) throw new Error('A block ends after it starts');
     await api(planPath(v.id, '/block'), { start, end });
   }));
-  acts.append(dueBtn, blockBtn);
+  more.append(dueBtn, blockBtn);
   head.append(acts, headForm);
 
   // The card's own chips: free words you can add and take off, the ask, and the clock.
   const chips = node('div', 'chips');
   v.chips.forEach((t, n) => {
     const c = chip('', t);
-    const x = node('button', 'x', '×');
+    const x = node('button', 'x hit', '×');
     x.type = 'button';
     x.setAttribute('aria-label', `Take off ${t}`);
     x.addEventListener('click', () => cardEdit(() => api(planPath(v.id), { chips: v.chips.filter((_, k) => k !== n) })));
     c.appendChild(x);
     chips.appendChild(c);
   });
-  if (v.asked && mine) chips.appendChild(chip('asked', `asked ${v.asked.to}`));
   if (showsClock(v)) chips.appendChild(staleChip(v.daysInState));
-  const addChip = node('button', 'btn bare small', 'Add a chip');
+  const addChip = node('button', 'btn bare small hit', 'Add a chip');
   addChip.type = 'button';
   addChip.addEventListener('click', () => {
     const input = node('input', 'input');
     input.placeholder = 'e.g. researching';
     input.maxLength = 40;
     input.style.width = 'auto';
+    // The box has no Cancel: Escape finds the box itself and puts the button back, where focus returns.
+    const close = () => { input.replaceWith(addChip); addChip.focus({ preventScroll: true }); };
+    cancelMark(input, close);
     input.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape') input.replaceWith(addChip);
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
       if (e.key === 'Enter' && input.value.trim()) {
         void postFrom(input, () => api(planPath(v.id), { chips: [...v.chips, input.value.trim()] }));
       }
@@ -8079,7 +8202,7 @@ function renderCard(v) {
   main.appendChild(checklistSection(v));
   main.appendChild(attachmentsSection(v));
   main.appendChild(claudeSection(v));
-  main.appendChild(betweenSection(v, theirs));
+  main.appendChild(betweenSection(v));
 
   side.appendChild(moneySection(v));
   side.appendChild(peopleSection(v));
@@ -8094,14 +8217,14 @@ function renderCard(v) {
     hist.appendChild(li);
   }
   side.appendChild(cardSection('History', hist));
-  const remove = node('button', 'btn small danger', 'Remove this plan');
+  const remove = node('button', 'btn small danger hit', 'Remove this plan');
   remove.type = 'button';
   const removeForm = node('div');
   remove.addEventListener('click', () => inlineForm(removeForm, [
     { name: 'why', label: 'Why remove it? The log keeps it, and your reason.', placeholder: 'e.g. we decided against it' },
   ], `Remove ${v.title}`, async (i) => {
     await api(planPath(v.id), { why: need(i.why, 'Removing needs a reason') }, 'DELETE');
-  }, () => showView('plan')));
+  }, () => closeCard({ removed: true })));
   side.append(remove, removeForm);
 
   body.append(factsCard(v), main, side);
@@ -8301,7 +8424,9 @@ function contactSearch(v, slot, msg, noNas) {
   list.setAttribute('aria-live', 'polite');
   const cancel = node('button', 'btn small', 'Cancel');
   cancel.type = 'button';
-  cancel.addEventListener('click', () => { slot.textContent = ''; msg.textContent = ''; });
+  const close = () => { slot.textContent = ''; msg.textContent = ''; };
+  cancel.addEventListener('click', close);
+  cancelMark(cancel, close);
   const acts = node('div', 'actions');
   acts.appendChild(cancel);
   box.append(q, list, acts);
@@ -8340,7 +8465,7 @@ function contactSearch(v, slot, msg, noNas) {
   };
   let timer = null;
   q.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(search, 250); });
-  q.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancel.click(); });
+  q.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
   q.focus();
   void search();
 }
@@ -8359,7 +8484,7 @@ function checklistSection(v) {
     box.checked = it.done;
     box.addEventListener('change', () => save(items.map((x, k) => (k === n ? { ...x, done: box.checked } : x))));
     label.append(box, node('span', it.done ? 'done' : '', it.text));
-    const x = node('button', 'btn bare small', 'Remove');
+    const x = node('button', 'btn bare small hit', 'Remove');
     x.type = 'button';
     x.setAttribute('aria-label', `Remove ${it.text}`);
     x.addEventListener('click', () => save(items.filter((_, k) => k !== n)));
@@ -8381,9 +8506,12 @@ function checklistSection(v) {
         items: next.map(({ id, text, done }) => ({ id, text, done })),
       }), [go]);
     };
+    // The row has no Cancel: Escape finds the row itself and puts the button back, where focus returns.
+    const close = () => { row.remove(); btn.hidden = false; btn.focus({ preventScroll: true }); };
+    cancelMark(row, close);
     input.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') add();
-      if (e.key === 'Escape') { row.remove(); btn.hidden = false; btn.focus(); }
+      if (e.key === 'Escape') { e.preventDefault(); close(); }
     });
     go.addEventListener('click', add);
     row.append(input, go);
@@ -8467,7 +8595,7 @@ function claudeSection(v) {
   return cardSection('Claude', parts);
 }
 
-function betweenSection(v, theirs) {
+function betweenSection(v) {
   const ul = node('ul', 'notes-list');
   for (const n of v.between) {
     const li = node('li');
@@ -8479,7 +8607,7 @@ function betweenSection(v, theirs) {
   const row = node('div', 'askrow');
   row.style.marginTop = 'var(--sp-3)';
   const t = node('input', 'input');
-  t.placeholder = `Leave a note for ${theirs ?? 'each other'} about this`;
+  t.placeholder = 'Leave a note about this';
   t.maxLength = 2000;
   t.setAttribute('aria-label', t.placeholder);
   const go = node('button', 'btn', 'Leave a note');
@@ -8492,7 +8620,7 @@ function betweenSection(v, theirs) {
   t.addEventListener('keydown', (e) => { if (e.key === 'Enter') leave(); });
   row.append(t, go);
   return cardSection('Between us', [v.between.length ? ul : node('p', 'hint', 'Nothing said about this yet.'), row],
-    null, { note: "Also in Today's thread" });
+    null, { note: 'Also in Today' });
 }
 
 function kv(label, value) {
@@ -8596,8 +8724,10 @@ async function moneyForm(v, sec, btn) {
   });
   const cancel = node('button', 'btn', 'Cancel');
   cancel.type = 'button';
-  cancel.addEventListener('click', () => { form.remove(); btn.hidden = false; });
-  form.addEventListener('keydown', (e) => { if (e.key === 'Escape') cancel.click(); });
+  const close = () => { form.remove(); btn.hidden = false; };
+  cancel.addEventListener('click', close);
+  cancelMark(cancel, close);
+  form.addEventListener('keydown', (e) => { if (e.key === 'Escape') { e.preventDefault(); close(); } });
   const acts = node('div', 'actions');
   acts.append(save, cancel);
   form.append(lab('Budget', budgetSel), lab('Envelope', envSel), lab('Estimated cost, in dollars', est), msg, acts);
@@ -11899,6 +12029,8 @@ async function showView(next) {
   clearEnvelopePage();
   // Plan, the same: it opens on the board, with no area's page and its Escape left over.
   clearAreaPage();
+  // The card the same: no Escape listener and no memory of where it was opened from once another screen shows.
+  if (next !== 'plan-card') { document.removeEventListener('keydown', cardEscape); cardFrom = null; cardFetch++; }
   // A key pressed on the last screen (an envelope page's change or approve) is not this one's.
   pressedKey = null;
   view = next;
@@ -12019,6 +12151,10 @@ function forgetHousehold() {
   clearAreaPage();
   clearEnvelopePage();
   cardId = null;
+  cardFrom = null;
+  cardArea = null;
+  cardFetch++;
+  document.removeEventListener('keydown', cardEscape);
 
   // Today: the thread, the Yours rails (taken home first, since a phone keeps them inside the thread), the setup
   // notes, the waiting tray, and a note half typed.

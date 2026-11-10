@@ -92,6 +92,11 @@ const ADDED: readonly Line[] = [
   ['goals', 'The goal ends here: it leaves the filter row. Putting the same words on a plan later starts it again.'],
   ['goals', "'Remove the goal'"], ['goals', '/api/goals/rename'], ['goals', '/api/goals/remove'],
   ['goals', '#plan-goals button', 'css'],
+  // The card (Task 14): where it was opened from and the way back, one Escape that closes a form before it goes Back,
+  // and the head's keeps (the title, the chips row, a finished plan's "Done", Due date and Block time).
+  ['card', 'function cardEscape('], ['card', 'async function closeCard('], ['card', 'let cardFrom'], ['P51', "note: 'Also in Today'"], ['P50', 'Leave a note about this'],
+  ['P21', "title.setAttribute('aria-label', `${v.title}, rename`)"], ['P25', "chip('', 'Done', 'check')"], ['P33', 'staleChip(v.daysInState)'],
+  ['P31', 'Take off ${t}`'], ['P68', 'cancelMark(input, close)'], ['P68', 'cancelMark(row, close)'], ['P68', 'cancelMark(cancel, close)', 'shared'], ['P68', 'cancelMark(cancel, close)'], ['P23', "stateGlyph(s, { small: true })"],
   // Leaving a household (a switch, the picker, sign-out) goes through onlyToday, which empties every screen first and
   // moves the turn on, so no read still out from the household left can draw into the next one.
   ['switch', 'function onlyToday() {\n  forgetHousehold();', 'page'], ['switch', 'function forgetHousehold() {\n  householdTurn++;', 'page'],
@@ -112,6 +117,9 @@ const GONE: readonly Line[] = [
   ['spec', '· holds '], ['spec', 'shelf:', 'shared'], ['spec', "icon('shelf'", 'page'], ['spec', 'v.shelf'],
   ['spec', '.board', 'css'], ['spec', '.lane', 'css'], ['spec', '.bcard', 'css'], ['spec', '.shelf', 'css'], ['spec', '.ask-line', 'css'],
   ['spec', '#plan-form', 'css'], ['spec', '#plan-empty', 'css'],
+  // The card (Task 14): the old Back that always went to the board, the old note and placeholder, the ask chip, the head's owner.
+  ['P51', "Also in Today's thread"], ['P50', 'Leave a note for '], ['P50', 'betweenSection(v, theirs)'], ['P32', 'asked ${v.asked.to}'],
+  ['P22', "node('div', 'waiting', 'Waiting for you')"], ['P27', "node('span', 'owner')"], ['card', '#plan-card .back{display:none}', 'css'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
