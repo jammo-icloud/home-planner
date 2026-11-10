@@ -2205,6 +2205,240 @@ $('signout').addEventListener('click', async () => {
   location.reload();
 });
 
+// ── shared: what every screen calls ───────────────────────────────────────
+
+/** Everyone in the household, from whoami. "The other member" is whoever is not you. */
+let members = [];
+/** A sandbox sign-in has no NAS session behind it: files and contacts are out of its reach. */
+let inSandbox = false;
+/** Whether this server keeps files for cards (GET /api/settings), read with every Settings answer; null until it is. */
+let attachmentsOn = null;
+/** Why cards keep no files, in the server's words: until the owner chooses where documents live. */
+let attachmentsWhy = null;
+/** Whether cards keep files, from a Settings answer: a folder chosen in Settings reaches the cards without a reload. */
+function keepFilesFrom(st) {
+  if (!st?.attachments) return;
+  attachmentsOn = st.attachments.on === true;
+  attachmentsWhy = st.attachments.why ?? null;
+}
+const otherMember = () => members.find((m) => m !== myName) ?? null;
+const planPath = (id, sub = '') => `/api/plans/${encodeURIComponent(id)}${sub}`;
+
+// Icons are fixed shapes from the design's mockups; no text ever goes through here.
+const ICONS = {
+  clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/>',
+  cal: '<rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/>',
+  shelf: '<path d="M2.5 5h11M2.5 11h11M4 5v6M12 5v6"/>',
+  go: '<path d="M6 4l4 4-4 4"/>',
+  back: '<path d="M10 4L6 8l4 4"/>',
+  check: '<path d="M3.5 8.5l3 3 6-7"/>',
+  give: '<path d="M3 8h10M9 4l4 4-4 4"/>',
+  mark: '<path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/>',
+  image: '<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M2.5 11l3.5-3.5 3 3 2-2 2.5 2.5"/>',
+  doc: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/>',
+  text: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3M6 9h4M6 11h3"/>',
+  upload: '<path d="M8 11V3M5 6l3-3 3 3M3 11v2h10v-2"/>',
+  lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>',
+  // the shell's
+  leave: '<path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5"/>',
+  home: '<path d="M2.5 7.5L8 3l5.5 4.5V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z"/><path d="M6.5 13.5v-3.5h3v3.5"/>',
+  up: '<path d="M4 10l4-4 4 4"/>',
+  down: '<path d="M4 6l4 4 4-4"/>',
+  plus: '<path d="M8 3v10M3 8h10"/>',
+  alert: '<circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/>',
+};
+function icon(name, cls = 'i sm') {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('class', cls);
+  s.setAttribute('viewBox', '0 0 16 16');
+  s.setAttribute('aria-hidden', 'true');
+  s.innerHTML = ICONS[name];
+  return s;
+}
+// The top bar's tabs on a phone: icons from Lucide (lucide.dev, ISC licence), copied as they are.
+const LUCIDE = {
+  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
+  'square-kanban': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/>',
+  calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
+  wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
+};
+function lucide(name) {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('class', 'i lu');
+  s.setAttribute('viewBox', '0 0 24 24');
+  for (const [k, v] of [['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '2'],
+    ['stroke-linecap', 'round'], ['stroke-linejoin', 'round'], ['aria-hidden', 'true']]) s.setAttribute(k, v);
+  s.innerHTML = LUCIDE[name];
+  return s;
+}
+
+/** A member as a disc with their initial: yours solid, the other's a ring. */
+function whoDisc(name) {
+  const d = node('span', `who ${name === myName ? 'mine' : 'partner'}`, (name || '?').slice(0, 1).toUpperCase());
+  d.title = name;
+  return d;
+}
+function chip(cls, text, glyph) {
+  const c = node('span', `chip ${cls}`.trim());
+  if (glyph) c.appendChild(icon(glyph));
+  c.append(text);
+  return c;
+}
+const thisMonth = () => new Date().toLocaleDateString('en-CA').slice(0, 7);
+/** "Thu 5" this month, "Sun 22 Nov" otherwise: a due date is a day, not a time. */
+const dueText = (day) => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, day.slice(0, 7) === thisMonth()
+  ? { weekday: 'short', day: 'numeric' } : { weekday: 'short', day: 'numeric', month: 'short' });
+/** "Nov 3": the day a balance is as of. */
+const dayMonth = (day) => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+/** "Sat 7 Nov, 2:00 – 3:00 PM": time set aside. */
+function blockText(b) {
+  const s = new Date(b.start);
+  const e = new Date(b.end);
+  const day = (d) => d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
+  return dayKey(b.start) === dayKey(b.end)
+    ? `${day(s)}, ${timeOf(b.start)} – ${timeOf(b.end)}`
+    : `${day(s)} ${timeOf(b.start)} – ${day(e)} ${timeOf(b.end)}`;
+}
+/** The Doing clock, in weeks. Shown only in Doing, and only from 14 days. */
+const staleChip = (days) => chip('stale', `${Math.floor(days / 7)} wks`, 'clock');
+const showsClock = (p) => p.state === 'doing' && p.daysInState >= 14;
+const dollars = (c) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
+  .format(c / 100);
+
+/**
+ * A member's edit, in place: a small form that posts on submit and reads the
+ * screen again. Not money, so nothing is previewed; panel() stays for the
+ * proposals that need one. A refusal says why under the fields.
+ */
+function inlineForm(slot, fields, submitLabel, onSubmit, after = reloadView) {
+  slot.textContent = '';
+  const form = node('form', 'sec-form');
+  const inputs = {};
+  for (const f of fields) {
+    const el = node(f.options ? 'select' : 'input', 'input');
+    if (f.options) {
+      for (const o of f.options) {
+        const opt = node('option', '', o.label);
+        opt.value = o.value;
+        el.appendChild(opt);
+      }
+    } else {
+      el.type = f.type ?? 'text';
+      el.placeholder = f.placeholder ?? '';
+      el.maxLength = f.max ?? 300;
+    }
+    if (f.value != null) el.value = f.value;
+    const label = node('label', '', f.label);
+    label.appendChild(el);
+    form.appendChild(label);
+    inputs[f.name] = el;
+  }
+  const msg = node('p', 'msg');
+  const go = node('button', 'btn primary', submitLabel);
+  go.type = 'submit';
+  const cancel = node('button', 'btn', 'Cancel');
+  cancel.type = 'button';
+  cancel.addEventListener('click', () => { slot.textContent = ''; });
+  const acts = node('div', 'actions');
+  acts.append(go, cancel);
+  form.append(msg, acts);
+  form.addEventListener('keydown', (e) => { if (e.key === 'Escape') slot.textContent = ''; });
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    go.disabled = true;
+    msg.textContent = '';
+    try {
+      await onSubmit(inputs);
+    } catch (ex) {
+      msg.textContent = ex.message;
+      go.disabled = false;
+      return;
+    }
+    slot.textContent = '';
+    await after();
+  });
+  slot.appendChild(form);
+  Object.values(inputs)[0]?.focus();
+}
+const need = (input, what) => {
+  const v = input.value.trim();
+  if (!v) { input.focus(); throw new Error(what); }
+  return v;
+};
+
+// ── days where the household is ──
+//
+// The server reads its days in the household's zone (TZ, served as
+// settings.tz), so the screen builds its days, their edges and its day keys in
+// the same zone, never the device's: a due date on Saturday is in Saturday's
+// column wherever the phone is. A day is a key, "2026-10-31"; an instant is
+// epoch seconds.
+
+/** The household's zone; the device's until the settings arrive. */
+const householdTz = () => settingsData?.tz || undefined;
+const zoneFormats = new Map();
+/** One formatter per zone, locale and shape, made once. `locale` undefined is the device's. */
+function inZone(opts, locale) {
+  const tz = householdTz();
+  const k = `${tz}|${locale}|${JSON.stringify(opts)}`;
+  if (!zoneFormats.has(k)) zoneFormats.set(k, new Intl.DateTimeFormat(locale, { ...opts, timeZone: tz }));
+  return zoneFormats.get(k);
+}
+/** The household's day an instant (ms) falls on. */
+const keyAt = (ms) => inZone({ year: 'numeric', month: '2-digit', day: '2-digit' }, 'en-CA').format(ms);
+const todayKey = () => keyAt(Date.now());
+/** A day key moved by `n` days on the calendar. */
+const addDayKey = (key, n) => {
+  const [y, m, d] = key.split('-').map(Number);
+  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
+};
+/** The Monday of the week a day key falls in. */
+const mondayOf = (key) => addDayKey(key, -((new Date(`${key}T12:00:00Z`).getUTCDay() + 6) % 7));
+/** A day key in words, the device's language, independent of any zone: { weekday: 'short' } and so on. */
+const keyWords = (key, opts) => new Date(`${key}T12:00:00Z`).toLocaleDateString(undefined, { ...opts, timeZone: 'UTC' });
+const keyDate = (key) => new Date(`${key}T12:00:00Z`);
+
+/** An instant's time on the household's clock. */
+const clockOf = (sec) => inZone({ hour: 'numeric', minute: '2-digit' }).format(sec * 1000);
+
+/**
+ * The filter Today was on before opening a card took it to Waiting; it comes
+ * back the next time Today is opened, or as soon as a filter is chosen.
+ */
+let filterBeforeDetour = null;
+
+/**
+ * Today, with the card asked for in view: from the whole thread, or what is
+ * waiting on you when it is older. With `further`, the thread is first read
+ * further up, a page at a time, as Show earlier does, until the entry is there
+ * or the thread's start is. True when it was found; when it was not, Today is
+ * left on the filter it was on.
+ */
+async function openTodayAt(selector, { further = false } = {}) {
+  await showView('today');
+  let card = $('thread').querySelector(selector);
+  while (!card && further && threadData?.before) {
+    const from = threadData.before;
+    await loadThread({ before: from });
+    // A page that could not be read leaves the cursor where it was: stop rather than ask again.
+    if (threadData?.before === from) break;
+    card = $('thread').querySelector(selector);
+  }
+  if (!card && threadFilter !== 'waiting') {
+    filterBeforeDetour = threadFilter;
+    threadFilter = 'waiting';
+    for (const b of $('t-filters').children) b.setAttribute('aria-pressed', String(b.dataset.filter === 'waiting'));
+    await loadThread();
+    card = $('thread').querySelector(selector);
+    if (!card) { endFilterDetour(); await loadThread(); }
+  }
+  if (!card) return false;
+  card.scrollIntoView({ block: 'center' });
+  card.tabIndex = -1;
+  card.focus({ preventScroll: true });
+  return true;
+}
+
 // ── today ──────────────────────────────────────────────────────────────────
 /**
  * Which screen is showing. A briefing can take twenty seconds to write, and
@@ -2639,6 +2873,34 @@ function entryNode(e, ctx) {
     line.appendChild(row);
   }
   return line;
+}
+
+/** Take it, or Decline with a reason the asker reads. Shown only to the member asked. */
+function askAnswer(p) {
+  const row = node('div', 'actions');
+  row.appendChild(actionButton('Take it', 'btn small primary', async () => {
+    await api(planPath(p.id, '/answer'), { answer: 'accept' });
+  }));
+  const no = node('button', 'btn small', 'Decline');
+  no.type = 'button';
+  no.addEventListener('click', () => {
+    row.textContent = '';
+    const why = node('input', 'input');
+    why.placeholder = `Why not? ${p.owner} reads this`;
+    why.maxLength = 300;
+    row.appendChild(why);
+    row.appendChild(actionButton('Decline', 'btn small', async () => {
+      if (!why.value.trim()) { why.focus(); throw new Error('Declining needs a reason'); }
+      await api(planPath(p.id, '/answer'), { answer: 'decline', why: why.value.trim() });
+    }));
+    const keep = node('button', 'btn small bare', 'Cancel');
+    keep.type = 'button';
+    keep.addEventListener('click', () => row.replaceWith(askAnswer(p)));
+    row.appendChild(keep);
+    why.focus();
+  });
+  row.appendChild(no);
+  return row;
 }
 
 /**
@@ -6448,104 +6710,7 @@ let planShowDone = false;
 let planAreas = [];
 let planRows = [];
 let cardId = null;
-/** Everyone in the household, from whoami. "The other member" is whoever is not you. */
-let members = [];
-/** A sandbox sign-in has no NAS session behind it: files and contacts are out of its reach. */
-let inSandbox = false;
-/** Whether this server keeps files for cards (GET /api/settings), read with every Settings answer; null until it is. */
-let attachmentsOn = null;
-/** Why cards keep no files, in the server's words: until the owner chooses where documents live. */
-let attachmentsWhy = null;
-/** Whether cards keep files, from a Settings answer: a folder chosen in Settings reaches the cards without a reload. */
-function keepFilesFrom(st) {
-  if (!st?.attachments) return;
-  attachmentsOn = st.attachments.on === true;
-  attachmentsWhy = st.attachments.why ?? null;
-}
-const otherMember = () => members.find((m) => m !== myName) ?? null;
 const LANES = { planning: 'Planning', doing: 'Doing' };
-const planPath = (id, sub = '') => `/api/plans/${encodeURIComponent(id)}${sub}`;
-
-// Icons are fixed shapes from the design's mockups; no text ever goes through here.
-const ICONS = {
-  clock: '<circle cx="8" cy="8" r="5.5"/><path d="M8 5v3.2l2 1.3"/>',
-  cal: '<rect x="2.5" y="3.5" width="11" height="10" rx="2"/><path d="M2.5 7h11M5.5 2v3M10.5 2v3"/>',
-  shelf: '<path d="M2.5 5h11M2.5 11h11M4 5v6M12 5v6"/>',
-  go: '<path d="M6 4l4 4-4 4"/>',
-  back: '<path d="M10 4L6 8l4 4"/>',
-  check: '<path d="M3.5 8.5l3 3 6-7"/>',
-  give: '<path d="M3 8h10M9 4l4 4-4 4"/>',
-  mark: '<path d="M8 1.5c.5 3.2 1.8 5.4 6.5 6.5-4.7 1.1-6 3.3-6.5 6.5-.5-3.2-1.8-5.4-6.5-6.5C6.2 6.9 7.5 4.7 8 1.5z"/>',
-  image: '<rect x="2.5" y="2.5" width="11" height="11" rx="1.5"/><path d="M2.5 11l3.5-3.5 3 3 2-2 2.5 2.5"/>',
-  doc: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3"/>',
-  text: '<path d="M4 2h5l3 3v9H4z"/><path d="M9 2v3h3M6 9h4M6 11h3"/>',
-  upload: '<path d="M8 11V3M5 6l3-3 3 3M3 11v2h10v-2"/>',
-  lock: '<rect x="3.5" y="7" width="9" height="6.5" rx="1.5"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/>',
-  // the shell's
-  leave: '<path d="M9 3h4v4M13 3L7.5 8.5M11 9.5V13H3V5h3.5"/>',
-  home: '<path d="M2.5 7.5L8 3l5.5 4.5V13a.5.5 0 0 1-.5.5H3a.5.5 0 0 1-.5-.5z"/><path d="M6.5 13.5v-3.5h3v3.5"/>',
-  up: '<path d="M4 10l4-4 4 4"/>',
-  down: '<path d="M4 6l4 4 4-4"/>',
-  plus: '<path d="M8 3v10M3 8h10"/>',
-  alert: '<circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/>',
-};
-function icon(name, cls = 'i sm') {
-  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  s.setAttribute('class', cls);
-  s.setAttribute('viewBox', '0 0 16 16');
-  s.setAttribute('aria-hidden', 'true');
-  s.innerHTML = ICONS[name];
-  return s;
-}
-// The top bar's tabs on a phone: icons from Lucide (lucide.dev, ISC licence), copied as they are.
-const LUCIDE = {
-  sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
-  'square-kanban': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/>',
-  calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
-  wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
-};
-function lucide(name) {
-  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  s.setAttribute('class', 'i lu');
-  s.setAttribute('viewBox', '0 0 24 24');
-  for (const [k, v] of [['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '2'],
-    ['stroke-linecap', 'round'], ['stroke-linejoin', 'round'], ['aria-hidden', 'true']]) s.setAttribute(k, v);
-  s.innerHTML = LUCIDE[name];
-  return s;
-}
-
-/** A member as a disc with their initial: yours solid, the other's a ring. */
-function whoDisc(name) {
-  const d = node('span', `who ${name === myName ? 'mine' : 'partner'}`, (name || '?').slice(0, 1).toUpperCase());
-  d.title = name;
-  return d;
-}
-function chip(cls, text, glyph) {
-  const c = node('span', `chip ${cls}`.trim());
-  if (glyph) c.appendChild(icon(glyph));
-  c.append(text);
-  return c;
-}
-const thisMonth = () => new Date().toLocaleDateString('en-CA').slice(0, 7);
-/** "Thu 5" this month, "Sun 22 Nov" otherwise: a due date is a day, not a time. */
-const dueText = (day) => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, day.slice(0, 7) === thisMonth()
-  ? { weekday: 'short', day: 'numeric' } : { weekday: 'short', day: 'numeric', month: 'short' });
-/** "Nov 3": the day a balance is as of. */
-const dayMonth = (day) => new Date(`${day}T12:00:00`).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-/** "Sat 7 Nov, 2:00 – 3:00 PM": time set aside. */
-function blockText(b) {
-  const s = new Date(b.start);
-  const e = new Date(b.end);
-  const day = (d) => d.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short' });
-  return dayKey(b.start) === dayKey(b.end)
-    ? `${day(s)}, ${timeOf(b.start)} – ${timeOf(b.end)}`
-    : `${day(s)} ${timeOf(b.start)} – ${day(e)} ${timeOf(b.end)}`;
-}
-/** The Doing clock, in weeks. Shown only in Doing, and only from 14 days. */
-const staleChip = (days) => chip('stale', `${Math.floor(days / 7)} wks`, 'clock');
-const showsClock = (p) => p.state === 'doing' && p.daysInState >= 14;
-const dollars = (c) => new Intl.NumberFormat(undefined, { style: 'currency', currency: 'USD', maximumFractionDigits: 0 })
-  .format(c / 100);
 
 function laneLabel(lane, withSub) {
   const l = node('div', 'lane-label');
@@ -6661,34 +6826,6 @@ function boardCard(c) {
   return card;
 }
 
-/** Take it, or Decline with a reason the asker reads. Shown only to the member asked. */
-function askAnswer(p) {
-  const row = node('div', 'actions');
-  row.appendChild(actionButton('Take it', 'btn small primary', async () => {
-    await api(planPath(p.id, '/answer'), { answer: 'accept' });
-  }));
-  const no = node('button', 'btn small', 'Decline');
-  no.type = 'button';
-  no.addEventListener('click', () => {
-    row.textContent = '';
-    const why = node('input', 'input');
-    why.placeholder = `Why not? ${p.owner} reads this`;
-    why.maxLength = 300;
-    row.appendChild(why);
-    row.appendChild(actionButton('Decline', 'btn small', async () => {
-      if (!why.value.trim()) { why.focus(); throw new Error('Declining needs a reason'); }
-      await api(planPath(p.id, '/answer'), { answer: 'decline', why: why.value.trim() });
-    }));
-    const keep = node('button', 'btn small bare', 'Cancel');
-    keep.type = 'button';
-    keep.addEventListener('click', () => row.replaceWith(askAnswer(p)));
-    row.appendChild(keep);
-    why.focus();
-  });
-  row.appendChild(no);
-  return row;
-}
-
 $('plan-filters').addEventListener('click', (ev) => {
   const b = ev.target.closest('button');
   if (!b) return;
@@ -6696,67 +6833,6 @@ $('plan-filters').addEventListener('click', (ev) => {
   else if (b.dataset.filter) planFilter = b.dataset.filter;
   void loadBoard();
 });
-
-/**
- * A member's edit, in place: a small form that posts on submit and reads the
- * screen again. Not money, so nothing is previewed; panel() stays for the
- * proposals that need one. A refusal says why under the fields.
- */
-function inlineForm(slot, fields, submitLabel, onSubmit, after = reloadView) {
-  slot.textContent = '';
-  const form = node('form', 'sec-form');
-  const inputs = {};
-  for (const f of fields) {
-    const el = node(f.options ? 'select' : 'input', 'input');
-    if (f.options) {
-      for (const o of f.options) {
-        const opt = node('option', '', o.label);
-        opt.value = o.value;
-        el.appendChild(opt);
-      }
-    } else {
-      el.type = f.type ?? 'text';
-      el.placeholder = f.placeholder ?? '';
-      el.maxLength = f.max ?? 300;
-    }
-    if (f.value != null) el.value = f.value;
-    const label = node('label', '', f.label);
-    label.appendChild(el);
-    form.appendChild(label);
-    inputs[f.name] = el;
-  }
-  const msg = node('p', 'msg');
-  const go = node('button', 'btn primary', submitLabel);
-  go.type = 'submit';
-  const cancel = node('button', 'btn', 'Cancel');
-  cancel.type = 'button';
-  cancel.addEventListener('click', () => { slot.textContent = ''; });
-  const acts = node('div', 'actions');
-  acts.append(go, cancel);
-  form.append(msg, acts);
-  form.addEventListener('keydown', (e) => { if (e.key === 'Escape') slot.textContent = ''; });
-  form.addEventListener('submit', async (e) => {
-    e.preventDefault();
-    go.disabled = true;
-    msg.textContent = '';
-    try {
-      await onSubmit(inputs);
-    } catch (ex) {
-      msg.textContent = ex.message;
-      go.disabled = false;
-      return;
-    }
-    slot.textContent = '';
-    await after();
-  });
-  slot.appendChild(form);
-  Object.values(inputs)[0]?.focus();
-}
-const need = (input, what) => {
-  const v = input.value.trim();
-  if (!v) { input.focus(); throw new Error(what); }
-  return v;
-};
 
 /** A new plan, on its own or on a shelf. An item lives in its shelf's area. */
 function newPlan(slot, parent = null) {
@@ -10169,37 +10245,6 @@ let calEvents = [];
 /** Which fetch of the week is the latest: an answer to an older one is dropped, never drawn over a newer week. */
 let calFetch = 0;
 
-// ── days where the household is ──
-//
-// The server reads its days in the household's zone (TZ, served as
-// settings.tz), so the screen builds its days, their edges and its day keys in
-// the same zone, never the device's: a due date on Saturday is in Saturday's
-// column wherever the phone is. A day is a key, "2026-10-31"; an instant is
-// epoch seconds.
-
-/** The household's zone; the device's until the settings arrive. */
-const householdTz = () => settingsData?.tz || undefined;
-const zoneFormats = new Map();
-/** One formatter per zone, locale and shape, made once. `locale` undefined is the device's. */
-function inZone(opts, locale) {
-  const tz = householdTz();
-  const k = `${tz}|${locale}|${JSON.stringify(opts)}`;
-  if (!zoneFormats.has(k)) zoneFormats.set(k, new Intl.DateTimeFormat(locale, { ...opts, timeZone: tz }));
-  return zoneFormats.get(k);
-}
-/** The household's day an instant (ms) falls on. */
-const keyAt = (ms) => inZone({ year: 'numeric', month: '2-digit', day: '2-digit' }, 'en-CA').format(ms);
-const todayKey = () => keyAt(Date.now());
-/** A day key moved by `n` days on the calendar. */
-const addDayKey = (key, n) => {
-  const [y, m, d] = key.split('-').map(Number);
-  return new Date(Date.UTC(y, m - 1, d + n)).toISOString().slice(0, 10);
-};
-/** The Monday of the week a day key falls in. */
-const mondayOf = (key) => addDayKey(key, -((new Date(`${key}T12:00:00Z`).getUTCDay() + 6) % 7));
-/** A day key in words, the device's language, independent of any zone: { weekday: 'short' } and so on. */
-const keyWords = (key, opts) => new Date(`${key}T12:00:00Z`).toLocaleDateString(undefined, { ...opts, timeZone: 'UTC' });
-const keyDate = (key) => new Date(`${key}T12:00:00Z`);
 /** How far the household's zone is ahead of UTC at the instant `ms`. */
 function zoneOffset(ms) {
   const parts = inZone({ hourCycle: 'h23', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit' }, 'en-US')
@@ -10213,8 +10258,6 @@ function wallMs(key, hour = 0) {
   const wall = Date.UTC(y, m - 1, d, hour);
   return wall - zoneOffset(wall - zoneOffset(wall));
 }
-/** An instant's time on the household's clock. */
-const clockOf = (sec) => inZone({ hour: 'numeric', minute: '2-digit' }).format(sec * 1000);
 /** Hours since 7:00 on day `key`, where the household is, for an instant in epoch seconds. */
 const hoursIn = (key, sec) => (sec * 1000 - wallMs(key, CAL_OPEN)) / 3_600_000;
 const SPAN = CAL_CLOSE - CAL_OPEN;
@@ -10290,44 +10333,6 @@ function evNode(e, long, clampedBefore = false, clampedAfter = false) {
   if (e.clash) said.push('clashes with another event');
   el.title = said.join(', ');
   return el;
-}
-
-/**
- * The filter Today was on before opening a card took it to Waiting; it comes
- * back the next time Today is opened, or as soon as a filter is chosen.
- */
-let filterBeforeDetour = null;
-
-/**
- * Today, with the card asked for in view: from the whole thread, or what is
- * waiting on you when it is older. With `further`, the thread is first read
- * further up, a page at a time, as Show earlier does, until the entry is there
- * or the thread's start is. True when it was found; when it was not, Today is
- * left on the filter it was on.
- */
-async function openTodayAt(selector, { further = false } = {}) {
-  await showView('today');
-  let card = $('thread').querySelector(selector);
-  while (!card && further && threadData?.before) {
-    const from = threadData.before;
-    await loadThread({ before: from });
-    // A page that could not be read leaves the cursor where it was: stop rather than ask again.
-    if (threadData?.before === from) break;
-    card = $('thread').querySelector(selector);
-  }
-  if (!card && threadFilter !== 'waiting') {
-    filterBeforeDetour = threadFilter;
-    threadFilter = 'waiting';
-    for (const b of $('t-filters').children) b.setAttribute('aria-pressed', String(b.dataset.filter === 'waiting'));
-    await loadThread();
-    card = $('thread').querySelector(selector);
-    if (!card) { endFilterDetour(); await loadThread(); }
-  }
-  if (!card) return false;
-  card.scrollIntoView({ block: 'center' });
-  card.tabIndex = -1;
-  card.focus({ preventScroll: true });
-  return true;
 }
 
 /** The week's days, as day keys, Monday first. */
