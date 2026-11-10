@@ -72,7 +72,8 @@ not appended by an approval in the same write. The lane of every op the log can 
 - No row, as now: briefing.read, prediction.record, flag.seen, scheme.set, calendar.conflicts, plan.doc,
   documents.moved; thread.answer (under its question); proposal.offer and proposal.decide (the card); the plan
   ops outside `PLAN_LINES`, which a card or the plan's History says (plan.set, plan.checklist, plan.contact.*,
-  plan.calendar.*, plan.page.drift, calendar.drift, plan.ask*), and the Plan spec's plan.goal and areas.move.
+  plan.calendar.*, plan.page.drift, calendar.drift, plan.ask*), and the Plan spec's plan.goal,
+  areas.move and shelves.retire.
 
 A card's lane is one total table keyed by tool name, kept beside `laneOf`. It lists every name that ever
 offered a card (retired `ask_to_take` too, which old cards name) and is typechecked against the registered
