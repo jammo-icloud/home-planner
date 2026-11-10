@@ -80,16 +80,18 @@
   --fs-micro: 12px;     /* timestamps, by-lines, chip text, table heads        */
   --fs-small: 13px;     /* secondary lines, effects, quiet changes             */
   --fs-ui: 14px;        /* buttons, menu items, list rows                      */
-  --fs-body: 15px;      /* reading text: thread, notes, card bodies            */
+  --fs-body: 15px;      /* reading text: notes, answers, card bodies           */
   --fs-input: 16px;     /* anything typed into; never smaller (iOS zoom)       */
   --fs-title: 17px;     /* section titles, pill names, the card title on phone */
-  --fs-headline: 21px;  /* the briefing's headline, the card page's title      */
+  --fs-headline: 21px;  /* a screen's name, a page's or a plan card's title    */
   --fs-display: 30px;   /* one number per screen, at most: left to assign      */
 
   --lh-tight: 1.25;     /* headlines, display figures                         */
   --lh-snug: 1.35;      /* titles, chips, one-line rows                        */
   --lh-body: 1.55;      /* reading text                                       */
   --tracking-tight: -0.015em;  /* headlines and titles only                   */
+  --tracking-headline: -0.02em; /* every h1, a card's title                   */
+  --tracking-caps: 0.02em;     /* an uppercase label naming a group or kind   */
 
   /* ── space ────────────────────────────────────────────────────────────
      Four-point steps. Use the name, not the number, so a dense scheme could
@@ -105,18 +107,24 @@
   --sp-9: 56px;
   --gutter: 16px;            /* page side margin on a phone                   */
   --gutter-wide: 32px;       /* page side margin from 760px up                */
-  --measure: 680px;          /* the reading column: thread, briefing, card    */
+  --measure: 680px;          /* the reading column: record, briefing, card    */
   --page: 1180px;            /* widest any member screen gets                 */
   --tap: 44px;               /* smallest thing a thumb is asked to hit        */
+  --control: 36px;           /* a compact control as drawn; its hit is --tap  */
+  --row: 56px;               /* a row that opens a page                       */
+  --disc: 22px;              /* a member disc, a state glyph, a row's slot    */
+  --disc-small: 18px;        /* the same beside a word                        */
 
   /* ── shape ─────────────────────────────────────────────────────────── */
   --r-chip: 6px;
   --r-control: 10px;
+  --r-inner: 7px;            /* a pressed segment, an event box, a row's outline */
   --r-card: 12px;
   --r-sheet: 16px;
   --r-pill: 999px;
   --stroke: 1px;             /* every hairline and border                    */
   --stroke-heavy: 1.5px;     /* the provisional dash; selected outlines       */
+  --stroke-rail: 3px;        /* the Doing rail                                */
   --dash: 5px 4px;           /* the provisional dash pattern, for SVG lines   */
 
   /* ── motion ────────────────────────────────────────────────────────────
@@ -168,23 +176,25 @@
   --claude-line: #DCC88F;
 
   /* Provisional: the one dashed line. Not real yet, waiting on a person.
-     A proposal, a plan someone asked you to take, a suggested event, a due
-     date (a date, not time set aside), a guest's pending nights. */
+     A proposal, an ask from before 0.7.0 still waiting on Today, a suggested
+     event, a due date (a date, not time set aside), a guest's pending nights. */
   --provisional: #6F7A8C;
 
   /* Calendar sources, relative to whoever is looking.
        mine       solid, the darkest thing on the grid (in dark mode, the
                   lightest), no hue at all
-       partner    a pale plum fill inside a plum rule, with their initial
+       other      another member's: a pale plum fill inside a plum rule,
+                  with their initial. Every member but the viewer shares
+                  this treatment; there is no third colour.
        household  a pale stone fill inside a stone rule, with the house mark
      Lightness alone separates mine from the other two; plum against stone is
      the blue-yellow axis that red-green colour blindness keeps; and the
      initial and the house mark separate them when nothing else does. */
   --src-mine-fill: #1D2129;
   --src-mine-ink: #FFFFFF;
-  --src-partner-fill: #F4E9F8;
-  --src-partner-line: #9A55B7;
-  --src-partner-ink: #5B2675;
+  --src-other-fill: #F4E9F8;
+  --src-other-line: #9A55B7;
+  --src-other-ink: #5B2675;
   --src-household-fill: #F1E9DC;
   --src-household-line: #8E6E45;
   --src-household-ink: #57411F;
@@ -211,8 +221,8 @@
   --accent: #0C8CE9;           /* Ion. Marks, focus, the selected tab        */
   --accent-fill: #0A6FBF;      /* a primary button's background              */
   --accent-fill-hover: #085C9F;
-  --accent-ink: #0A67B1;       /* accent as text: links, counts, the tray    */
-  --accent-tint: #E5F0FC;      /* selected rows, a member's own words        */
+  --accent-ink: #0A67B1;       /* accent as text: links, counts              */
+  --accent-tint: #E5F0FC;      /* the row a link landed on                   */
   --accent-line: #A9CDF2;
   --on-accent: #FFFFFF;        /* text on --accent-fill                      */
   --focus: #0C8CE9;
@@ -250,7 +260,7 @@
     --provisional: #8E99AB;
 
     --src-mine-fill: #E9EEF6;       --src-mine-ink: #11151C;
-    --src-partner-fill: #2C2035;    --src-partner-line: #C18BDC;  --src-partner-ink: #EBD3F5;
+    --src-other-fill: #2C2035;      --src-other-line: #C18BDC;    --src-other-ink: #EBD3F5;
     --src-household-fill: #2A251D;  --src-household-line: #C2A57F; --src-household-ink: #EEE0C9;
     --hatch-line: rgba(233, 238, 246, .13);
 
@@ -284,7 +294,7 @@
   --provisional: #8E99AB;
 
   --src-mine-fill: #E9EEF6;       --src-mine-ink: #11151C;
-  --src-partner-fill: #2C2035;    --src-partner-line: #C18BDC;  --src-partner-ink: #EBD3F5;
+  --src-other-fill: #2C2035;      --src-other-line: #C18BDC;    --src-other-ink: #EBD3F5;
   --src-household-fill: #2A251D;  --src-household-line: #C2A57F; --src-household-ink: #EEE0C9;
   --hatch-line: rgba(233, 238, 246, .13);
 
@@ -519,6 +529,26 @@
 
 
 /* --------------------------------------------------------------------------
+   3c. ROLES. Names for what a thing means, pointing at the tokens above.
+       They sit under the same selector as section 5, after every scheme, so
+       an element stamped with a scheme or a mode resolves them against its
+       own accent and ink rather than the page's.
+         state-*    a plan's state glyph: Planning faint, Doing the accent,
+                    Done good. The shape says it too (dashed, half-filled,
+                    ticked), which is what Graphite reads.
+         mark-fill  a search hit's mark; ink on it, never faint ink
+         hatch      nights that are taken or held
+   -------------------------------------------------------------------------- */
+:where(:root, [data-mode], [data-scheme]) {
+  --state-planning: var(--ink-faint);
+  --state-doing: var(--accent);
+  --state-done: var(--good);
+  --mark-fill: var(--accent-line);
+  --hatch: repeating-linear-gradient(135deg, var(--hatch-line) 0 2px, transparent 2px 7px);
+}
+
+
+/* --------------------------------------------------------------------------
    4. REDUCED MOTION. Durations go to zero rather than components each
       remembering to check.
    -------------------------------------------------------------------------- */
@@ -548,5 +578,9 @@
   --bg: var(--surface);
   --radius: var(--r-card);
   --shadow: var(--e-1);
+  /* The source that was "partner" while a household had two members. */
+  --src-partner-fill: var(--src-other-fill);
+  --src-partner-line: var(--src-other-line);
+  --src-partner-ink: var(--src-other-ink);
   /* --ink-soft, --ink-faint, --line and --hair keep their names. */
 }

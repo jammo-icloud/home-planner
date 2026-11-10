@@ -40,12 +40,23 @@ pairs = [
  ("--claude-ink","--claude-paper",4.5,"claude byline"),("--ink","--claude-paper",4.5,"claude text"),("--ink-soft","--claude-paper",4.5,"claude soft"),
  ("--claude-line","--claude-paper",1.0,"(claude rule, info)"),
  ("--provisional","--surface-raised",3.0,"dash edge"),("--provisional","--surface",3.0,"dash on page"),("--provisional","--claude-paper",3.0,"dash on paper"),
- ("--src-mine-ink","--src-mine-fill",4.5,"mine event"),("--src-partner-ink","--src-partner-fill",4.5,"partner event"),
+ ("--src-mine-ink","--src-mine-fill",4.5,"mine event"),("--src-other-ink","--src-other-fill",4.5,"other member's event"),
  ("--src-household-ink","--src-household-fill",4.5,"household event"),
- ("--src-partner-line","--src-partner-fill",3.0,"partner rule"),("--src-household-line","--src-household-fill",3.0,"household rule"),
- ("--src-mine-fill","--surface-raised",3.0,"mine block edge"),("--src-partner-line","--surface-raised",3.0,"partner edge on grid"),
+ ("--src-other-line","--src-other-fill",3.0,"other member's rule"),("--src-household-line","--src-household-fill",3.0,"household rule"),
+ ("--src-mine-fill","--surface-raised",3.0,"mine block edge"),("--src-other-line","--surface-raised",3.0,"other edge on grid"),
  ("--src-household-line","--surface-raised",3.0,"household edge on grid"),
  ("--caution","--surface-raised",3.0,"drift outline (offset)"),("--problem","--surface-raised",3.0,"clash outline (offset)"),("--problem","--surface",3.0,"clash outline on page"),
+ # The roles (tokens.css 3c) point at other tokens and this reads hex values only, so each pair is written against
+ # the token its role points at: --state-doing is --accent, --mark-fill is --accent-line.
+ ("--accent","--surface",3.0,"state doing"),("--accent","--surface-raised",3.0,"state doing on card"),
+ ("--accent","--surface-sunken",3.0,"state doing in well"),
+ ("--ink","--accent-line",4.5,"mark fill"),
+ ("--line-strong","--surface",3.0,"small hatch mark"),
+]
+# Measured and printed, not failed: pairs the audit found short, whose fix is a rule rather than a token.
+known = [
+ # Faint text inside a search hit's mark. The fix is `mark { color: var(--ink) }` (visual audit, Contrast findings).
+ ("--ink-faint","--accent-tint",4.5,"faint on accent tint"),
 ]
 fails=0
 for s,(sl,sd) in schemes.items():
@@ -56,15 +67,17 @@ for s,(sl,sd) in schemes.items():
             if fg not in t or bg not in t: bad.append(f"MISSING {fg} {bg}"); continue
             r=cr(t[fg],t[bg])
             if r<mn: bad.append(f"{why:24} {fg} on {bg} = {r:.2f} (< {mn})")
-        print(f"{s:9}{mode:6} {'ok' if not bad else str(len(bad))+' fail'}")
+        short=[f"{why:24} {fg} on {bg} = {cr(t[fg],t[bg]):.2f} (< {mn})" for fg,bg,mn,why in known if cr(t[fg],t[bg])<mn]
+        print(f"{s:9}{mode:6} {'ok' if not bad else str(len(bad))+' fail'}{'' if not short else ', '+str(len(short))+' known'}")
         for x in bad: print("    ",x)
+        for x in short: print("     known:",x)
         fails+=len(bad)
 # hue distance between accents and semantics, and partner
 import colorsys
 def hue(h):
     r,g,b=[int(h[i:i+2],16)/255 for i in (1,3,5)]; return colorsys.rgb_to_hls(r,g,b)[0]*360
 print("\nhues (light): accents", {s:round(hue((schemes[s][0] or base_light).get('--accent',base_light['--accent']))) for s in schemes})
-for k in ("--good","--caution","--problem","--claude-mark","--src-partner-line","--src-household-line"):
+for k in ("--good","--caution","--problem","--claude-mark","--src-other-line","--src-household-line"):
     print(" ",k, round(hue(base_light[k])))
 print("TOTAL FAILS", fails)
 sys.exit(1 if fails else 0)

@@ -55,8 +55,18 @@ const KEPT: readonly Line[] = [
 const ADDED: readonly Line[] = [
   // A page from another build: the build is the shared region's first line, sent with every request, and linked on the stylesheet.
   ['build', "'x-hp-build': BUILD", 'page'], ['build', "const BUILD = '", 'shared'], ['build', 'href="/tokens.css?v=', 'page'],
+  // The four helpers every screen calls, and the person pressed in the people bar, kept for the tab across a reload.
+  ['S8', 'function memberDisc(', 'shared'], ['S33', 'function stateGlyph(', 'shared'], ['S33', 'const STATE_WORDS = {', 'shared'],
+  ['bar', 'function goalFlag(', 'shared'], ['bar', 'function peopleBar(', 'shared'],
+  ['P17', 'function pressPerson(', 'shared'], ['P17', "'hp.person'", 'shared'], ['P17', 'function restorePerson(', 'shared'],
+  ['P17', 'restorePerson();', 'page'],
+  // Their rules, and the one hit-area helper.
+  ['hit', '.hit::after{', 'css'], ['bar', '.seg.people{', 'css'], ['S8', '.who.other', 'css'], ['S8', '.who.sm{', 'css'],
+  // The flag is `span.flag`: Today's thread already has a `.line.flag`, which a bare `.flag` rule would reach.
+  ['S33', '.st-doing{', 'css'], ['bar', 'span.flag{', 'css'],
 ];
-const GONE: readonly Line[] = [];
+/** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
+const GONE: readonly Line[] = [['S8', 'whoDisc(', 'page']];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = [];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
 const DRAWN_LATER: readonly string[] = [];

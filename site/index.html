@@ -44,9 +44,17 @@
      say the same; this catches the inputs the script builds with no class of their own. */
   input,select,textarea{font-size:var(--fs-input)}
 
-  .btn{font:inherit;font-size:var(--fs-small);font-weight:500;border:1px solid var(--line);background:var(--surface-raised);
+  /* One size across the app: 14px at 500, 41px high on the desk, and on a phone never under a thumb's 44. */
+  .btn{font:inherit;font-size:var(--fs-ui);font-weight:var(--fw-medium);border:1px solid var(--line);background:var(--surface-raised);
     color:var(--ink);padding:9px 14px;border-radius:10px;cursor:pointer;
-    transition:background .15s,border-color .15s}
+    transition:background var(--t-fast),border-color var(--t-fast)}
+  /* align-items: a .btn some screen draws as a flex box keeps its label in the middle of the taller box. */
+  @container page (max-width: 759px){ .btn{min-height:var(--tap);align-items:center} }
+  /* The one hit-area helper: a control drawn smaller than a thumb is hit across --tap, centred on it, and never
+     across less than itself. The control's own box draws; this only catches the press. */
+  .hit{position:relative}
+  .hit::after{content:'';position:absolute;top:50%;left:50%;width:100%;height:100%;min-width:var(--tap);min-height:var(--tap);
+    transform:translate(-50%,-50%)}
   .btn:hover:not(:disabled){background:var(--accent-tint);border-color:var(--accent-line)}
   .btn:disabled{opacity:.5;cursor:default}
   .btn.primary{background:var(--accent-fill);color:var(--on-accent);border-color:var(--accent-fill)}
@@ -778,11 +786,11 @@
   .rail .v{margin-left:auto;flex:none;display:inline-flex;gap:4px;align-items:center;color:var(--ink-soft);
     font-weight:var(--fw-medium);white-space:nowrap;font-variant-numeric:tabular-nums}
   .rail .v.over{color:var(--problem)}
-  .rail .who.mine,.rail .who.partner,.rail .who.household{width:18px;height:18px;font-size:var(--fs-nano)}
+  .rail .who.mine,.rail .who.partner,.rail .who.other,.rail .who.household{width:var(--disc-small);height:var(--disc-small);font-size:var(--fs-nano)}
   .rail .none{margin:0;padding:var(--sp-2) 0;font-size:var(--fs-small);color:var(--ink-soft)}
   .rail .unavailable{margin-top:4px}
   /* the Household calendar, as a source: its own shade, with a house */
-  .who.household{display:inline-grid;place-items:center;flex:none;width:22px;height:22px;border-radius:50%;
+  .who.household{display:inline-grid;place-items:center;flex:none;width:var(--disc);height:var(--disc);border-radius:50%;
     background:var(--src-household-fill);color:var(--src-household-ink);box-shadow:inset 0 0 0 1px var(--src-household-line)}
   .who.household svg.i{width:11px;height:11px}
   @container page (min-width: 1040px){
@@ -824,15 +832,37 @@
     min-height:36px;padding:0 var(--sp-3);border:var(--stroke) solid transparent;background:none;border-radius:7px;cursor:pointer}
   .seg button[aria-pressed="true"]{background:var(--surface-raised);color:var(--ink);border-color:var(--line-strong);
     box-shadow:var(--e-1);font-weight:var(--fw-semibold)}
+  /* The people bar, on every screen that has one: one line that scrolls sideways, never wraps. Its line is drawn
+     inside the box rather than as a border, so the buttons' 44px hit areas fit inside what the scroller clips. */
+  .seg.people{display:flex;flex-wrap:nowrap;position:relative;width:max-content;max-width:100%;overflow-x:auto;
+    overflow-y:hidden;padding:4px;border:0;box-shadow:inset 0 0 0 var(--stroke) var(--line);scrollbar-width:none}
+  .seg.people::-webkit-scrollbar{display:none}
+  .seg.people button{flex:none;min-height:var(--control);white-space:nowrap}
+  .seg.people .n{margin-left:var(--sp-1);color:var(--ink-faint);font-weight:var(--fw-medium);font-variant-numeric:tabular-nums}
   .filters .sep{width:1px;height:20px;background:var(--line);margin:0 2px}
 
-  /* who: a member, as a disc with their initial. Mine is solid, the partner's a
-     ring. Never bare .who: the income list already uses that name for text. */
-  .who.mine,.who.partner{display:inline-grid;place-items:center;flex:none;width:22px;height:22px;border-radius:50%;
+  /* who: a member, as a disc with their initial. Yours is solid; every other member's is a ring, the one
+     treatment for all of them (.partner is the old name, until the Calendar moves). Never bare .who: the
+     income list already uses that name for text. */
+  .who.mine,.who.partner,.who.other{display:inline-grid;place-items:center;flex:none;width:var(--disc);height:var(--disc);border-radius:50%;
     font-size:var(--fs-micro);font-weight:var(--fw-semibold);line-height:1}
   .who.mine{background:var(--src-mine-fill);color:var(--src-mine-ink)}
-  .who.partner{background:var(--src-partner-fill);color:var(--src-partner-ink);box-shadow:inset 0 0 0 1.5px var(--src-partner-line)}
+  .who.partner,.who.other{background:var(--src-other-fill);color:var(--src-other-ink);box-shadow:inset 0 0 0 1.5px var(--src-other-line)}
+  .who.sm{width:var(--disc-small);height:var(--disc-small);font-size:var(--fs-nano)}
   .who.lg{width:32px;height:32px;font-size:var(--fs-small)}
+
+  /* A plan's state, as a glyph: the shape says it (dashed, half-filled, ticked) as well as the colour, so
+     Graphite reads it. On a calendar box it takes the box's ink. */
+  .st{flex:none;width:var(--disc);height:var(--disc);color:var(--state-planning)}
+  .st.sm{width:var(--disc-small);height:var(--disc-small)}
+  .st-planning{color:var(--state-planning)}
+  .st-doing{color:var(--state-doing)}
+  .st-done{color:var(--state-done)}
+  .ev .st{color:inherit}
+  /* A goal, as a flag and its whole label on one line. span.flag: Today's thread has a .line.flag of its own. */
+  span.flag{display:inline-flex;align-items:center;gap:var(--sp-1);min-width:0;max-width:100%;color:var(--ink-soft);white-space:nowrap}
+  span.flag svg.i.lu{flex:none;width:12px;height:12px}
+  span.flag > span{min-width:0;overflow:hidden;text-overflow:ellipsis}
 
   /* chips: one vocabulary. Dashed only for due and asked, which wait on a person or a date. */
   .chips{display:flex;flex-wrap:wrap;gap:5px;align-items:center}
@@ -2142,6 +2172,8 @@ function renderMyHouseholds() {
       if (h.id === myHouseholdId) return;
       try {
         await api('/api/households/select', { household: h.id });
+        // A switch from the menu lets the pressed person go too, as the picker does.
+        pressPerson(null);
         await enterApp();
       } catch (ex) { showProblem(ex); }
     });
@@ -2201,6 +2233,7 @@ const BANDS = [
 ];
 
 $('signout').addEventListener('click', async () => {
+  pressPerson(null);
   await api('/api/auth/logout', {});
   location.reload();
 });
@@ -2256,29 +2289,110 @@ function icon(name, cls = 'i sm') {
   s.innerHTML = ICONS[name];
   return s;
 }
-// The top bar's tabs on a phone: icons from Lucide (lucide.dev, ISC licence), copied as they are.
+// The top bar's tabs on a phone, the plan states and the goal's flag: icons from Lucide (lucide.dev, ISC licence),
+// copied as they are.
 const LUCIDE = {
+  'circle-dashed': '<path d="M10.1 2.182a10 10 0 0 1 3.8 0"/><path d="M13.9 21.818a10 10 0 0 1-3.8 0"/><path d="M17.609 3.721a10 10 0 0 1 2.69 2.7"/><path d="M2.182 13.9a10 10 0 0 1 0-3.8"/><path d="M20.279 17.609a10 10 0 0 1-2.7 2.69"/><path d="M21.818 10.1a10 10 0 0 1 0 3.8"/><path d="M3.721 6.391a10 10 0 0 1 2.7-2.69"/><path d="M6.391 20.279a10 10 0 0 1-2.69-2.7"/>',
+  'circle-check': '<circle cx="12" cy="12" r="10"/><path d="m9 12 2 2 4-4"/>',
+  flag: '<path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" x2="4" y1="22" y2="15"/>',
   sun: '<circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/>',
   'square-kanban': '<rect width="18" height="18" x="3" y="3" rx="2"/><path d="M8 7v7"/><path d="M12 7v4"/><path d="M16 7v9"/>',
   calendar: '<path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/>',
   wallet: '<path d="M19 7V4a1 1 0 0 0-1-1H5a2 2 0 0 0 0 4h15a1 1 0 0 1 1 1v4h-3a2 2 0 0 0 0 4h3a1 1 0 0 0 1-1v-2a1 1 0 0 0-1-1"/><path d="M3 5v14a2 2 0 0 0 2 2h15a1 1 0 0 0 1-1v-4"/>',
 };
-function lucide(name) {
+/** A Lucide icon by name; `shape` draws one of the app's own on the same 24 box, stroke and caps. */
+function lucide(name, shape = LUCIDE[name]) {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   s.setAttribute('class', 'i lu');
   s.setAttribute('viewBox', '0 0 24 24');
   for (const [k, v] of [['fill', 'none'], ['stroke', 'currentColor'], ['stroke-width', '2'],
     ['stroke-linecap', 'round'], ['stroke-linejoin', 'round'], ['aria-hidden', 'true']]) s.setAttribute(k, v);
-  s.innerHTML = LUCIDE[name];
+  s.innerHTML = shape;
   return s;
 }
 
-/** A member as a disc with their initial: yours solid, the other's a ring. */
-function whoDisc(name) {
-  const d = node('span', `who ${name === myName ? 'mine' : 'partner'}`, (name || '?').slice(0, 1).toUpperCase());
-  d.title = name;
+/**
+ * A member as a disc: yours solid, every other member's a ring, one treatment for all of them. The initial, or the
+ * first two letters when another member (not this one, not you) starts with the same letter: "Bo" beside "Be".
+ */
+function memberDisc(name, { small = false } = {}) {
+  const who = name || '?';
+  const first = who.slice(0, 1).toUpperCase();
+  const shared = members.some((m) => m !== name && m !== myName && m.slice(0, 1).toUpperCase() === first);
+  const mark = shared ? `${first}${who.slice(1, 2).toLowerCase()}` : first;
+  const d = node('span', `who ${name === myName ? 'mine' : 'other partner'}${small ? ' sm' : ''}`, mark);
+  d.title = who;
+  d.setAttribute('role', 'img');
+  d.setAttribute('aria-label', who);
   return d;
 }
+
+/** A plan's state in words: the glyph's accessible name and the card's state buttons. */
+const STATE_WORDS = { planning: 'Planning', doing: 'Doing', done: 'Done' };
+/** Doing is the app's own glyph, a circle half filled; Planning and Done are Lucide's. */
+const DOING_SHAPE = '<circle cx="12" cy="12" r="10"/><path d="M12 2a10 10 0 0 1 0 20z" fill="currentColor"/>';
+/** A plan's state as a glyph: dashed, half filled or ticked, so it reads with no hue. */
+function stateGlyph(state, { small = false } = {}) {
+  const s = state === 'doing' ? lucide('', DOING_SHAPE) : lucide(state === 'done' ? 'circle-check' : 'circle-dashed');
+  s.setAttribute('class', `st st-${state}${small ? ' sm' : ''}`);
+  s.removeAttribute('aria-hidden');
+  s.setAttribute('role', 'img');
+  s.setAttribute('aria-label', STATE_WORDS[state]);
+  return s;
+}
+
+/** A goal: the flag and its whole label on one line, cut with an ellipsis when it has to be; the title holds all of it. */
+function goalFlag(label) {
+  const f = node('span', 'flag');
+  f.title = label;
+  f.append(lucide('flag'), node('span', '', label));
+  return f;
+}
+
+/**
+ * The people bar: "Everyone" first, then a button per entry in the order given (peopleOrder's, as a rule), each
+ * with its count. A press says whose key; the caller presses the person and draws again.
+ */
+function peopleBar(host, { label, people, pressed, onPress }) {
+  host.textContent = '';
+  const bar = node('div', 'seg people');
+  bar.setAttribute('role', 'group');
+  bar.setAttribute('aria-label', label);
+  let on = null;
+  for (const p of [{ key: null, label: 'Everyone' }, ...people]) {
+    const b = node('button', 'hit', p.label);
+    b.type = 'button';
+    b.setAttribute('aria-pressed', String(p.key === pressed));
+    if (p.n != null) b.append(node('span', 'n', String(p.n)));
+    b.addEventListener('click', () => onPress(p.key));
+    if (p.key === pressed) on = b;
+    bar.appendChild(b);
+  }
+  host.appendChild(bar);
+  // Into view inside the bar only: the page itself does not move.
+  if (on) bar.scrollLeft = Math.max(0, on.offsetLeft - (bar.clientWidth - on.offsetWidth) / 2);
+}
+
+/**
+ * The person pressed in the people bar, a member's account name or null for Everyone; every tab reads it. Set only
+ * through pressPerson, which keeps it for this tab so a reload finds it again.
+ */
+let personPressed = null;
+function pressPerson(member) {
+  personPressed = member ?? null;
+  try {
+    if (personPressed === null) sessionStorage.removeItem('hp.person');
+    else sessionStorage.setItem('hp.person', personPressed);
+  } catch { /* storage blocked */ }
+}
+/** The pressed person this tab kept, once members are known: a name that is no longer a member is let go. */
+function restorePerson() {
+  let kept = null;
+  try { kept = sessionStorage.getItem('hp.person'); } catch { /* storage blocked */ }
+  pressPerson(kept !== null && members.includes(kept) ? kept : null);
+}
+/** The household's members as the people bar lists them: you first, then the rest in the household's order. */
+const peopleOrder = () => [myName, ...members.filter((m) => m !== myName)];
 function chip(cls, text, glyph) {
   const c = node('span', `chip ${cls}`.trim());
   if (glyph) c.appendChild(icon(glyph));
@@ -2691,7 +2805,7 @@ function railRow(lead, text, value, open, valueCls = '') {
   return li;
 }
 
-/** Whose calendar an event is on: yours solid, the other member's a ring, the Household's a house. */
+/** Whose calendar an event is on: yours solid, another member's a ring, the Household's a house. */
 function sourceDisc(e) {
   if (e.calendar === 'household') {
     const d = node('span', 'who household');
@@ -2699,7 +2813,7 @@ function sourceDisc(e) {
     d.title = e.label;
     return d;
   }
-  const d = whoDisc(e.calendar === 'mine' ? myName : (otherMember() ?? e.label));
+  const d = memberDisc(e.calendar === 'mine' ? myName : (otherMember() ?? e.label));
   d.title = e.label;
   return d;
 }
@@ -6800,7 +6914,7 @@ function renderBoard(rows) {
 /** The chips a plan wears, on the board and on its card's children. */
 function planChips(c) {
   const chips = node('span', 'chips');
-  chips.appendChild(whoDisc(c.owner));
+  chips.appendChild(memberDisc(c.owner));
   if (c.state === 'done') chips.appendChild(chip('', 'done', 'check'));
   for (const t of c.chips) chips.appendChild(chip('', t));
   // Yours, asked of them: it stays yours until they answer.
@@ -7031,7 +7145,7 @@ function renderCard(v) {
     acts.appendChild(node('span', 'vr'));
   }
   const owner = node('span', 'owner');
-  owner.append(whoDisc(v.owner), mine ? 'You own it' : `${v.owner} owns it`);
+  owner.append(memberDisc(v.owner), mine ? 'You own it' : `${v.owner} owns it`);
   acts.appendChild(owner);
   // The ask, the due date and the block open their small form here, under the actions.
   const headForm = node('div');
@@ -7530,7 +7644,7 @@ function betweenSection(v, theirs) {
     const li = node('li');
     const head = node('div', 'head');
     head.append(node('b', '', nameOf(n.who)), node('span', 'when', `${fmtDate(dayKey(n.at))}, ${timeOf(n.at)}`));
-    li.append(whoDisc(n.who), head, node('p', 'text', n.text));
+    li.append(memberDisc(n.who), head, node('p', 'text', n.text));
     ul.appendChild(li);
   }
   const row = node('div', 'askrow');
@@ -11134,6 +11248,8 @@ async function backToPicker() {
   settingsFrom = 'today';
   // An envelope's page is the household's being left: gone, with its Escape listener.
   clearEnvelopePage();
+  // The pressed person was this household's.
+  pressPerson(null);
   for (const id of ['budget', 'walk', 'import', 'compare', 'plan', 'plan-card', 'calendar', 'settings', 'budget-head']) $(id).hidden = true;
   $('briefing').hidden = false;
   markTabs();
@@ -11158,6 +11274,7 @@ async function openHousehold(id) {
 }
 
 $('hh-signout').addEventListener('click', async () => {
+  pressPerson(null);
   await api('/api/auth/logout', {});
   location.reload();
 });
@@ -11344,6 +11461,8 @@ async function enterApp() {
   claudeOn = who.claude === true;
   myName = who.who;
   members = who.household?.members ?? [];
+  // The person pressed in the people bar, kept for this tab, once the household's members are known.
+  restorePerson();
   inSandbox = who.sandbox === true;
   $('login').hidden = true;
   $('app').hidden = false;
