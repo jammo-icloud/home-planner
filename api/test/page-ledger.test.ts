@@ -85,6 +85,10 @@ const ADDED: readonly Line[] = [
   ['area', "'Nothing planned yet'"], ['area', 'on the board'], ['area', "'/api/settings/areas/rename'"],
   ['area', "'/api/settings/areas/move'"], ['area', "'/api/settings/areas/remove'"], ['area', "id: 'area-page-h'"],
   ['P3', "focus: 'done'"], ['P3', "'Done', 'done'"], ['P3', 'pm-done'],
+  // Leaving a household (a switch, the picker, sign-out) goes through onlyToday, which empties every screen first and
+  // moves the turn on, so no read still out from the household left can draw into the next one.
+  ['switch', 'function onlyToday() {\n  forgetHousehold();', 'page'], ['switch', 'function forgetHousehold() {\n  householdTurn++;', 'page'],
+  ['switch', 'let householdTurn = 0;', 'shared'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [

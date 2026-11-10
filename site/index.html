@@ -2169,12 +2169,19 @@ function renderMyHouseholds() {
     it.appendChild(txt);
     it.addEventListener('click', async () => {
       if (h.id === myHouseholdId) return;
+      // The household being left is put away at once, not after the switch's round trips.
+      onlyToday();
+      closeMenus();
       try {
         await api('/api/households/select', { household: h.id });
         // A switch from the menu lets the pressed person go too, as the picker does.
         pressPerson(null);
         await enterApp();
-      } catch (ex) { showProblem(ex); }
+      } catch (ex) {
+        // Refused before it switched: the household still open is drawn again on Today, under what went wrong.
+        if (h.id !== myHouseholdId) await loadThread();
+        showProblem(ex);
+      }
     });
     box.appendChild(it);
   }
@@ -2233,7 +2240,8 @@ const BANDS = [
 
 $('signout').addEventListener('click', async () => {
   pressPerson(null);
-  forgetBoard();
+  // Nothing of this household stays drawn, nor answers into the page, while the sign-out and the reload go out.
+  onlyToday();
   await api('/api/auth/logout', {});
   location.reload();
 });
@@ -2241,6 +2249,11 @@ $('signout').addEventListener('click', async () => {
 // ── shared: what every screen calls ───────────────────────────────────────
 const BUILD = '0.6.0';
 
+/**
+ * Which household's screens these are: moved on whenever a household is left (a switch, the picker, sign-out), so a
+ * read still out from before draws nothing of the household left behind.
+ */
+let householdTurn = 0;
 /** Everyone in the household, from whoami. "The other member" is whoever is not you. */
 let members = [];
 /** A sandbox sign-in has no NAS session behind it: files and contacts are out of its reach. */
@@ -2675,6 +2688,8 @@ function readDocText(id, what) {
 }
 
 async function loadThread(opts = {}) {
+  // A thread asked for in a household since left draws nothing and says nothing.
+  const turn = householdTurn;
   $('loading').hidden = false;
   $('app-err').hidden = true;
   try {
@@ -2689,6 +2704,7 @@ async function loadThread(opts = {}) {
       api(`/api/thread?${q}`),
       opts.before ? null : api(`/api/today${chosenBudget() ? `?budget=${encodeURIComponent(chosenBudget())}` : ''}`).catch(() => null),
     ]);
+    if (turn !== householdTurn) return;
     threadData = opts.before && threadData
       ? { ...page, entries: [...page.entries, ...threadData.entries] }
       : page;
@@ -2710,9 +2726,9 @@ async function loadThread(opts = {}) {
     // stays at its top, where the banner is.
     if (!opts.before && view === 'today' && $('home-banner').hidden) window.scrollTo({ top: document.documentElement.scrollHeight });
   } catch (ex) {
-    showProblem(ex);
+    if (turn === householdTurn) showProblem(ex);
   } finally {
-    $('loading').hidden = true;
+    if (turn === householdTurn) $('loading').hidden = true;
   }
 }
 
@@ -4810,6 +4826,7 @@ const ruleSuggestion = (payee) =>
 const ruleFor = (row) => row.rule || ruleSuggestion(row.payee);
 
 async function loadUnsorted() {
+  const turn = householdTurn;
   const box = $('unsorted-q');
   // No receipts named, so this only fetches the picker and the receipts a split
   // rule says to divide; nothing is asked of Claude.
@@ -4817,6 +4834,8 @@ async function loadUnsorted() {
     api('/api/tools/list_transactions', { uncategorizedOnly: true, limit: 50 }),
     api('/api/match', { budget: chosenBudget() || null, txnIds: [] }),
   ]);
+  // A household left meanwhile: its receipts are not drawn into the next one's Budget.
+  if (turn !== householdTurn) return;
   box.textContent = '';
   box.hidden = !result.matched;
   if (!result.matched) return;
@@ -5748,7 +5767,9 @@ const FREQ_LABELS = {
 };
 
 async function loadIncome() {
+  const turn = householdTurn;
   const { result } = await api('/api/tools/plan_income', { budget: chosenBudget(), months: 6 });
+  if (turn !== householdTurn) return;
   const list = $('inc-list');
   list.textContent = '';
   if (!result.recorded.length) {
@@ -6175,15 +6196,20 @@ $('file').addEventListener('change', async (ev) => {
   if (!file) return;
   $('imp-err').hidden = true;
   $('imp-result').hidden = true;
+  const turn = householdTurn;
   try {
     // Read in the browser and post as text. A bank export is a few hundred
     // kilobytes, so multipart parsing on the server buys nothing.
     const content = await file.text();
-    preview = await api('/api/import/preview', {
+    const got = await api('/api/import/preview', {
       filename: file.name, content, ...(chosenBudget() ? { budget: chosenBudget() } : {}),
     });
+    // Read for a household since left: not this one's preview.
+    if (turn !== householdTurn) return;
+    preview = got;
     renderPreview();
   } catch (ex) {
+    if (turn !== householdTurn) return;
     $('imp-err').textContent = ex.message;
     $('imp-err').hidden = false;
   }
@@ -6776,7 +6802,9 @@ async function loadCompare() {
     return;
   }
 
+  const turn = householdTurn;
   const { result } = await api('/api/tools/compare_budgets', { a, b });
+  if (turn !== householdTurn) return;
   const diff = toCents(result.monthlyDifference);
 
   const verdict = document.createElement('div');
@@ -7513,14 +7541,18 @@ async function openCard(id) {
 }
 
 async function loadCard() {
+  // A card asked for in a household since left is not drawn, and its failure is not said.
+  const turn = householdTurn;
   $('loading').hidden = false;
   try {
     if (attachmentsOn === null) keepFilesFrom(await api('/api/settings').catch(() => null));
-    renderCard(await api(planPath(cardId)));
+    const v = await api(planPath(cardId));
+    if (turn !== householdTurn) return;
+    renderCard(v);
   } catch (ex) {
-    showProblem(ex);
+    if (turn === householdTurn) showProblem(ex);
   } finally {
-    $('loading').hidden = true;
+    if (turn === householdTurn) $('loading').hidden = true;
   }
 }
 
@@ -8459,6 +8491,7 @@ function settingsFailed(ex) {
 }
 
 async function loadSettings() {
+  const turn = householdTurn;
   $('loading').hidden = false;
   settingsPage = null;
   settingsEditing = null;
@@ -8472,6 +8505,8 @@ async function loadSettings() {
       api('/api/settings'),
       amAdmin ? api('/api/connectors').catch((ex) => ({ problem: ex })) : null,
     ]);
+    // Settings read for a household since left are not kept or drawn.
+    if (turn !== householdTurn) return;
     connData = nas && !nas.problem ? nas : null;
     connUnread = nas?.problem ? `What this NAS connects to could not be read just now: ${nas.problem.message}` : null;
     connAccounts = null;
@@ -8481,10 +8516,10 @@ async function loadSettings() {
     keepFilesFrom(st);
     renderSettingsList();
   } catch (ex) {
-    settingsFailed(ex);
+    if (turn === householdTurn) settingsFailed(ex);
     return;
   } finally {
-    $('loading').hidden = true;
+    if (turn === householdTurn) $('loading').hidden = true;
   }
   // The calendars are not waited for: the list, or a page a link opens, is drawn now,
   // and the lines and pages that read the calendars fill in when they answer.
@@ -8497,11 +8532,16 @@ let settingsVisit = 0;
 /** Why the calendars could not be read, in the NAS's words, for the pages that need them. */
 let calProblem = null;
 async function loadCalendars() {
+  // The calendars as a household since left saw them are not kept.
+  const turn = householdTurn;
   try {
-    calList = (await api('/api/calendars')).calendars;
+    const got = (await api('/api/calendars')).calendars;
+    if (turn !== householdTurn) return;
+    calList = got;
     calState = 'ok';
     calProblem = null;
   } catch (ex) {
+    if (turn !== householdTurn) return;
     calList = null;
     // A sign-in with no NAS session behind it (the sandbox, or one carried
     // across a restart) is not a failure: the calendars are off until then.
@@ -11685,15 +11725,94 @@ function showHouseholds(state) {
 }
 
 /**
- * Leave the app for Choose a household without asking the household anything:
- * it may be gone. Every screen is put away first, so the next one opened starts
- * at Today instead of on Settings of a household that no longer exists.
+ * Everything drawn of the household being left, and what it was drawn from, let go at once: a read still out from it
+ * draws nothing (each screen's own counter moves on, and `householdTurn` for the reads that had none), and a screen
+ * opened afterwards shows its loading line, or nothing, until the next household's read lands. It asks nothing of
+ * the server. Called by `onlyToday`, so a switch, the picker and sign-out all start here.
  */
+function forgetHousehold() {
+  householdTurn++;
+  // Plan: the board and the card (forgetBoard), an area's page; Budget: an envelope's page.
+  forgetBoard();
+  clearAreaPage();
+  clearEnvelopePage();
+  cardId = null;
+
+  // Today: the thread, the Yours rails (taken home first, since a phone keeps them inside the thread), the setup
+  // notes, the waiting tray, and a note half typed.
+  threadData = null;
+  $('briefing').appendChild(yoursEl);
+  yoursEl.hidden = true;
+  $('yours-me').textContent = '';
+  for (const body of yoursEl.querySelectorAll('.rail-body')) body.textContent = '';
+  $('thread').textContent = '';
+  $('t-earlier').hidden = true;
+  $('tray').hidden = true;
+  $('tray').textContent = '';
+  $('setup-notes').hidden = true;
+  $('setup-notes').textContent = '';
+  $('say').value = '';
+  $('say-note').textContent = '';
+
+  // Budget: a load still out draws nothing; the month, the walkthrough's place and the categories go.
+  budgetLoads++;
+  month = null;
+  pricingFor = null;
+  walkIncomeEdit = null;
+  walkDraft = null;
+  walkFr = null;
+  categoriesCache = null;
+  budgets = [];
+  budgetMeta = {};
+  $('budget-label').textContent = '';
+  $('where-note').textContent = '';
+  $('budget-switch').textContent = '';
+  $('budget-pick').textContent = '';
+  $('toassign').className = 'toassign';
+  for (const id of ['ta-v', 'ta-line', 'ta-green', 't-income', 't-funded', 't-spent', 'inc-list', 'inc-projection',
+    'outside-note', 'unsorted-q', 'bands', 'month-note', 'walk-steps', 'walk-step']) $(id).textContent = '';
+  for (const id of ['ta-next', 'outside-box', 'unsorted-q', 'month-sec']) $(id).hidden = true;
+  $('cat-sec').hidden = true;
+  $('cat-list').textContent = '';
+  $('manage-panel').textContent = '';
+  // Import's file and what it found, and Compare's pickers and verdict.
+  preview = null;
+  $('file').value = '';
+  for (const id of ['imp-err', 'imp-rules', 'imp-skipped', 'imp-sugg', 'imp-bal']) { $(id).textContent = ''; $(id).hidden = true; }
+  $('imp-result').hidden = true;
+  for (const id of ['c-found', 'c-dupes', 'c-ruled', 'c-needs', 'imp-rows', 'imp-commit', 'imp-note', 'cmp-a', 'cmp-b', 'cmp-out']) $(id).textContent = '';
+
+  // Calendar: a week still out draws nothing, and nothing of the last one is kept. The week looked at stays.
+  calFetch++;
+  calEvents = [];
+  closeCalPanel();
+  for (const id of ['cal-week', 'cal-strip', 'cal-day', 'cal-day-title', 'cal-day-count', 'cal-legend', 'cal-legend-phone',
+    'cal-range', 'cal-month', 'cal-off']) $(id).textContent = '';
+  $('cal-off').hidden = true;
+  // Whether this household books nights, and its link to Synology Calendar, are the next week's drawing to say.
+  $('cal-block').hidden = true;
+  $('cal-dsm').hidden = true;
+
+  // Settings: its page, what it was read from, and the calendars it lists.
+  settingsPage = null; settingsEditing = null; folderPick = null; restorePick = null; settingsSheetFrom = null;
+  document.removeEventListener('keydown', pageEscape);
+  settingsVisit++;
+  settingsData = null;
+  calList = null;
+  calState = 'loading';
+  calProblem = null;
+  $('settings').textContent = '';
+
+  // The search box and its hits.
+  searchReset();
+}
+
 /**
- * Every screen put away at once and Today's place shown, its tab marked: where leaving a household and opening one
- * both start, so nothing of the last household's (its board, a card, its week, its budget, Settings) stays drawn.
+ * Every screen put away at once and Today's place shown, its tab marked, with nothing of the last household left
+ * drawn (`forgetHousehold`): where leaving a household, opening one and signing out all start.
  */
 function onlyToday() {
+  forgetHousehold();
   view = 'today';
   settingsFrom = 'today';
   for (const id of ['budget', 'walk', 'import', 'compare', 'plan', 'plan-card', 'calendar', 'settings', 'budget-head']) $(id).hidden = true;
@@ -11701,17 +11820,19 @@ function onlyToday() {
   markTabs();
 }
 
+/**
+ * Leave the app for Choose a household without asking the household anything:
+ * it may be gone. Every screen is put away first, so the next one opened starts
+ * at Today instead of on Settings of a household that no longer exists.
+ */
+
 // Several requests in flight can all meet the same 409; only the first sends the page to the picker.
 let leaving = false;
 async function backToPicker() {
   if (leaving) return;
   leaving = true;
-  // An envelope's page and an area's are the household's being left: gone, with their Escape listeners.
-  clearEnvelopePage();
-  clearAreaPage();
-  // The pressed person was this household's, and so was the board.
+  // The pressed person was this household's; everything drawn of it goes with `onlyToday`.
   pressPerson(null);
-  forgetBoard();
   onlyToday();
   closeMenus();
   $('manage-panel').textContent = '';
@@ -11735,7 +11856,7 @@ async function openHousehold(id) {
 
 $('hh-signout').addEventListener('click', async () => {
   pressPerson(null);
-  forgetBoard();
+  onlyToday();
   await api('/api/auth/logout', {});
   location.reload();
 });
@@ -11876,16 +11997,9 @@ function hhPanel(title, fields, onSubmit) {
 let householdLabel = null;
 
 async function enterApp() {
-  // Whatever the last household's board had out is let go before this one is read.
-  forgetBoard();
-  // A page of This NAS left open on the households screen is not carried into the household.
-  settingsPage = null;
-  settingsEditing = null;
-  document.removeEventListener('keydown', pageEscape);
-  // Nor is another household's envelope page or area page, their listeners or their buttons.
-  clearEnvelopePage();
-  clearAreaPage();
-  // A switch from the menu opens on Today, as signing in does: the screen that was showing was the last household's.
+  // A switch from the menu opens on Today, as signing in does, with nothing of the last household left drawn or
+  // still able to draw: its screens, its pages and their listeners, its reads still out, a page of This NAS left
+  // open on the households screen (`onlyToday`, through `forgetHousehold`).
   onlyToday();
   closeMenus();
   const who = await api('/api/whoami');
