@@ -1725,9 +1725,9 @@
       <form class="composer" id="composer">
         <label class="visually-hidden" for="say">Ask Claude, or leave a note</label>
         <textarea id="say" rows="2" maxlength="2000"
-          placeholder="Ask Claude about the budget, or leave a note for each other"></textarea>
+          placeholder="Ask Claude, or leave a note for the others"></textarea>
         <div class="composer-row">
-          <span class="quiet" id="say-note"></span>
+          <span class="quiet" id="say-note" aria-live="polite"></span>
           <button class="btn hit" id="leave-note" type="button">Leave a note</button>
           <button class="btn primary hit" id="ask-claude" type="submit">Ask Claude</button>
         </div>
@@ -3057,7 +3057,7 @@ function renderToday() {
   $('earlier-sort').replaceChildren(sort);
   $('earlier').hidden = earlier.length === 0 && !threadData.before && !left;
   $('ask-claude').disabled = !claudeOn;
-  $('say-note').textContent = claudeOn ? '' : "Claude isn't set up on this server. Notes still work.";
+  $('say-note').textContent = claudeOn ? 'Goes into today' : "Claude isn't set up on this server. Notes still work.";
   watchLastRow();
 }
 
@@ -4332,6 +4332,21 @@ function adjustForm(card, row, o, moved = false) {
   amount.focus();
 }
 
+// A send lands in today under All or its own kind; a card that was shut opens, and the new row is brought into view,
+// unless a person other than the viewer is pressed, where it would not show: then the slot says where it went.
+async function afterSend(id, lane) {
+  if (todayKind !== 'all' && todayKind !== lane) todayKind = 'all';
+  todayShut = false;
+  await loadThread({ quiet: true });
+  const note = $('say-note');
+  if (personPressed !== null && personPressed !== myName) {
+    note.textContent = 'Left in today. It shows under Everyone.';
+    return;
+  }
+  const row = $('days').querySelector(`[data-event="${CSS.escape(String(id))}"]`);
+  if (row) row.scrollIntoView({ block: 'nearest' });
+}
+
 async function askClaude(text, trigger) {
   const say = $('say');
   const note = $('say-note');
@@ -4341,8 +4356,8 @@ async function askClaude(text, trigger) {
   try {
     const r = await api('/api/thread/ask', { question: text, budget: chosenBudget() || null });
     if (!trigger) say.value = '';
-    await loadThread();
-    note.textContent = r.error ? `Claude couldn't answer: ${r.error}` : '';
+    await afterSend(r.question.id, 'claude');
+    if (r.error) note.textContent = `Claude couldn't answer: ${r.error}`;
   } catch (ex) {
     note.textContent = ex.message;
   } finally {
@@ -4363,10 +4378,9 @@ $('leave-note').addEventListener('click', async () => {
   if (!text) { $('say').focus(); return; }
   $('leave-note').disabled = true;
   try {
-    await api('/api/thread/note', { text, budget: chosenBudget() || null });
+    const r = await api('/api/thread/note', { text, budget: chosenBudget() || null });
     $('say').value = '';
-    $('say-note').textContent = '';
-    await loadThread();
+    await afterSend(r.event.id, 'notes');
   } catch (ex) {
     $('say-note').textContent = ex.message;
   } finally {
