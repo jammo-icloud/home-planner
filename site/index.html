@@ -2167,24 +2167,56 @@ function renderMyHouseholds() {
     meta.textContent = [...h.members, h.youOwn ? 'you own it' : `${h.owner} owns it`].join(' · ');
     txt.append(name, meta);
     it.appendChild(txt);
-    it.addEventListener('click', async () => {
-      if (h.id === myHouseholdId) return;
-      // The household being left is put away at once, not after the switch's round trips.
-      onlyToday();
-      closeMenus();
-      try {
-        await api('/api/households/select', { household: h.id });
-        // A switch from the menu lets the pressed person go too, as the picker does.
-        pressPerson(null);
-        await enterApp();
-      } catch (ex) {
-        // Refused before it switched: the household still open is drawn again on Today, under what went wrong.
-        if (h.id !== myHouseholdId) await loadThread();
-        showProblem(ex);
-      }
-    });
+    it.addEventListener('click', () => { if (h.id !== myHouseholdId) void switchHousehold(h.id); });
     box.appendChild(it);
   }
+}
+
+/**
+ * A switch from the menu. The invariant: at every moment the top bar, the module state and every drawn screen belong
+ * to one household, the one the server has open for this session, or are empty; and after any failure in the switch
+ * the page ends in that state or on the picker, never between two. So the household being left is put away at once
+ * (`onlyToday`, nothing of it drawn during the round trips), and then:
+ * - the select refused (or its answer lost): the server still has a household open, so it is entered again by the
+ *   same path that enters any household (`enterApp`, which asks whoami which one), back on the screen that was
+ *   showing when it is the same household, and the error box says why the switch did not happen;
+ * - the select taken and a later read failing (whoami, the budgets): the page is half the new household's, so it
+ *   goes to the picker, which says what went wrong. So does a refused switch whose household cannot be entered again.
+ */
+async function switchHousehold(id) {
+  const was = view;
+  const from = myHouseholdId;
+  onlyToday();
+  closeMenus();
+  try {
+    await api('/api/households/select', { household: id });
+  } catch (refused) {
+    try {
+      await enterApp();
+    } catch (ex) {
+      await pickerSaying(ex);
+      return;
+    }
+    // Back where it was, in the household still open; a card's id went with the switch, so its board.
+    if (myHouseholdId === from && was !== 'today') await showView(was === 'plan-card' ? 'plan' : was);
+    showProblem(refused);
+    return;
+  }
+  // A switch from the menu lets the pressed person go too, as the picker does.
+  pressPerson(null);
+  try {
+    await enterApp();
+  } catch (ex) {
+    await pickerSaying(ex);
+  }
+}
+
+/** The picker, with what went wrong under its title. */
+async function pickerSaying(ex) {
+  await backToPicker();
+  if ($('households').hidden) return;
+  $('hh-err').textContent = ex.message;
+  $('hh-err').hidden = false;
 }
 
 function showSwitch(on) {
@@ -5767,8 +5799,15 @@ const FREQ_LABELS = {
 };
 
 async function loadIncome() {
+  // Answered, or refused, for a household since left: nothing drawn, and no failure left unheard.
   const turn = householdTurn;
-  const { result } = await api('/api/tools/plan_income', { budget: chosenBudget(), months: 6 });
+  let result;
+  try {
+    ({ result } = await api('/api/tools/plan_income', { budget: chosenBudget(), months: 6 }));
+  } catch (ex) {
+    if (turn !== householdTurn) return;
+    throw ex;
+  }
   if (turn !== householdTurn) return;
   const list = $('inc-list');
   list.textContent = '';
@@ -6802,8 +6841,15 @@ async function loadCompare() {
     return;
   }
 
+  // Answered, or refused, for a household since left: nothing drawn and nothing said.
   const turn = householdTurn;
-  const { result } = await api('/api/tools/compare_budgets', { a, b });
+  let result;
+  try {
+    ({ result } = await api('/api/tools/compare_budgets', { a, b }));
+  } catch (ex) {
+    if (turn !== householdTurn) return;
+    throw ex;
+  }
   if (turn !== householdTurn) return;
   const diff = toCents(result.monthlyDifference);
 
@@ -7545,7 +7591,12 @@ async function loadCard() {
   const turn = householdTurn;
   $('loading').hidden = false;
   try {
-    if (attachmentsOn === null) keepFilesFrom(await api('/api/settings').catch(() => null));
+    // Whether cards keep files is kept only from this household's answer: a late one from the last is let go.
+    if (attachmentsOn === null) {
+      const st = await api('/api/settings').catch(() => null);
+      if (turn !== householdTurn) return;
+      keepFilesFrom(st);
+    }
     const v = await api(planPath(cardId));
     if (turn !== householdTurn) return;
     renderCard(v);
@@ -11803,9 +11854,17 @@ function forgetHousehold() {
   calProblem = null;
   $('settings').textContent = '';
 
+  // The phone-pairing sheet (a code is the household's it was made in) and the menu's household links.
+  closePhoneSheet(false);
+  $('me-apps').textContent = '';
+  $('me-apps').hidden = true;
+
   // The search box and its hits.
   searchReset();
 }
+
+// Several requests in flight can all meet the same 409; only the first sends the page to the picker.
+let leaving = false;
 
 /**
  * Every screen put away at once and Today's place shown, its tab marked, with nothing of the last household left
@@ -11825,9 +11884,6 @@ function onlyToday() {
  * it may be gone. Every screen is put away first, so the next one opened starts
  * at Today instead of on Settings of a household that no longer exists.
  */
-
-// Several requests in flight can all meet the same 409; only the first sends the page to the picker.
-let leaving = false;
 async function backToPicker() {
   if (leaving) return;
   leaving = true;
