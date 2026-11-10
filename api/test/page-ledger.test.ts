@@ -117,7 +117,7 @@ const KEPT: readonly Line[] = [
   ['P57', 'Search Contacts by name'], ['P58', 'Sign in again to reach Contacts.'], ['P59', 'Let it go'], ['P60', 'Put it on the calendar'],
   ['P61', "cardSection('History'"], ['P62', 'Remove this plan'], ['P62', 'Why remove it? The log keeps it, and your reason.'],
   ['P64', 'id="loading"', 'page'], ['P64', 'id="app-err"', 'page'], ['P64', 'Reading the log', 'page'], ['S7', 'function askAnswer(', 'page'], ['S7', 'function askCardNode(', 'page'],
-  ['S9', 'const otherMember', 'shared'], ['S15', 'async function eventPlans(', 'page'], ['S15', "(await api('/api/plans')).rows.flatMap((r) => r.plans)", 'page'], ['S18', 'function railChips(', 'page'], ['S11', 'const clockOf', 'shared'],
+  ['S15', 'async function eventPlans(', 'page'], ['S15', "(await api('/api/plans')).rows.flatMap((r) => r.plans)", 'page'], ['S18', 'function railChips(', 'page'], ['S11', 'const clockOf', 'shared'],
   ['S11', 'const todayKey', 'shared'], ['S5', 'async function openTodayAt(', 'shared'], ['S2', 'async function reloadView(', 'page'], ['S6', 'function actionButton(', 'page'],
   ['shared', 'function icon(', 'shared'], ['shared', 'function lucide(', 'shared'], ['shared', 'function chip(', 'shared'], ['shared', 'function inlineForm(', 'shared'],
   ['card', 'function renderCard('], ['card', 'function checklistSection('], ['card', 'function attachmentsSection('], ['card', 'function claudeSection('],
@@ -266,6 +266,9 @@ const ADDED: readonly Line[] = [
   ['C8', 'function calMount(', 'calendar'], ['C55', 'function closeCalOpen(', 'calendar'], ['C68', 'function calEscape(', 'calendar'], ['C68', "document.addEventListener('keydown', calEscape)", 'calendar'], ['C69', 'first.focus({ preventScroll: true })', 'calendar'],
   ['form', 'ep-form cal-form', 'calendar'], ['C33', "panelField('Day'", 'calendar'], ['C34', "'Which calendar'", 'calendar'], ['C34', "panelLabel('On')", 'calendar'], ['C35', "'For a plan'", 'calendar'], ['C36', "'Notes'", 'calendar'], ['C38', "'Overlaps '", 'calendar'], ['C39', "'Free from'", 'calendar'], ['C40', 'Sign in again to check for overlaps.', 'calendar'], ['C40', 'Overlaps could not be checked just now.', 'calendar'], ['C41', 'ex.status !== 400', 'calendar'],
   ['C43', 'say(ex.message)', 'calendar'], ['C44', 'async function afterCalChange(', 'calendar'], ['C46', 'except: e.evt_id', 'calendar'], ['C50', "'Open these nights'", 'calendar'], ['C52', "'Keep these nights'", 'calendar'], ['C52', 'Nights of a confirmed stay cannot be kept.', 'calendar'], ['C53', 'afterCalChange(from.value', 'calendar'], ['S15', 'await eventPlans()', 'calendar'], ['form', '.cal-form{', 'css'], ['form', '.cal-form .clashes .clash{color:var(--problem)', 'css'],
+  // The desk (Calendar Task 10): day heads, the panel of a day, owners named, money in the all-day row.
+  ['C12', 'function dayHead(', 'calendar'], ['C12', "node('button', `dh", 'calendar'], ['C12', '.week .dh[aria-current="date"]', 'css'], ['C8', 'function openPanelDay(', 'calendar'], ['C8', 'function pressDayHead(', 'calendar'], ['C18', 'e.owner', 'calendar'],
+  ['C18', 'stateGlyph(e.plan.state, { small: true })', 'calendar'], ['C19', "el.setAttribute('aria-label', rowWords(", 'calendar'], ['desk', 'function moneyBox(', 'calendar'], ['desk', '.ev.money{', 'css'], ['desk', '.ev.money.paid{', 'css'], ['desk', '.ev.money.short{', 'css'], ['desk', 'new ResizeObserver(', 'calendar'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
@@ -305,6 +308,8 @@ const GONE: readonly Line[] = [
   ['C26', 'dayview', 'page'], ['C26', "hourLabels('hrs')", 'page'], ['C24', 'cal-day-count', 'page'], ['C24', 'cal-day-title', 'page'], ['C24', '.day-head', 'css'], ['C26', 'id="cal-day"', 'page'], ['spec', 'evNode(e, long', 'page'], ['spec', 'evSub(e, long', 'page'], ['spec', 'timedBoxes(events, day, long)', 'page'], ['spec', 'renderDay(', 'page'],
   // Forms in place (Calendar Task 9): the panel's old words and its closer.
   ['spec', 'Block these nights', 'page'], ['C50', 'Unblock these nights', 'page'], ['C52', 'cannot be blocked', 'page'], ['C34', 'Where it goes', 'page'], ['C35', 'Plan (optional)', 'page'], ['C36', 'Notes (optional)', 'page'], ['C38', 'Clashes with ${', 'page'], ['C39', 'Free instead', 'page'], ['C40', 'check for clashes', 'page'], ['spec', 'closeCalPanel', 'page'], ['spec', 'Plan › ${e.plan.title}', 'calendar'],
+  // The desk (Calendar Task 10): the title attribute and the tags go, the dimmed second line goes.
+  ['C19', 'el.title = said.join', 'page'], ['C18', "parts.push('clash')", 'page'], ['C18', "parts.push('from Plan')", 'page'], ['S9', 'otherMember', 'page'], ['spec', '.ev .s{display:block;opacity', 'css'],
 ];
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */

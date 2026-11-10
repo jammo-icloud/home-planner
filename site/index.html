@@ -1102,9 +1102,9 @@
     overflow:hidden;text-decoration:none}
   button.ev{font-family:inherit;text-align:left;border:0;margin:0;cursor:pointer}
   .ev .t{display:block;font-weight:var(--fw-semibold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-  .ev .s{display:block;opacity:.85;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .ev .s{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ev.mine{background:var(--src-mine-fill);color:var(--src-mine-ink)}
-  .ev.partner{background:var(--src-partner-fill);color:var(--src-partner-ink);box-shadow:inset 0 0 0 1.5px var(--src-partner-line)}
+  .ev.partner{background:var(--src-other-fill);color:var(--src-other-ink);box-shadow:inset 0 0 0 var(--stroke-heavy) var(--src-other-line)}
   .ev.household{background:var(--src-household-fill);color:var(--src-household-ink);box-shadow:inset 0 0 0 1.5px var(--src-household-line)}
   /* proposed: from a card nobody has approved. Hollow and dashed in the accent. */
   .ev.proposed{background:var(--surface-raised);color:var(--ink);box-shadow:none;border:var(--stroke-heavy) dashed var(--accent)}
@@ -1589,6 +1589,21 @@
   .cal-form .chips{gap:var(--sp-2)}
   .cal-form .facts p{margin:0}
   .cal-form .sure{display:flex;flex-wrap:wrap;gap:var(--sp-2);align-items:center}
+  .week button.dh{display:block;width:100%;font:inherit;font-size:var(--fs-small);text-align:left;background:none;border-top:0;border-right:0;cursor:pointer}
+  .week .dh .marks{display:flex;align-items:center;gap:var(--sp-1);min-height:var(--sp-4)}
+  .week .dh .mk-n{font-size:var(--fs-micro);color:var(--ink-soft)}
+  .week .dh .mk-m{font-size:var(--fs-micro);line-height:1}
+  .week .dh .mk-m.due{color:var(--caution)}
+  .week .dh .mk-m.short{color:var(--problem);font-weight:var(--fw-semibold)}
+  .week .dh .mk-m.paid{color:var(--ink-soft)}
+  .week .dh .mk-c,.week .dh .mk-h{display:inline-block;width:var(--mark);height:var(--mark)}
+  .week .dh .mk-c{border-radius:50%;background:var(--problem)}
+  .week .dh .mk-h{background:repeating-linear-gradient(135deg,var(--line-strong) 0 var(--stroke),transparent var(--stroke) var(--sp-1))}
+  .ev .st{vertical-align:text-bottom;margin-right:var(--sp-1)}
+  .week .dh[aria-current="date"]{box-shadow:inset 0 0 0 var(--stroke-heavy) var(--ink)}
+  .ev.money{background:var(--caution-tint);color:var(--caution)}
+  .ev.money.paid{background:var(--surface-sunken);color:var(--ink-soft)}
+  .ev.money.short{background:var(--problem-tint);color:var(--problem)}
   /* ── end of calendar ── */
 </style>
 </head>
@@ -2305,7 +2320,6 @@ function keepFilesFrom(st) {
   attachmentsOn = st.attachments.on === true;
   attachmentsWhy = st.attachments.why ?? null;
 }
-const otherMember = () => members.find((m) => m !== myName) ?? null;
 const planPath = (id, sub = '') => `/api/plans/${encodeURIComponent(id)}${sub}`;
 
 // Icons are fixed shapes from the design's mockups; no text ever goes through here.
@@ -12852,20 +12866,19 @@ function evClasses(e) {
   return cls.join(' ');
 }
 
-/** What an event says under its title on the desk's grid: when, whose if not yours, and moved, proposed or from Plan in words. */
+/** What a box says under its title on the desk's grid: whose, if not yours, then moved, when, and proposed or off the calendar in words. */
 function evSub(e, clampedBefore, clampedAfter) {
   if (e.held) return e.held.kind === 'stay' ? 'a friend staying' : 'kept for the household';
   const parts = [];
-  // First, so it is never the part a short box clips: the clash ring may be what is drawn round it.
+  if (e.owner && e.owner !== myName && !e.proposed) parts.push(e.owner);
+  else if (calKey(e) === null) parts.push(e.label);
+  // Moved comes before the time, so it is never the part a short box clips.
   if (e.drift) parts.push('moved');
-  if (e.kind === 'due') parts.push('due');
+  if (e.kind === 'due') { parts.push('due'); if (e.plan?.goal) parts.push(e.plan.goal); }
   else if (e.is_all_day) parts.push('all day');
   else parts.push(`${clampedBefore ? '↑ ' : ''}${clockOf(e.dtstart)}${clampedAfter ? ' ↓' : ''}`);
-  if (e.calendar === 'partner' && !e.proposed) parts.unshift(otherMember() ?? e.label);
   if (e.proposed) parts.push('proposed');
   else if (e.offCalendar) parts.push('not on the calendar');
-  else if (e.kind === 'block') parts.push('from Plan');
-  if (e.clash) parts.push('clash');
   return parts.join(' · ');
 }
 
@@ -12894,17 +12907,15 @@ function evNode(e, clampedBefore = false, clampedAfter = false) {
     el.type = 'button';
     el.addEventListener('click', () => { void open(null); });
   }
-  el.append(node('span', 't', e.summary || 'Busy'), node('span', 's', evSub(e, clampedBefore, clampedAfter)));
-  if (e.held) {
-    const { first, last } = daysOf(e);
-    el.title = `${e.summary}, ${heldNights(first, last)}, ${e.held.kind === 'stay' ? 'a friend staying' : `kept for the household by ${nameIn(e.held.by)}`}`;
-    return el;
-  }
-  const said = [e.summary || 'Busy', e.is_all_day ? (e.kind === 'due' ? 'due' : 'all day') : `${clockOf(e.dtstart)} to ${clockOf(e.dtend)}`,
-    e.proposed ? 'proposed, not approved' : e.offCalendar ? 'kept on the plan, not on the calendar yet' : `on ${e.label}`];
-  if (e.drift) said.push('moved on the calendar, and the plan disagrees');
-  if (e.clash) said.push('clashes with another event');
-  el.title = said.join(', ');
+  // A plan's date leads with its state's glyph, a block of time for a plan with it on the second line; both take the box's ink.
+  const t = node('span', 't');
+  if (e.kind === 'due' && !e.held && e.plan?.state) t.appendChild(stateGlyph(e.plan.state, { small: true }));
+  t.append(calTitle(e));
+  const sub = node('span', 's');
+  if (e.kind === 'block' && !e.held && e.plan?.state) sub.appendChild(stateGlyph(e.plan.state, { small: true }));
+  sub.append(evSub(e, clampedBefore, clampedAfter));
+  el.append(t, sub);
+  el.setAttribute('aria-label', rowWords(e, daysOf(e).first, myName));
   return el;
 }
 
@@ -13210,8 +13221,54 @@ function renderStrip() {
   for (const key of weekDays(calWeekData.week)) strip.appendChild(dayCell(key, calWeekData, lens, 4));
 }
 
+/** One day's head on the desk: its weekday, its date and its marks; a press opens the day's card above the grid, again closes it. */
+function dayHead(key, data, lens) {
+  const b = node('button', `dh hit${key === todayKey() ? ' is-today' : ''}`);
+  b.type = 'button';
+  b.dataset.day = key;
+  const date = String(Number(key.slice(8)));
+  const num = node('b');
+  if (key === todayKey()) num.appendChild(node('span', '', date)); else num.textContent = date;
+  const m = dayMarks(key, data, lens);
+  const marks = node('span', 'marks');
+  drawMarks(marks, m, markList(m));
+  b.append(weekdayShort(key), num, marks);
+  b.setAttribute('aria-label', marksWords(keyWords(key, { weekday: 'long', day: 'numeric', month: 'long' }), m));
+  if (key === calDay) b.setAttribute('aria-current', 'date');
+  b.setAttribute('aria-expanded', String(calPanelDay === key));
+  b.addEventListener('click', () => pressDayHead(key));
+  return b;
+}
+
+/** A bill on the desk's all-day row: the same row the card draws, as a box. */
+function moneyBox(m) {
+  const el = node('button', `ev money${m.kind === 'paid' ? ' paid' : m.kind === 'short' ? ' short' : ''}`);
+  el.type = 'button';
+  el.setAttribute('aria-label', moneyWords(m));
+  el.addEventListener('click', () => { void openBudgetAt(m.budget, m.envelope, m.kind === 'short' && m.over ? 'cover' : 'bills'); });
+  let top;
+  let under;
+  if (m.kind === 'paid') {
+    top = `${m.label} · ${m.amount}`;
+    under = `paid · ${m.name}`;
+  } else if (m.kind === 'short') {
+    const w = KIND_WORDS[m.billKind].toLowerCase();
+    top = `${m.label} · ${m.left ? `${m.left} left` : `${m.over} over`}`;
+    under = `${w} ${dayShort(m.billDay)}`;
+  } else {
+    const w = KIND_WORDS[m.kind].toLowerCase();
+    top = m.about ? `${m.label} · about ${m.about}` : m.label;
+    under = `${w} · ${m.name}${m.noReceipt ? ' · no receipt yet' : ''}`;
+  }
+  el.append(node('span', 't', top), node('span', 's', under));
+  return el;
+}
+
 function renderWeek() {
-  const events = calWeekData.events;
+  const lens = calLens();
+  // A box shows when its overlay is on and the pressed calendar and goal leave it; a bill when Budget is on.
+  const shows = (e) => (lens.over.plans || !isPlanRow(e)) && showsUnder(e, lens);
+  const events = calWeekData.events.filter(shows);
   const week = calWeekData.week;
   const days = weekDays(week);
   const today = todayKey();
@@ -13220,15 +13277,7 @@ function renderWeek() {
   const grid = $('cal-week');
   grid.textContent = '';
   grid.appendChild(node('div', 'dh'));
-  for (const key of days) {
-    const date = String(Number(key.slice(8)));
-    const h = node('div', `dh${key === today ? ' is-today' : ''}`, keyWords(key, { weekday: 'short' }));
-    const b = node('b');
-    if (key === today) b.appendChild(node('span', '', date)); else b.textContent = date;
-    h.appendChild(b);
-    if (key === today) h.setAttribute('aria-current', 'date');
-    grid.appendChild(h);
-  }
+  for (const key of days) grid.appendChild(dayHead(key, calWeekData, lens));
   grid.appendChild(node('div', 'adlab', 'all day'));
   const adrow = node('div', 'adrow');
   const allDay = events.filter((e) => e.is_all_day);
@@ -13241,6 +13290,13 @@ function renderWeek() {
     el.style.gridColumn = `${from + 1} / span ${Math.max(1, toIdx - from + 1)}`;
     adrow.appendChild(el);
   }
+  days.forEach((key, i) => {
+    for (const m of dayView(key, calWeekData, lens).money) {
+      const el = moneyBox(m);
+      el.style.gridColumn = String(i + 1);
+      adrow.appendChild(el);
+    }
+  });
   grid.appendChild(adrow);
   grid.appendChild(hourLabels('hours'));
   for (const key of days) {
@@ -13262,8 +13318,8 @@ const calAlso = node('p', 'cal-also');
 calAlso.setAttribute('aria-live', 'polite');
 calAlso.tabIndex = -1;
 
-/** Where the phone's card is drawn. */
-const calCardHost = () => $('cal-card');
+/** Where the day's card is drawn: the panel above the desk's grid while a day is open there, else under the phone's strip. */
+const calCardHost = () => (calPanelDay ? $('cal-panel') : $('cal-card'));
 
 const KIND_WORDS = { due: 'DUE', autopay: 'AUTO PAY', payby: 'PAY BY', bill: 'BILL', paid: 'PAID' };
 
@@ -13345,8 +13401,19 @@ function nowRow() {
 }
 
 function renderDayCard() {
+  const desk = calDesk();
+  // A phone has no panel of days; a desk with no day open has no card.
+  if (!desk) calPanelDay = null;
+  const panel = $('cal-panel');
+  if (!calPanelDay) {
+    // closeCalOpen has already emptied a form's panel: what is left is a card of a day, which this width no longer shows.
+    panel.replaceChildren();
+    panel.hidden = true;
+  } else {
+    $('cal-card').textContent = '';
+  }
+  if (desk && !calPanelDay) { $('cal-card').textContent = ''; return; }
   const host = calCardHost();
-  if (calDesk()) { host.textContent = ''; return; }
   const v = dayView(calDay, calWeekData, calLens());
   const today = todayKey();
   const span = (e) => { const { first, last } = daysOf(e); return first === last ? '' : `${weekdayShort(first)} – ${weekdayShort(last)}`; };
@@ -13406,6 +13473,7 @@ function renderDayCard() {
   }
   section.appendChild(list);
   host.replaceChildren(section, calAlso);
+  if (calPanelDay) panel.hidden = false;
   calAlso.textContent = alsoHasLine(calDay, v);
 }
 
@@ -13433,7 +13501,9 @@ function calMount(anchor, el, first) {
     const p = $('cal-panel');
     p.replaceChildren(el);
     p.hidden = false;
+    // The form takes the panel from a day's card: that day's head no longer says it is open.
     calPanelDay = null;
+    for (const h of $('cal-week')?.querySelectorAll('.dh[aria-expanded="true"]') ?? []) h.setAttribute('aria-expanded', 'false');
   }
   // A short day leaves no page below a short form, and scrolling stops at the page's end: while a form is open the
   // Calendar keeps a screen of room under it, so its first field reaches the top half even with the keyboard up.
@@ -13461,7 +13531,7 @@ function closeCalOpen(focus) {
   focus?.focus();
 }
 
-/** Escape on the Calendar: the open form first, then the month picker; neither, and the page's own Escape goes on. */
+/** Escape on the Calendar: the open form first, then the month picker, then a day's card in the panel; none, and the page's own Escape goes on. */
 function calEscape(ev) {
   if (ev.key !== 'Escape' || view !== 'calendar' || ev.isComposing || ev.defaultPrevented) return;
   if (cancelOpen($('calendar'))) { ev.preventDefault(); return; }
@@ -13470,7 +13540,10 @@ function calEscape(ev) {
     renderCalendar();
     $('cal-month').focus();
     ev.preventDefault();
+    return;
   }
+  // Last: a day's card open above the desk's grid closes, its head takes focus.
+  if (calPanelDay) { pressDayHead(calPanelDay); ev.preventDefault(); }
 }
 document.addEventListener('keydown', calEscape);
 
@@ -13486,7 +13559,10 @@ async function afterCalChange(day, key) {
   shutPicker();
   calVisit = null;
   calDay = day;
+  calPanelDay = null;
   await loadCalendar(day);
+  // On a desk the day's card opens in the panel, so focus has a row to go to.
+  if (calDesk() && calWeekData) openPanelDay(day);
   if (key === undefined) return;
   (calCardHost().querySelector(`[data-key="${CSS.escape(String(key))}"]`) ?? (calAlso.textContent ? calAlso : null))?.focus();
 }
@@ -13583,12 +13659,14 @@ $('cal-prev').addEventListener('click', () => {
   calVisit = null;
   if (pickerOpen()) { void openPicker(monthBy(calGridMonth, -1)); return; }
   calDay = null;
+  calPanelDay = null;
   void loadCalendar(addDayKey(calWeek, -7));
 });
 $('cal-next').addEventListener('click', () => {
   calVisit = null;
   if (pickerOpen()) { void openPicker(monthBy(calGridMonth, 1)); return; }
   calDay = null;
+  calPanelDay = null;
   void loadCalendar(addDayKey(calWeek, 7));
 });
 $('cal-month').addEventListener('click', () => {
@@ -13596,8 +13674,43 @@ $('cal-month').addEventListener('click', () => {
   shutPicker();
   if (calWeekData?.week !== calWeek) void loadCalendar(calWeek); else renderCalendar();
 });
-$('cal-this').addEventListener('click', () => { shutPicker(); calDay = null; calVisit = null; void loadCalendar(todayKey()); });
+$('cal-this').addEventListener('click', () => { shutPicker(); calDay = null; calPanelDay = null; calVisit = null; void loadCalendar(todayKey()); });
 $('cal-today').addEventListener('click', () => { shutPicker(); calDay = todayKey(); calVisit = null; void loadCalendar(todayKey()); });
+
+/** Opens `day`'s card in the panel above the desk's grid, and puts focus on its heading. */
+function openPanelDay(day) {
+  closeCalOpen();
+  calDay = day;
+  calPanelDay = day;
+  renderCalendar();
+  $('cal-panel').scrollIntoView({ block: 'nearest' });
+  const h = $('cal-day-h');
+  if (h) { h.tabIndex = -1; h.focus({ preventScroll: true }); }
+}
+
+/** A press on a day's head: its card opens in the panel; pressed again, the card closes and the head keeps focus. */
+function pressDayHead(key) {
+  calVisit = null;
+  if (calPanelDay === key) {
+    calPanelDay = null;
+    renderCalendar();
+    document.querySelector(`#cal-week .dh[data-day="${key}"]`)?.focus();
+    return;
+  }
+  openPanelDay(key);
+}
+
+/** The desk has no picker and the phone no panel of days: crossing 1040px draws the other layout's state, but never over an open form. */
+let calWasDesk = false;
+new ResizeObserver(() => {
+  const d = calDesk();
+  if (d === calWasDesk) return;
+  calWasDesk = d;
+  if (view === 'calendar' && !calOpen && calWeekData) {
+    if (d) shutPicker(); else calPanelDay = null;
+    renderCalendar();
+  }
+}).observe(document.querySelector('.hp'));
 
 // ── a new event, and one the app made ──
 //
