@@ -1581,6 +1581,9 @@
   .cal-also{margin:var(--sp-3) 0 0;font-size:var(--fs-small);color:var(--ink-soft)}
   .cal-also:empty{display:none}
   #cal-foot{justify-self:start;margin-top:var(--sp-3)}
+  .daystrip.month .mh{text-align:center;font-size:var(--fs-micro);font-weight:var(--fw-medium);color:var(--ink-soft)}
+  .daystrip.month .dn{display:none}
+  .daystrip .outside .dd{color:var(--ink-faint)}
   /* ── end of calendar ── */
 </style>
 </head>
@@ -12604,7 +12607,7 @@ let calWeekData = null;
 /** The month grid's fetch and its first day, while the picker is open; the grid and the bar read it, the card never. */
 let calGridData = null;
 let calGridFrom = null;
-/** The month the grid shows, as the day key of its first of the month. */
+/** The month the grid shows, as 'YYYY-MM'; null while the picker is shut. */
 let calGridMonth = null;
 /** The goal chip pressed, or null. */
 let calGoal = null;
@@ -13001,6 +13004,55 @@ async function loadCalendar(weekStart) {
   }
 }
 
+// ── the calendar: the month picker ──
+
+const pickerOpen = () => calGridMonth !== null;
+
+/** The picker: six weeks of the month in `month` ('YYYY-MM') as the strip, read in one fetch of its own. */
+async function openPicker(month) {
+  calGridMonth = month;
+  calGridFrom = mondayOf(`${month}-01`);
+  // The answer to the last month is not this month's: no count of it is drawn.
+  calGridData = null;
+  $('cal-month').setAttribute('aria-expanded', 'true');
+  $('cal-prev').setAttribute('aria-label', 'Previous month');
+  $('cal-next').setAttribute('aria-label', 'Next month');
+  renderHead();
+  const mine = ++calFetch;
+  const from = calGridFrom;
+  $('loading').hidden = false;
+  try {
+    const budget = chosenBudget();
+    const r = await api(`/api/calendar?start=${from}&end=${addDayKey(from, 42)}${budget ? `&budget=${encodeURIComponent(budget)}` : ''}`);
+    if (mine !== calFetch) return;
+    calGridData = { ...r, week: from };
+    renderCalendar();
+  } catch (ex) {
+    if (mine === calFetch) showProblem(ex);
+  } finally {
+    if (mine === calFetch) $('loading').hidden = true;
+  }
+}
+
+/** Shuts the picker, dropping any read of the grid still on its way. Nothing when it is shut. */
+function shutPicker() {
+  if (!pickerOpen()) return;
+  calGridData = null;
+  calGridFrom = null;
+  calGridMonth = null;
+  $('cal-month').setAttribute('aria-expanded', 'false');
+  $('cal-prev').setAttribute('aria-label', 'Previous week');
+  $('cal-next').setAttribute('aria-label', 'Next week');
+  calFetch++;
+  $('loading').hidden = true;
+}
+
+/** The month before or after `month` ('YYYY-MM'). */
+const monthBy = (month, by) => {
+  const d = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)) - 1 + by, 1));
+  return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}`;
+};
+
 /** What the bar, the overlays and the strip read: the grid's fetch while the picker is open, else the week's. */
 const calData = () => (calGridFrom && calGridData) || calWeekData;
 /** The day keys of the window calData() covers: the grid's six weeks while the picker is open, else the week's seven. */
@@ -13035,7 +13087,7 @@ function renderCalendar() {
 
 function renderHead() {
   const days = weekDays(calWeek);
-  $('cal-month-t').textContent = keyWords(calDay, { month: 'long', year: 'numeric' });
+  $('cal-month-t').textContent = keyWords(pickerOpen() ? `${calGridMonth}-15` : calDay, { month: 'long', year: 'numeric' });
   // "2–8 November 2026", or "November 2 – 8, 2026": the locale says which.
   $('cal-range').textContent = new Intl.DateTimeFormat(undefined, { day: 'numeric', month: 'long', year: 'numeric', timeZone: 'UTC' })
     .formatRange(keyDate(calWeek), keyDate(days[6]));
@@ -13120,9 +13172,16 @@ function dayCell(key, data, lens, limit, { outside = false } = {}) {
   b.append(node('span', 'dn', weekdayShort(key)), node('span', 'dd', String(Number(key.slice(8)))), marks);
   b.setAttribute('aria-label', marksWords(keyWords(key, { weekday: 'long', day: 'numeric', month: 'long' }), m));
   if (key === calDay) b.setAttribute('aria-current', 'date');
-  b.addEventListener('click', () => {
+  b.addEventListener('click', async () => {
     calDay = key;
     calVisit = null;
+    if (pickerOpen()) {
+      // A day in the picker: the picker shuts onto that day's week, which is read if it is not the one on screen.
+      shutPicker();
+      await loadCalendar(key);
+      document.querySelector('#cal-strip [aria-current="date"]')?.focus();
+      return;
+    }
     renderCalendar();
     document.querySelector(`#cal-strip [data-day="${key}"]`)?.focus();
   });
@@ -13134,6 +13193,15 @@ function renderStrip() {
   const strip = $('cal-strip');
   strip.textContent = '';
   const lens = calLens();
+  if (pickerOpen() && calGridData) {
+    strip.classList.add('month');
+    strip.setAttribute('aria-label', 'This month');
+    for (const key of weekDays(calGridFrom).slice(0, 7)) strip.appendChild(node('span', 'mh', weekdayShort(key)));
+    for (const key of calDays()) strip.appendChild(dayCell(key, calGridData, lens, 4, { outside: key.slice(0, 7) !== calGridMonth }));
+    return;
+  }
+  strip.classList.remove('month');
+  strip.setAttribute('aria-label', 'This week');
   for (const key of weekDays(calWeekData.week)) strip.appendChild(dayCell(key, calWeekData, lens, 4));
 }
 
@@ -13450,10 +13518,25 @@ function openHeld(e) {
   why.focus();
 }
 
-$('cal-prev').addEventListener('click', () => { calDay = null; calVisit = null; void loadCalendar(addDayKey(calWeek, -7)); });
-$('cal-next').addEventListener('click', () => { calDay = null; calVisit = null; void loadCalendar(addDayKey(calWeek, 7)); });
-$('cal-this').addEventListener('click', () => { calDay = null; calVisit = null; void loadCalendar(todayKey()); });
-$('cal-today').addEventListener('click', () => { calDay = todayKey(); calVisit = null; void loadCalendar(todayKey()); });
+$('cal-prev').addEventListener('click', () => {
+  calVisit = null;
+  if (pickerOpen()) { void openPicker(monthBy(calGridMonth, -1)); return; }
+  calDay = null;
+  void loadCalendar(addDayKey(calWeek, -7));
+});
+$('cal-next').addEventListener('click', () => {
+  calVisit = null;
+  if (pickerOpen()) { void openPicker(monthBy(calGridMonth, 1)); return; }
+  calDay = null;
+  void loadCalendar(addDayKey(calWeek, 7));
+});
+$('cal-month').addEventListener('click', () => {
+  if (!pickerOpen()) { if (calDay) void openPicker(calDay.slice(0, 7)); return; }
+  shutPicker();
+  if (calWeekData?.week !== calWeek) void loadCalendar(calWeek); else renderCalendar();
+});
+$('cal-this').addEventListener('click', () => { shutPicker(); calDay = null; calVisit = null; void loadCalendar(todayKey()); });
+$('cal-today').addEventListener('click', () => { shutPicker(); calDay = todayKey(); calVisit = null; void loadCalendar(todayKey()); });
 
 // ── a new event, and one the app made ──
 //
@@ -13785,6 +13868,7 @@ let todayText = '';
 const pageWords = () => (view === 'settings' ? 'Settings' : todayText);
 
 async function showView(next) {
+  if (next !== 'calendar') shutPicker();
   if (next === 'settings' && view !== 'settings') settingsFrom = view;
   // Leaving Settings closes its page: an answer still on its way draws nothing.
   if (next !== 'settings') {

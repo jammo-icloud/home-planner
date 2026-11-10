@@ -260,6 +260,8 @@ const ADDED: readonly Line[] = [
   ['money', "'AUTO PAY'", 'calendar'], ['money', "'PAY BY'", 'calendar'], ['money', "'BILL'", 'calendar'], ['money', "'PAID'", 'calendar'], ['money', "'DUE'", 'calendar'], ['money', ' · no receipt yet', 'calendar'], ['money', ' left`', 'calendar'], ['money', ' over`', 'calendar'], ['money', ' bills, about ', 'calendar'],
   ['rec', "The day's record", 'calendar'], ['rec', ' waiting on you', 'calendar'], ['rec', 'openTodayAt({ day', 'calendar'], ['rec', 'function dayWriters(', 'shared'], ['rec', 'dayWriters(', 'today'], ['also', 'alsoHasLine(', 'calendar'], ['also', "calAlso.setAttribute('aria-live', 'polite')", 'calendar'],
   ['S8', 'memberDisc(', 'calendar'], ['S10', 'householdDisc(e.label)', 'calendar'], ['S19', "focus === 'bills'", 'page'], ['S19', "focus === true || focus === 'cover'", 'page'],
+  // The month picker (Calendar Task 8).
+  ['month', 'function openPicker(', 'calendar'], ['month', 'function shutPicker(', 'calendar'], ['month', "'Previous month'", 'calendar'], ['month', "'Next month'", 'calendar'], ['month', '.daystrip.month', 'css'], ['C1', "$('cal-month').setAttribute('aria-expanded'", 'calendar'],
 ];
 /** `whoDisc` is searched for on the whole page: Today's rail and the card both called it. */
 const GONE: readonly Line[] = [
