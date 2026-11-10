@@ -2,10 +2,10 @@
 
 **Status:** design, for review. Agreed with the owner on 2026-11-09; amended on 2026-11-10 from three audits
 in `docs/superpowers/design/` (the carry-over ledger, the gap outline, the visual audit). It is written as two
-parts, Bills and then the day page: the owner has yet to rule on whether they are one release or two (0.9.0
-and 0.10.0). Built after "Plan by area" (0.7.0) and "Today as day cards" (0.8.0), it uses by name their people
-bar, member discs, state glyphs, goal flag and chips, any-state goal list, lanes, day cards and deep links. In
-its examples Alex is the viewer, Bob and Casey the other members, Dana a friend who stays.
+parts, Bills and then the day page. The owner ruled on 2026-11-10 that they are one release, 0.9.0, built in
+that order as two stages. Built after "Plan by area" (0.7.0) and "Today as day cards" (0.8.0), it uses by
+name their people bar, member discs, state glyphs, goal flag and chips, any-state goal list, lanes, day cards
+and deep links. In its examples Alex is the viewer, Bob and Casey the other members, Dana a friend who stays.
 
 ## Intent
 
