@@ -138,7 +138,7 @@ const ADDED: readonly Line[] = [
   ['S25', 'settle(', 'threadSrc'], ['S26', 'appliedBy', 'threadSrc'], ['S29', 'guestEmail(', 'threadSrc'],
   // Today as day cards (Task 7): the frame, the day cards, and getting to a row.
   ['T7', 'function dayCard(', 'today'], ['T7', "'Today'", 'today'], ['T7', 'aria-expanded', 'today'], ['T7', 'function dayName(', 'shared'], ['T7', 'function monthName(', 'shared'], ['T7', 'function clockAt(', 'shared'],
-  ['T8', 'New since you last looked', 'today'], ['S1', "api('/api/briefing/read', { upTo: threadData.last })", 'today'], ['S1', 'function watchLastRow(', 'today'], ['T9', "todayKind === 'all'", 'today'],
+  ['T8', 'New since you last looked', 'today'], ['S1', "api('/api/briefing/read', { upTo: threadData.last })", 'today'], ['S1', 'function watchLastRow(', 'today'], ['T9', "todayKind === 'all'", 'today'], ['T7', 'for (const day of daysOpen) if (!dayRows.has(day) && held.has(day))', 'today'],
   ['T11', "if (view === 'today') { window.scrollTo({ top: 0 }); await loadThread(); }", 'page'], ['T12', 'if (rowFormOpen()) return;', 'today'], ['S5', 'openTodayAt({ drift: e.drift })', 'page'], ['S5', 'openTodayAt({ offer: e.proposed })', 'page'], ['T109', "block: 'center'", 'shared'],
   ['T111', "$('loading').hidden = false", 'today'], ['T113', "new Error('This household has no budgets yet.", 'today'], ['T114', "new Error('no open month')", 'today'], ['T115', 'Nothing yet today. Ask Claude something, or leave a note.', 'today'], ['T117', 'if (turn !== loadTurn || household !== householdTurn) return;', 'today'],
   ['S2', 'else await loadThread();', 'today'], ['S3', "$('days').addEventListener('focusin'", 'today'], ['S31', "$('days').addEventListener('focusout'", 'today'],

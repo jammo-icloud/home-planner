@@ -2854,11 +2854,14 @@ async function loadThread(opts = {}) {
       renderYours(rails);
       renderSetupNotes(rails.setup ?? [], rails.budget ?? []);
     }
+    // A day opened while this read was out was not in its `open`: its rows, read by pressDay, are kept.
+    const held = new Map(dayRows);
     dayRows.clear();
     for (const e of page.entries) {
       if (!dayRows.has(e.day)) dayRows.set(e.day, []);
       dayRows.get(e.day).push(e);
     }
+    for (const day of daysOpen) if (!dayRows.has(day) && held.has(day)) dayRows.set(day, held.get(day));
     renderToday();
     $('briefing').hidden = view !== 'today';
     // The thread is still worth reading with nothing to brief on; the way
