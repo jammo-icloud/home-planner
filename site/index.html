@@ -3253,7 +3253,7 @@ function entShell(e) {
 const rowLink = (label, act) => textBtn(label, 'link hit', null, act);
 
 /** The day an appointment's instant falls on; an all-day one is the date it was written with. */
-const dayOfStart = (iso, allDay) => (allDay && /^\d{4}-\d\d-\d\d/.test(iso) ? iso.slice(0, 10) : keyAt(Date.parse(iso)));
+const dayOfStart = (iso, allDay) => (allDay && /^\d{4}-\d\d-\d\d$/.test(iso) ? iso.slice(0, 10) : keyAt(Date.parse(iso)));
 /** "Thursday 12 November, 4:30 PM", the time left off an all-day one. */
 function whenLine(event) {
   const day = dayName(dayOfStart(event.start, event.allDay));

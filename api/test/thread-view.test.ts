@@ -165,6 +165,15 @@ describe('the thread', () => {
       assert.deepEqual(e.open, { calendar: '2026-11-12' });
     });
 
+    test('an all-day appointment stored as an instant opens the household day, east of UTC', async () => {
+      const c = await ctx();
+      await c.store.append('alice', { op: 'household.zone', zone: 'Australia/Sydney' });
+      await c.store.append('alice', { op: 'calendar.appointment', cal_id: '/alice/hh/', original_cal_id: '/alice/hh/', evt_id: 7,
+        ical_uid: 'u7', dav_etag: 'E', summary: 'Show day', start: '2026-11-11T13:00:00.000Z', end: '2026-11-12T13:00:00.000Z', allDay: true } as never);
+      const e = (await entries(c)).find((x) => x.kind === 'change' && x.event?.summary === 'Show day') as Extract<ThreadEntry, { kind: 'change' }>;
+      assert.deepEqual(e.open, { calendar: '2026-11-12' });
+    });
+
     test('fresh is what others wrote after what I last read', async () => {
       const c = await ctx();
       await c.store.append('bob', { op: 'thread.note', text: 'before any cursor', budget: null });
