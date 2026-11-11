@@ -10,8 +10,8 @@ import { ZERO, add, cents, fmt } from './money.ts';
 import type { Cents } from './money.ts';
 import { incomeFor, sourcesFor } from './income.ts';
 import { PRICED } from './starter.ts';
-import { INCOME, PER_YEAR, isSpend, monthOf, partsOf, prevMonth } from './types.ts';
-import type { Basis, CategoryId, Day, Envelope, EnvelopeId, Month, Per, State } from './types.ts';
+import { INCOME, PER_YEAR, monthOf, partsOf, prevMonth } from './types.ts';
+import type { Basis, Day, Envelope, EnvelopeId, Month, Per, State } from './types.ts';
 import type { MonthView } from './envelopes.ts';
 import { donors, monthClock } from './analytics.ts';
 
@@ -45,11 +45,11 @@ export interface Hint {
 }
 
 /**
- * Net money out of `categories` in each of the `n` months before `month`, the latest
+ * Net money out of `envelope` in each of the `n` months before `month`, the latest
  * first, and whether any receipt landed in it at all. Refunds count against it, and a
  * split receipt counts by its parts, as the month's own spending does.
  */
-function monthsBefore(state: State, categories: readonly CategoryId[], month: Month, n: number): { spent: Cents; any: boolean }[] {
+function monthsBefore(state: State, envelope: EnvelopeId, month: Month, n: number): { spent: Cents; any: boolean }[] {
   const months: Month[] = [];
   for (let m = prevMonth(month); months.length < n; m = prevMonth(m)) months.push(m);
   const out = months.map(() => ({ spent: ZERO, any: false }));
@@ -57,16 +57,16 @@ function monthsBefore(state: State, categories: readonly CategoryId[], month: Mo
     const i = months.indexOf(monthOf(t.date));
     if (i < 0) continue;
     for (const p of partsOf(t)) {
-      if (!isSpend(p.category) || !categories.includes(p.category)) continue;
+      if (p.envelope !== envelope) continue;
       out[i] = { spent: add(out[i]!.spent, cents(-p.amount)), any: true };
     }
   }
   return out;
 }
 
-/** Net money out of `categories` in the month before `month`. */
-export function lastMonthSpent(state: State, categories: readonly CategoryId[], month: Month): Cents {
-  return monthsBefore(state, categories, month, 1)[0]!.spent;
+/** Net money out of `envelope` in the month before `month`. */
+export function lastMonthSpent(state: State, envelope: EnvelopeId, month: Month): Cents {
+  return monthsBefore(state, envelope, month, 1)[0]!.spent;
 }
 
 /** The mean of the months among `nets` that had any receipt; null when none did. */
@@ -77,12 +77,12 @@ function meanOfSeen(nets: readonly { spent: Cents; any: boolean }[]): Cents | nu
 }
 
 /**
- * What `categories` spent a month, on average, over the last `months` months before
+ * What `envelope` spent a month, on average, over the last `months` months before
  * `month`. Only the months that had receipts count: a household that imported two of
  * the last six gets the average of those two, not a third of it. Null with none.
  */
-export function spentOver(state: State, categories: readonly CategoryId[], month: Month, months: 1 | 3 | 6): Cents | null {
-  return meanOfSeen(monthsBefore(state, categories, month, months));
+export function spentOver(state: State, envelope: EnvelopeId, month: Month, months: 1 | 3 | 6): Cents | null {
+  return meanOfSeen(monthsBefore(state, envelope, month, months));
 }
 
 const WINDOWS = [1, 3, 6] as const;
@@ -108,13 +108,12 @@ const FIXED: Readonly<Record<string, string>> = {
 
 /**
  * What to say beside an envelope, to help give it a figure. Keyed by the envelope's id,
- * which a starter envelope shares with its category. An envelope with receipts is
- * offered their averages; a sinking one never is, its spending being lumpy by design.
+ * which a starter envelope keeps. An envelope with receipts is offered their averages;
+ * a sinking one never is, its spending being lumpy by design.
  */
 export function hintFor(state: State, env: Envelope, month: Month): Hint | null {
-  const categories = env.match.categories;
-  if (!env.sinking && categories.length > 0) {
-    const nets = monthsBefore(state, categories, month, 6);
+  if (!env.sinking) {
+    const nets = monthsBefore(state, env.id, month, 6);
     const averages: { months: 1 | 3 | 6; cents: Cents }[] = [];
     for (const months of WINDOWS) {
       const mean = meanOfSeen(nets.slice(0, months));
@@ -158,7 +157,7 @@ export function incomeSuggestion(state: State, month: Month): IncomeSuggestion |
   const last = prevMonth(month);
   let arrived = ZERO;
   for (const t of state.txns.values()) {
-    if (t.category === INCOME && monthOf(t.date) === last) arrived = add(arrived, t.amount);
+    if (t.envelope === INCOME && monthOf(t.date) === last) arrived = add(arrived, t.amount);
   }
   return arrived > 0 ? { cents: arrived, from: 'imports' } : null;
 }
@@ -178,8 +177,9 @@ const GREEN = 'When every envelope has a figure and they add up to income, this 
 
 /** Says in words what is left to assign, and what it will take to reach zero. */
 export function cardFor(view: MonthView): Card {
-  const flagged = view.envelopes.filter((e) => e.envelope.needsFigure);
-  const priced = view.envelopes.length - flagged.length;
+  const live = view.envelopes.filter((e) => !e.removed);
+  const flagged = live.filter((e) => e.envelope.needsFigure);
+  const priced = live.length - flagged.length;
   const next = [...flagged].sort((a, b) => a.envelope.order - b.envelope.order)[0]?.envelope.id ?? null;
   const left = view.toAssign;
 

@@ -18,7 +18,8 @@ export interface Removed {
   readonly date: string;
   readonly payee: string;
   readonly amount: string;
-  readonly category: string | null;
+  /** The envelope it was in, when it was in one. */
+  readonly envelope: string | null;
   /** False when the receipt is back in the ledger, so review can be closed. */
   readonly stillGone: boolean;
 }
@@ -117,7 +118,7 @@ export function findRemoved(events: readonly Event[], txnId: string, state: Stat
       date: t.date,
       payee: t.payee,
       amount: fmtExact(t.amount),
-      category: t.category !== null && isSpend(t.category) ? t.category : null,
+      envelope: isSpend(t.envelope) ? t.envelope : null,
       stillGone: !state.txns.has(txnId),
     };
   }

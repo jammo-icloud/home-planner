@@ -215,9 +215,6 @@ export function facts(
   parts.push(line('left to assign', fmt(view.toAssign)));
   parts.push(line('zero-based', snap.balanced ? 'yes, balanced' : 'NO — not balanced'));
   if (view.moveCount) parts.push(line('moves made this month', String(view.moveCount)));
-  if (view.outside.total !== ZERO) {
-    parts.push(line('spent outside every envelope', `${fmt(view.outside.total)} across ${view.outside.txnIds.length} transactions`));
-  }
 
   parts.push('');
   parts.push('ENVELOPES (planned at open / funded now / spent / available / projected by month end)');
@@ -258,11 +255,11 @@ export function facts(
     }
   }
 
-  if (snap.unsorted.count) {
+  if (snap.toSort.count) {
     parts.push('');
-    parts.push(`UNCATEGORISED: ${snap.unsorted.count} transactions — ${fmt(snap.unsorted.outflow)} out, `
-      + `${fmt(snap.unsorted.inflow)} in`
-      + (snap.unsorted.oldest ? `, oldest ${snap.unsorted.oldest}` : '')
+    parts.push(`UNCATEGORISED: ${snap.toSort.count} transactions — ${fmt(snap.toSort.outflow)} out, `
+      + `${fmt(snap.toSort.inflow)} in`
+      + (snap.toSort.oldest ? `, oldest ${snap.toSort.oldest}` : '')
       + '. Only the outflow is unexplained spending; the inflow is mostly pay and card payments.');
   }
 
@@ -354,7 +351,7 @@ const SCHEMA = {
           },
           tool: {
             type: 'string',
-            enum: ['move_money', 'set_assignment', 'categorize_transactions', 'open_month'],
+            enum: ['move_money', 'set_assignment', 'sort_receipts', 'open_month'],
             description: 'The tool that would carry this out, if one would. Naming it changes nothing on its own.',
           },
         },
@@ -857,7 +854,7 @@ function suggestion(
 ): Record<string, never> | { suggests: NonNullable<Decision['suggests']> } {
   const common = { month };
 
-  if (d.tool === 'open_month' || d.tool === 'categorize_transactions') {
+  if (d.tool === 'open_month' || d.tool === 'sort_receipts') {
     return { suggests: { tool: d.tool, args: common } };
   }
 
@@ -973,20 +970,17 @@ function plainMonth(snap: Snapshot, changeCount: number): Drafted {
     ? `${over.length} envelope${over.length > 1 ? 's are' : ' is'} over: ${over.map((p) => p.label).join(', ')}`
     : !snap.balanced
       ? `${fmt(snap.view.toAssign)} still needs assigning`
-      : snap.unsorted.count
-        ? `${snap.unsorted.count} transactions still need categorising`
+      : snap.toSort.count
+        ? `${snap.toSort.count} transactions still need categorising`
         : 'Nothing needs attention today.';
   return {
     headline: heading,
     body: `Day ${snap.clock.dayOfMonth} of ${snap.clock.daysInMonth}. Funded ${fmt(snap.view.funded)}, `
       + `spent ${fmt(snap.view.activity)}, ${fmt(snap.view.toAssign)} left to assign. `
       // Unsorted receipts are in no envelope, so "spent" leaves them out.
-      + (snap.unsorted.count
-        ? `${snap.unsorted.count} receipt${snap.unsorted.count === 1 ? '' : 's'} `
-          + `(${fmt(snap.unsorted.outflow)} out) ${snap.unsorted.count === 1 ? 'is' : 'are'} not in an envelope yet. `
-        : '')
-      + (snap.view.outside.total !== ZERO
-        ? `${fmt(snap.view.outside.total)} was spent in categories with no envelope here. `
+      + (snap.toSort.count
+        ? `${snap.toSort.count} receipt${snap.toSort.count === 1 ? '' : 's'} `
+          + `(${fmt(snap.toSort.outflow)} out) ${snap.toSort.count === 1 ? 'is' : 'are'} not in an envelope yet. `
         : '')
       + `${changeCount} change${changeCount === 1 ? '' : 's'} since the last briefing.`,
     decisions: over.slice(0, 3).map((p) => ({

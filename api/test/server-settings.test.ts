@@ -219,11 +219,10 @@ describe('settings on the sandbox, with no DSM behind it', () => {
     assert.equal((await call('', 'GET', '/api/settings')).status, 401, 'members only');
   });
 
-  test('the settings count the categories in use, and say whether booking still needs its address', async () => {
+  test('the settings count no categories, and say whether booking still needs its address', async () => {
     const r = (await call(tester, 'GET', '/api/settings')).json;
-    const listed = (await call(tester, 'GET', '/api/categories')).json.categories;
-    assert.equal(typeof r.categoriesInUse, 'number');
-    assert.equal(r.categoriesInUse, listed.length, 'none is archived here');
+    assert.equal('categoriesInUse' in r, false);
+    assert.equal((await call(tester, 'GET', '/api/categories')).status, 404, 'the categories route is gone');
     assert.equal(r.booking.needsAddress, false, 'BOOK_URL is set');
     await saveConnector('bookUrl', { off: true }, 'carol');
     try {

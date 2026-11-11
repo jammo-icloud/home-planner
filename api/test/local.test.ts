@@ -36,7 +36,7 @@ describe('rent, from a published index', () => {
     const county = await censusCounty(
       { label: 'Ridgefield County, OH', stateFips: '39', countyFips: '055' }, 'k',
       census([['NAME', 'B25064_001E', 'B25103_001E', 'state', 'county'], ['Ridgefield County', '1350', '2400', '39', '055']]));
-    assert.equal(county.find((e) => e.category === 'tax')!.label, 'Property tax');
+    assert.equal(county.find((e) => e.envelope === 'tax')!.label, 'Property tax');
     const elec = (await electricityFromEia({ label: 'Ridge, NM', state: 'NM' }, 'k',
       (async () => ({ ok: true, status: 200, json: async () => ({ response: { data: [
         { period: '2024', stateid: 'NM', revenue: 1_100, customers: 800_000, price: 14.2 }] } }) })) as unknown as typeof globalThis.fetch))!;
@@ -85,7 +85,7 @@ describe('county figures, from the Census', () => {
 
   test('annual property tax is divided into the monthly figure a budget holds', async () => {
     const out = await censusCounty(loc, 'k', census(rows));
-    const tax = out.find((e) => e.category === 'tax')!;
+    const tax = out.find((e) => e.envelope === 'tax')!;
     assert.equal(fmt(tax.monthly), '$200', '$2,400 a year');
     assert.match(tax.caveat, /your own assessment/i);
   });
@@ -147,7 +147,7 @@ describe('electricity, from EIA', () => {
     // envelope is what leaves the account each month.
     const e = (await electricityFromEia(loc, 'k', eia(NM)))!;
     assert.equal(fmt(e.monthly), '$115', '$1.1bn over 800,000 homes over 12 months');
-    assert.equal(e.category, 'elec');
+    assert.equal(e.envelope, 'elec');
     assert.equal(e.asOf, '2024');
   });
 
@@ -204,10 +204,10 @@ describe('putting the sources together', () => {
           ]))) as unknown as typeof globalThis.fetch;
 
     const out = await lookUp(loc, { censusKey: 'k', fetchImpl });
-    const rents = out.estimates.filter((e) => e.category === 'rent');
+    const rents = out.estimates.filter((e) => e.envelope === 'rent');
     assert.equal(rents.length, 1);
     assert.match(rents[0]!.source, /Zillow/);
-    assert.equal(fmt(out.estimates.find((e) => e.category === 'tax')!.monthly), '$500');
+    assert.equal(fmt(out.estimates.find((e) => e.envelope === 'tax')!.monthly), '$500');
   });
 
   test('a source with nothing is named, so silence is not read as zero', async () => {
@@ -265,9 +265,8 @@ async function seedFixture(opts: { withEnvelope?: boolean } = {}) {
   ]);
   if (opts.withEnvelope) {
     await store.append('system', [
-      { op: 'category.define', category: 'rent', label: 'Rent', kind: 'House' },
-      { op: 'envelope.define', envelope: 'carry', label: 'Home carrying',
-        group: 'House', match: { categories: ['rent'] }, template: parseDollars('2500.00'), order: 0 },
+      { op: 'category.add', category: 'home', label: 'Home' },
+      { op: 'envelope.define', envelope: 'rent', label: 'Home carrying', category: 'home', template: parseDollars('2500.00'), order: 0 },
     ]);
   }
   return { store, ctx: { store, who: 'alice', today: '2026-08-13', proposals: new ProposalStore(), sid: null } as never };
@@ -286,9 +285,8 @@ describe('seeding envelopes from a location', () => {
     ok();
     const { store, ctx } = await seedFixture();
     await store.append('system', [
-      { op: 'category.define', category: 'tax', label: 'Property tax', kind: 'House' },
-      { op: 'envelope.define', envelope: 'levy', label: 'Levy',
-        group: 'House', match: { categories: ['tax'] }, template: parseDollars('100.00'), order: 0 },
+      { op: 'category.add', category: 'home', label: 'Home' },
+      { op: 'envelope.define', envelope: 'tax', label: 'Levy', category: 'home', template: parseDollars('100.00'), order: 0 },
     ]);
     const before = process.env['CENSUS_API_KEY'];
     process.env['CENSUS_API_KEY'] = 'k';
@@ -305,33 +303,31 @@ describe('seeding envelopes from a location', () => {
     } finally {
       if (before === undefined) delete process.env['CENSUS_API_KEY']; else process.env['CENSUS_API_KEY'] = before;
     }
-    assert.ok(!store.state.categories.has('rent'));
     assert.ok(!store.state.envelopes.has('rent'));
-    assert.equal(fmt(store.state.envelopes.get('levy')!.template), '$200');
+    assert.equal(fmt(store.state.envelopes.get('tax')!.template), '$200');
   });
 
   test('when no envelope takes any estimate it says there is nothing to price', async () => {
     ok();
     const { ctx } = await seedFixture();
     await assert.rejects(() => seedRun({}, ctx),
-      /No envelope is fed by what public data prices/);
+      /No envelope here is one public data prices/);
   });
 
   test('a priced envelope gets its figure, its source and this month\'s assignment, and loses its flag', async () => {
     ok();
     const { store, ctx } = await seedFixture({ withEnvelope: true });
     await store.append('system', [
-      { op: 'envelope.define', envelope: 'carry', label: 'Home carrying',
-        group: 'House', match: { categories: ['rent'] }, template: parseDollars('0.00'), order: 0, needsFigure: true },
+      { op: 'envelope.define', envelope: 'rent', label: 'Home carrying', category: 'home', template: parseDollars('0.00'), order: 0, needsFigure: true },
       { op: 'month.open', month: '2026-08', income: parseDollars('5000.00') },
     ]);
     const p = await seedRun({}, ctx);
     await commit(p.id, ctx);
-    const env = store.state.envelopes.get('carry')!;
+    const env = store.state.envelopes.get('rent')!;
     assert.equal(env.template, parseDollars('3909.22'));
     assert.equal(env.source, 'Zillow Observed Rent Index, ZIP 12345, 2026-06');
     assert.ok(!env.needsFigure);
-    assert.equal(fundedFor(store.state.months.get('2026-08')!, 'carry'), parseDollars('3909.22'));
+    assert.equal(fundedFor(store.state.months.get('2026-08')!, 'rent'), parseDollars('3909.22'));
   });
 
   test('an envelope that already has a figure is never overwritten silently', async () => {
@@ -377,7 +373,7 @@ describe('seeding envelopes from a location', () => {
     await assert.rejects(() => seedRun({}, ctx), ToolError);
   });
 
-  test('only the categories asked for', async () => {
+  test('only the envelopes asked for', async () => {
     ok();
     const { ctx } = await seedFixture();
     await assert.rejects(() => seedRun({ only: ['tax'] }, ctx), /No public data/);

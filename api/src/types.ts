@@ -1,15 +1,11 @@
 /**
  * The domain, and the event vocabulary that produces it.
  *
- * A household has one budget. Two layers, deliberately separated:
- *
- *   FACTS         transactions, categories, rules, merchants.
- *                 One household reality.
- *
- *   INTERPRETATIONS   the budget's envelopes, months, plans, assignments.
- *                     How the facts roll up, freely restructured without
- *                     touching a single receipt. Receipts are still sorted
- *                     into categories, which the envelopes match.
+ * A household has one budget. A person sorts each receipt into one envelope
+ * (or splits it across several), and it counts there and only there. An
+ * envelope sits under a category, which is only a heading: categories are an
+ * ordered list, and say nothing about a receipt. A removed envelope's id is
+ * reserved, and the months that were closed when it went keep it in history.
  *
  * Everything is derived by replaying an append-only log. Nothing is updated in
  * place, so "who changed this and why" is always answerable and two people
@@ -21,9 +17,9 @@ import type { DistributiveOmit } from './util-types.ts';
 
 // ─── identifiers ──────────────────────────────────────────────────────────────
 
-/** A permanent fact: the kind of spending. `groceries`, `electricity`, `septic`. */
+/** A heading envelopes sit under, from its label: `food`, `utilities`. */
 export type CategoryId = string;
-/** A bucket of the household's budget. `daily_life`, `util_old`. */
+/** Where money is set aside and a receipt is sorted, from its name: `groceries`, `gym-2`. */
 export type EnvelopeId = string;
 /** `YYYY-MM`. Budget months are calendar months; nothing tries to be clever. */
 export type Month = string;
@@ -38,33 +34,26 @@ export const TRANSFER = '__transfer' as const;
 export const INCOME = '__income' as const;
 /** Not spending: moving your own money, or being paid. Excluded from every envelope. */
 export type NonSpend = typeof TRANSFER | typeof INCOME;
-export type Assignment = CategoryId | NonSpend | typeof SPLIT;
 
 /**
- * One receipt across several categories. The receipt's own category is this
+ * One receipt across several envelopes. The receipt's own envelope is this
  * marker and the parts live on `Txn.split`, so nothing that reads a single
- * category mistakes a split for spending: it is not any one category.
+ * envelope mistakes a split for spending: it is not any one envelope.
  */
 export const SPLIT = '__split' as const;
 
-export const isSpend = (c: Assignment | null): c is CategoryId =>
-  c !== null && c !== TRANSFER && c !== INCOME && c !== SPLIT;
+/** Where a receipt is sorted: an envelope, not spending, or split. */
+export type SortedInto = EnvelopeId | NonSpend | typeof SPLIT;
+
+export const isSpend = (e: SortedInto | null): e is EnvelopeId =>
+  e !== null && e !== TRANSFER && e !== INCOME && e !== SPLIT;
 
 // ─── facts ────────────────────────────────────────────────────────────────────
 
+/** A heading on the Budget page, in the household's order. It holds envelopes and nothing else. */
 export interface Category {
-  /** Archived categories stay resolvable for old receipts but leave the pickers. */
-  readonly archived?: boolean;
   readonly id: CategoryId;
   readonly label: string;
-  /** Free-text grouping hint for pickers. Envelopes do the real grouping. */
-  readonly kind?: string;
-  /**
-   * Irregular costs are planned as "$9,000 every 10 years" and the monthly
-   * set-aside is derived. The estimate belongs to the world, not to an
-   * envelope, so it lives on the category and the envelope derives from it.
-   */
-  readonly sinking?: SinkingEstimate;
 }
 
 export interface Txn {
@@ -77,12 +66,13 @@ export interface Txn {
   readonly account?: string;
   /** Bank-assigned id where the export had one, else a content hash. */
   readonly dedupeKey: string;
-  category: Assignment | null;
-  /** True when a human set the category by hand; rules must not override it. */
+  /** The envelope it is sorted into; null while To sort holds it. */
+  envelope: SortedInto | null;
+  /** True when a human sorted it by hand; rules must not override it. */
   manual?: boolean;
-  /** Set when Claude suggested the category and a member accepted it. */
+  /** Set when Claude suggested the envelope and a member accepted it. */
   suggestedBy?: 'claude';
-  /** The parts of a split receipt: set exactly when `category` is `SPLIT`. */
+  /** The parts of a split receipt: set exactly when `envelope` is `SPLIT`. */
   split?: readonly SplitPart[];
 }
 
@@ -103,45 +93,30 @@ export const PAGE_KEYS: Readonly<Record<PageKind, readonly string[]>> = {
 export type FrontValue = string | number | null | readonly string[];
 
 /** One slice of a split receipt. Same sign as the receipt; the parts sum to it. */
-export interface SplitPart { readonly category: Assignment; readonly amount: Cents }
+export interface SplitPart { readonly envelope: EnvelopeId | NonSpend; readonly amount: Cents }
 
-export const isSplit = (t: Pick<Txn, 'category'>): boolean => t.category === SPLIT;
+export const isSplit = (t: Pick<Txn, 'envelope'>): boolean => t.envelope === SPLIT;
 
 /** What a receipt is made of: its parts if split, itself if sorted, nothing if not. */
-export function partsOf(t: Pick<Txn, 'category' | 'amount' | 'split'>): readonly SplitPart[] {
-  if (t.category === SPLIT) return t.split ?? [];
-  return t.category === null ? [] : [{ category: t.category, amount: t.amount }];
+export function partsOf(t: Pick<Txn, 'envelope' | 'amount' | 'split'>): readonly SplitPart[] {
+  if (t.envelope === SPLIT) return t.split ?? [];
+  return t.envelope === null ? [] : [{ envelope: t.envelope, amount: t.amount }];
 }
 
 export interface Rule {
   readonly id: string;
   /** Case-insensitive substring of payee + memo. */
   readonly match: string;
-  readonly category: Assignment;
+  readonly envelope: SortedInto;
 }
 
-// ─── interpretations ──────────────────────────────────────────────────────────
-
-/**
- * How the budget decides which transactions land in an envelope.
- *
- * Usually just categories. The `payee` predicate exists for the overlap month,
- * where the old house's power bill and the new one's are both `electricity`
- * but belong in different envelopes — the one case that would otherwise force
- * the fact layer to fork.
- */
-export interface Match {
-  readonly categories: readonly CategoryId[];
-  /** Case-insensitive substring of the payee. Narrows, never widens. */
-  readonly payee?: string;
-}
+// ─── the budget ───────────────────────────────────────────────────────────────
 
 export interface Envelope {
   readonly id: EnvelopeId;
   readonly label: string;
-  /** Display band: `House`, `People`, `Future`. */
-  readonly group: string;
-  readonly match: Match;
+  /** The heading it sits under. */
+  readonly category: CategoryId;
   /** Unspent money carries into next month unless this is false. */
   readonly rollover: boolean;
   /** Default monthly amount; what a new month is seeded from. */
@@ -173,17 +148,26 @@ export const PER_YEAR: Readonly<Record<Per, number>> = { week: 52, fortnight: 26
 export interface Basis { readonly amount: Cents; readonly per: Per }
 
 /**
- * What a sinking envelope saves toward. `every`: its categories' estimates
- * ("$1,200 every 4 years"), so the goal is the world's and the monthly figure
- * is derived from it. `by`: a target by a month ("$4,000 by March
- * 2027"), the monthly figure being what is left over the months left.
+ * What a sinking envelope saves toward. `every`: its own estimate ("$1,200
+ * every 4 years"), the monthly figure derived from it; null while it has none.
+ * `by`: a target by a month ("$4,000 by March 2027"), the monthly figure
+ * being what is left over the months left.
  */
 export type SinkingGoal =
-  | { readonly kind: 'every' }
+  | { readonly kind: 'every'; readonly estimate: SinkingEstimate | null }
   | { readonly kind: 'by'; readonly target: Cents; readonly by: Month };
 
-/** An irregular cost, as a category carries it: what it costs and how often it comes round. */
+/** An irregular cost: what it costs and how often it comes round. */
 export interface SinkingEstimate { readonly cost: Cents; readonly everyYears: number }
+
+/**
+ * An envelope that was removed. Its id stays taken. `keptIn`: the months that
+ * were closed when it was removed; only they keep it in their history, and
+ * only while they stay closed.
+ */
+export interface RemovedEnvelope {
+  readonly id: EnvelopeId; readonly label: string; readonly category: CategoryId; readonly keptIn: readonly Month[];
+}
 
 /** Where the household is: enough to find a place in public data, and to say it back to a person. */
 export interface Location {
@@ -205,6 +189,7 @@ export type BillPer = 'month' | 'quarter' | 'half-year' | 'year';
 export type BillDate =
   | { readonly kind: BillKind; readonly per: 'month'; readonly day: number }
   | { readonly kind: BillKind; readonly per: Exclude<BillPer, 'month'>; readonly on: Day };
+/** A date a member gave a bill, under its envelope; removed with its envelope. */
 export interface BillRecord { readonly envelope: EnvelopeId; readonly key: string; readonly name: string; readonly byHand: boolean; readonly date: BillDate | null; readonly since: Day | null }
 export const billSlot = (envelope: EnvelopeId, key: string): string => `${envelope}|${key}`;
 
@@ -251,26 +236,18 @@ interface Meta {
 
 export type Event = Meta &
   (
-    | {
-        op: 'category.define';
-        category: CategoryId;
-        label: string;
-        kind?: string;
-        sinking?: { cost: Cents; everyYears: number };
-      }
+    /** A heading, appended last. Its label is unique, case and spaces ignored. */
+    | { op: 'category.add'; category: CategoryId; label: string }
+    | { op: 'category.rename'; category: CategoryId; label: string }
+    /** `to` is its 0-based place once moved. */
+    | { op: 'category.move'; category: CategoryId; to: number }
+    /** Refused while an envelope sits in it. */
+    | { op: 'category.remove'; category: CategoryId }
     /**
      * Where the household is, which makes local cost data addressable:
      * electricity, tax and insurance are priced by place. Null clears it.
      */
     | { op: 'household.locate'; location: Location | null; why: string }
-    /**
-     * Put a category out of use without unmaking it.
-     *
-     * Receipts name their category, and a receipt whose category cannot be
-     * resolved is a worse problem than one in a category nobody uses any more.
-     * Archiving takes it out of the pickers and leaves every past answer intact.
-     */
-    | { op: 'category.archive'; category: CategoryId; archived: boolean; why: string }
     /**
      * Finish a month. Its plan and adjustments become history: no more
      * assigning, moving or changing the income. Carry-over still flows from it,
@@ -308,8 +285,8 @@ export type Event = Meta &
         op: 'envelope.define';
         envelope: EnvelopeId;
         label: string;
-        group: string;
-        match: Match;
+        /** A category that is here. */
+        category: CategoryId;
         rollover?: boolean;
         template: Cents;
         order?: number;
@@ -326,15 +303,10 @@ export type Event = Meta &
         basis?: Basis;
       }
     /**
-     * A category's estimate, set or cleared on its own. `category.define`
-     * replaces a category whole, so a rename would lose it; this changes only
-     * the estimate, and leaves the name and whether it is archived alone.
-     */
-    | { op: 'category.sinking'; category: CategoryId; sinking: SinkingEstimate | null }
-    /**
-     * Removing an envelope does not remove its receipts — they fall out of
-     * every envelope and stop being accounted for anywhere, which is why this
-     * needs a reason like any other decision that hides money.
+     * Removing an envelope does not remove its receipts. Those in months closed
+     * now stay in that history under its name; the rest go to To sort. Its id
+     * stays taken, its bill records go with it, and it is refused while a rule
+     * still sorts into it. It needs a reason, like any decision that moves money.
      */
     | { op: 'envelope.remove'; envelope: EnvelopeId; why: string }
     /** A bill's date, or none (null). `bill` is the frozen key; `byHand` names a bill no receipt gives. */
@@ -360,7 +332,8 @@ export type Event = Meta &
       }
     | { op: 'income.set'; month: Month; amount: Cents; why: string }
     | { op: 'txn.add'; txns: readonly Txn[]; source?: string }
-    | { op: 'txn.categorize'; txn: TxnId; category: Assignment | null; manual?: boolean; suggestedBy?: 'claude' }
+    /** Into one envelope, out of spending, or (null) back to To sort. A split is written with txn.split. */
+    | { op: 'txn.sort'; txn: TxnId; envelope: EnvelopeId | NonSpend | null; manual?: boolean; suggestedBy?: 'claude' }
     | { op: 'txn.split'; txn: TxnId; parts: readonly SplitPart[]; why?: string }
     /**
      * Removing a receipt is a legitimate thing to do and an easy thing to hide.
@@ -376,7 +349,7 @@ export type Event = Meta &
     | { op: 'account.balance'; account: string; cents: Cents; asOf: Day; source: 'statement' | 'typed' }
     /** The one account the sinking envelopes' money lives in, chosen from those seen in imports; null for none. */
     | { op: 'savings.account'; account: string | null }
-    | { op: 'rule.add'; rule: string; match: string; category: Assignment }
+    | { op: 'rule.add'; rule: string; match: string; envelope: SortedInto }
     | { op: 'rule.remove'; rule: string }
     /**
      * How far through the log this person has actually read.
@@ -1038,7 +1011,7 @@ export interface PageView {
 /** Ops that require a reason. Enforced at append time, not left to the caller. */
 export const REQUIRES_WHY: ReadonlySet<Op> = new Set<Op>(
   ['assign', 'move', 'income.set', 'member.add', 'member.remove', 'txn.remove',
-   'envelope.remove', 'category.archive', 'month.close', 'month.discard',
+   'envelope.remove', 'month.close', 'month.discard',
    'income.source.remove', 'household.locate',
    'plan.remove', 'plan.ask', 'plan.ask.decline', 'plan.detach', 'plan.unblock',
    'guest.allow', 'guest.revoke', 'booking.block', 'booking.unblock', 'booking.cancel', 'booking.suggest']);
@@ -1154,10 +1127,13 @@ export interface State {
   readonly label: string;
   /** The household's IANA zone, as its owner chose it; null until then. */
   readonly zone: string | null;
+  /** The budget's headings, iterating in their order. */
   readonly categories: ReadonlyMap<CategoryId, Category>;
   /** The budget's envelopes. */
   readonly envelopes: ReadonlyMap<EnvelopeId, Envelope>;
-  /** A date a member gave a bill, by `billSlot`. Kept when its envelope goes. */
+  /** Every envelope ever removed, by id: the ids stay taken. */
+  readonly removedEnvelopes: ReadonlyMap<EnvelopeId, RemovedEnvelope>;
+  /** A date a member gave a bill, by `billSlot`. Removed with its envelope. */
   readonly bills: ReadonlyMap<string, BillRecord>;
   /** Where the household is; null until someone says. */
   readonly location: Location | null;

@@ -15,18 +15,18 @@
 
 import { ZERO, add, sub, cents, fmt, fmtExact } from './money.ts';
 import type { Cents } from './money.ts';
-import { carriedInto, monthView, latestMonth, openMonths, overlappingCategories } from './envelopes.ts';
-import { billDateWords, billKey, billLine, billsOf, donors, drift, monthClock, pace, snapshot, unsorted } from './analytics.ts';
-import { fundedFor, plannedFor, categorize, splitProblem, guestEmail } from './replay.ts';
+import { carriedInto, categoryIdFor, envelopeIdFor, monthView, latestMonth, openMonths } from './envelopes.ts';
+import { billDateWords, billKey, billLine, billsOf, donors, drift, inToSort, monthClock, pace, snapshot, toSort } from './analytics.ts';
+import { fundedFor, plannedFor, nameKey, splitProblem, guestEmail } from './replay.ts';
 import { filedLabel, ruleProblem } from './match.ts';
 import { removedTxn } from './activity.ts';
 import { byMonthly, everyMonthly, everyWords, goalFor, savingsCheck, shortDay, sinkingPlan } from './sinking.ts';
 import { incomeFor, project, sourcesFor } from './income.ts';
 import { lookUp, placeForZip } from './local.ts';
-import { groupKind, groupOrder, missingStarter } from './starter.ts';
+import { missingRules, STARTER_CATEGORIES } from './starter.ts';
 import { cardFor, coverFor, hintFor, monthlyOf, perWord } from './figures.ts';
 import type { Basis, Cover, Hint } from './figures.ts';
-import type { MissingStarter } from './starter.ts';
+import type { MissingRules } from './starter.ts';
 import { board, card } from './plans.ts';
 import { SEARCH_KINDS, searchHousehold, searchKind, searchWords } from './search.ts';
 import {
@@ -51,7 +51,7 @@ import {
   areaIndex, DRIFT_CHOICES, emailKey, isDay, isEmail, isGuest, isSpend, monthOf, MONTHS_SHORT, partsOf, PERS, slug, SPLIT, TRANSFER, INCOME, zoneOf,
 } from './types.ts';
 import type {
-  Actor, Assignment, BillDate, Day, DriftChoice, Envelope, Event, Location, Match, Month, Per, Plan, PlanState, SinkingEstimate, SinkingGoal, SplitPart, State, Txn,
+  Actor, BillDate, CategoryId, Day, DriftChoice, Envelope, EnvelopeId, Event, Location, Month, Per, Plan, PlanState, SinkingEstimate, SinkingGoal, SplitPart, State, Txn,
 } from './types.ts';
 import type { Store, NewEvent } from './store.ts';
 
@@ -268,7 +268,8 @@ const getMonth: Tool = {
   name: 'get_month',
   description:
     'How the budget is doing this month: every envelope with planned, funded, spent and left, ' +
-    'plus its bills, with any date a member set, pace projections, plan drift, the unsorted queue and whether it balances. ' +
+    'plus its bills, with any date a member set, pace projections, plan drift, what To sort holds and whether it balances. ' +
+    'Envelopes come in category order, each naming its category; categories lists every heading in order, empty ones too. ' +
     'Start here for any "how are we doing" question.',
   kind: 'read',
   input: {
@@ -299,15 +300,19 @@ const getMonth: Tool = {
       incomeExact: fmtExact(snap.view.income),
       toAssignExact: fmtExact(snap.view.toAssign),
       card: cardFor(snap.view),
-      groups: groupOrder(snap.view.envelopes.map((e) => e.envelope.group)),
+      // Every heading in order, empty ones too, with how many live envelopes sit under it.
+      categories: [...state.categories.values()].map((c) => ({
+        id: c.id, label: c.label, envelopes: [...state.envelopes.values()].filter((e) => e.category === c.id).length,
+      })),
       balanced: snap.balanced,
       closed: state.months.get(month)?.closed === true,
       movesThisMonth: snap.view.moveCount,
-      spentOutsideThisBudget: fmt(snap.view.outside.total),
       envelopes: snap.view.envelopes.map((e) => ({
         id: e.envelope.id,
         label: e.envelope.label,
-        group: e.envelope.group,
+        category: e.envelope.category,
+        // A removed envelope this closed month keeps in its history.
+        ...(e.removed ? { removed: true } : {}),
         planned: fmt(e.planned),
         funded: fmt(e.funded),
         spent: fmt(e.activity),
@@ -321,8 +326,6 @@ const getMonth: Tool = {
         leftExact: fmtExact(e.available),
         adjustedBy: e.adjustedBy === 0 ? null : fmt(e.adjustedBy),
         overspent: e.overspent,
-        // Which categories feed it, so its goal can be set from their estimates.
-        categories: e.envelope.match.categories,
         // Action required while no figure has been given, with what could help give one.
         needsFigure: e.envelope.needsFigure === true,
         source: e.envelope.source ?? null,
@@ -330,11 +333,10 @@ const getMonth: Tool = {
         basis: e.envelope.basis
           ? { amount: fmtExact(e.envelope.basis.amount).replace('$', ''), per: e.envelope.basis.per }
           : null,
-        // For every envelope with categories, so a figure can be changed from its receipts.
-        hint: e.envelope.needsFigure || e.envelope.match.categories.length > 0
-          ? hintView(hintFor(state, e.envelope, month)) : null,
+        // So a figure can be changed from its receipts. None for a removed envelope.
+        hint: e.removed ? null : hintView(hintFor(state, e.envelope, month)),
         // Short only once it has a figure: a flagged envelope shows Action required, never Short.
-        short: e.envelope.needsFigure ? null : shortView(coverFor(state, snap.view, e.envelope.id, ctx.today)),
+        short: e.envelope.needsFigure || e.removed ? null : shortView(coverFor(state, snap.view, e.envelope.id, ctx.today)),
         // Saved in Savings: what it holds so far is what is left in it.
         sinking: sinkingView(state, e.envelope, month, e.available),
         bills: e.envelope.sinking ? [] : (billed.get(e.envelope.id) ?? []).map(billView),
@@ -354,11 +356,11 @@ const getMonth: Tool = {
         averageActuallyFunded: fmt(d.averageFunded),
         months: d.months.map((m) => ({ month: m.month, planned: fmt(m.planned), funded: fmt(m.funded), spent: fmt(m.spent) })),
       })),
-      unsorted: {
-        count: snap.unsorted.count,
-        unexplainedSpending: fmt(snap.unsorted.outflow),
-        moneyIn: fmt(snap.unsorted.inflow),
-        oldest: snap.unsorted.oldest,
+      toSort: {
+        count: snap.toSort.count,
+        unexplainedSpending: fmt(snap.toSort.outflow),
+        moneyIn: fmt(snap.toSort.inflow),
+        oldest: snap.toSort.oldest,
       },
       recurringWithoutARule: snap.recurring.map((r) => ({
         payee: r.payee, typical: fmt(r.typical), seenInMonths: r.months,
@@ -374,7 +376,7 @@ const getMonth: Tool = {
  * `figure.basis` (none when absent: a figure given as a monthly drops an old yearly basis).
  */
 export function redefine(env: Envelope, change: {
-  label?: string; group?: string; match?: Match; rollover?: boolean; sinking?: SinkingGoal | null;
+  label?: string; category?: CategoryId; rollover?: boolean; sinking?: SinkingGoal | null;
   figure?: { template: Cents; source?: string; basis?: Basis };
 } = {}): NewEvent {
   const sinking = change.sinking === undefined ? env.sinking : change.sinking;
@@ -382,8 +384,8 @@ export function redefine(env: Envelope, change: {
   const basis = change.figure ? change.figure.basis : env.basis;
   return {
     op: 'envelope.define', envelope: env.id,
-    label: change.label ?? env.label, group: change.group ?? env.group,
-    match: change.match ?? env.match, rollover: change.rollover ?? env.rollover,
+    label: change.label ?? env.label, category: change.category ?? env.category,
+    rollover: change.rollover ?? env.rollover,
     template: change.figure?.template ?? env.template, order: env.order,
     ...(sinking !== undefined ? { sinking } : {}),
     ...(env.needsFigure && !change.figure ? { needsFigure: true as const } : {}),
@@ -402,10 +404,8 @@ function sinkingView(state: State, env: Envelope, month: Month, saved: Cents) {
     goal: fmt(g.target), goalExact: fmtExact(g.target),
     saved: fmt(saved), savedExact: fmtExact(saved),
     by: g.by, byName: g.by ? monthName(g.by) : null, monthsLeft: g.monthsLeft, passed: g.passed,
-    estimates: g.estimates.map((e) => ({
-      category: e.category, label: e.label,
-      cost: e.cost === null ? null : fmtExact(e.cost), everyYears: e.everyYears, monthly: fmtExact(e.monthly),
-    })),
+    // An every goal's own estimate, as exact dollars; null without one, and for a goal by a date.
+    estimate: g.estimate ? { cost: fmtExact(g.estimate.cost), everyYears: g.estimate.everyYears } : null,
   };
 }
 
@@ -456,18 +456,18 @@ const explainEnvelope: Tool = {
       .map((line) => ({ line, t: state.txns.get(line.txnId)! }))
       .sort((a, b) => b.t.date.localeCompare(a.t.date))
       .map(({ line, t }) => ({
-        date: t.date, payee: t.payee, amount: fmtExact(cents(-line.amount)), category: line.category,
+        date: t.date, payee: t.payee, amount: fmtExact(cents(-line.amount)), envelope: e.envelope.id,
         ...(line.split ? { of: fmtExact(t.amount) } : {}),
         // What an edit needs: the receipt itself, its whole amount, and every part, not just this one's.
         txn: t.id, amountCents: t.amount,
-        parts: t.split ? t.split.map((p) => ({ category: p.category as string, amountCents: p.amount as number })) : null,
+        parts: t.split ? t.split.map((p) => ({ envelope: p.envelope as string, amountCents: p.amount as number })) : null,
       }));
 
     return {
       month,
       envelope: e.envelope.id,
       label: e.envelope.label,
-      feedsFrom: e.envelope.match,
+      category: e.envelope.category,
       rollsOver: e.envelope.rollover,
       planned: fmt(e.planned),
       funded: fmt(e.funded),
@@ -547,16 +547,16 @@ const findDonors: Tool = {
 const listTransactions: Tool = {
   name: 'list_transactions',
   description:
-    'Search the ledger. Filter by month, category, envelope, payee text, or uncategorized only. ' +
-    'Transactions belong to the household: every one is here, whatever envelope it lands in.',
+    'Search the ledger. Filter by month, envelope (an id, or __split for the split receipts themselves), ' +
+    'payee text, or only what To sort holds. Every receipt is here, whichever envelope it is sorted into.',
   kind: 'read',
   input: {
     type: 'object',
     properties: {
       month: { type: 'string' },
-      category: { type: 'string' },
+      envelope: { type: 'string' },
       payeeContains: { type: 'string' },
-      uncategorizedOnly: { type: 'boolean' },
+      toSortOnly: { type: 'boolean' },
       limit: { type: 'number', description: 'Default 50.' },
     },
   },
@@ -564,20 +564,21 @@ const listTransactions: Tool = {
     const state = ctx.store.state;
     const limit = Math.min(args['limit'] ? num(args['limit'], 'limit') : 50, 500);
     const month = args['month'] as string | undefined;
-    const category = args['category'] as string | undefined;
+    const envelope = args['envelope'] as string | undefined;
     const contains = (args['payeeContains'] as string | undefined)?.toLowerCase();
+    const held = toSort(state).missing;
 
     let rows = [...state.txns.values()];
     if (month) rows = rows.filter((t) => monthOf(t.date) === month);
-    // The marker filter finds the split receipts themselves; any other category finds receipts with a part in it.
-    if (category) rows = rows.filter((t) => category === SPLIT ? t.category === SPLIT : partsOf(t).some((p) => p.category === category));
-    if (args['uncategorizedOnly']) rows = rows.filter((t) => t.category === null);
+    // The marker finds the split receipts themselves; an envelope finds receipts with a part in it.
+    if (envelope) rows = rows.filter((t) => envelope === SPLIT ? t.envelope === SPLIT : partsOf(t).some((p) => p.envelope === envelope));
+    if (args['toSortOnly']) rows = rows.filter((t) => inToSort(state, t));
     if (contains) rows = rows.filter((t) => `${t.payee} ${t.memo ?? ''}`.toLowerCase().includes(contains));
     rows.sort((a, b) => b.date.localeCompare(a.date));
 
-    // Under a category filter only that category's share of a split counts; the whole receipt would count it twice.
-    const share = (t: Txn): number[] => category && category !== SPLIT
-      ? partsOf(t).filter((p) => p.category === category).map((p) => p.amount)
+    // Under an envelope filter only that envelope's share of a split counts; the whole receipt would count it twice.
+    const share = (t: Txn): number[] => envelope && envelope !== SPLIT
+      ? partsOf(t).filter((p) => p.envelope === envelope).map((p) => p.amount)
       : [t.amount];
     const amounts = rows.flatMap(share);
 
@@ -590,9 +591,11 @@ const listTransactions: Tool = {
       moneyIn: fmtExact(cents(amounts.reduce((n, a) => n + (a > 0 ? a : 0), 0))),
       transactions: rows.slice(0, limit).map((t) => ({
         id: t.id, date: t.date, payee: t.payee, memo: t.memo ?? null,
-        amount: fmtExact(t.amount), category: t.category, setByHand: !!t.manual,
-        // A split receipt's category is the marker; the parts say where it went.
-        parts: t.split ? t.split.map((p) => ({ category: p.category, amount: fmtExact(p.amount) })) : null,
+        amount: fmtExact(t.amount), envelope: t.envelope, setByHand: !!t.manual,
+        // A split receipt's envelope is the marker; the parts say where it went.
+        parts: t.split ? t.split.map((p) => ({ envelope: p.envelope, amount: fmtExact(p.amount) })) : null,
+        // A split To sort holds for a part whose envelope is not here: those envelopes.
+        ...(held.has(t.id) ? { missing: held.get(t.id) } : {}),
       })),
     };
   },
@@ -661,10 +664,11 @@ export function describe(
 ): { id: string; at: string; who: Actor; what: string; why: string | null } {
   const why = (e as { why?: string }).why ?? null;
   // A name that has since gone falls back to the id: something, never nothing.
-  const env = (id: string) => state?.envelopes.get(id)?.label ?? id;
-  const cat = (id: string | null) => id === null ? 'uncategorized'
-    : !state ? id
-    : id === TRANSFER ? 'a transfer' : id === INCOME ? 'income' : id === SPLIT ? 'a split' : state.categories.get(id)?.label ?? id;
+  // A removed envelope reads by its record's name.
+  const env = (id: string) => state?.envelopes.get(id)?.label ?? state?.removedEnvelopes.get(id)?.label ?? id;
+  const cat = (id: string) => state?.categories.get(id)?.label ?? id;
+  // Where a rule sorts: an envelope, or money that is not spending.
+  const into = (id: string) => id === TRANSFER ? 'a transfer' : id === INCOME ? 'income' : id === SPLIT ? 'a split' : env(id);
   const mon = (m: string) => state ? monthName(m) : m;
   // Without the state, or for a plan it does not know, the id stands in.
   const plan = (id: string) => state?.plans.get(id)?.title ?? id;
@@ -675,19 +679,24 @@ export function describe(
     case 'income.set': what = `set income to ${fmt(e.amount)}`; break;
     case 'month.open': what = `opened ${mon(e.month)}`; break;
     case 'txn.add': what = `imported ${e.txns.length} transactions${e.source ? ` from ${e.source}` : ''}`; break;
-    case 'txn.categorize': what = `categorized a transaction as ${cat(e.category)}`; break;
+    case 'txn.sort':
+      what = e.envelope === null ? 'took a receipt out of its envelope'
+        : e.envelope === TRANSFER ? 'marked a receipt as a transfer'
+        : e.envelope === INCOME ? 'marked a receipt as income'
+        : `sorted a receipt into ${env(e.envelope)}`;
+      break;
     case 'txn.split': {
-      const parts = e.parts.map((p) => `${cat(p.category)} ${fmtExact(cents(Math.abs(p.amount)))}`);
+      const parts = e.parts.map((p) => `${into(p.envelope)} ${fmtExact(cents(Math.abs(p.amount)))}`);
       const last = parts.pop();
       what = `split a receipt across ${parts.length ? `${parts.join(', ')} and ${last}` : last}`;
       break;
     }
-    case 'rule.add': what = `added rule "${e.match}" to ${cat(e.category)}`; break;
+    case 'rule.add': what = `added the rule "${e.match}" for ${into(e.envelope)}`; break;
     case 'rule.remove': what = 'removed a rule'; break;
     case 'envelope.define':
       what = e.sinking ? `saved ${env(e.envelope)} in Savings`
         : e.sinking === null ? `stopped saving ${env(e.envelope)} in Savings`
-        : `defined envelope ${env(e.envelope)}`;
+        : `set up the envelope ${e.label} under ${cat(e.category)}`;
       break;
     case 'envelope.remove': what = `removed envelope ${env(e.envelope)}`; break;
     case 'bill.set':
@@ -695,18 +704,15 @@ export function describe(
         : `cleared the date on ${e.name} in ${env(e.envelope)}`;
       break;
     case 'bill.remove': what = `removed the bill ${e.name} from ${env(e.envelope)}`; break;
-    case 'category.define': what = `defined category ${e.label}`; break;
-    case 'category.sinking':
-      what = e.sinking
-        ? `estimated ${cat(e.category)} at ${fmt(e.sinking.cost)} ${everyWords(e.sinking.everyYears)}`
-        : `cleared the estimate on ${cat(e.category)}`;
-      break;
+    case 'category.add': what = `added the category ${e.label}`; break;
+    case 'category.rename': what = `renamed a category to ${e.label}`; break;
+    case 'category.move': what = `moved the category ${cat(e.category)} to place ${e.to + 1}`; break;
+    case 'category.remove': what = `removed the category ${cat(e.category)}`; break;
     case 'account.balance': what = `noted account ${e.account} showed ${fmt(e.cents)} on ${shortDay(e.asOf)}`; break;
     case 'savings.account': what = e.account ? `chose account ${e.account} as Savings` : 'stopped keeping a savings account'; break;
     case 'txn.remove': what = 'removed a receipt from the ledger'; break;
     case 'household.locate':
       what = e.location ? `set where the household is to ${e.location.label}` : 'cleared where the household is'; break;
-    case 'category.archive': what = `${e.archived ? 'stopped using' : 'brought back'} category ${cat(e.category)}`; break;
     case 'month.close': what = `${e.closed ? 'closed' : 'reopened'} ${mon(e.month)}`; break;
     case 'month.discard': what = `discarded ${mon(e.month)}`; break;
     case 'income.source.define': what = `recorded income "${e.label}"`; break;
@@ -1016,37 +1022,37 @@ const setAssignment: Tool = {
   },
 };
 
-const categorizeTxn: Tool = {
-  name: 'categorize_transactions',
+const sortReceipts: Tool = {
+  name: 'sort_receipts',
   description:
-    'Propose categories for transactions, optionally creating rules so the same merchant is ' +
-    'never sorted twice. Categories are permanent facts about the ledger — never propose an ' +
-    'envelope here.',
+    'Propose sorting receipts into envelopes, optionally adding rules so the same merchant is ' +
+    'sorted the same way from now on. Choose an envelope id from the envelopes get_month lists, ' +
+    'or __transfer / __income for money that is not spending, or __split to divide a receipt across several.',
   kind: 'write',
   input: {
     type: 'object',
     properties: {
       assignments: {
         type: 'array',
-        description: 'One entry per transaction.',
+        description: 'One entry per receipt.',
         items: {
           type: 'object',
           properties: {
             txnId: { type: 'string' },
-            category: { type: 'string', description: 'A category id, or __transfer / __income, or __split to divide the receipt across several (then give parts).' },
+            envelope: { type: 'string', description: 'An envelope id from get_month, or __transfer / __income, or __split to divide the receipt across several (then give parts).' },
             parts: {
               type: 'array',
-              description: 'For __split only: at least two { category, amount } parts, amount in integer cents with the receipt\'s sign (spending is negative), adding up exactly to the receipt. A category appears once.',
+              description: 'For __split only: at least two { envelope, amount } parts, amount in integer cents with the receipt\'s sign (spending is negative), adding up exactly to the receipt. An envelope appears once.',
               items: {
                 type: 'object',
-                properties: { category: { type: 'string' }, amount: { type: 'integer' } },
-                required: ['category', 'amount'],
+                properties: { envelope: { type: 'string' }, amount: { type: 'integer' } },
+                required: ['envelope', 'amount'],
               },
             },
             alsoAddRuleMatching: { type: 'string', description: 'Optional payee substring to remember, at least 3 characters. With __split the rule means "always ask a person to divide".' },
             suggestedBy: { type: 'string', enum: ['claude'], description: 'Set only when a person is accepting an envelope Claude suggested.' },
           },
-          required: ['txnId', 'category'],
+          required: ['txnId', 'envelope'],
         },
       },
     },
@@ -1059,16 +1065,17 @@ const categorizeTxn: Tool = {
 
     const events: NewEvent[] = [];
     const effects: string[] = [];
+    // A live envelope, or money that is not spending.
+    const known = (e: string) => !isSpend(e) || state.envelopes.has(e);
+    const missing = (e: string) => new ToolError(`no envelope ${e}`, 404);
     for (const item of raw as Record<string, unknown>[]) {
       const txnId = str(item['txnId'], 'txnId');
-      const category = str(item['category'], 'category') as Assignment;
+      const envelope = str(item['envelope'], 'envelope');
       const t = state.txns.get(txnId);
       if (!t) throw new ToolError(`no transaction ${txnId}`, 404);
-      const known = (c: string) => !isSpend(c) || state.categories.has(c);
       const by = item['suggestedBy'];
       if (by !== undefined && by !== 'claude') throw new ToolError('suggestedBy can only be "claude"');
-      const missing = (c: string) => new ToolError(`no category ${c} — categories are fixed, pick an existing one`);
-      if (category === SPLIT) {
+      if (envelope === SPLIT) {
         // A split's amounts are a person's decision; there is nothing for Claude to have suggested.
         if (by) throw new ToolError('suggestedBy cannot be set on a split — its amounts are never Claude\'s');
         const rawParts = item['parts'];
@@ -1076,19 +1083,20 @@ const categorizeTxn: Tool = {
         // Whole cents only: rounding a stray 6.5 would quietly move money, so checkParts refuses it instead.
         const parts: SplitPart[] = (rawParts as Record<string, unknown>[]).map((p) => {
           const n = num(p['amount'], 'a part\'s amount');
-          return { category: str(p['category'], 'a part\'s category') as Assignment, amount: Number.isInteger(n) ? cents(n) : n as Cents };
+          return { envelope: str(p['envelope'], 'a part\'s envelope') as EnvelopeId, amount: Number.isInteger(n) ? cents(n) : n as Cents };
         });
-        const problem = splitProblem(parts, t.amount, state.categories, (c) => missing(c).message);
+        for (const p of parts) if (!known(p.envelope)) throw missing(p.envelope);
+        const problem = splitProblem(parts, t.amount, state.envelopes, (e) => missing(e).message);
         if (problem) throw new ToolError(problem);
         events.push({ op: 'txn.split', txn: txnId, parts });
         // A second split replaces the first, so say so rather than pretending it is new.
         effects.push(`${t.date} ${t.payee} ${fmtExact(t.amount)} is ${t.split ? 'divided again' : 'split'}: ` +
-          parts.map((p) => `${filedLabel(state, p.category)} ${fmtExact(cents(Math.abs(p.amount)))}`).join(', '));
+          parts.map((p) => `${filedLabel(state, p.envelope)} ${fmtExact(cents(Math.abs(p.amount)))}`).join(', '));
       } else {
-        if (!known(category)) throw missing(category);
-        events.push({ op: 'txn.categorize', txn: txnId, category, manual: true, ...(by ? { suggestedBy: 'claude' as const } : {}) });
-        // A categorize clears the parts, so a split receipt says that it is no longer one.
-        effects.push(`${t.date} ${t.payee} ${fmtExact(t.amount)} ${t.split ? 'is no longer split; becomes' : 'becomes'} ${category}`);
+        if (!known(envelope)) throw missing(envelope);
+        events.push({ op: 'txn.sort', txn: txnId, envelope, manual: true, ...(by ? { suggestedBy: 'claude' as const } : {}) });
+        // A sort clears the parts, so a split receipt says that it is no longer one.
+        effects.push(`${t.date} ${t.payee} ${fmtExact(t.amount)} ${t.split ? 'is no longer split; goes into' : 'goes into'} ${filedLabel(state, envelope)}`);
       }
 
       const ruleMatch = item['alsoAddRuleMatching'];
@@ -1096,32 +1104,32 @@ const categorizeTxn: Tool = {
         const match = ruleMatch.trim();
         // The match need not be in this receipt's payee — a person may type a broader rule — so only
         // length is refused here; a clash with history is a warning on the card, not a refusal.
-        let problem = ruleProblem(state, null, match, category);
+        let problem = ruleProblem(state, null, match, envelope);
         if (problem === 'a rule needs at least 3 characters') throw new ToolError(problem);
         // Re-using a rule's match must not hide a clash with history: scan as if no rule held it.
         const existing = problem === 'already a rule'
           ? state.rules.find((r) => r.match.trim().toLowerCase() === match.toLowerCase())
           : undefined;
-        if (existing) problem = ruleProblem({ ...state, rules: [] }, null, match, category);
+        if (existing) problem = ruleProblem({ ...state, rules: [] }, null, match, envelope);
         const wouldMatch = [...state.txns.values()].filter((x) =>
           `${x.payee} ${x.memo ?? ''}`.toLowerCase().includes(match.toLowerCase())).length;
-        events.push({ op: 'rule.add', rule: `r-${match.toLowerCase().replace(/\W+/g, '-')}`, match, category });
+        events.push({ op: 'rule.add', rule: `r-${match.toLowerCase().replace(/\W+/g, '-')}`, match, envelope });
         const s = wouldMatch === 1 ? '' : 's';
-        effects.push(category === SPLIT
+        effects.push(envelope === SPLIT
           ? `Rule "${match}" would ask a person to divide ${wouldMatch} receipt${s} from now on`
           : `Rule "${match}" would cover ${wouldMatch} transaction${s} from now on`);
-        if (existing) effects.push(`Replaces the rule "${existing.match}" → ${filedLabel(state, existing.category)}`);
+        if (existing) effects.push(`Replaces the rule "${existing.match}" → ${filedLabel(state, existing.envelope)}`);
         if (problem?.startsWith('already filed under ')) {
-          const clash = [...state.txns.values()].filter((x) => x.category !== null && x.category !== category
+          const clash = [...state.txns.values()].filter((x) => x.envelope !== null && x.envelope !== envelope
             && `${x.payee} ${x.memo ?? ''}`.toLowerCase().includes(match.toLowerCase())).length;
           effects.push(`Rule "${match}" also matches ${clash} receipt${clash === 1 ? '' : 's'} filed elsewhere (${problem.slice('already filed under '.length)})`);
         }
       }
     }
     return ctx.proposals.put({
-      tool: 'categorize_transactions',
+      tool: 'sort_receipts',
       who: ctx.who,
-      summary: `Categorize ${raw.length} transaction${raw.length === 1 ? '' : 's'}`,
+      summary: `Sort ${raw.length} receipt${raw.length === 1 ? '' : 's'}`,
       effects,
       events,
     }, new Date(`${ctx.today}T00:00:00Z`).toISOString());
@@ -1177,7 +1185,6 @@ const openMonth: Tool = {
     // differently once the month is open, as they may any envelope.
     const sinking = sinkingPlan(state, month);
     const planned = cents([...state.envelopes.values()].reduce((n, e) => n + (sinking.get(e.id) ?? e.template), 0));
-    const clash = overlappingCategories(state);
     const seeded = state.envelopes.size - sinking.size;
     const effects = [
       sinking.size
@@ -1206,9 +1213,6 @@ const openMonth: Tool = {
     for (const [id, amount] of sinking) {
       effects.push(`${state.envelopes.get(id)!.label} planned at ${fmtExact(amount)}, what its goal needs this month`);
     }
-    for (const [cat, envs] of clash) {
-      effects.push(`Warning: category ${cat} is claimed by ${envs.join(' and ')} — spending would double count.`);
-    }
     return ctx.proposals.put({
       tool: 'open_month',
       who: ctx.who,
@@ -1224,7 +1228,7 @@ const openMonth: Tool = {
 const restoreTxn: Tool = {
   name: 'restore_transaction',
   description:
-    'Propose putting a deleted receipt back in the ledger, with the category it had. ' +
+    'Propose putting a deleted receipt back in the ledger, in the envelope it had or another. ' +
     'Use when someone deleted a transaction that should have gone into an envelope instead. ' +
     'Returns a proposal for approval — it does not restore anything on its own.',
   kind: 'write',
@@ -1232,7 +1236,7 @@ const restoreTxn: Tool = {
     type: 'object',
     properties: {
       txnId: { type: 'string', description: 'The receipt id, as shown in the activity entry.' },
-      category: { type: 'string', description: 'Optional. The envelope category to give it on the way back in.' },
+      envelope: { type: 'string', description: 'Optional. The envelope id to put it in on the way back, or __transfer / __income.' },
       why: { type: 'string', description: 'One line. Why it belongs in the ledger after all.' },
     },
     required: ['txnId', 'why'],
@@ -1246,25 +1250,24 @@ const restoreTxn: Tool = {
     const original = await removedTxn(ctx.store, txnId);
     if (!original) throw new ToolError(`no record of a receipt ${txnId}`, 404);
 
-    const category = typeof args['category'] === 'string' && args['category']
-      ? args['category'] as Assignment
-      : original.category;
-    if (category === SPLIT) throw new ToolError('restore it first, then split it');
-    if (category !== null && isSpend(category) && !state.categories.has(category)) {
-      throw new ToolError(`no category ${category}`);
-    }
+    const given = typeof args['envelope'] === 'string' && args['envelope'] ? args['envelope'] : null;
+    if (given === SPLIT) throw new ToolError('restore it first, then split it');
+    if (given !== null && isSpend(given) && !state.envelopes.has(given)) throw new ToolError(`no envelope ${given}`, 404);
+    // Put back whole: the envelope given, else the one it arrived with (To sort holds it if that has gone).
+    const envelope = given ?? (original.envelope === SPLIT ? null : original.envelope);
 
     // Same id, so putting it back cannot create a second copy of the receipt.
-    const txn: Txn = { ...original, category };
+    const { split: _split, ...whole } = original;
+    const txn: Txn = { ...whole, envelope };
     return ctx.proposals.put({
       tool: 'restore_transaction',
       who: ctx.who,
       summary: `Put back ${original.payee} ${fmtExact(original.amount)}`,
       effects: [
         `${original.date} ${original.payee} ${fmtExact(original.amount)} returns to the ledger`,
-        category === null
+        envelope === null || (isSpend(envelope) && !state.envelopes.has(envelope))
           ? 'It will have no envelope until someone sorts it'
-          : `It lands in ${category}`,
+          : `It lands in ${filedLabel(state, envelope)}`,
       ],
       events: [{ op: 'txn.add', txns: [txn], source: 'restored' }],
     }, ctx.today);
@@ -1276,9 +1279,8 @@ const restoreTxn: Tool = {
 const defineEnvelope: Tool = {
   name: 'define_envelope',
   description:
-    'Propose adding an envelope, or changing one — its name, which categories feed it, ' +
-    'or what the template funds it at. Changing an envelope changes only the budget\'s ' +
-    'reading of the ledger; the receipts underneath are untouched. A figure known by the year, ' +
+    'Propose adding an envelope, or changing one — its name, the category it sits under, ' +
+    'or what the template funds it at. Receipts sorted into it stay in it. A figure known by the year, ' +
     'quarter, fortnight or week can be given as `basis` instead of templateCents, and the monthly is worked out from it.',
   kind: 'write',
   input: {
@@ -1286,8 +1288,7 @@ const defineEnvelope: Tool = {
     properties: {
       envelope: { type: 'string', description: 'The id. A new one creates; an existing one edits.' },
       label: { type: 'string' },
-      group: { type: 'string', description: 'The group it shows under, e.g. Home or Food. A new envelope with none goes under Everyday.' },
-      categories: { type: 'array', items: { type: 'string' }, description: 'Which categories feed it.' },
+      category: { type: 'string', description: 'The id of the category it sits under, one get_month lists. A change may leave it out to keep its own.' },
       templateCents: {
         type: 'number',
         description: 'What a new month opens it at. Leaving it out keeps the figure the envelope has; a new envelope then starts with no figure.',
@@ -1295,45 +1296,35 @@ const defineEnvelope: Tool = {
       basis: { ...BASIS_INPUT, description: 'The figure as the bill is known, in place of templateCents; it is kept with the envelope.' },
       rollover: { type: 'boolean' },
     },
-    required: ['envelope', 'label', 'categories'],
+    required: ['envelope', 'label'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
     const id = str(args['envelope'], 'envelope');
     const label = str(args['label'], 'label');
-    const raw = args['categories'];
-    if (!Array.isArray(raw) || raw.length === 0) throw new ToolError('an envelope needs at least one category');
-    const categories = raw.map((c) => String(c));
-    for (const c of categories) {
-      if (!state.categories.has(c)) throw new ToolError(`no category ${c} — categories are shared and fixed`);
-    }
-    // Two envelopes claiming a category would make a receipt land in whichever
-    // was defined last, silently.
-    for (const other of state.envelopes.values()) {
-      if (other.id === id) continue;
-      const clash = categories.find((c) => other.match.categories.includes(c));
-      if (clash) throw new ToolError(`${clash} already feeds ${other.label}`);
-    }
-
     const existing = state.envelopes.get(id);
+    if (!existing && state.removedEnvelopes.has(id)) throw new ToolError(`${id} was removed; a new envelope takes a new id`);
+    const category = typeof args['category'] === 'string' && args['category'] ? args['category'] : existing?.category;
+    if (!category) throw new ToolError('a new envelope needs a category');
+    if (!state.categories.has(category)) throw new ToolError(`no category ${category}`, 404);
+    const taken = [...state.envelopes.values()].find((x) => x.id !== id && nameKey(x.label) === nameKey(label));
+    if (taken) throw new ToolError(`There is already an envelope called ${taken.label}.`, 409);
     const hasTemplate = args['templateCents'] !== undefined && args['templateCents'] !== null;
     const hasBasis = args['basis'] !== undefined && args['basis'] !== null;
     if (hasTemplate && hasBasis) throw new ToolError('give templateCents or basis, not both');
     const basis = hasBasis ? basisArg(args['basis']) : undefined;
     const given = basis ? monthlyOf(basis) : hasTemplate ? money(args['templateCents'], 'templateCents') : null;
     if (given !== null && given < 0) throw new ToolError('a figure is not less than nothing');
-    const group = typeof args['group'] === 'string' && args['group'] ? args['group'] : existing?.group ?? 'Everyday';
     const rollover = typeof args['rollover'] === 'boolean' ? args['rollover'] : existing?.rollover ?? true;
-    const match = { categories };
 
     // With a template the define is a figure (flag and source go); without one an existing
     // envelope keeps all three, and a new one starts at nothing, flagged as having no figure.
     const event: NewEvent = existing
       ? redefine(existing, {
-        label, group, match, rollover, ...(given !== null ? { figure: { template: given, ...(basis ? { basis } : {}) } } : {}),
+        label, category, rollover, ...(given !== null ? { figure: { template: given, ...(basis ? { basis } : {}) } } : {}),
       })
       : {
-        op: 'envelope.define', envelope: id, label, group, match,
+        op: 'envelope.define', envelope: id, label, category,
         template: given ?? cents(0), rollover, order: state.envelopes.size,
         ...(given === null ? { needsFigure: true as const } : {}),
         ...(basis ? { basis } : {}),
@@ -1349,8 +1340,7 @@ const defineEnvelope: Tool = {
       effects: [
         existing
           ? `${existing.label} becomes "${label}", ${figureWords}`
-          : `A new envelope "${label}" in ${group}, ${figureWords}`,
-        `Fed by ${categories.join(', ')}`,
+          : `A new envelope "${label}" under ${state.categories.get(category)!.label}, ${figureWords}`,
         // The plan of record is a snapshot; changing the template cannot reach
         // back into a month that has already opened.
         'Months already open keep the plan they opened with',
@@ -1360,26 +1350,26 @@ const defineEnvelope: Tool = {
   },
 };
 
-/** An estimate as a caller gives it: null or no cost clears it. */
-function estimateArg(x: unknown, env: Envelope): { category: string; sinking: SinkingEstimate | null } {
-  const e = x as { category?: unknown; costCents?: unknown; everyYears?: unknown } | null;
-  const category = str(e?.category, 'each estimate\'s category');
-  if (!env.match.categories.includes(category)) throw new ToolError(`${category} does not feed ${env.label}`);
-  if (e?.costCents == null || num(e.costCents, 'costCents') === 0) return { category, sinking: null };
+/** An estimate as a caller gives it: null, or no cost, is none. */
+function estimateArg(x: unknown): SinkingEstimate | null {
+  if (x === null) return null;
+  if (typeof x !== 'object' || Array.isArray(x)) throw new ToolError('estimate is { costCents, everyYears }, or null for none');
+  const e = x as { costCents?: unknown; everyYears?: unknown };
+  if (e.costCents == null || num(e.costCents, 'costCents') === 0) return null;
   const cost = money(e.costCents, 'costCents');
   if (cost < 0) throw new ToolError('an estimate costs something, not less than nothing');
   const everyYears = num(e.everyYears, 'everyYears');
   if (everyYears <= 0 || everyYears > 100) throw new ToolError('how often it comes round is more than none and at most every 100 years');
-  return { category, sinking: { cost, everyYears } };
+  return { cost, everyYears };
 }
 
 const setSinkingGoal: Tool = {
   name: 'set_sinking_goal',
   description:
     'Propose saving an envelope in Savings toward a goal, changing its goal, or making it an ordinary envelope ' +
-    "again. Goal 'every': every so often, set aside from its categories' estimates, each a cost and how many years " +
-    "until it comes round (tyres $1,200 every 4 years is $25 a month); the estimates belong to the categories, " +
-    "and any given here are set or changed (costCents null clears one). Goal " +
+    "again. Goal 'every': every so often, set aside from its own estimate, a cost and how many years " +
+    "until it comes round (tyres $1,200 every 4 years is $25 a month); leaving estimate out keeps the one it has, " +
+    "and null (or costCents null) is none. Goal " +
     "'by': a target by a month (targetCents, by YYYY-MM), set aside as what is left over the months left. Such an " +
     'envelope always rolls over, and each new month is planned at what its goal needs. Returns a proposal.',
   kind: 'write',
@@ -1390,17 +1380,12 @@ const setSinkingGoal: Tool = {
       goal: { type: 'string', enum: ['every', 'by', 'none'] },
       targetCents: { type: 'number', description: "For 'by': what to have saved." },
       by: { type: 'string', description: "For 'by': the month to have it by, YYYY-MM." },
-      estimates: {
-        type: 'array',
-        description: "For 'every': estimates to set on its categories.",
-        items: {
-          type: 'object',
-          properties: {
-            category: { type: 'string' },
-            costCents: { type: ['number', 'null'] },
-            everyYears: { type: 'number' },
-          },
-          required: ['category'],
+      estimate: {
+        type: ['object', 'null'],
+        description: "For 'every': what it costs and how often it comes round. Null for none.",
+        properties: {
+          costCents: { type: ['number', 'null'] },
+          everyYears: { type: 'number' },
         },
       },
     },
@@ -1424,36 +1409,25 @@ const setSinkingGoal: Tool = {
       if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(by)) throw new ToolError('by is a month, YYYY-MM');
       if (by < month) throw new ToolError(`${monthName(by)} has already gone by`);
       goal = { kind: 'by', target, by };
-    } else if (kind === 'every') goal = { kind: 'every' };
-    const raw = args['estimates'];
-    if (raw !== undefined && !Array.isArray(raw)) throw new ToolError('estimates must be a list');
-    if (raw?.length && kind !== 'every') throw new ToolError("estimates are for a goal of 'every'");
-    const asked = (raw ?? []).map((x) => estimateArg(x, env));
-
-    const events: NewEvent[] = [];
-    if (JSON.stringify(goal ?? null) !== JSON.stringify(env.sinking ?? null)) {
-      events.push(redefine(env, { sinking: goal }));
+    } else if (kind === 'every') {
+      const raw = args['estimate'];
+      // Left out, an every goal keeps the estimate it has.
+      const estimate = raw === undefined ? (env.sinking?.kind === 'every' ? env.sinking.estimate : null) : estimateArg(raw);
+      goal = { kind: 'every', estimate };
     }
-    const after = new Map(env.match.categories.map((c) => [c, state.categories.get(c)?.sinking ?? null]));
-    for (const a of asked) {
-      if (JSON.stringify(a.sinking) === JSON.stringify(after.get(a.category))) continue;
-      after.set(a.category, a.sinking);
-      events.push({ op: 'category.sinking', category: a.category, sinking: a.sinking });
-    }
-    if (!events.length) throw new ToolError('nothing would change');
+    if (args['estimate'] !== undefined && kind !== 'every') throw new ToolError("an estimate is for a goal of 'every'");
 
-    const label = (c: string) => state.categories.get(c)?.label ?? c;
+    if (JSON.stringify(goal ?? null) === JSON.stringify(env.sinking ?? null)) throw new ToolError('nothing would change');
+    const events: NewEvent[] = [redefine(env, { sinking: goal })];
+
     const effects: string[] = [];
     if (!goal) {
       effects.push(`${env.label} becomes an ordinary envelope; what it holds stays in it`);
     } else if (goal.kind === 'every') {
-      const known = [...after.values()].filter((x): x is SinkingEstimate => x !== null);
-      const total = cents(known.reduce((n, e) => n + e.cost, 0));
-      effects.push(`${env.label} is saved in Savings: ${fmtExact(everyMonthly(known))} a month, toward ${fmtExact(total)} of estimates`);
-      for (const [c, e] of after) {
-        effects.push(e ? `${label(c)}: ${fmtExact(e.cost)} ${everyWords(e.everyYears)}, ${fmtExact(everyMonthly([e]))} a month`
-          : `${label(c)}: no estimate, so nothing is set aside for it`);
-      }
+      const e = goal.estimate;
+      effects.push(e
+        ? `${env.label} is saved in Savings: ${fmtExact(everyMonthly([e]))} a month, toward ${fmtExact(e.cost)} ${everyWords(e.everyYears)}`
+        : `${env.label} is saved in Savings, with no estimate yet, so nothing is set aside for it`);
     } else {
       const saved = carriedInto(state, month, env.id);
       const { monthly, monthsLeft } = byMonthly(goal.target, saved, month, goal.by);
@@ -1471,12 +1445,26 @@ const setSinkingGoal: Tool = {
   },
 };
 
+/**
+ * What removing an envelope does to its receipts and rules, in one sentence: "Its 12 receipts
+ * from this month go back to To sort, and the rule "EXAMPLE GYM" goes with it."
+ */
+function removeWords(n: number, allThisMonth: boolean, rules: readonly string[]): string {
+  const named = rules.map((m) => `"${m}"`);
+  const list = named.length > 1 ? `${named.slice(0, -1).join(', ')} and ${named.at(-1)!}` : named[0] ?? '';
+  const ruleWords = !rules.length ? '' : rules.length === 1 ? `the rule ${list} goes with it` : `the rules ${list} go with it`;
+  if (!n) return ruleWords ? `No receipts go back to To sort, and ${ruleWords}.` : 'No receipts go back to To sort.';
+  const when = allThisMonth ? 'from this month' : 'from months not yet closed';
+  const receipts = `Its ${n} receipt${n === 1 ? '' : 's'} ${when} ${n === 1 ? 'goes' : 'go'} back to To sort`;
+  return ruleWords ? `${receipts}, and ${ruleWords}.` : `${receipts}.`;
+}
+
 const removeEnvelope: Tool = {
   name: 'remove_envelope',
   description:
-    'Propose removing an envelope from the budget. Its receipts are not deleted — they stop ' +
-    'belonging to any envelope, which means they stop being accounted for. The proposal says ' +
-    'how many and how much. Requires a reason.',
+    'Propose removing an envelope from the budget. Its receipts are not deleted: those in months ' +
+    'already closed stay in that history under its name, and the rest go back to To sort. The rules ' +
+    'that sort into it and its bills go with it, and its id is never given again. Requires a reason.',
   kind: 'write',
   input: {
     type: 'object',
@@ -1490,114 +1478,27 @@ const removeEnvelope: Tool = {
     const env = state.envelopes.get(envelope);
     if (!env) throw new ToolError(`no envelope ${envelope}`, 404);
 
-    // What stops being accounted for. This is the number that matters, and it
-    // is the reason this is a proposal rather than a button.
+    // The receipts that go back to To sort: those with a part in it, in a month not closed now.
     // A split receipt counts once, however many of its parts were in here.
-    let orphaned = 0;
-    let total = ZERO;
-    for (const t of state.txns.values()) {
-      const here = partsOf(t).filter((p) => isSpend(p.category) && env.match.categories.includes(p.category));
-      if (!here.length) continue;
-      orphaned++;
-      for (const p of here) total = add(total, cents(Math.abs(p.amount)));
-    }
+    const back = [...state.txns.values()].filter((t) =>
+      partsOf(t).some((p) => p.envelope === env.id) && state.months.get(monthOf(t.date))?.closed !== true);
+    const thisMonth = monthOf(ctx.today);
+    const rules = state.rules.filter((r) => r.envelope === env.id);
+    const bills = [...state.bills.values()].filter((b) => b.envelope === env.id);
 
     return ctx.proposals.put({
       tool: 'remove_envelope', who: ctx.who,
       summary: `Remove ${env.label}`,
       effects: [
         `${env.label} disappears from the budget`,
-        orphaned
-          ? `${orphaned} receipts totalling ${fmtExact(total)} stop belonging to any envelope`
-          : 'No receipts are affected',
-        'The receipts themselves are untouched',
+        removeWords(back.length, back.every((t) => monthOf(t.date) === thisMonth), rules.map((r) => r.match)),
+        ...bills.map((b) => `Its bill ${b.name} goes with it.`),
+        'Months already closed keep its receipts under its name',
       ],
-      events: [{ op: 'envelope.remove', envelope, why }],
-    }, ctx.today);
-  },
-};
-
-const defineCategory: Tool = {
-  name: 'define_category',
-  description:
-    'Propose adding a category, or renaming one. Categories are household facts — a receipt is ' +
-    'groceries whichever envelope it lands in — so this changes what things are called everywhere ' +
-    'at once. Returns a proposal.',
-  kind: 'write',
-  input: {
-    type: 'object',
-    properties: {
-      category: { type: 'string', description: 'The id. A new one creates; an existing one renames.' },
-      label: { type: 'string' },
-      kind: { type: 'string', description: 'House | People | Future' },
-    },
-    required: ['category', 'label'],
-  },
-  run(args, ctx) {
-    const state = ctx.store.state;
-    const id = slug(str(args['category'], 'category'));
-    if (!id) throw new ToolError('that id has no letters or numbers in it');
-    const label = str(args['label'], 'label');
-    const existing = state.categories.get(id);
-    const kind = typeof args['kind'] === 'string' && args['kind'] ? args['kind'] : existing?.kind ?? 'People';
-
-    for (const c of state.categories.values()) {
-      if (c.id !== id && c.label.toLowerCase() === label.toLowerCase()) {
-        throw new ToolError(`${label} already exists`);
-      }
-    }
-    return ctx.proposals.put({
-      tool: 'define_category', who: ctx.who,
-      summary: existing ? `Rename ${existing.label} to ${label}` : `Add the ${label} category`,
-      effects: existing
-        ? [`"${existing.label}" becomes "${label}" everywhere`,
-           'Receipts already in it are unaffected — only the name changes']
-        : [`A new category "${label}" under ${kind}`,
-           'It belongs to no envelope yet, so put it in one before spending lands in it'],
-      // A rename keeps the estimate: category.define replaces the category whole.
-      events: [{ op: 'category.define', category: id, label, kind, ...(existing?.sinking ? { sinking: existing.sinking } : {}) }],
-    }, ctx.today);
-  },
-};
-
-const archiveCategory: Tool = {
-  name: 'archive_category',
-  description:
-    'Propose taking a category out of use, or bringing it back. Archiving hides it from the ' +
-    'pickers without unmaking it, because receipts name their category and one that cannot be ' +
-    'resolved is worse than one nobody uses. There is no way to delete a category.',
-  kind: 'write',
-  input: {
-    type: 'object',
-    properties: {
-      category: { type: 'string' },
-      archived: { type: 'boolean', description: 'false brings it back' },
-      why: { type: 'string' },
-    },
-    required: ['category', 'archived', 'why'],
-  },
-  run(args, ctx) {
-    const state = ctx.store.state;
-    const id = str(args['category'], 'category');
-    const why = str(args['why'], 'why');
-    const archived = args['archived'] !== false;
-    const c = state.categories.get(id);
-    if (!c) throw new ToolError(`no category ${id}`, 404);
-
-    const held = [...state.txns.values()].filter((t) => partsOf(t).some((p) => p.category === id)).length;
-    const envelopes = [...state.envelopes.values()].filter((e) => e.match.categories.includes(id)).map((e) => e.label);
-
-    return ctx.proposals.put({
-      tool: 'archive_category', who: ctx.who,
-      summary: archived ? `Stop using ${c.label}` : `Start using ${c.label} again`,
-      effects: archived
-        ? [`${c.label} disappears from the pickers`,
-           held ? `${held} receipts stay in it and still read as ${c.label}` : 'No receipts are in it',
-           envelopes.length
-             ? `Still fed into: ${envelopes.join(', ')} — remove it there if you want it gone from the plan`
-             : 'It is not in any envelope']
-        : [`${c.label} is available again`],
-      events: [{ op: 'category.archive', category: id, archived, why }],
+      events: [
+        ...rules.map((r): NewEvent => ({ op: 'rule.remove', rule: r.id })),
+        { op: 'envelope.remove', envelope, why },
+      ],
     }, ctx.today);
   },
 };
@@ -1631,7 +1532,7 @@ const closeMonth: Tool = {
 
     const view = monthView(state, month);
     const unsorted = [...state.txns.values()]
-      .filter((t) => t.category === null && monthOf(t.date) === month).length;
+      .filter((t) => monthOf(t.date) === month && inToSort(state, t)).length;
 
     return ctx.proposals.put({
       tool: 'close_month', who: ctx.who,
@@ -1970,7 +1871,7 @@ const localCosts: Tool = {
     return {
       location: location.label,
       found: found.estimates.map((e) => ({
-        category: e.category,
+        envelope: e.envelope,
         label: e.label,
         monthly: fmt(e.monthly),
         monthlyCents: e.monthly,
@@ -2000,7 +1901,7 @@ const seedFromLocation: Tool = {
     properties: {
       only: {
         type: 'array', items: { type: 'string' },
-        description: 'Optional. Limit to these categories.',
+        description: 'Optional. Limit to these envelope ids: rent, tax, elec.',
       },
     },
   },
@@ -2013,7 +1914,7 @@ const seedFromLocation: Tool = {
       censusKey: resolvedEnv()['CENSUS_API_KEY'], eiaKey: resolvedEnv()['EIA_API_KEY'],
     });
     const wanted = Array.isArray(args['only']) ? args['only'].map(String) : null;
-    const useful = found.estimates.filter((e) => !wanted || wanted.includes(e.category));
+    const useful = found.estimates.filter((e) => !wanted || wanted.includes(e.envelope));
     if (!useful.length) {
       throw new ToolError(
         `No public data was found for ${location.label}. `
@@ -2028,10 +1929,8 @@ const seedFromLocation: Tool = {
     let applied = 0;
 
     for (const e of useful) {
-      // Pricing only fills envelopes that are there. It used to make a lowercase category and
-      // envelope for evidence with nowhere to go, which put names nobody chose into the budget.
-      const existing = [...state.envelopes.values()]
-        .find((env) => env.match.categories.includes(e.category));
+      // Pricing only fills envelopes that are there, by the starter id the evidence is about.
+      const existing = state.envelopes.get(e.envelope);
       if (!existing) {
         effects.push(`Not applied: no envelope for ${e.label}`);
         continue;
@@ -2058,7 +1957,7 @@ const seedFromLocation: Tool = {
 
     if (!applied) {
       throw new ToolError(
-        `No envelope is fed by what public data prices (${useful.map((e) => e.label).join(', ')}). `
+        `No envelope here is one public data prices (${useful.map((e) => e.label).join(', ')}). `
         + 'Make an envelope for one and price it again.', 409);
     }
 
@@ -2079,72 +1978,28 @@ const seedFromLocation: Tool = {
   },
 };
 
-/**
- * The lines that say what a starter set adds. `fed` is true when envelopes made in the same
- * proposal cover the categories, so the warning that they belong to no envelope would be wrong.
- */
-function starterEffects(missing: MissingStarter, fed: boolean): string[] {
+/** The lines that say which starter rules are added, and which are left out. */
+function rulesEffects(missing: MissingRules): string[] {
   const effects: string[] = [];
-  for (const kind of ['House', 'People', 'Future'] as const) {
-    const here = missing.categories.filter((c) => c.kind === kind);
-    if (here.length) effects.push(`${kind}: ${here.map((c) => c.label).join(', ')}`);
-  }
-  if (missing.categories.length && !fed) {
-    effects.push('Categories belong to no envelope yet — spending in them shows as outside every envelope until one covers it');
-  }
   for (const r of missing.rules) {
-    effects.push(`Rule "${r.match}" files a receipt as ${r.category === TRANSFER ? 'a transfer' : 'income'} — ${r.why}`);
+    effects.push(`Rule "${r.match}" files a receipt as ${r.envelope === TRANSFER ? 'a transfer' : 'income'} — ${r.why}`);
   }
   if (missing.rules.length) {
     effects.push('Rules sort receipts imported from now on; receipts already here are not changed');
-  }
-  if (missing.skippedCategories.length) {
-    effects.push(`Already here, so skipped: ${missing.skippedCategories.join(', ')}`);
   }
   for (const r of missing.skippedRules) effects.push(`Not added: ${r}`);
   return effects;
 }
 
-const addStarterSet: Tool = {
-  name: 'add_starter_set',
-  description:
-    'Propose the common starting categories for a household, and the rules that keep a card ' +
-    'payment and a paycheque out of spending. Adds only what this household does not already ' +
-    'have: a category it has by id or by name is skipped and never renamed, and a rule that ' +
-    'overlaps one of its own is skipped. Rules sort receipts imported from now on.',
-  kind: 'write',
-  input: { type: 'object', properties: {} },
-  run(_args, ctx) {
-    const missing = missingStarter(ctx.store.state);
-    if (!missing.categories.length && !missing.rules.length) {
-      throw new ToolError('this household already has everything in the starter set', 409);
-    }
-    const events: NewEvent[] = [
-      ...missing.categories.map((c) => ({ op: 'category.define' as const, category: c.id, label: c.label, kind: c.kind })),
-      ...missing.rules.map((r) => ({ op: 'rule.add' as const, rule: r.id, match: r.match, category: r.category })),
-    ];
-    const effects = starterEffects(missing, false);
-
-    const n = missing.categories.length;
-    const m = missing.rules.length;
-    return ctx.proposals.put({
-      tool: 'add_starter_set',
-      who: ctx.who,
-      summary: `Add ${n} categor${n === 1 ? 'y' : 'ies'} and ${m} rule${m === 1 ? '' : 's'}`,
-      effects, events,
-    }, new Date(`${ctx.today}T00:00:00Z`).toISOString());
-  },
-};
-
 const makeStarterEnvelopes: Tool = {
   name: 'make_starter_envelopes',
   description:
     'Propose the envelopes the budget starts with, in one step: the rows a person ticked in the ' +
-    'budget walkthrough. Each row is a label, a group and, for a starter row, the category that ' +
-    'feeds it; a row with no category is one of their own and gets a category made from its name ' +
-    '(or reuses one with that name). The starter categories and rules this household lacks are ' +
-    'added in the same proposal. Every envelope opens with no figure yet, as Action required, ' +
-    'so nothing is funded until someone gives it a number.',
+    'budget walkthrough. Each row is a label, its envelope id for a starter row (kept when it is free), ' +
+    'and where it sits: `category`, a category id that is here or a starter category id, or ' +
+    '`newCategory`, the name of a category to make. The starter categories rows name and the starter ' +
+    'rules this household lacks are added in the same proposal. Every envelope opens with no figure ' +
+    'yet, as Action required, so nothing is funded until someone gives it a number.',
   kind: 'write',
   input: {
     type: 'object',
@@ -2156,10 +2011,11 @@ const makeStarterEnvelopes: Tool = {
           type: 'object',
           properties: {
             label: { type: 'string', description: 'What the envelope is called. A starter row may be renamed.' },
-            group: { type: 'string', description: 'Which group it sits in, e.g. Home or Food.' },
-            category: { type: 'string', description: 'The starter category id that feeds it. Leave out for a row of their own.' },
+            id: { type: 'string', description: 'A starter row\'s envelope id, kept when free. Leave out for a row of their own.' },
+            category: { type: 'string', description: 'The category it sits under: one here, or a starter category id.' },
+            newCategory: { type: 'string', description: 'In place of category: the name of a new category to make for it.' },
           },
-          required: ['label', 'group'],
+          required: ['label'],
         },
       },
     },
@@ -2170,71 +2026,85 @@ const makeStarterEnvelopes: Tool = {
     const raw = args['envelopes'];
     if (!Array.isArray(raw) || raw.length === 0) throw new ToolError('make at least one envelope');
 
-    const missing = missingStarter(state);
-    // Categories this same proposal defines count as present, so a row can feed a starter
-    // category the household does not have yet, or reuse one by its name.
-    const defined = new Map<string, string>(); // id -> label, for what this proposal adds
-    for (const c of missing.categories) defined.set(c.id, c.label);
-    const known = (id: string): boolean => state.categories.has(id) || defined.has(id);
-    const labelOf = (id: string): string => state.categories.get(id)?.label ?? defined.get(id) ?? id;
-    const own: NewEvent[] = [];
+    // Categories this proposal adds, in the order they are written: starter ones in starter order, then typed ones.
+    const starterAdds = new Map<CategoryId, string>();
+    const typed = new Map<string, { id: CategoryId; label: string }>(); // by nameKey
+    const madeCategories = new Set<CategoryId>();
+    const categoryTaken = { has: (id: string) => state.categories.has(id) || madeCategories.has(id) };
+    const madeEnvelopes = new Set<string>();
+    const envelopeTaken = { envelopes: { has: (id: string) => state.envelopes.has(id) || madeEnvelopes.has(id) }, removedEnvelopes: state.removedEnvelopes };
+    const labels = new Set([...state.envelopes.values()].map((e) => nameKey(e.label)));
+    const starterOf = (id: string) => STARTER_CATEGORIES.find((c) => c.id === id);
 
-    const rows: { label: string; group: string; category: string }[] = [];
-    const fedBy = new Map<string, string>(); // category -> the label of the row it feeds
+    const rows: { id: EnvelopeId; label: string; category: CategoryId }[] = [];
     for (const item of raw) {
       const r = (item ?? {}) as Record<string, unknown>;
       const label = typeof r['label'] === 'string' ? r['label'].trim() : '';
       if (!label) throw new ToolError('every envelope needs a name');
-      const group = typeof r['group'] === 'string' ? r['group'].trim() : '';
-      if (!group) throw new ToolError(`${label} needs a group`);
+      if (labels.has(nameKey(label))) {
+        const here = [...state.envelopes.values()].find((e) => nameKey(e.label) === nameKey(label));
+        throw new ToolError(here ? `There is already an envelope called ${here.label}.` : `${label} is named twice`, 409);
+      }
+      labels.add(nameKey(label));
 
-      let category: string;
-      if (typeof r['category'] === 'string' && r['category']) {
-        category = r['category'];
-        if (!known(category)) throw new ToolError(`no category ${category} — a row of your own leaves category out`);
-      } else {
-        // A row of one's own takes a category that already says the same thing before it
-        // makes another: two categories called Pets would split one thing's receipts.
-        const id = slug(label);
-        if (!id) throw new ToolError('that name has no letters or numbers in it');
-        const wanted = label.toLowerCase();
-        const same = [...state.categories.keys(), ...defined.keys()]
-          .find((k) => k === id || labelOf(k).trim().toLowerCase() === wanted);
-        if (same) category = same;
+      const given = typeof r['category'] === 'string' && r['category'] ? r['category'] : null;
+      const fresh = typeof r['newCategory'] === 'string' && r['newCategory'].trim() ? r['newCategory'].trim() : null;
+      if (given && fresh) throw new ToolError(`${label} names a category and a new one; give one`);
+      let category: CategoryId;
+      if (given) {
+        if (state.categories.has(given)) category = given;
         else {
-          category = id;
-          defined.set(id, label);
-          own.push({ op: 'category.define', category: id, label, kind: groupKind(group) });
+          const starter = starterOf(given);
+          if (!starter) throw new ToolError(`no category ${given}`, 404);
+          // A starter category whose name is here already under another id is that one.
+          const same = [...state.categories.values()].find((c) => nameKey(c.label) === nameKey(starter.label));
+          if (same) category = same.id;
+          else {
+            if (!starterAdds.has(given)) { starterAdds.set(given, starter.label); madeCategories.add(given); }
+            category = given;
+          }
         }
-      }
+      } else if (fresh) {
+        const here = [...state.categories.values()].find((c) => nameKey(c.label) === nameKey(fresh));
+        if (here) throw new ToolError(`There is already a category called ${here.label}.`, 409);
+        const starter = [...starterAdds].find(([, l]) => nameKey(l) === nameKey(fresh));
+        if (starter) category = starter[0];
+        else {
+          let made = typed.get(nameKey(fresh));
+          if (!made) {
+            made = { id: categoryIdFor({ categories: categoryTaken }, fresh), label: fresh };
+            typed.set(nameKey(fresh), made);
+            madeCategories.add(made.id);
+          }
+          category = made.id;
+        }
+      } else throw new ToolError(`${label} needs a category`);
 
-      const earlier = fedBy.get(category);
-      if (earlier !== undefined) throw new ToolError(`${earlier} and ${label} would both be fed by ${category}`);
-      fedBy.set(category, label);
-      // One envelope per category, or a receipt lands in whichever was defined last.
-      for (const other of state.envelopes.values()) {
-        if (other.match.categories.includes(category)) throw new ToolError(`${category} already feeds ${other.label}`);
-      }
-      // An envelope's id is its category's, and a define on an existing id would rewrite that envelope.
-      if (state.envelopes.has(category)) throw new ToolError(`there is already an envelope called ${category}`);
-      rows.push({ label, group, category });
+      const base = typeof r['id'] === 'string' && r['id'] ? slug(r['id']) || undefined : undefined;
+      const id = envelopeIdFor(envelopeTaken, label, base);
+      madeEnvelopes.add(id);
+      rows.push({ id, label, category });
     }
 
+    const missing = missingRules(state);
+    const starterInOrder = STARTER_CATEGORIES.filter((c) => starterAdds.has(c.id));
     const events: NewEvent[] = [
-      ...missing.categories.map((c) => ({ op: 'category.define' as const, category: c.id, label: c.label, kind: c.kind })),
-      ...missing.rules.map((r) => ({ op: 'rule.add' as const, rule: r.id, match: r.match, category: r.category })),
-      ...own,
+      ...starterInOrder.map((c): NewEvent => ({ op: 'category.add', category: c.id, label: c.label })),
+      ...[...typed.values()].map((c): NewEvent => ({ op: 'category.add', category: c.id, label: c.label })),
+      ...missing.rules.map((r): NewEvent => ({ op: 'rule.add', rule: r.id, match: r.match, envelope: r.envelope })),
       ...rows.map((r, i): NewEvent => ({
-        op: 'envelope.define', envelope: r.category, label: r.label, group: r.group,
-        match: { categories: [r.category] }, template: ZERO, rollover: true, needsFigure: true,
-        order: state.envelopes.size + i,
+        op: 'envelope.define', envelope: r.id, label: r.label, category: r.category,
+        template: ZERO, rollover: true, needsFigure: true, order: state.envelopes.size + i,
       })),
     ];
 
-    const effects = groupOrder(rows.map((r) => r.group))
-      .map((g) => `${g}: ${rows.filter((r) => r.group === g).map((r) => r.label).join(', ')}`);
+    const labelOf = (id: CategoryId) => state.categories.get(id)?.label ?? starterAdds.get(id)
+      ?? [...typed.values()].find((c) => c.id === id)?.label ?? id;
+    const order = [...state.categories.keys(), ...starterInOrder.map((c) => c.id), ...[...typed.values()].map((c) => c.id)];
+    const effects = order.filter((c) => rows.some((r) => r.category === c))
+      .map((c) => `${labelOf(c)}: ${rows.filter((r) => r.category === c).map((r) => r.label).join(', ')}`);
     effects.push('Every one starts without a figure until it is given one');
-    if (missing.categories.length || missing.rules.length) effects.push(...starterEffects(missing, true));
+    effects.push(...rulesEffects(missing));
 
     return ctx.proposals.put({
       tool: 'make_starter_envelopes', who: ctx.who,
@@ -3354,11 +3224,11 @@ const searchTool: Tool = {
 };
 
 export const TOOLS: readonly Tool[] = [
-  getMonth, explainEnvelope, findDonors, listTransactions, getActivity, addStarterSet,
+  getMonth, explainEnvelope, findDonors, listTransactions, getActivity,
   makeStarterEnvelopes, setMonthIncome, setEnvelopeFigure, setBill,
-  moveMoney, setAssignment, categorizeTxn, openMonth, restoreTxn,
+  moveMoney, setAssignment, sortReceipts, openMonth, restoreTxn,
   defineEnvelope, setSinkingGoal, removeEnvelope,
-  defineCategory, archiveCategory, closeMonth, discardMonth,
+  closeMonth, discardMonth,
   planIncome, defineIncome, removeIncome, setLocation, localCosts, seedFromLocation,
   listPlans, getPlan, searchTool, createPlan, updatePlan, setPlanState, handPlan, setPlanGoal, answerAsk, setChecklist,
   setPlanDue, blockPlanTime, removePlan, linkContact, createContactTool, proposeEvent,

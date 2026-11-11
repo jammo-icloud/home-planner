@@ -35,20 +35,17 @@ async function fixture(): Promise<{ store: Store; ctx: any }> {
   const store = new Store({ path, now: () => new Date(NOW) });
   await store.load();
   await store.append('system', [
-    { op: 'category.define', category: 'groceries', label: 'Groceries' },
-    { op: 'category.define', category: 'dining', label: 'Dining out' },
-    { op: 'category.define', category: 'electricity', label: 'Electricity' },
-    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
-      match: { categories: ['groceries', 'dining'] }, template: parseDollars('1525.00'), rollover: false, order: 0 },
-    { op: 'envelope.define', envelope: 'util', label: 'Utilities', group: 'House',
-      match: { categories: ['electricity'] }, template: parseDollars('300.00'), rollover: false, order: 1 },
+    { op: 'category.add', category: 'people', label: 'People' },
+    { op: 'category.add', category: 'house', label: 'House' },
+    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', category: 'people', template: parseDollars('1525.00'), rollover: false, order: 0 },
+    { op: 'envelope.define', envelope: 'util', label: 'Utilities', category: 'house', template: parseDollars('300.00'), rollover: false, order: 1 },
     { op: 'month.open', month: '2026-08', income: parseDollars('9600.00') },
     { op: 'txn.add', txns: [
-      { id: 'x1', date: '2026-08-03', payee: 'VALLEY MARKET #101', amount: parseDollars('-84.21'), dedupeKey: 'x1', category: 'groceries' },
-      { id: 'x2', date: '2026-08-06', payee: 'CORNER BISTRO', amount: parseDollars('-1300.00'), dedupeKey: 'x2', category: 'dining' },
-      { id: 'x3', date: '2026-08-08', payee: 'EXAMPLE POWER', amount: parseDollars('-120.00'), dedupeKey: 'x3', category: 'electricity' },
-      { id: 'x4', date: '2026-08-09', payee: 'QUIKSTOP 10001', amount: parseDollars('-10.15'), dedupeKey: 'x4', category: null },
-      { id: 'x5', date: '2026-08-10', payee: 'PAYMENT THANK YOU', amount: parseDollars('2400.50'), dedupeKey: 'x5', category: TRANSFER },
+      { id: 'x1', date: '2026-08-03', payee: 'VALLEY MARKET #101', amount: parseDollars('-84.21'), dedupeKey: 'x1', envelope: 'daily' },
+      { id: 'x2', date: '2026-08-06', payee: 'CORNER BISTRO', amount: parseDollars('-1300.00'), dedupeKey: 'x2', envelope: 'daily' },
+      { id: 'x3', date: '2026-08-08', payee: 'EXAMPLE POWER', amount: parseDollars('-120.00'), dedupeKey: 'x3', envelope: 'util' },
+      { id: 'x4', date: '2026-08-09', payee: 'QUIKSTOP 10001', amount: parseDollars('-10.15'), dedupeKey: 'x4', envelope: null },
+      { id: 'x5', date: '2026-08-10', payee: 'PAYMENT THANK YOU', amount: parseDollars('2400.50'), dedupeKey: 'x5', envelope: TRANSFER },
     ] },
   ]);
   return { store, ctx: { store, who: 'alice', today: TODAY, proposals: new ProposalStore(), sid: null } };
@@ -81,7 +78,7 @@ describe('a change list that has been cut short says so', () => {
   const many = async () => {
     const { store } = await fixture();
     await store.append('alice', Array.from({ length: 30 }, (_, i) =>
-      ({ op: 'category.define' as const, category: `c${i}`, label: `Category ${i}` })));
+      ({ op: 'category.add' as const, category: `c${i}`, label: `Category ${i}` })));
     return store;
   };
 
@@ -138,10 +135,10 @@ describe('friends staying are not money', () => {
     });
     await store.append('guest:linh@example.com', { op: 'booking.cancel', stay: card!.id, why: 'withdrawn by the guest' });
     await store.append('alice', { op: 'booking.block', from: '2026-09-10', to: '2026-09-12', why: 'family visiting' });
-    await store.append('alice', { op: 'category.define', category: 'coffee', label: 'Coffee run' });
+    await store.append('alice', { op: 'category.add', category: 'coffee', label: 'Coffee run' });
     const { shown, total } = await changesSinceSection(store, TODAY);
     assert.deepEqual(shown.filter((e) => e.op.startsWith('guest.') || e.op.startsWith('booking.')), []);
-    assert.ok(shown.some((e) => e.op === 'category.define' && e.category === 'coffee'), 'the money change is still there');
+    assert.ok(shown.some((e) => e.op === 'category.add' && e.category === 'coffee'), 'the money change is still there');
     const text = facts(snapshot(store.state, '2026-08', TODAY)!, store.state, shown, [], TODAY, total);
     assert.doesNotMatch(text, /linh@example\.com|Linh|withdr|family visiting|guest/i);
   });
@@ -190,7 +187,7 @@ describe('what a section covers', () => {
       args: { month: '2026-08', from: 'util', to: 'daily', amountCents: 5000, why: 'x' } });
     await decide(ctx, card.id, 'snoozed');
     await store.append('alice', { op: 'txn.add', txns: [
-      { id: 'x8', date: '2026-08-12', payee: 'VALLEY MARKET', amount: parseDollars('-20.00'), dedupeKey: 'x8', category: 'groceries' }] });
+      { id: 'x8', date: '2026-08-12', payee: 'VALLEY MARKET', amount: parseDollars('-20.00'), dedupeKey: 'x8', envelope: 'daily' }] });
     const f = fake([draft()]);
     await ensureSection(store, { who: 'alice', today: TODAY });
     assert.match(f.calls[0].messages[0].content, /PUT OFF.*Move \$50\.00 from Utilities to Daily life/s);
@@ -222,16 +219,13 @@ describe('the facts Claude is given', () => {
     assert.match(text, /Daily life \[daily\]: planned \$1,525, funded \$1,625\b/);
   });
 
-  test('spending with no envelope is stated, never quietly dropped', async () => {
+  test('a receipt naming an envelope that is not here is stated as To sort, never quietly dropped', async () => {
     const { store } = await fixture();
-    await store.append('alice', {
-      op: 'category.define', category: 'vet', label: 'Vet',
-    });
     await store.append('alice', { op: 'txn.add', txns: [
-      { id: 'x9', date: '2026-08-11', payee: 'LAKESIDE VET', amount: parseDollars('-240.00'), dedupeKey: 'x9', category: 'vet' },
+      { id: 'x9', date: '2026-08-11', payee: 'LAKESIDE VET', amount: parseDollars('-240.00'), dedupeKey: 'x9', envelope: 'vet' },
     ] });
     const snap = snapshot(store.state, '2026-08', TODAY)!;
-    assert.match(facts(snap, store.state, [], [], TODAY), /outside every envelope: \$240\b/);
+    assert.match(facts(snap, store.state, [], [], TODAY), /: 2 transactions — \$250 out/);
   });
 
   test('the changes section quotes the note, because every edit has one', async () => {
@@ -452,14 +446,12 @@ describe('generation', () => {
     }
   });
 
-  test('the plain briefing names spending that no envelope in this budget covers', async () => {
-    // Sorted into a category, but this budget has no envelope for it — so it is
-    // in neither "spent" nor the unsorted queue unless something says so.
+  test('the plain briefing counts a receipt naming an envelope that is not here among those To sort', async () => {
+    // Sorted into an envelope that is not here: To sort holds it, so it is said, not dropped.
     const { store } = await fixture();
     await store.append('alice', [
-      { op: 'category.define', category: 'pets', label: 'Pets' },
       { op: 'txn.add', txns: [
-        { id: 'x9', date: '2026-08-11', payee: 'HARBOR VET', amount: parseDollars('-45.00'), dedupeKey: 'x9', category: 'pets' },
+        { id: 'x9', date: '2026-08-11', payee: 'HARBOR VET', amount: parseDollars('-45.00'), dedupeKey: 'x9', envelope: 'pets' },
       ] },
     ]);
     setClaudeClient(null);
@@ -467,7 +459,7 @@ describe('generation', () => {
     delete process.env['ANTHROPIC_API_KEY'];
     try {
       const b = await brief(store, { who: 'alice', today: TODAY });
-      assert.match(b.body, /\$45 was spent in categories with no envelope here/);
+      assert.match(b.body, /2 receipts \(\$55 out\) are not in an envelope yet/);
     } finally {
       if (saved !== undefined) process.env['ANTHROPIC_API_KEY'] = saved;
     }
@@ -539,7 +531,7 @@ describe('predictions', () => {
     await store.append('system', [
       { op: 'month.open', month: '2026-07', income: parseDollars('9600.00') },
       { op: 'txn.add', txns: [
-        { id: 'j1', date: '2026-07-14', payee: 'VALLEY MARKET #101', amount: parseDollars('-1000.00'), dedupeKey: 'j1', category: 'groceries' },
+        { id: 'j1', date: '2026-07-14', payee: 'VALLEY MARKET #101', amount: parseDollars('-1000.00'), dedupeKey: 'j1', envelope: 'daily' },
       ] },
     ]);
     await store.append('system', {
@@ -654,12 +646,11 @@ describe('one briefing for the household', () => {
     ]);
     at(NOW);
     await store.append('alice', [
-      { op: 'category.define', category: 'groceries', label: 'Groceries' },
-      { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
-        match: { categories: ['groceries'] }, template: parseDollars('600.00'), rollover: false, order: 0 },
+      { op: 'category.add', category: 'people', label: 'People' },
+      { op: 'envelope.define', envelope: 'daily', label: 'Daily life', category: 'people', template: parseDollars('600.00'), rollover: false, order: 0 },
       { op: 'month.open', month: '2026-08', income: parseDollars('1000.00') },
       { op: 'txn.add', txns: [
-        { id: 'h1', date: '2026-08-03', payee: 'VALLEY MARKET', amount: parseDollars('-84.21'), dedupeKey: 'h1', category: 'groceries' }] },
+        { id: 'h1', date: '2026-08-03', payee: 'VALLEY MARKET', amount: parseDollars('-84.21'), dedupeKey: 'h1', envelope: 'daily' }] },
       ...(o.calendar ? [{ op: 'calendar.household' as const, ...HOUSEHOLD_CAL, name: 'Household' }] : []),
       { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' },
       { op: 'plan.due', plan: 'gate', due: '2026-08-10' },

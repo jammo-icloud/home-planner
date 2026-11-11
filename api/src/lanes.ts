@@ -19,10 +19,10 @@ export const isLane = (v: unknown): v is Lane => typeof v === 'string' && (LANES
 export function laneOf(e: Event | NewEventShape, state: Pick<State, 'pageDrifts'>): Lane | null {
   switch (e.op) {
     case 'assign': case 'move': case 'income.set': case 'month.open': case 'month.close': case 'month.discard':
-    case 'txn.add': case 'txn.categorize': case 'txn.split': case 'txn.remove': case 'rule.add': case 'rule.remove':
+    case 'txn.add': case 'txn.sort': case 'txn.split': case 'txn.remove': case 'rule.add': case 'rule.remove':
     case 'envelope.define': case 'envelope.remove': case 'envelopes.model': case 'bill.set': case 'bill.remove':
     case 'household.locate':
-    case 'category.define': case 'category.archive': case 'category.sinking':
+    case 'category.add': case 'category.rename': case 'category.move': case 'category.remove':
     case 'income.source.define': case 'income.source.remove':
     case 'account.balance': case 'savings.account':
       return 'budget';
@@ -61,11 +61,11 @@ export const TOOL_LANES: Readonly<Record<string, Lane>> = {
   answer_ask: 'plans', link_contact: 'plans', create_contact: 'plans',
   propose_event: 'calendar', approve_booking: 'calendar', release_stay: 'calendar', resolve_drift: 'calendar',
   move_money: 'budget', set_assignment: 'budget', set_envelope_figure: 'budget', set_month_income: 'budget',
-  set_sinking_goal: 'budget', categorize_transactions: 'budget', restore_transaction: 'budget',
+  set_sinking_goal: 'budget', sort_receipts: 'budget', restore_transaction: 'budget',
   open_month: 'budget', close_month: 'budget', discard_month: 'budget',
   set_location: 'budget', seed_from_location: 'budget',
-  define_envelope: 'budget', remove_envelope: 'budget', add_starter_set: 'budget', make_starter_envelopes: 'budget',
-  define_category: 'budget', archive_category: 'budget', define_income_source: 'budget',
+  define_envelope: 'budget', remove_envelope: 'budget', make_starter_envelopes: 'budget',
+  define_income_source: 'budget',
   remove_income_source: 'budget', savings_short: 'budget', set_bill: 'budget',
 };
 

@@ -14,21 +14,19 @@ import { ReplayError } from '../src/replay.ts';
 
 const TODAY = '2026-08-13';
 
-const receipt = (id: string, payee: string, amount: string, category: string | null = null) =>
-  ({ id, date: '2026-08-04', payee, amount: parseDollars(amount), dedupeKey: id, category });
+const receipt = (id: string, payee: string, amount: string, envelope: string | null = null) =>
+  ({ id, date: '2026-08-04', payee, amount: parseDollars(amount), dedupeKey: id, envelope });
 
 async function fixture() {
   const path = join(await mkdtemp(join(tmpdir(), 'pb-act-')), 'events.jsonl');
   const store = new Store({ path });
   await store.load();
   await store.append('system', [
-    { op: 'category.define', category: 'food', label: 'Groceries' },
-    { op: 'category.define', category: 'dine', label: 'Dining out' },
-    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
-      match: { categories: ['food', 'dine'] }, template: parseDollars('1000.00'), order: 0 },
+    { op: 'category.add', category: 'people', label: 'People' },
+    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', category: 'people', template: parseDollars('1000.00'), order: 0 },
     { op: 'month.open', month: '2026-08', income: parseDollars('5000.00') },
     { op: 'txn.add', txns: [
-      receipt('r1', 'SAFEWAY', '-64.10', 'food'),
+      receipt('r1', 'SAFEWAY', '-64.10', 'daily'),
       receipt('r2', 'A MYSTERY CHARGE', '-31.00'),
     ] },
   ]);
@@ -119,22 +117,22 @@ describe('putting it back', () => {
     await store.append('alice', { op: 'txn.remove', txn: 'r2', why: 'thought it was a duplicate' });
 
     const p = await toolByName.get('restore_transaction')!.run(
-      { txnId: 'r2', category: 'dine', why: 'it was ours after all — a restaurant' }, ctx) as
+      { txnId: 'r2', envelope: 'daily', why: 'it was ours after all — a restaurant' }, ctx) as
       { id: string; effects: string[] };
     assert.match(p.effects[0]!, /A MYSTERY CHARGE/);
-    assert.match(p.effects[1]!, /dine/);
+    assert.match(p.effects[1]!, /It lands in Daily life/);
 
     // Nothing changed until approval, same as every other write.
     assert.equal(store.state.txns.has('r2'), false);
     await commit(p.id, ctx);
-    assert.equal(store.state.txns.get('r2')!.category, 'dine');
+    assert.equal(store.state.txns.get('r2')!.envelope, 'daily');
   });
 
   test('a restore cannot ask for the split marker; the receipt comes back first', async () => {
     const { store, ctx } = await fixture();
     await store.append('alice', { op: 'txn.remove', txn: 'r1', why: 'oops' });
     await assert.rejects(
-      () => toolByName.get('restore_transaction')!.run({ txnId: 'r1', category: '__split', why: 'divide it' }, ctx) as Promise<unknown>,
+      () => toolByName.get('restore_transaction')!.run({ txnId: 'r1', envelope: '__split', why: 'divide it' }, ctx) as Promise<unknown>,
       /restore it first, then split it/);
   });
 
@@ -161,7 +159,7 @@ describe('putting it back', () => {
     assert.equal((await activity(store)).entries.find((e) => e.flag)!.flag!.removed!.stillGone, true);
 
     const p = await toolByName.get('restore_transaction')!.run(
-      { txnId: 'r2', category: 'food', why: 'it was ours' }, ctx) as { id: string };
+      { txnId: 'r2', envelope: 'daily', why: 'it was ours' }, ctx) as { id: string };
     await commit(p.id, ctx);
 
     const after = await activity(store);
@@ -174,11 +172,11 @@ describe('reading it without drowning', () => {
   test('a bulk sort is one line, not thirty-three', async () => {
     const { store } = await fixture();
     await store.append('alice', Array.from({ length: 33 }, (_, i) => ({
-      op: 'txn.categorize' as const, txn: 'r1', category: 'food', manual: true,
+      op: 'txn.sort' as const, txn: 'r1', envelope: 'daily', manual: true,
       ...(i === 0 ? {} : {}),
     })));
     const { entries } = await activity(store);
-    const sorted = entries.find((e) => e.what.includes('categorized'))!;
+    const sorted = entries.find((e) => e.what.includes('sorted a receipt'))!;
     assert.equal(sorted.count, 33);
     assert.match(sorted.what, /33 times/);
   });

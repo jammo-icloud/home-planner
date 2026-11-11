@@ -348,7 +348,7 @@ describe('the household: who owns it, who is in it', () => {
     const s = await store();
     await s.append('alice', { op: 'household.claim', label: 'Rivera' });
     await s.append('alice', { op: 'member.add', member: 'bob', why: 'my partner' });
-    await s.append('alice', { op: 'category.define', category: 'food', label: 'Groceries' });
+    await s.append('alice', { op: 'category.add', category: 'food', label: 'Groceries' });
 
     const reopened = new Store({ path: s.path });
     await reopened.load();
@@ -361,9 +361,8 @@ describe('the household: who owns it, who is in it', () => {
     await s.append('alice', { op: 'household.claim', label: 'Rivera' });
     await s.append('alice', { op: 'member.add', member: 'bob', why: 'my partner' });
     await s.append('alice', [
-      { op: 'category.define', category: 'food', label: 'Groceries' },
-      { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
-        match: { categories: ['food'] }, template: parseDollars('1000.00'), order: 0 },
+      { op: 'category.add', category: 'food', label: 'Groceries' },
+      { op: 'envelope.define', envelope: 'daily', label: 'Daily life', category: 'food', template: parseDollars('1000.00'), order: 0 },
       { op: 'month.open', month: '2026-08', income: parseDollars('9600.00') },
     ]);
     await s.append('bob', {

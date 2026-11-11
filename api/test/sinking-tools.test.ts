@@ -23,16 +23,11 @@ async function ctx(): Promise<ToolContext> {
   await store.append('alice', [
     { op: 'household.claim', label: 'Home' },
     { op: 'member.add', member: 'bob', why: 'my partner' },
-    { op: 'category.define', category: 'groceries', label: 'Groceries' },
-    { op: 'category.define', category: 'tyres', label: 'Tyres' },
-    { op: 'category.define', category: 'service', label: 'Car service' },
-    { op: 'category.define', category: 'trips', label: 'Trips' },
-    { op: 'envelope.define', envelope: 'food', label: 'Groceries', group: 'People',
-      match: { categories: ['groceries'] }, template: cents(60000), order: 0 },
-    { op: 'envelope.define', envelope: 'auto', label: 'Auto maintenance', group: 'Future',
-      match: { categories: ['tyres', 'service'] }, template: cents(2000), rollover: false, order: 1 },
-    { op: 'envelope.define', envelope: 'bahamas', label: 'Bahamas', group: 'Future',
-      match: { categories: ['trips'] }, template: cents(0), order: 2 },
+    { op: 'category.add', category: 'people', label: 'People' },
+    { op: 'category.add', category: 'future', label: 'Future' },
+    { op: 'envelope.define', envelope: 'food', label: 'Groceries', category: 'people', template: cents(60000), order: 0 },
+    { op: 'envelope.define', envelope: 'auto', label: 'Auto maintenance', category: 'future', template: cents(2000), rollover: false, order: 1 },
+    { op: 'envelope.define', envelope: 'bahamas', label: 'Bahamas', category: 'future', template: cents(0), order: 2 },
     { op: 'income.source.define', source: 'pay', label: 'Pay', earner: 'alice',
       amount: cents(500000), frequency: 'monthly', anchor: '2026-10-01' },
     { op: 'month.open', month: '2026-11', income: cents(500000) },
@@ -45,34 +40,32 @@ const propose = (name: string, args: Record<string, unknown>, c: ToolContext) =>
 const approve = async (name: string, args: Record<string, unknown>, c: ToolContext) =>
   (await commit(propose(name, args, c).id, c)).committed;
 
-const AUTO_EVERY = {
-  envelope: 'auto', goal: 'every',
-  estimates: [{ category: 'tyres', costCents: 120000, everyYears: 4 }, { category: 'service', costCents: 60000, everyYears: 1 }],
-};
+/** Tyres and a service together: $900 every year, its own estimate. */
+const AUTO_EVERY = { envelope: 'auto', goal: 'every', estimate: { costCents: 90000, everyYears: 1 } };
 
 describe('set_sinking_goal', () => {
-  test('every so often: the envelope is marked and the estimates go on its categories, in one proposal', async () => {
+  test('every so often: the envelope is marked with its own estimate, in one define', async () => {
     const c = await ctx();
     const p = propose('set_sinking_goal', AUTO_EVERY, c);
     assert.equal(p.summary, 'Save Auto maintenance in Savings');
-    assert.deepEqual(p.events.map((e) => e.op), ['envelope.define', 'category.sinking', 'category.sinking']);
-    assert.equal(p.effects[0], 'Auto maintenance is saved in Savings: $75.00 a month, toward $1,800.00 of estimates');
-    assert.ok(p.effects.includes('Tyres: $1,200.00 every 4 years, $25.00 a month'));
+    assert.deepEqual(p.events.map((e) => e.op), ['envelope.define']);
+    assert.equal(p.effects[0], 'Auto maintenance is saved in Savings: $75.00 a month, toward $900.00 every year');
     await commit(p.id, c);
-    const state = c.store.state;
-    const auto = state.envelopes.get('auto')!;
-    assert.deepEqual([auto.sinking, auto.rollover, auto.template, auto.label], [{ kind: 'every' }, true, 2000, 'Auto maintenance']);
-    assert.deepEqual(state.categories.get('tyres')!.sinking, { cost: 120000, everyYears: 4 });
+    const auto = c.store.state.envelopes.get('auto')!;
+    assert.deepEqual([auto.sinking, auto.rollover, auto.template, auto.label],
+      [{ kind: 'every', estimate: { cost: 90000, everyYears: 1 } }, true, 2000, 'Auto maintenance']);
   });
 
-  test('an estimate is changed from the envelope without touching the goal', async () => {
+  test('an estimate is changed or cleared on the envelope; left out, it is kept', async () => {
     const c = await ctx();
     await approve('set_sinking_goal', AUTO_EVERY, c);
-    const p = propose('set_sinking_goal', { envelope: 'auto', goal: 'every',
-      estimates: [{ category: 'service', costCents: null }] }, c);
+    assert.throws(() => propose('set_sinking_goal', { envelope: 'auto', goal: 'every' }, c), /nothing would change/);
+    const p = propose('set_sinking_goal', { envelope: 'auto', goal: 'every', estimate: null }, c);
     assert.equal(p.summary, "Change Auto maintenance's goal");
-    assert.deepEqual(p.events, [{ op: 'category.sinking', category: 'service', sinking: null }]);
-    assert.ok(p.effects.includes('Car service: no estimate, so nothing is set aside for it'));
+    assert.deepEqual((p.events[0] as { sinking?: unknown }).sinking, { kind: 'every', estimate: null });
+    assert.ok(p.effects.includes('Auto maintenance is saved in Savings, with no estimate yet, so nothing is set aside for it'), p.effects.join('|'));
+    const q = propose('set_sinking_goal', { envelope: 'auto', goal: 'every', estimate: { costCents: 120000, everyYears: 4 } }, c);
+    assert.equal(q.effects[0], 'Auto maintenance is saved in Savings: $25.00 a month, toward $1,200.00 every 4 years');
   });
 
   test('by a date: what is left over the months left, from this month', async () => {
@@ -82,12 +75,14 @@ describe('set_sinking_goal', () => {
       '$800.00 a month, over 5 months from November 2026, worked out again each month']);
   });
 
-  test('refuses a month gone by, a category that does not feed it, and a change that changes nothing', async () => {
+  test('refuses a month gone by, an estimate on a goal by a date, and a change that changes nothing', async () => {
     const c = await ctx();
     assert.throws(() => propose('set_sinking_goal', { envelope: 'bahamas', goal: 'by', targetCents: 400000, by: '2026-10' }, c),
       /has already gone by/);
-    assert.throws(() => propose('set_sinking_goal', { envelope: 'auto', goal: 'every',
-      estimates: [{ category: 'trips', costCents: 100, everyYears: 1 }] }, c), /does not feed Auto maintenance/);
+    assert.throws(() => propose('set_sinking_goal', { envelope: 'bahamas', goal: 'by', targetCents: 400000, by: '2027-03',
+      estimate: { costCents: 100, everyYears: 1 } }, c), /an estimate is for a goal of 'every'/);
+    assert.throws(() => propose('set_sinking_goal', { envelope: 'auto', goal: 'every', estimate: { costCents: 100, everyYears: 0 } }, c),
+      /more than none and at most every 100 years/);
     assert.throws(() => propose('set_sinking_goal', { envelope: 'food', goal: 'none' }, c), ToolError);
   });
 
@@ -100,11 +95,12 @@ describe('set_sinking_goal', () => {
     assert.equal(c.store.state.envelopes.get('auto')!.sinking, undefined);
   });
 
-  test('renaming a category keeps its estimate', async () => {
+  test('renaming the envelope keeps its estimate', async () => {
     const c = await ctx();
     await approve('set_sinking_goal', AUTO_EVERY, c);
-    await approve('define_category', { category: 'tyres', label: 'Tires' }, c);
-    assert.deepEqual(c.store.state.categories.get('tyres'), { id: 'tyres', label: 'Tires', kind: 'People', sinking: { cost: 120000, everyYears: 4 } });
+    await approve('define_envelope', { envelope: 'auto', label: 'Car upkeep' }, c);
+    const auto = c.store.state.envelopes.get('auto')!;
+    assert.deepEqual([auto.label, auto.sinking], ['Car upkeep', { kind: 'every', estimate: { cost: 90000, everyYears: 1 } }]);
   });
 });
 
@@ -143,7 +139,8 @@ describe('get_month', () => {
       envelopes: { id: string; sinking: Record<string, unknown> | null }[]; savings: Record<string, unknown>;
     };
     const auto = r.envelopes.find((e) => e.id === 'auto')!.sinking!;
-    assert.deepEqual([auto['kind'], auto['savedExact'], auto['goalExact'], auto['monthlyExact']], ['every', '$20.00', '$1,800.00', '$75.00']);
+    assert.deepEqual([auto['kind'], auto['savedExact'], auto['goalExact'], auto['monthlyExact']], ['every', '$20.00', '$900.00', '$75.00']);
+    assert.deepEqual(auto['estimate'], { cost: '$900.00', everyYears: 1 });
     assert.equal(r.envelopes.find((e) => e.id === 'food')!.sinking, null);
     assert.equal(r.savings['status'], 'over');
     assert.equal((r.savings['words'] as { verdict: string }).verdict, "$10 in Savings isn't in any fund.");

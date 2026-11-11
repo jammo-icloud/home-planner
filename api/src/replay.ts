@@ -45,9 +45,9 @@ import {
   THREAD_TEXT_MAX,
 } from './types.ts';
 import type {
-  AccountBalance, Actor, BillRecord, Adjustment, Appearance, Appointment, Assignment, CalendarLink, Location, Month, CalendarRef, Category,
+  AccountBalance, Actor, BillRecord, Adjustment, Appearance, Appointment, CalendarLink, Location, Month, CalendarRef, Category,
   DocRef, DocumentsFolder, DocumentsState, Drift, Envelope, Event, EventOf, EnvelopeId, EventId, Guest, Hand, MonthPlan, MoveFile, Offer, PageDrift,
-  Per, Plan, PlanId, Prediction, Rule, State, Stay, SplitPart, StayBlock, Settings, Txn,
+  Per, Plan, PlanId, Prediction, RemovedEnvelope, Rule, SortedInto, State, Stay, SplitPart, StayBlock, Settings, Txn,
 } from './types.ts';
 
 export class ReplayError extends Error {
@@ -73,8 +73,10 @@ export class ReplayError extends Error {
 
 // Mutable mirrors of the readonly public shapes, used only inside the fold.
 interface Draft {
+  /** In the household's order: a move rebuilds the map. */
   categories: Map<string, Category>;
   envelopes: Map<EnvelopeId, Envelope>;
+  removedEnvelopes: Map<EnvelopeId, RemovedEnvelope>;
   bills: Map<string, BillRecord>;
   location: Location | null;
   /** Receipts are replaced whole on every change, never edited in place, so a thaw shares them. */
@@ -129,7 +131,7 @@ interface Draft {
 }
 
 const emptyDraft = (): Draft => ({
-  categories: new Map(), envelopes: new Map(), bills: new Map(), location: null, txns: new Map(),
+  categories: new Map(), envelopes: new Map(), removedEnvelopes: new Map(), bills: new Map(), location: null, txns: new Map(),
   rules: [], months: new Map(), owner: null, members: new Set(), label: 'Household',
   incomeSources: new Map(), readCursor: new Map(), predictions: [],
   offers: new Map(), seen: new Map(),
@@ -149,7 +151,7 @@ function freeze(d: Draft): State {
   const months = new Map<Month, MonthPlan>();
   for (const [k, m] of d.months) months.set(k, { ...m });
   return {
-    categories: d.categories, envelopes: d.envelopes, bills: d.bills, location: d.location,
+    categories: d.categories, envelopes: d.envelopes, removedEnvelopes: d.removedEnvelopes, bills: d.bills, location: d.location,
     txns: d.txns, rules: d.rules, months,
     owner: d.owner, members: d.members, label: d.label, zone: d.zone,
     incomeSources: d.incomeSources, readCursor: d.readCursor, predictions: d.predictions,
@@ -221,7 +223,7 @@ function thaw(s: State): Draft {
     });
   }
   return {
-    categories: new Map(s.categories), envelopes: new Map(s.envelopes), bills: new Map(s.bills),
+    categories: new Map(s.categories), envelopes: new Map(s.envelopes), removedEnvelopes: new Map(s.removedEnvelopes), bills: new Map(s.bills),
     // Replaced whole, never edited in place, so a thaw shares it.
     location: s.location, txns: new Map(s.txns),
     rules: [...s.rules], months, owner: s.owner, members: new Set(s.members), label: s.label,
@@ -274,27 +276,29 @@ export function requireReason(e: Event): void {
  */
 export function checkParts(parts: readonly SplitPart[]): string | null {
   if (!Array.isArray(parts)) return 'a split needs a list of parts';
+  if (parts.some((p) => p === null || typeof p !== 'object' || typeof p.envelope !== 'string' || !p.envelope)) return 'a part names its envelope';
   if (parts.length < 2) return 'a split has at least two parts';
-  if (parts.some((p) => p === null || typeof p !== 'object' || typeof p.category !== 'string')) return 'a part names its category';
   if (parts.some((p) => !Number.isInteger(p.amount) || p.amount === 0)) return 'a part is a whole number of cents, not zero';
-  if (new Set(parts.map((p) => p.category)).size < parts.length) return 'a category appears twice in the split';
-  if (parts.some((p) => p.category === SPLIT)) return 'a part of a split cannot itself be split';
+  if (new Set(parts.map((p) => p.envelope)).size < parts.length) return 'an envelope appears twice in the split';
+  if (parts.some((p) => (p.envelope as string) === SPLIT)) return 'a part of a split cannot itself be split';
   return null;
 }
 
 /**
  * What is wrong with dividing a receipt of `amount` into `parts`, or null: the
- * shape, then that every spend category exists (transfers and income pass), then
- * that the parts add up. Both entry points, the categorize tool and the import
- * commit, ask this, so they cannot disagree about what a split is.
+ * shape, then that every spend part's envelope is in `envelopes` (transfers and
+ * income pass), then that the parts add up. Both entry points, the sorting tool
+ * and the import commit, ask this with the live envelopes, so they cannot
+ * disagree about what a split is. The fold checks shape and sum only: a part
+ * naming an envelope since removed still replays.
  */
 export function splitProblem(
   parts: readonly SplitPart[], amount: Cents,
-  categories: { has(c: string): boolean }, noCategory: (c: string) => string,
+  envelopes: { has(e: string): boolean }, noEnvelope: (e: string) => string,
 ): string | null {
   const shape = checkParts(parts);
   if (shape) return shape;
-  for (const p of parts) if (isSpend(p.category) && !categories.has(p.category)) return noCategory(p.category);
+  for (const p of parts) if (isSpend(p.envelope) && !envelopes.has(p.envelope)) return noEnvelope(p.envelope);
   if (parts.reduce((sum, p) => sum + p.amount, 0) !== amount) return 'the parts of a split must add up to the receipt';
   return null;
 }
@@ -340,18 +344,25 @@ export function validate(e: Event): void {
     const problem = checkParts(e.parts);
     if (problem) throw new ReplayError(problem, e);
   }
-  if (e.op === 'txn.categorize' && e.category === SPLIT) throw new ReplayError('a split is written with txn.split', e);
-  if (e.op === 'txn.add' && e.txns.some((t) => t.category === SPLIT || t.split !== undefined)) {
+  if (e.op === 'txn.sort' && (e.envelope as string | null) === SPLIT) throw new ReplayError('a split is written with txn.split', e);
+  if (e.op === 'txn.sort' && e.envelope !== null && !named(e.envelope)) throw new ReplayError('a receipt is sorted into an envelope, or null', e);
+  if (e.op === 'txn.add' && e.txns.some((t) => t.envelope === SPLIT || t.split !== undefined)) {
     throw new ReplayError('a receipt cannot arrive already split', e);
   }
+  if (e.op === 'rule.add' && !named(e.envelope)) throw new ReplayError('a rule sorts into an envelope', e);
   if (e.op === 'move') {
     if (e.from === e.to) throw new ReplayError('cannot move money to the same envelope', e);
     if (e.amount <= 0) throw new ReplayError('move amount must be positive', e);
   }
-  if (e.op === 'envelope.define' && e.match.categories.length === 0 && !e.match.payee) {
-    throw new ReplayError('an envelope must match at least one category', e);
+  if (e.op === 'category.add' || e.op === 'category.rename' || e.op === 'category.move' || e.op === 'category.remove') {
+    if (!named(e.category)) throw new ReplayError('a category has an id', e);
+    if ((e.op === 'category.add' || e.op === 'category.rename') && !named(e.label)) throw new ReplayError('a category has a name', e);
+    if (e.op === 'category.move' && !Number.isInteger(e.to)) throw new ReplayError('a category moves to a place in the list', e);
   }
   if (e.op === 'envelope.define') {
+    if (!named(e.envelope)) throw new ReplayError('an envelope has an id', e);
+    if (!named(e.label)) throw new ReplayError('an envelope has a name', e);
+    if (!named(e.category)) throw new ReplayError('an envelope sits under a category', e);
     if (e.needsFigure !== undefined && e.needsFigure !== true) {
       throw new ReplayError("an envelope's needsFigure is true or absent", e);
     }
@@ -438,21 +449,20 @@ function validateSinking(e: Event): void {
     case 'envelope.define': {
       const g: unknown = e.sinking;
       if (g === undefined || g === null) return;
-      const goal = g as { kind?: unknown; target?: unknown; by?: unknown };
-      if (goal.kind === 'every') return;
+      const goal = g as { kind?: unknown; target?: unknown; by?: unknown; estimate?: unknown };
+      if (goal.kind === 'every') {
+        const x = goal.estimate;
+        if (x === null) return;
+        if (x === undefined) throw refuse("an 'every' goal carries its estimate, or null for none");
+        const est = (typeof x === 'object' ? x : {}) as { cost?: unknown; everyYears?: unknown };
+        if (!wholeCents(est.cost) || est.cost === 0) throw refuse('an estimate costs something, in whole cents');
+        const n = est.everyYears;
+        if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0 || n > 100) throw refuse('an estimate comes round every so many years, more than none and at most 100');
+        return;
+      }
       if (goal.kind !== 'by') throw refuse("a sinking envelope's goal is 'every' or 'by'");
       if (!wholeCents(goal.target) || goal.target === 0) throw refuse('a goal by a date needs a target in whole cents');
       if (typeof goal.by !== 'string' || !MONTH_RE.test(goal.by)) throw refuse('a goal by a date names its month, YYYY-MM');
-      return;
-    }
-    case 'category.sinking': {
-      if (!named(e.category)) throw refuse('an estimate is for a category');
-      const x: unknown = e.sinking;
-      if (x === null) return;
-      const est = x as { cost?: unknown; everyYears?: unknown } | undefined;
-      if (!wholeCents(est?.cost) || est!.cost === 0) throw refuse('an estimate costs something, in whole cents');
-      const n = est!.everyYears;
-      if (typeof n !== 'number' || !Number.isFinite(n) || n <= 0 || n > 100) throw refuse('an estimate comes round every so many years, more than none and at most 100');
       return;
     }
     case 'month.open': {
@@ -1181,22 +1191,45 @@ function markPages(d: Draft, e: Event, before: ReadonlyMap<PlanId, Plan>): void 
 /** One event into the draft: today's switch, with the guards already passed. */
 function fold(d: Draft, e: Event): void {
   switch (e.op) {
-    case 'category.define': {
-      d.categories.set(e.category, {
-        id: e.category, label: e.label,
-        ...(e.kind !== undefined ? { kind: e.kind } : {}),
-        ...(e.sinking !== undefined ? { sinking: e.sinking } : {}),
-      });
+    case 'category.add': {
+      if (d.categories.has(e.category)) throw new ReplayError(`there is already a category ${e.category}`, e);
+      refuseTakenName(d.categories.values(), e.category, e.label, 'a category', e);
+      d.categories.set(e.category, { id: e.category, label: e.label.trim() });
+      return;
+    }
+
+    case 'category.rename': {
+      const c = categoryOrThrow(d, e.category, e);
+      refuseTakenName(d.categories.values(), e.category, e.label, 'a category', e);
+      d.categories.set(e.category, { ...c, label: e.label.trim() });
+      return;
+    }
+
+    case 'category.move': {
+      const c = categoryOrThrow(d, e.category, e);
+      if (e.to < 0 || e.to >= d.categories.size) throw new ReplayError('a category moves to a place in the list', e);
+      const rest = [...d.categories.values()].filter((x) => x.id !== c.id);
+      rest.splice(e.to, 0, c);
+      d.categories = new Map(rest.map((x) => [x.id, x]));
+      return;
+    }
+
+    case 'category.remove': {
+      const c = categoryOrThrow(d, e.category, e);
+      if ([...d.envelopes.values()].some((env) => env.category === c.id)) throw new ReplayError(`${c.label} still holds envelopes`, e);
+      d.categories.delete(c.id);
       return;
     }
 
     case 'envelope.define': {
+      if (d.removedEnvelopes.has(e.envelope)) throw new ReplayError(`${e.envelope} was removed; a new envelope takes a new id`, e);
+      if (!d.categories.has(e.category)) throw new ReplayError(`no such category: ${e.category}`, e);
+      refuseTakenName(d.envelopes.values(), e.envelope, e.label, 'an envelope', e);
       const prev = d.envelopes.get(e.envelope);
       const env: Envelope = {
         id: e.envelope,
-        label: e.label,
-        group: e.group,
-        match: e.match,
+        label: e.label.trim(),
+        category: e.category,
         rollover: e.rollover ?? prev?.rollover ?? true,
         template: e.template,
         order: e.order ?? prev?.order ?? d.envelopes.size,
@@ -1210,24 +1243,6 @@ function fold(d: Draft, e: Event): void {
       // end of a month would never add up to anything.
       const sinking = e.sinking === undefined ? prev?.sinking : e.sinking ?? undefined;
       d.envelopes.set(e.envelope, sinking ? { ...env, rollover: true, sinking } : env);
-      return;
-    }
-
-    case 'category.sinking': {
-      const c = d.categories.get(e.category);
-      if (!c) throw new ReplayError(`no category ${e.category}`, e);
-      d.categories.set(e.category, e.sinking
-        ? { ...c, sinking: { cost: e.sinking.cost, everyYears: e.sinking.everyYears } }
-        : (() => { const { sinking, ...rest } = c; return rest; })());
-      return;
-    }
-
-    case 'category.archive': {
-      const c = d.categories.get(e.category);
-      if (!c) throw new ReplayError(`no category ${e.category}`, e);
-      d.categories.set(e.category, e.archived
-        ? { ...c, archived: true }
-        : (() => { const { archived, ...rest } = c; return rest; })());
       return;
     }
 
@@ -1254,7 +1269,14 @@ function fold(d: Draft, e: Event): void {
     }
 
     case 'envelope.remove': {
-      d.envelopes.delete(e.envelope);
+      const env = d.envelopes.get(e.envelope);
+      if (!env) return; // removing an envelope that is not here is inert, not fatal
+      if (d.rules.some((r) => r.envelope === env.id)) throw new ReplayError(`a rule still sorts into ${env.label}`, e);
+      // "Closed" is read now: only the months closed at this moment keep it in their history.
+      const keptIn = [...d.months.values()].filter((m) => m.closed).map((m) => m.month).sort();
+      d.removedEnvelopes.set(env.id, { id: env.id, label: env.label, category: env.category, keptIn });
+      d.envelopes.delete(env.id);
+      for (const [slot, rec] of d.bills) if (rec.envelope === env.id) d.bills.delete(slot);
       return;
     }
 
@@ -1326,18 +1348,18 @@ function fold(d: Draft, e: Event): void {
       return;
     }
 
-    case 'txn.categorize': {
+    case 'txn.sort': {
       const was = d.txns.get(e.txn);
-      if (!was) return; // a categorize for a transaction since removed is inert, not fatal
+      if (!was) return; // sorting a receipt since removed is inert, not fatal
       // A new receipt, never the one in the map: a thaw shares them, so an
       // edit in place would reach the state it came from, and a dry run or a
       // refused batch would change the live household without a line.
       const t = { ...was };
       // Where the choice came from changes only when the choice does:
-      // re-confirming the same category keeps "suggested by Claude".
+      // re-confirming the same envelope keeps "suggested by Claude".
       if (e.suggestedBy) t.suggestedBy = e.suggestedBy;
-      else if (was.category !== e.category) delete t.suggestedBy;
-      t.category = e.category;
+      else if (was.envelope !== e.envelope) delete t.suggestedBy;
+      t.envelope = e.envelope;
       delete t.split; // a receipt sorted whole is no longer in parts
       if (e.manual) t.manual = true;
       d.txns.set(e.txn, t);
@@ -1346,12 +1368,12 @@ function fold(d: Draft, e: Event): void {
 
     case 'txn.split': {
       const was = d.txns.get(e.txn);
-      if (!was) return; // a split for a receipt since removed is inert, like a categorize
+      if (!was) return; // a split for a receipt since removed is inert, like a sort
       if (e.parts.reduce((total, p) => add(total, p.amount), ZERO) !== was.amount) {
         throw new ReplayError('the parts of a split must add up to the receipt', e);
       }
-      // A new receipt, as a categorize writes one: the old may be shared with the state.
-      const t = { ...was, category: SPLIT, split: e.parts };
+      // A new receipt, as a sort writes one: the old may be shared with the state.
+      const t = { ...was, envelope: SPLIT, split: e.parts };
       t.manual = true; // a split is always a human's call; rules must not override it
       delete t.suggestedBy;
       d.txns.set(e.txn, t);
@@ -1388,7 +1410,7 @@ function fold(d: Draft, e: Event): void {
 
     case 'rule.add': {
       d.rules = d.rules.filter((r) => r.id !== e.rule && r.match.toLowerCase() !== e.match.toLowerCase());
-      d.rules.push({ id: e.rule, match: e.match, category: e.category });
+      d.rules.push({ id: e.rule, match: e.match, envelope: e.envelope });
       return;
     }
 
@@ -2224,6 +2246,23 @@ function monthOrThrow(d: Draft, month: Month, e: Event) {
   return m;
 }
 
+function categoryOrThrow(d: Draft, id: string, e: Event): Category {
+  const c = d.categories.get(id);
+  if (!c) throw new ReplayError(`no such category: ${id}`, e);
+  return c;
+}
+
+/** A name as two names are compared: trimmed, and case ignored. */
+export const nameKey = (label: string): string => label.trim().toLowerCase();
+
+/** Refused when another of `items` (not `id` itself) already has this name, case and spaces ignored. */
+function refuseTakenName(items: Iterable<{ id: string; label: string }>, id: string, label: string, what: 'a category' | 'an envelope', e: Event): void {
+  const key = nameKey(label);
+  for (const x of items) {
+    if (x.id !== id && nameKey(x.label) === key) throw new ReplayError(`There is already ${what} called ${x.label}.`, e);
+  }
+}
+
 // ─── derived reads ────────────────────────────────────────────────────────────
 
 type MonthLike = Pick<MonthPlan, 'plan' | 'adjustments'>;
@@ -2255,11 +2294,11 @@ export function fundedTotal(m: MonthLike): Cents {
   return total;
 }
 
-/** Rules are last-match-wins, so later rules can narrow earlier ones. */
-export function categorize(rules: readonly Rule[], t: Pick<Txn, 'payee' | 'memo'>): Assignment | null {
+/** Where the rules sort a receipt, or null. Last match wins, so later rules can narrow earlier ones. */
+export function byRule(rules: readonly Rule[], t: Pick<Txn, 'payee' | 'memo'>): SortedInto | null {
   const hay = `${t.payee ?? ''} ${t.memo ?? ''}`.toLowerCase();
-  let hit: Assignment | null = null;
-  for (const r of rules) if (r.match && hay.includes(r.match.toLowerCase())) hit = r.category;
+  let hit: SortedInto | null = null;
+  for (const r of rules) if (r.match && hay.includes(r.match.toLowerCase())) hit = r.envelope;
   return hit;
 }
 

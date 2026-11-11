@@ -49,9 +49,9 @@ before(async () => {
   await seed.load();
   await seed.append('tester', [
     { op: 'household.claim', label: 'Sandbox' },
-    { op: 'category.define', category: 'service', label: 'Car service', sinking: { cost: cents(90000), everyYears: 1 } },
-    { op: 'envelope.define', envelope: 'auto', label: 'Auto', group: 'Future',
-      match: { categories: ['service'] }, template: cents(7500), order: 0, sinking: { kind: 'every' } },
+    { op: 'category.add', category: 'future', label: 'Future' },
+    { op: 'envelope.define', envelope: 'auto', label: 'Auto', category: 'future', template: cents(7500), order: 0,
+      sinking: { kind: 'every', estimate: { cost: cents(90000), everyYears: 1 } } },
     { op: 'month.open', month, income: cents(100000) },
   ]);
   const { start } = await import('../src/server.ts');

@@ -5,10 +5,10 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import { Store } from '../src/store.ts';
-import { toolByName, commit, ProposalStore, ToolError } from '../src/tools.ts';
+import { toolByName, commit, ProposalStore } from '../src/tools.ts';
 import type { Proposal, ToolContext } from '../src/tools.ts';
-import { categorize } from '../src/replay.ts';
-import { STARTER_CATEGORIES, STARTER_RULES, STARTER_GROUPS, PRICED, groupOrder, groupKind, missingStarter } from '../src/starter.ts';
+import { byRule } from '../src/replay.ts';
+import { STARTER_CATEGORIES, STARTER_RULES, PRICED, missingRules } from '../src/starter.ts';
 import { TRANSFER, INCOME } from '../src/types.ts';
 import type { NewEvent } from '../src/store.ts';
 
@@ -22,22 +22,21 @@ async function household(seed: NewEvent[] = []): Promise<ToolContext> {
   return { store, who: 'alice', today: '2026-08-13', proposals: new ProposalStore(), sid: null };
 }
 
-const propose = (c: ToolContext) => toolByName.get('add_starter_set')!.run({}, c) as Proposal;
+/** The walkthrough's Envelopes step, with one starter row ticked. */
+const propose = (c: ToolContext) => toolByName.get('make_starter_envelopes')!.run(
+  { envelopes: [{ label: 'Groceries', id: 'groceries', category: 'food' }] }, c) as Proposal;
 
 describe('the starter set', () => {
-  test('a new household is offered every category and rule, and gets them on approval', async () => {
+  test('the starter rules this household lacks come with the starter envelopes, and land on approval', async () => {
     const c = await household();
     const p = propose(c);
-    assert.equal(p.summary, `Add ${STARTER_CATEGORIES.length} categories and ${STARTER_RULES.length} rules`);
-    assert.equal(c.store.state.categories.size, 0, 'nothing is written until it is approved');
-
+    assert.equal(c.store.state.rules.length, 0, 'nothing is written until it is approved');
     await commit(p.id, c);
-    for (const s of STARTER_CATEGORIES) assert.equal(c.store.state.categories.get(s.id)?.label, s.label);
-    assert.equal(c.store.state.rules.length, STARTER_RULES.length);
+    assert.deepEqual(c.store.state.rules.map((r) => [r.match, r.envelope]), STARTER_RULES.map((r) => [r.match, r.envelope]));
   });
 
-  test('its ids are the ones pricing from local data fills, so evidence lands in a named category', () => {
-    const ids = new Set(STARTER_CATEGORIES.map((s) => s.id));
+  test('its envelope ids are the ones pricing from local data fills, so evidence lands in a named envelope', () => {
+    const ids = new Set(STARTER_CATEGORIES.flatMap((c) => c.envelopes.map((e) => e.id)));
     for (const id of ['rent', 'tax', 'elec']) assert.ok(ids.has(id), id);
   });
 
@@ -46,39 +45,35 @@ describe('the starter set', () => {
     await commit(propose(c).id, c);
     const rules = c.store.state.rules;
     // Common card-payment and payroll descriptors, as they arrive.
-    assert.equal(categorize(rules, { payee: 'PAYMENT THANK YOU - WEB Q1W2E3' }), TRANSFER);
-    assert.equal(categorize(rules, { payee: 'ACH Debit EXAMPLE BANK CREDIT CARD PAYMENT' }), TRANSFER);
-    assert.equal(categorize(rules, { payee: 'ACH Credit ACME CORP PAYROLL' }), INCOME);
-    assert.equal(categorize(rules, { payee: 'Dividend' }), INCOME);
-    assert.equal(categorize(rules, { payee: 'HILLTOP FOODS #0123' }), null, 'and nothing else');
+    assert.equal(byRule(rules, { payee: 'PAYMENT THANK YOU - WEB Q1W2E3' }), TRANSFER);
+    assert.equal(byRule(rules, { payee: 'ACH Debit EXAMPLE BANK CREDIT CARD PAYMENT' }), TRANSFER);
+    assert.equal(byRule(rules, { payee: 'ACH Credit ACME CORP PAYROLL' }), INCOME);
+    assert.equal(byRule(rules, { payee: 'Dividend' }), INCOME);
+    assert.equal(byRule(rules, { payee: 'HILLTOP FOODS #0123' }), null, 'and nothing else');
   });
 
-  test('a category already here, by id or by name, is skipped and never renamed', async () => {
-    // define_category renames when the id exists, so offering it again would
-    // quietly relabel someone's own category.
-    const c = await household([
-      { op: 'category.define', category: 'rent', label: 'Mortgage' },
-      { op: 'category.define', category: 'electricity', label: 'Electricity' },
-    ]);
+  test('a starter category already here by name is used and never renamed', async () => {
+    const c = await household([{ op: 'category.add', category: 'eating', label: 'food' }]);
     const p = propose(c);
-    assert.ok(!p.events.some((e) => e.op === 'category.define' && (e.category === 'rent' || e.category === 'elec')));
-    assert.ok(p.effects.some((e) => /Already here, so skipped: .*Rent or mortgage.*Electricity/.test(e)));
+    assert.equal(p.events.some((e) => e.op === 'category.add'), false);
     await commit(p.id, c);
-    assert.equal(c.store.state.categories.get('rent')!.label, 'Mortgage');
+    assert.equal(c.store.state.categories.get('eating')!.label, 'food');
+    assert.equal(c.store.state.envelopes.get('groceries')!.category, 'eating');
   });
 
   test('a rule overlapping one already here is skipped, because the last match wins', async () => {
     // Appended after the household's own rule, a broader starter rule would
     // override it on every receipt both match.
     const c = await household([
-      { op: 'category.define', category: 'side', label: 'Side work' },
-      { op: 'rule.add', rule: 'r-mine', match: 'ACME PAYROLL', category: 'side' },
+      { op: 'category.add', category: 'side', label: 'Side work' },
+      { op: 'envelope.define', envelope: 'side', label: 'Side work', category: 'side', template: 0 as never },
+      { op: 'rule.add', rule: 'r-mine', match: 'ACME PAYROLL', envelope: 'side' },
     ]);
     const p = propose(c);
     assert.ok(!p.events.some((e) => e.op === 'rule.add' && e.match === 'PAYROLL'));
     assert.ok(p.effects.some((e) => /"PAYROLL".*overlaps your rule "ACME PAYROLL"/.test(e)));
     await commit(p.id, c);
-    assert.equal(categorize(c.store.state.rules, { payee: 'ACME PAYROLL' }), 'side');
+    assert.equal(byRule(c.store.state.rules, { payee: 'ACME PAYROLL' }), 'side');
   });
 
   test('it says rules sort what is imported from now on, not what is already here', async () => {
@@ -86,19 +81,20 @@ describe('the starter set', () => {
     assert.ok(p.effects.some((e) => /imported from now on/.test(e)));
   });
 
-  test('a second run has nothing to offer and says so', async () => {
+  test('a second run adds no rule', async () => {
     const c = await household();
     await commit(propose(c).id, c);
-    assert.deepEqual(missingStarter(c.store.state), { categories: [], rules: [], skippedCategories: STARTER_CATEGORIES.map((s) => s.label), skippedRules: [] });
-    assert.throws(() => propose(c), (e: ToolError) => e instanceof ToolError && /already has everything/.test(e.message));
+    assert.deepEqual(missingRules(c.store.state), { rules: [], skippedRules: [] });
+    const again = toolByName.get('make_starter_envelopes')!.run({ envelopes: [{ label: 'Dining out', id: 'dining', category: 'food' }] }, c) as Proposal;
+    assert.equal(again.events.some((e) => e.op === 'rule.add'), false);
   });
 });
 
-describe('the starter groups', () => {
-  test("six groups in the spec's order, each envelope a starter category", () => {
-    assert.deepEqual(STARTER_GROUPS.map((g) => g.name),
+describe('the starter categories', () => {
+  test("six categories in the spec's order, each with today's starter envelopes", () => {
+    assert.deepEqual(STARTER_CATEGORIES.map((c) => c.label),
       ['Home', 'Food', 'Insurance', 'Utilities', 'Savings and sinking funds', 'Everyday']);
-    assert.deepEqual(STARTER_GROUPS.map((g) => g.envelopes.map((e) => e.id)), [
+    assert.deepEqual(STARTER_CATEGORIES.map((c) => c.envelopes.map((e) => e.id)), [
       ['rent', 'tax', 'upkeep'],
       ['groceries', 'dining'],
       ['homeins', 'carins', 'healthins'],
@@ -106,32 +102,12 @@ describe('the starter groups', () => {
       ['emergency', 'savings', 'travel', 'gifts'],
       ['transport', 'clothing', 'personal', 'subscriptions', 'fun'],
     ]);
-    for (const g of STARTER_GROUPS) {
-      for (const e of g.envelopes) {
-        assert.equal(e.label, STARTER_CATEGORIES.find((s) => s.id === e.id)?.label);
-      }
-    }
-    const grouped = new Set(STARTER_GROUPS.flatMap((g) => g.envelopes.map((e) => e.id)));
-    assert.equal(grouped.has('health'), false);
-    assert.ok(STARTER_CATEGORIES.some((s) => s.id === 'health'));
-    const hi = STARTER_CATEGORIES.find((s) => s.id === 'healthins');
-    assert.equal(hi?.label, 'Health insurance');
-    assert.equal(hi?.kind, 'People');
+    const all = STARTER_CATEGORIES.flatMap((c) => c.envelopes);
+    assert.equal(all.some((e) => e.id === 'health'), false, 'Health & medical is not a starter envelope');
+    assert.equal(all.find((e) => e.id === 'healthins')?.label, 'Health insurance');
   });
 
   test('PRICED is rent, tax and elec', () => {
     assert.deepEqual([...PRICED].sort(), ['elec', 'rent', 'tax']);
-  });
-
-  test('groupOrder puts the six first and the rest alphabetically', () => {
-    assert.deepEqual(groupOrder(['People', 'Food', 'Zeta', 'Home', 'Alpha', 'Food']),
-      ['Home', 'Food', 'Alpha', 'People', 'Zeta']);
-  });
-
-  test('groupKind', () => {
-    assert.equal(groupKind('Home'), 'House');
-    assert.equal(groupKind('Utilities'), 'House');
-    assert.equal(groupKind('Savings and sinking funds'), 'Future');
-    for (const g of ['Food', 'Insurance', 'Everyday', 'Pets']) assert.equal(groupKind(g), 'People');
   });
 });

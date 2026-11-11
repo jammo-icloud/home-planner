@@ -10,10 +10,10 @@
 
 import { ZERO, add, cents, fmt, fmtExact, sub } from './money.ts';
 import type { Cents } from './money.ts';
-import { carriedInto, envelopeFor, matches, openMonths } from './envelopes.ts';
+import { carriedInto, openMonths } from './envelopes.ts';
 import { fundedFor } from './replay.ts';
 import { nextMonth } from './income.ts';
-import { MONTHS_SHORT, monthOf } from './types.ts';
+import { MONTHS_SHORT, monthOf, partsOf } from './types.ts';
 import type { AccountBalance, Day, Envelope, EnvelopeId, Month, SinkingEstimate, State } from './types.ts';
 
 /** A balance older than this is not compared: the funds have moved on since, and the answer would mislead. */
@@ -29,9 +29,9 @@ export function monthsThrough(from: Month, to: Month): number {
 }
 
 /**
- * Every so often: each estimate's cost spread over the months until it comes
- * round again, added up, and rounded up to the cent once, so the goal is met
- * rather than missed by a cent a month.
+ * Every so often: the estimate's cost spread over the months until it comes
+ * round again, rounded up to the cent, so the goal is met rather than missed by
+ * a cent a month. Takes a list so several can be added before rounding once.
  */
 export function everyMonthly(estimates: readonly SinkingEstimate[]): Cents {
   const exact = estimates.reduce((n, e) => n + e.cost / (e.everyYears * 12), 0);
@@ -53,41 +53,18 @@ export function byMonthly(target: Cents, saved: Cents, month: Month, by: Month):
   return { monthly: left > 0 ? cents(Math.ceil(left / monthsLeft)) : ZERO, monthsLeft, passed: false };
 }
 
-/** One of a sinking envelope's categories, with its estimate if it has one. */
-export interface Estimate {
-  readonly category: string;
-  readonly label: string;
-  readonly cost: Cents | null;
-  readonly everyYears: number | null;
-  /** Its own share of the monthly figure, rounded up; zero without an estimate. */
-  readonly monthly: Cents;
-}
-
 export interface GoalView {
   readonly kind: 'every' | 'by';
   /** What it should be planned at this month. */
   readonly monthly: Cents;
-  /** What the bar fills toward: the estimates' costs together, or the target. */
+  /** What the bar fills toward: the estimate's cost, or the target. */
   readonly target: Cents;
   readonly by: Month | null;
   readonly monthsLeft: number | null;
   /** A goal by a date whose month has gone by. */
   readonly passed: boolean;
-  /** Every category feeding it, so the estimates can be edited on the envelope. */
-  readonly estimates: readonly Estimate[];
-}
-
-/** An envelope's categories, each with its estimate from the world (the category), if it has one. */
-export function estimatesFor(state: State, env: Envelope): Estimate[] {
-  return env.match.categories.map((id) => {
-    const c = state.categories.get(id);
-    const s = c?.sinking;
-    return {
-      category: id, label: c?.label ?? id,
-      cost: s?.cost ?? null, everyYears: s?.everyYears ?? null,
-      monthly: s ? everyMonthly([s]) : ZERO,
-    };
-  });
+  /** For an every goal: its own estimate, null while it has none. Null for a goal by a date. */
+  readonly estimate: SinkingEstimate | null;
 }
 
 /**
@@ -98,17 +75,16 @@ export function estimatesFor(state: State, env: Envelope): Estimate[] {
 export function goalFor(state: State, env: Envelope, month: Month): GoalView | null {
   const goal = env.sinking;
   if (!goal) return null;
-  const estimates = estimatesFor(state, env);
   if (goal.kind === 'every') {
-    const known = estimates.flatMap((e) => (e.cost !== null && e.everyYears !== null ? [{ cost: e.cost, everyYears: e.everyYears }] : []));
+    const estimate = goal.estimate;
     return {
-      kind: 'every', monthly: everyMonthly(known), target: cents(known.reduce((n, e) => n + e.cost, 0)),
-      by: null, monthsLeft: null, passed: false, estimates,
+      kind: 'every', monthly: everyMonthly(estimate ? [estimate] : []), target: estimate ? estimate.cost : ZERO,
+      by: null, monthsLeft: null, passed: false, estimate,
     };
   }
   const saved = carriedInto(state, month, env.id);
   const { monthly, monthsLeft, passed } = byMonthly(goal.target, saved, month, goal.by);
-  return { kind: 'by', monthly, target: goal.target, by: goal.by, monthsLeft, passed, estimates };
+  return { kind: 'by', monthly, target: goal.target, by: goal.by, monthsLeft, passed, estimate: null };
 }
 
 /** What a month opening now would plan each sinking envelope at: what its goal needs that month. */
@@ -138,11 +114,11 @@ export function balanceAsOf(state: State, env: EnvelopeId, day: Day): Cents {
     const before = openMonths(state).filter((m) => m < month).at(-1);
     return before ? carriedInto(state, nextMonth(before), env) : ZERO;
   }
+  // By part, as every rollup counts: a split's share in this envelope is spent from it.
   let spent = ZERO;
   for (const t of state.txns.values()) {
     if (monthOf(t.date) !== month || t.date > day) continue;
-    if (!matches(envelope, t) || envelopeFor(state, t)?.id !== env) continue;
-    spent = add(spent, cents(-t.amount));
+    for (const p of partsOf(t)) if (p.envelope === env) spent = add(spent, cents(-p.amount));
   }
   const carried = envelope.rollover ? carriedInto(state, month, env) : ZERO;
   return sub(add(carried, fundedFor(plan, env)), spent);

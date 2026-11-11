@@ -13,24 +13,22 @@ import type { DistributiveOmit } from '../src/util-types.ts';
 let seq = 0;
 type EvInput = DistributiveOmit<Event, 'id' | 'at' | 'who'> & { id?: string; at?: string; who?: string };
 const ev = (e: EvInput): Event => ({ id: `s${++seq}`, at: '2026-10-01T08:00:00Z', who: 'alice', ...e }) as Event;
-const txn = (id: string, date: string, amount: number, category: string): Txn =>
-  ({ id, date, payee: 'SHOP', amount: cents(amount), account: '1234', dedupeKey: id, category });
+const txn = (id: string, date: string, amount: number, envelope: string): Txn =>
+  ({ id, date, payee: 'SHOP', amount: cents(amount), account: '1234', dedupeKey: id, envelope });
 
+const AUTO = { cost: cents(90000), everyYears: 1 };
 /**
- * Auto maintenance, saved every so often (tyres $1,200 every 4 years, a
- * service $600 every year), and the Bahamas, $4,000 by March 2027.
+ * Auto maintenance, saved every so often (its own estimate: $900 every year,
+ * tyres and a service together), and the Bahamas, $4,000 by March 2027.
  */
 const base = (): Event[] => [
-  ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
-  ev({ op: 'category.define', category: 'tyres', label: 'Tyres', sinking: { cost: cents(120000), everyYears: 4 } }),
-  ev({ op: 'category.define', category: 'service', label: 'Car service', sinking: { cost: cents(60000), everyYears: 1 } }),
-  ev({ op: 'category.define', category: 'trips', label: 'Trips' }),
-  ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries', group: 'People',
-       match: { categories: ['groceries'] }, template: cents(100000) }),
-  ev({ op: 'envelope.define', envelope: 'auto', label: 'Auto maintenance', group: 'Future',
-       match: { categories: ['tyres', 'service'] }, template: cents(0), rollover: false, sinking: { kind: 'every' } }),
-  ev({ op: 'envelope.define', envelope: 'bahamas', label: 'Bahamas', group: 'Future',
-       match: { categories: ['trips'] }, template: cents(0), sinking: { kind: 'by', target: cents(400000), by: '2027-03' } }),
+  ev({ op: 'category.add', category: 'people', label: 'People' }),
+  ev({ op: 'category.add', category: 'future', label: 'Future' }),
+  ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries', category: 'people', template: cents(100000) }),
+  ev({ op: 'envelope.define', envelope: 'auto', label: 'Auto maintenance', category: 'future',
+       template: cents(0), rollover: false, sinking: { kind: 'every', estimate: AUTO } }),
+  ev({ op: 'envelope.define', envelope: 'bahamas', label: 'Bahamas', category: 'future',
+       template: cents(0), sinking: { kind: 'by', target: cents(400000), by: '2027-03' } }),
 ];
 
 describe('the monthly figure', () => {
@@ -79,13 +77,13 @@ describe('the monthly figure', () => {
     assert.equal(goalFor(s, bahamas, '2026-12')!.monthly, 87500, '$3,500 left over 4 months');
   });
 
-  test("every so often comes from its categories' estimates, and fills toward their costs together", () => {
+  test('every so often comes from its own estimate, and fills toward its cost', () => {
     const s = replay(base());
     const g = goalFor(s, s.envelopes.get('auto')!, '2026-11')!;
     assert.equal(g.monthly, 7500);
-    assert.equal(g.target, 180000);
-    assert.deepEqual(g.estimates.map((e) => [e.category, e.cost, e.everyYears, e.monthly]),
-      [['tyres', 120000, 4, 2500], ['service', 60000, 1, 5000]]);
+    assert.equal(g.target, 90000);
+    assert.deepEqual(g.estimate, { cost: 90000, everyYears: 1 });
+    assert.equal(goalFor(s, s.envelopes.get('bahamas')!, '2026-11')!.estimate, null, 'a goal by a date has none');
     assert.equal(goalFor(s, s.envelopes.get('food')!, '2026-11'), null, 'an ordinary envelope has none');
   });
 
@@ -102,41 +100,43 @@ describe('the monthly figure', () => {
 describe('the log', () => {
   test('a sinking envelope always rolls over, and keeps its goal when redefined without one', () => {
     const s = replay([...base(),
-      ev({ op: 'envelope.define', envelope: 'auto', label: 'Car', group: 'Future',
-           match: { categories: ['tyres', 'service'] }, template: cents(0), rollover: false }),
+      ev({ op: 'envelope.define', envelope: 'auto', label: 'Car', category: 'future', template: cents(0), rollover: false }),
     ]);
     const auto = s.envelopes.get('auto')!;
     assert.equal(auto.rollover, true, 'asked not to, and rolls over all the same');
-    assert.deepEqual(auto.sinking, { kind: 'every' });
+    assert.deepEqual(auto.sinking, { kind: 'every', estimate: AUTO });
     assert.equal(auto.label, 'Car');
   });
 
   test('null makes it an ordinary envelope again', () => {
     const s = replay([...base(),
-      ev({ op: 'envelope.define', envelope: 'auto', label: 'Auto', group: 'Future',
-           match: { categories: ['tyres', 'service'] }, template: cents(0), sinking: null }),
+      ev({ op: 'envelope.define', envelope: 'auto', label: 'Auto', category: 'future', template: cents(0), sinking: null }),
     ]);
     assert.equal('sinking' in s.envelopes.get('auto')!, false);
   });
 
-  test("an estimate is set and cleared on its own, leaving the category's name and archive alone", () => {
-    const s = replay([...base(),
-      ev({ op: 'category.archive', category: 'tyres', archived: true, why: 'sold the car' }),
-      ev({ op: 'category.sinking', category: 'tyres', sinking: { cost: cents(90000), everyYears: 3 } }),
-      ev({ op: 'category.sinking', category: 'service', sinking: null }),
-    ]);
-    assert.deepEqual(s.categories.get('tyres'), { id: 'tyres', label: 'Tyres', archived: true, sinking: { cost: 90000, everyYears: 3 } });
-    assert.deepEqual(s.categories.get('service'), { id: 'service', label: 'Car service' });
+  test('an estimate is changed or cleared on the envelope, its name and category left alone', () => {
+    const again = (estimate: { cost: number; everyYears: number } | null) => ev({ op: 'envelope.define', envelope: 'auto', label: 'Auto maintenance',
+      category: 'future', template: cents(0), sinking: { kind: 'every', estimate: estimate as never } });
+    const changed = replay([...base(), again({ cost: 90000, everyYears: 3 })]);
+    assert.equal(goalFor(changed, changed.envelopes.get('auto')!, '2026-11')!.monthly, 2500);
+    const cleared = replay([...base(), again(null)]);
+    const g = goalFor(cleared, cleared.envelopes.get('auto')!, '2026-11')!;
+    assert.deepEqual([g.monthly, g.target, g.estimate], [0, 0, null]);
+    assert.deepEqual([cleared.envelopes.get('auto')!.label, cleared.envelopes.get('auto')!.category], ['Auto maintenance', 'future']);
   });
 
   test('lines of the wrong shape are refused by name', () => {
     const refused = (e: EvInput) => assert.throws(() => replay([...base(), ev(e)]), ReplayError);
-    refused({ op: 'category.sinking', category: 'nope', sinking: null });
-    refused({ op: 'category.sinking', category: 'tyres', sinking: { cost: cents(0), everyYears: 2 } });
-    refused({ op: 'category.sinking', category: 'tyres', sinking: { cost: cents(100), everyYears: 0 } });
-    refused({ op: 'envelope.define', envelope: 'x', label: 'X', group: 'F', match: { categories: ['trips'] },
+    const every = (estimate: unknown) => ({ op: 'envelope.define', envelope: 'x', label: 'X', category: 'future',
+      template: cents(0), sinking: { kind: 'every', estimate } }) as EvInput;
+    refused(every(undefined));
+    refused(every({ cost: cents(0), everyYears: 2 }));
+    refused(every({ cost: cents(100), everyYears: 0 }));
+    refused(every({ cost: cents(100), everyYears: 101 }));
+    refused({ op: 'envelope.define', envelope: 'x', label: 'X', category: 'future',
               template: cents(0), sinking: { kind: 'by', target: cents(100), by: '2027-13' } });
-    refused({ op: 'envelope.define', envelope: 'x', label: 'X', group: 'F', match: { categories: ['trips'] },
+    refused({ op: 'envelope.define', envelope: 'x', label: 'X', category: 'future',
               template: cents(0), sinking: { kind: 'someday' } as never });
     refused({ op: 'month.open', month: '2026-11', income: cents(0), plan: { auto: -1 as never } });
     refused({ op: 'account.balance', account: '7', cents: cents(100), asOf: '2026-02-30', source: 'statement' });
@@ -162,9 +162,9 @@ describe('balances as of a day', () => {
     ev({ op: 'month.open', month: '2026-11', income: cents(500000),
          plan: { auto: cents(7500), bahamas: cents(80000) } }),
     ev({ op: 'txn.add', txns: [
-      txn('t1', '2026-10-10', -2000, 'service'),
-      txn('t2', '2026-10-25', -3000, 'service'),
-      txn('t3', '2026-11-05', -1000, 'tyres'),
+      txn('t1', '2026-10-10', -2000, 'auto'),
+      txn('t2', '2026-10-25', -3000, 'auto'),
+      txn('t3', '2026-11-05', -1000, 'auto'),
     ] }),
   ];
 
@@ -191,7 +191,7 @@ describe('the check against Savings', () => {
          plan: { auto: cents(7500), bahamas: cents(80000) } }),
     ev({ op: 'month.open', month: '2026-11', income: cents(500000),
          plan: { auto: cents(0), bahamas: cents(0) } }),
-    ev({ op: 'txn.add', txns: [txn('t1', '2026-10-10', -5000, 'service'), txn('t2', '2026-11-02', -10000, 'service')] }),
+    ev({ op: 'txn.add', txns: [txn('t1', '2026-10-10', -5000, 'auto'), txn('t2', '2026-11-02', -10000, 'auto')] }),
     ev({ op: 'savings.account', account: '7' }),
     ...extra.map(ev),
   ]);

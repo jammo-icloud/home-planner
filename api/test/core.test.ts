@@ -2,8 +2,9 @@ import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
 
 import { parseDollars, fmt, split, sum, cents, ZERO } from '../src/money.ts';
-import { replay, apply, validate, requireReason, fundedFor, plannedFor, plannedTotal, fundedTotal, categorize, ReplayError } from '../src/replay.ts';
-import { monthView, envelopeFor, overlappingCategories } from '../src/envelopes.ts';
+import { replay, apply, validate, requireReason, fundedFor, plannedFor, plannedTotal, fundedTotal, byRule, ReplayError } from '../src/replay.ts';
+import { monthView } from '../src/envelopes.ts';
+import { toSort } from '../src/analytics.ts';
 import { TRANSFER, INCOME } from '../src/types.ts';
 import type { Event, Txn } from '../src/types.ts';
 import type { DistributiveOmit } from '../src/util-types.ts';
@@ -15,20 +16,16 @@ const ev = (e: EvInput): Event =>
 
 type TxnInput = Omit<Partial<Txn>, 'amount'> & { id: string; date: string; amount: number };
 const txn = (o: TxnInput): Txn => ({
-  payee: 'MERCHANT', dedupeKey: o.id, category: null, ...o,
+  payee: 'MERCHANT', dedupeKey: o.id, envelope: null, ...o,
   amount: cents(o.amount),
 } as Txn);
 
 // A small but complete world: one budget, two envelopes, one month.
 function world(extra: Event[] = []) {
   return replay([
-    ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
-    ev({ op: 'category.define', category: 'dining', label: 'Dining out' }),
-    ev({ op: 'category.define', category: 'electricity', label: 'Electricity' }),
-    ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries',
-         group: 'People', match: { categories: ['groceries'] }, template: parseDollars('1125.00'), order: 0 }),
-    ev({ op: 'envelope.define', envelope: 'dine', label: 'Dining out',
-         group: 'People', match: { categories: ['dining'] }, template: parseDollars('325.00'), order: 1 }),
+    ev({ op: 'category.add', category: 'people', label: 'People' }),
+    ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries', category: 'people', template: parseDollars('1125.00'), order: 0 }),
+    ev({ op: 'envelope.define', envelope: 'dine', label: 'Dining out', category: 'people', template: parseDollars('325.00'), order: 1 }),
     ev({ op: 'month.open', month: '2026-03', income: parseDollars('9600.00') }),
     ...extra,
   ]);
@@ -158,13 +155,13 @@ describe('required reasons', () => {
   });
 });
 
-describe('envelopes as views over categories', () => {
+describe('a receipt counts in its envelope', () => {
   test('transfers and income never reach an envelope', () => {
     const s = world([
       ev({ op: 'txn.add', txns: [
-        txn({ id: 't1', date: '2026-03-04', amount: -240050, payee: 'EXAMPLE BANK CARD PAYMENT', category: TRANSFER }),
-        txn({ id: 't2', date: '2026-03-15', amount: 410000, payee: 'ACH Deposit ACME CORP', category: INCOME }),
-        txn({ id: 't3', date: '2026-03-06', amount: -8421, payee: 'VALLEY', category: 'groceries' }),
+        txn({ id: 't1', date: '2026-03-04', amount: -240050, payee: 'EXAMPLE BANK CARD PAYMENT', envelope: TRANSFER }),
+        txn({ id: 't2', date: '2026-03-15', amount: 410000, payee: 'ACH Deposit ACME CORP', envelope: INCOME }),
+        txn({ id: 't3', date: '2026-03-06', amount: -8421, payee: 'VALLEY', envelope: 'food' }),
       ] }),
     ]);
     const v = monthView(s, '2026-03')!;
@@ -176,89 +173,59 @@ describe('envelopes as views over categories', () => {
   test('a refund nets against its envelope', () => {
     const s = world([
       ev({ op: 'txn.add', txns: [
-        txn({ id: 'a', date: '2026-03-03', amount: -8421, category: 'groceries' }),
-        txn({ id: 'b', date: '2026-03-18', amount: 2200, category: 'groceries' }),
+        txn({ id: 'a', date: '2026-03-03', amount: -8421, envelope: 'food' }),
+        txn({ id: 'b', date: '2026-03-18', amount: 2200, envelope: 'food' }),
       ] }),
     ]);
     const food = monthView(s, '2026-03')!.envelopes.find((e) => e.envelope.id === 'food')!;
     assert.equal(food.activity, parseDollars('62.21'));
   });
 
-  test('spending with no envelope in this budget surfaces instead of vanishing', () => {
+  test('a receipt naming an envelope that is not here is To sort instead of vanishing', () => {
     const s = world([
       ev({ op: 'txn.add', txns: [
-        txn({ id: 'p', date: '2026-03-09', amount: -34200, payee: 'POOL SUPPLY', category: 'electricity' }),
+        txn({ id: 'p', date: '2026-03-09', amount: -34200, payee: 'POOL SUPPLY', envelope: 'electricity' }),
       ] }),
     ]);
     const v = monthView(s, '2026-03')!;
-    assert.equal(v.outside.total, parseDollars('342.00'));
-    assert.deepEqual(v.outside.txnIds, ['p']);
+    assert.deepEqual(toSort(s).txnIds, ['p']);
+    assert.equal(toSort(s).outflow, parseDollars('342.00'));
     assert.equal(v.activity, ZERO, 'and it is not counted as envelope activity');
   });
 
 });
 
 describe('the overlap month', () => {
-  // The case that would otherwise force the fact layer to fork: two electricity
-  // bills in one month, same category, different houses.
+  // Two electricity bills in one month, for two houses: two envelopes, each bill sorted into its own.
   const moving = () => replay([
-    ev({ op: 'category.define', category: 'electricity', label: 'Electricity' }),
-    ev({ op: 'envelope.define', envelope: 'util_old', label: 'Utilities - old house',
-         group: 'House', match: { categories: ['electricity'], payee: 'EXAMPLE POWER' }, template: parseDollars('300.00'), order: 0 }),
-    ev({ op: 'envelope.define', envelope: 'util_new', label: 'Utilities - new house',
-         group: 'House', match: { categories: ['electricity'], payee: 'EXAMPLE ELECTRIC' }, template: parseDollars('295.00'), order: 1 }),
+    ev({ op: 'category.add', category: 'house', label: 'House' }),
+    ev({ op: 'envelope.define', envelope: 'util_old', label: 'Utilities - old house', category: 'house', template: parseDollars('300.00'), order: 0 }),
+    ev({ op: 'envelope.define', envelope: 'util_new', label: 'Utilities - new house', category: 'house', template: parseDollars('295.00'), order: 1 }),
     ev({ op: 'month.open', month: '2026-03', income: parseDollars('9600.00') }),
     ev({ op: 'txn.add', txns: [
-      txn({ id: 'oldbill', date: '2026-03-14', amount: -30000, payee: 'EXAMPLE POWER BILLPAY', category: 'electricity' }),
-      txn({ id: 'newbill', date: '2026-03-20', amount: -12100, payee: 'EXAMPLE ELECTRIC ONLINE PMT', category: 'electricity' }),
+      txn({ id: 'oldbill', date: '2026-03-14', amount: -30000, payee: 'EXAMPLE POWER BILLPAY', envelope: 'util_old' }),
+      txn({ id: 'newbill', date: '2026-03-20', amount: -12100, payee: 'EXAMPLE ELECTRIC ONLINE PMT', envelope: 'util_new' }),
     ] }),
   ]);
 
-  test('one category feeds two envelopes, split on payee', () => {
+  test('each bill counts in its own envelope, and nothing is double counted', () => {
     const v = monthView(moving(), '2026-03')!;
     assert.equal(v.envelopes.find((e) => e.envelope.id === 'util_old')!.activity, parseDollars('300.00'));
     assert.equal(v.envelopes.find((e) => e.envelope.id === 'util_new')!.activity, parseDollars('121.00'));
-    assert.equal(v.outside.total, ZERO, 'neither bill falls outside');
-  });
-
-  test('nothing is double counted', () => {
-    const v = monthView(moving(), '2026-03')!;
-    const perEnvelope = sum(v.envelopes.map((e) => e.activity));
-    assert.equal(perEnvelope, v.activity);
+    assert.equal(sum(v.envelopes.map((e) => e.activity)), v.activity);
     assert.equal(v.activity, parseDollars('421.00'));
-  });
-
-  test('a payee-narrowed envelope beats a catch-all regardless of definition order', () => {
-    const s = apply(moving(), [
-      ev({ op: 'envelope.define', envelope: 'util_any', label: 'Utilities',
-           group: 'House', match: { categories: ['electricity'] }, template: ZERO, order: 99 }),
-    ]);
-    const oldBill = s.txns.get('oldbill')!;
-    assert.equal(envelopeFor(s, oldBill)!.id, 'util_old');
-  });
-
-  test('ambiguous mappings are detectable so the editor can block them', () => {
-    const s = apply(moving(), [
-      ev({ op: 'envelope.define', envelope: 'a', label: 'A', group: 'g',
-           match: { categories: ['electricity'] }, template: ZERO }),
-      ev({ op: 'envelope.define', envelope: 'b', label: 'B', group: 'g',
-           match: { categories: ['electricity'] }, template: ZERO }),
-    ]);
-    const clashes = overlappingCategories(s);
-    assert.deepEqual(clashes.get('electricity'), ['a', 'b']);
   });
 });
 
 describe('rollover', () => {
   const twoMonths = (rollover: boolean) => replay([
-    ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
-    ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries', group: 'People',
-         match: { categories: ['groceries'] }, template: parseDollars('1125.00'), rollover }),
+    ev({ op: 'category.add', category: 'people', label: 'People' }),
+    ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries', category: 'people', template: parseDollars('1125.00'), rollover }),
     ev({ op: 'month.open', month: '2026-02', income: parseDollars('9600.00') }),
     ev({ op: 'month.open', month: '2026-03', income: parseDollars('9600.00') }),
     ev({ op: 'txn.add', txns: [
-      txn({ id: 'f', date: '2026-02-10', amount: -19471, category: 'groceries' }),
-      txn({ id: 'g', date: '2026-03-05', amount: -9900, category: 'groceries' }),
+      txn({ id: 'f', date: '2026-02-10', amount: -19471, envelope: 'food' }),
+      txn({ id: 'g', date: '2026-03-05', amount: -9900, envelope: 'food' }),
     ] }),
   ]);
 
@@ -279,9 +246,8 @@ describe('rollover', () => {
 
 describe('replay is pure', () => {
   const log: Event[] = [
-    ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
-    ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries', group: 'People',
-         match: { categories: ['groceries'] }, template: parseDollars('1125.00') }),
+    ev({ op: 'category.add', category: 'people', label: 'People' }),
+    ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries', category: 'people', template: parseDollars('1125.00') }),
     ev({ op: 'month.open', month: '2026-03', income: parseDollars('9600.00') }),
     ev({ op: 'move', month: '2026-03', from: 'food', to: 'food2', amount: cents(1), why: 'x' }),
   ].slice(0, 4);
@@ -312,16 +278,16 @@ describe('replay is pure', () => {
 describe('rules', () => {
   test('last match wins, so a later rule can narrow an earlier one', () => {
     const rules = [
-      { id: '1', match: 'AMAZON', category: 'subs' },
-      { id: '2', match: 'AMAZON MKTPL', category: 'groceries' },
+      { id: '1', match: 'AMAZON', envelope: 'subs' },
+      { id: '2', match: 'AMAZON MKTPL', envelope: 'food' },
     ];
-    assert.equal(categorize(rules, { payee: 'AMAZON RETA* 3X9QZ' }), 'subs');
-    assert.equal(categorize(rules, { payee: 'AMAZON MKTPL*1A2B3C4D5' }), 'groceries');
-    assert.equal(categorize(rules, { payee: 'VALLEY MARKET' }), null);
+    assert.equal(byRule(rules, { payee: 'AMAZON RETA* 3X9QZ' }), 'subs');
+    assert.equal(byRule(rules, { payee: 'AMAZON MKTPL*1A2B3C4D5' }), 'food');
+    assert.equal(byRule(rules, { payee: 'VALLEY MARKET' }), null);
   });
 
   test('memo is searched as well as payee', () => {
-    const rules = [{ id: '1', match: 'SUBSCRIPTION', category: 'subs' }];
-    assert.equal(categorize(rules, { payee: 'NETFLIX.COM', memo: 'SUBSCRIPTION' }), 'subs');
+    const rules = [{ id: '1', match: 'SUBSCRIPTION', envelope: 'subs' }];
+    assert.equal(byRule(rules, { payee: 'NETFLIX.COM', memo: 'SUBSCRIPTION' }), 'subs');
   });
 });

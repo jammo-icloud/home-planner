@@ -19,8 +19,8 @@ const pick = (f: { step: unknown; started: boolean }) => ({ step: f.step, starte
 
 describe('one budget per household', () => {
   test('a household holds its envelopes, months and bills directly', () => {
-    const s = replay([claim, ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
-      ev({ op: 'envelope.define', envelope: 'groc', label: 'Groceries', group: 'Food', match: { categories: ['groceries'] }, template: cents(60000) }),
+    const s = replay([claim, ev({ op: 'category.add', category: 'groceries', label: 'Groceries' }),
+      ev({ op: 'envelope.define', envelope: 'groc', label: 'Groceries', category: 'groceries', template: cents(60000) }),
       ev({ op: 'month.open', month: '2026-11', income: cents(500000) })]);
     assert.deepEqual([...s.envelopes.keys()], ['groc']);
     assert.equal(s.months.get('2026-11')?.income, 500000);
@@ -59,8 +59,8 @@ describe('one budget per household', () => {
     assert.deepEqual(pick(firstRun(skipped, today)), { step: 'envelopes', started: false });
   });
   test('envelopes alone start the budget, with no place and the month closed', () => {
-    const s = replay([claim, ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
-      ev({ op: 'envelope.define', envelope: 'groc', label: 'Groceries', group: 'Food', match: { categories: ['groceries'] }, template: cents(60000) }),
+    const s = replay([claim, ev({ op: 'category.add', category: 'groceries', label: 'Groceries' }),
+      ev({ op: 'envelope.define', envelope: 'groc', label: 'Groceries', category: 'groceries', template: cents(60000) }),
       ev({ op: 'month.open', month: '2026-11', income: cents(500000) }),
       ev({ op: 'month.close', month: '2026-11', closed: true, why: 'done' })]);
     assert.equal(s.location, null);

@@ -32,12 +32,9 @@ async function ctx(): Promise<ToolContext> {
   await store.append('alice', [
     { op: 'household.claim', label: 'Home' },
     { op: 'member.add', member: 'bob', why: 'my partner' },
-    { op: 'category.define', category: 'groceries', label: 'Groceries' },
-    { op: 'category.define', category: 'travel', label: 'Travel' },
-    { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'People',
-      match: { categories: ['groceries'] }, template: parseDollars('600.00'), order: 0 },
-    { op: 'envelope.define', envelope: 'trip', label: 'Travel', group: 'Future',
-      match: { categories: ['travel'] }, template: parseDollars('400.00'), order: 1 },
+    { op: 'category.add', category: 'people', label: 'People' },
+    { op: 'envelope.define', envelope: 'food', label: 'Food', category: 'people', template: parseDollars('600.00'), order: 0 },
+    { op: 'envelope.define', envelope: 'trip', label: 'Travel', category: 'people', template: parseDollars('400.00'), order: 1 },
     { op: 'month.open', month: '2026-08', income: parseDollars('1000.00') },
   ]);
   return { store, who: 'bob', today: TODAY, proposals: new ProposalStore(), sid: null };

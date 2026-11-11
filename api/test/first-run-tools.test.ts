@@ -15,7 +15,7 @@ import type { NewEvent } from '../src/store.ts';
 
 const NOW = '2026-11-04T09:00:00Z';
 
-/** The Rivera household with a budget called Placitas and nothing else: no categories, no envelopes. */
+/** The Rivera household and nothing else: no categories, no envelopes. */
 async function fresh(seed: NewEvent[] = []): Promise<ToolContext> {
   const path = join(await mkdtemp(join(tmpdir(), 'pb-first-run-')), 'events.jsonl');
   const store = new Store({ path, now: () => new Date(NOW) });
@@ -27,91 +27,92 @@ async function fresh(seed: NewEvent[] = []): Promise<ToolContext> {
   return { store, who: 'alex', today: '2026-11-04', proposals: new ProposalStore(), sid: null };
 }
 
-type Row = { label: string; group: string; category?: string };
+type Row = { label: string; id?: string; category?: string; newCategory?: string };
 const make = (c: ToolContext, envelopes: Row[]) =>
   toolByName.get('make_starter_envelopes')!.run({ envelopes }, c) as Proposal;
 const income = (c: ToolContext, args: Record<string, unknown>) =>
   toolByName.get('set_month_income')!.run({ ...args }, c) as Proposal;
 
 describe('make_starter_envelopes', () => {
-  test('ticked starter rows become envelopes in their groups, with no figure', async () => {
+  test('ticked starter rows become envelopes under their starter categories, with no figure', async () => {
     const c = await fresh();
     const p = make(c, [
-      { label: 'Rent or mortgage', group: 'Home', category: 'rent' },
-      { label: 'Groceries', group: 'Food', category: 'groceries' },
-      { label: 'Health insurance', group: 'Insurance', category: 'healthins' },
+      { label: 'Rent or mortgage', id: 'rent', category: 'home' },
+      { label: 'Groceries', id: 'groceries', category: 'food' },
+      { label: 'Health insurance', id: 'healthins', category: 'insurance' },
     ]);
     assert.equal(p.summary, 'Make 3 envelopes');
     assert.ok(p.effects.includes('Every one starts without a figure until it is given one'));
     assert.ok(p.effects.includes('Home: Rent or mortgage'));
+    // The starter categories the rows name, in starter order; the rules; then the envelopes.
+    assert.deepEqual(p.events.map((e) => e.op === 'category.add' ? e.category : e.op === 'envelope.define' ? e.envelope : e.op),
+      ['home', 'food', 'insurance', 'rule.add', 'rule.add', 'rule.add', 'rule.add', 'rent', 'groceries', 'healthins']);
     await commit(p.id, c);
 
     const e = c.store.state.envelopes.get('rent')!;
-    assert.equal(e.group, 'Home');
+    assert.equal(e.category, 'home');
     assert.equal(e.needsFigure, true);
     assert.equal(e.template, 0);
     assert.equal(e.rollover, true);
-    assert.deepEqual(e.match.categories, ['rent']);
-    assert.equal(c.store.state.categories.get('rent')?.label, 'Rent or mortgage');
+    assert.deepEqual([...c.store.state.categories.values()].map((x) => x.label), ['Home', 'Food', 'Insurance']);
     assert.equal(c.store.state.rules.length, STARTER_RULES.length);
+    assert.deepEqual(c.store.state.rules.map((r) => r.envelope), STARTER_RULES.map((r) => r.envelope));
   });
 
-  test('a renamed row keeps its category and the category its starter name', async () => {
+  test('a renamed row keeps its starter id', async () => {
     const c = await fresh();
-    await commit(make(c, [{ label: 'Mortgage', group: 'Home', category: 'rent' }]).id, c);
+    await commit(make(c, [{ label: 'Mortgage', id: 'rent', category: 'home' }]).id, c);
     assert.equal(c.store.state.envelopes.get('rent')!.label, 'Mortgage');
-    assert.equal(c.store.state.categories.get('rent')?.label, 'Rent or mortgage');
   });
 
-  test('a row of your own makes its category', async () => {
-    const c = await fresh();
-    await commit(make(c, [{ label: 'Pets', group: 'Everyday' }]).id, c);
-    assert.equal(c.store.state.categories.get('pets')?.label, 'Pets');
-    assert.equal(c.store.state.categories.get('pets')?.kind, 'People');
-    assert.equal(c.store.state.envelopes.get('pets')!.needsFigure, true);
-  });
-
-  test('a row of your own reuses a category by name', async () => {
-    const c = await fresh([{ op: 'category.define', category: 'animals', label: 'Pets' }]);
-    const p = make(c, [{ label: 'pets', group: 'Everyday' }]);
-    assert.equal(p.events.some((e) => e.op === 'category.define' && e.category === 'pets'), false);
+  test('a row of your own takes an id from its name, under a category here or a new one', async () => {
+    const c = await fresh([{ op: 'category.add', category: 'everyday', label: 'Everyday' }]);
+    const p = make(c, [{ label: 'Pets', category: 'everyday' }, { label: 'Allowance', newCategory: 'Children' }, { label: 'Lessons', newCategory: 'children' }]);
     await commit(p.id, c);
-    assert.deepEqual(c.store.state.envelopes.get('animals')!.match.categories, ['animals']);
+    assert.equal(c.store.state.envelopes.get('pets')!.category, 'everyday');
+    assert.equal(c.store.state.envelopes.get('pets')!.needsFigure, true);
+    assert.equal(c.store.state.categories.get('children')?.label, 'Children');
+    assert.deepEqual(['allowance', 'lessons'].map((id) => c.store.state.envelopes.get(id)!.category), ['children', 'children'], 'one new category, not two');
   });
 
-  test('two rows on one category, or one already fed, are refused with words', async () => {
-    const c = await fresh();
-    const before = c.store.state.lastEventId;
-    assert.throws(() => make(c, [
-      { label: 'Groceries', group: 'Food', category: 'groceries' },
-      { label: 'Groceries', group: 'Food' },
-    ]), /Groceries and Groceries would both be fed by groceries/);
-    assert.equal(c.store.state.lastEventId, before);
+  test('a starter id or a name already taken takes a fresh id; a starter category here by name is used', async () => {
+    const c = await fresh([
+      { op: 'category.add', category: 'eating', label: 'Food' },
+      { op: 'envelope.define', envelope: 'groceries', label: 'Groceries', category: 'eating', template: cents(0) },
+    ]);
+    const p = make(c, [{ label: 'Groceries at home', id: 'groceries', category: 'food' }]);
+    assert.equal(p.events.some((e) => e.op === 'category.add'), false);
+    await commit(p.id, c);
+    assert.equal(c.store.state.envelopes.get('groceries-2')!.category, 'eating');
+  });
 
+  test('names already taken, a category named twice, or a new category that is here are refused with words', async () => {
     const d = await fresh([
-      { op: 'category.define', category: 'groceries', label: 'Groceries' },
-      { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'Food',
-        match: { categories: ['groceries'] }, template: cents(0), order: 0 },
+      { op: 'category.add', category: 'food', label: 'Food' },
+      { op: 'envelope.define', envelope: 'food', label: 'Groceries', category: 'food', template: cents(0), order: 0 },
     ]);
     const after = d.store.state.lastEventId;
-    assert.throws(() => make(d, [{ label: 'Groceries', group: 'Food', category: 'groceries' }]), /groceries already feeds/);
+    assert.throws(() => make(d, [{ label: 'groceries ', id: 'groceries', category: 'food' }]), /There is already an envelope called Groceries\./);
+    assert.throws(() => make(d, [{ label: 'Dining', category: 'food' }, { label: 'DINING', category: 'food' }]), /DINING is named twice/);
+    assert.throws(() => make(d, [{ label: 'Dining', newCategory: ' food' }]), /There is already a category called Food\./);
+    assert.throws(() => make(d, [{ label: 'Dining', category: 'food', newCategory: 'Eating' }]), /give one/);
     assert.equal(d.store.state.lastEventId, after);
   });
 
-  test('nothing ticked, a blank name, or an unknown category is refused', async () => {
+  test('nothing ticked, a blank name, no category, or an unknown category is refused', async () => {
     const c = await fresh();
     assert.throws(() => make(c, []), /at least one envelope/);
-    assert.throws(() => make(c, [{ label: '  ', group: 'Home' }]), /name/);
-    assert.throws(() => make(c, [{ label: 'Rent', group: 'Home', category: 'nope' }]), /no category nope/);
-    assert.throws(() => make(c, [{ label: '!!!', group: 'Home' }]), /letters or numbers/);
+    assert.throws(() => make(c, [{ label: '  ', category: 'home' }]), /name/);
+    assert.throws(() => make(c, [{ label: 'Rent' }]), /Rent needs a category/);
+    assert.throws(() => make(c, [{ label: 'Rent', category: 'nope' }]), /no category nope/);
+    assert.throws(() => make(c, [{ label: '!!!', category: 'home' }]), /letters or numbers/);
   });
 });
 
 describe('set_month_income', () => {
   const open = (): NewEvent[] => [
-    { op: 'category.define', category: 'rent', label: 'Rent or mortgage' },
-    { op: 'envelope.define', envelope: 'rent', label: 'Rent', group: 'Home',
-      match: { categories: ['rent'] }, template: cents(100000), order: 0 },
+    { op: 'category.add', category: 'rent', label: 'Rent or mortgage' },
+    { op: 'envelope.define', envelope: 'rent', label: 'Rent', category: 'rent', template: cents(100000), order: 0 },
     { op: 'month.open', month: '2026-11', income: cents(0) },
   ];
 
@@ -134,9 +135,8 @@ describe('set_month_income', () => {
 
 describe('giving an envelope a figure', () => {
   const flagged = (extra: Record<string, unknown> = {}): NewEvent[] => [
-    { op: 'category.define', category: 'groceries', label: 'Groceries' },
-    { op: 'envelope.define', envelope: 'groceries', label: 'Groceries', group: 'Food',
-      match: { categories: ['groceries'] }, template: cents(0), order: 0, needsFigure: true, ...extra } as NewEvent,
+    { op: 'category.add', category: 'groceries', label: 'Groceries' },
+    { op: 'envelope.define', envelope: 'groceries', label: 'Groceries', category: 'groceries', template: cents(0), order: 0, needsFigure: true, ...extra } as NewEvent,
     { op: 'month.open', month: '2026-11', income: cents(640000) },
   ];
   const figure = (c: ToolContext, args: Record<string, unknown>) =>
@@ -181,8 +181,7 @@ describe('giving an envelope a figure', () => {
   test('define_envelope without a template keeps the template, the flag and the source; with one clears them', async () => {
     const c = await fresh(flagged({ source: 'a statement' }));
     const rename = (extra: Record<string, unknown>) => toolByName.get('define_envelope')!.run({
-      envelope: 'groceries', label: 'Food at home', group: 'Food',
-      categories: ['groceries'], ...extra,
+      envelope: 'groceries', label: 'Food at home', ...extra,
     }, c) as Proposal;
     await commit(rename({}).id, c);
     assert.equal(groceries(c).label, 'Food at home');
@@ -198,9 +197,9 @@ describe('giving an envelope a figure', () => {
 
   test('a new envelope defined without a template starts with no figure', async () => {
     const c = await fresh(flagged());
-    await c.store.append('alex', [{ op: 'category.define', category: 'pets', label: 'Pets' }]);
+    await c.store.append('alex', [{ op: 'category.add', category: 'pets', label: 'Pets' }]);
     const p = toolByName.get('define_envelope')!.run({
-      envelope: 'pets', label: 'Pets', group: 'Everyday', categories: ['pets'],
+      envelope: 'pets', label: 'Pets', category: 'pets',
     }, c) as Proposal;
     await commit(p.id, c);
     const e = c.store.state.envelopes.get('pets')!;
@@ -224,7 +223,7 @@ describe('giving an envelope a figure', () => {
   const assign = (c: ToolContext, args: Record<string, unknown>) =>
     toolByName.get('set_assignment')!.run({ envelope: 'groceries', why: 'cover', ...args }, c) as Proposal;
   const receipt = (c: ToolContext, amount: number) => c.store.append('alex', [{ op: 'txn.add', txns: [
-    { id: 'r1', date: '2026-11-03', payee: 'VALLEY MARKET #101', amount: cents(-amount), dedupeKey: 'r1', category: 'groceries' },
+    { id: 'r1', date: '2026-11-03', payee: 'VALLEY MARKET #101', amount: cents(-amount), dedupeKey: 'r1', envelope: 'groceries' },
   ] } as NewEvent]);
 
   test('an assignment only while short is refused once the envelope is no longer short', async () => {
@@ -252,9 +251,8 @@ describe('giving an envelope a figure', () => {
 
 describe('a figure kept with its basis', () => {
   const plain = (extra: Record<string, unknown> = {}): NewEvent[] => [
-    { op: 'category.define', category: 'carins', label: 'Car insurance' },
-    { op: 'envelope.define', envelope: 'carins', label: 'Car insurance', group: 'Home',
-      match: { categories: ['carins'] }, template: cents(10000), order: 0, ...extra } as NewEvent,
+    { op: 'category.add', category: 'carins', label: 'Car insurance' },
+    { op: 'envelope.define', envelope: 'carins', label: 'Car insurance', category: 'carins', template: cents(10000), order: 0, ...extra } as NewEvent,
     { op: 'month.open', month: '2026-11', income: cents(640000) },
   ];
   const carins = (c: ToolContext) => c.store.state.envelopes.get('carins')!;
@@ -316,7 +314,7 @@ describe('a figure kept with its basis', () => {
   test('define_envelope takes a basis beside templateCents', async () => {
     const c = await fresh(plain());
     const define = (extra: Record<string, unknown>) => toolByName.get('define_envelope')!.run({
-      envelope: 'carins', label: 'Car insurance', categories: ['carins'], ...extra,
+      envelope: 'carins', label: 'Car insurance', ...extra,
     }, c) as Proposal;
     assert.throws(() => define({ templateCents: 100, basis: { amountCents: 1200, per: 'year' } }), /give templateCents or basis, not both/);
     await commit(define({ basis: { amountCents: 25000, per: 'quarter' } }).id, c);
@@ -328,9 +326,9 @@ describe('a figure kept with its basis', () => {
     await commit(define({ templateCents: 9000 }).id, c);
     assert.equal('basis' in carins(c), false);
 
-    await c.store.append('alex', [{ op: 'category.define', category: 'pets', label: 'Pets' }]);
+    await c.store.append('alex', [{ op: 'category.add', category: 'pets', label: 'Pets' }]);
     await commit((toolByName.get('define_envelope')!.run({
-      envelope: 'pets', label: 'Pets', categories: ['pets'], basis: { amountCents: 1200, per: 'year' },
+      envelope: 'pets', label: 'Pets', category: 'pets', basis: { amountCents: 1200, per: 'year' },
     }, c) as Proposal).id, c);
     const pets = c.store.state.envelopes.get('pets')!;
     assert.equal(pets.template, 100);

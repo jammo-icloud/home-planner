@@ -9,11 +9,11 @@
 
 import { ZERO, add, sub, cents, fmt, sum } from './money.ts';
 import type { Cents } from './money.ts';
-import { monthView, envelopeFor } from './envelopes.ts';
+import { keptIn, monthView } from './envelopes.ts';
 import type { EnvelopeView, MonthView } from './envelopes.ts';
 import { fundedFor, plannedFor } from './replay.ts';
-import { MONTHS_SHORT, isSpend, monthOf, partsOf, prevMonth } from './types.ts';
-import type { BillDate, BillRecord, Day, EnvelopeId, Month, State, Txn } from './types.ts';
+import { MONTHS_SHORT, SPLIT, isSpend, monthOf, partsOf, prevMonth } from './types.ts';
+import type { BillDate, BillRecord, Day, EnvelopeId, Month, State, Txn, TxnId } from './types.ts';
 
 // ─── the month's clock ────────────────────────────────────────────────────────
 
@@ -44,10 +44,10 @@ export function monthClock(month: Month, today: Day): MonthClock {
 // ─── fixed monthly charges ────────────────────────────────────────────────────
 
 export interface FixedCharge {
-  /** Normalised payee and category together, so callers can match a transaction. */
+  /** Normalised payee and envelope together, so callers can match a receipt's part. */
   readonly key: string;
   readonly payee: string;
-  readonly category: string;
+  readonly envelope: EnvelopeId;
   /** What it bills, averaged across the months it has been seen in. */
   readonly typical: Cents;
   readonly months: readonly Month[];
@@ -68,15 +68,17 @@ export interface FixedCharge {
  * two months is enough evidence to stop extrapolating but a month with two
  * charges in it disqualifies the payee outright.
  *
- * Grouped by payee AND category, because a bank descriptor is not always a
+ * Grouped by payee AND envelope, because a bank descriptor is not always a
  * merchant. Rent and a $60 Zelle payment both arrive as "P2P PAYMENT"; keyed on
  * the descriptor alone the second one makes the month look double-billed and
- * rent starts extrapolating again. Their categories are what tell them apart.
+ * rent starts extrapolating again. The envelopes they are sorted into are what
+ * tell them apart; two sorted into one envelope are one charge seen twice.
+ * Counted by part, so a split's share is a charge of its own envelope.
  */
-/** Empty when the transaction cannot be a fixed charge at all. */
-const chargeKey = (payee: string, category: string | null): string => {
+/** Empty when the part cannot be a fixed charge at all. */
+export const chargeKey = (payee: string, envelope: string | null): string => {
   const p = normalisePayee(payee);
-  return p && category ? `${p}|${category}` : '';
+  return p && envelope ? `${p}|${envelope}` : '';
 };
 
 export function fixedCharges(
@@ -86,34 +88,37 @@ export function fixedCharges(
   const minMonths = opts.minMonths ?? 2;
   const tolerance = opts.tolerance ?? 0.15;
 
-  const byPayee = new Map<string, Txn[]>();
+  interface Charge { readonly t: Txn; readonly envelope: EnvelopeId; readonly amount: number }
+  const byPayee = new Map<string, Charge[]>();
   for (const t of state.txns.values()) {
-    if (t.amount >= 0) continue;
-    if (t.category === null || !isSpend(t.category)) continue; // transfers, income and unsorted rows are not charges
-    const key = chargeKey(t.payee, t.category);
-    if (!key) continue;
-    (byPayee.get(key) ?? byPayee.set(key, []).get(key)!).push(t);
+    // transfers, income and receipts To sort holds whole are not charges
+    for (const p of partsOf(t)) {
+      if (p.amount >= 0 || !isSpend(p.envelope)) continue;
+      const key = chargeKey(t.payee, p.envelope);
+      if (!key) continue;
+      (byPayee.get(key) ?? byPayee.set(key, []).get(key)!).push({ t, envelope: p.envelope, amount: p.amount });
+    }
   }
 
   const out: FixedCharge[] = [];
   for (const [key, txns] of byPayee) {
-    const perMonth = new Map<Month, Txn[]>();
-    for (const t of txns) {
-      const m = monthOf(t.date);
-      (perMonth.get(m) ?? perMonth.set(m, []).get(m)!).push(t);
+    const perMonth = new Map<Month, Charge[]>();
+    for (const c of txns) {
+      const m = monthOf(c.t.date);
+      (perMonth.get(m) ?? perMonth.set(m, []).get(m)!).push(c);
     }
     if (perMonth.size < minMonths) continue;
     // a month with two charges in it means this is not a fixed monthly bill
     if ([...perMonth.values()].some((rows) => rows.length !== 1)) continue;
 
-    const amounts = txns.map((t) => Math.abs(t.amount));
+    const amounts = txns.map((c) => Math.abs(c.amount));
     const typical = cents(amounts.reduce((a, b) => a + b, 0) / amounts.length);
     if (!amounts.every((a) => Math.abs(a - typical) <= typical * tolerance)) continue;
 
     out.push({
-      key, payee: txns[0]!.payee, category: txns[0]!.category as string,
+      key, payee: txns[0]!.t.payee, envelope: txns[0]!.envelope,
       typical: typical as Cents, months: [...perMonth.keys()].sort(),
-      lastDate: txns.reduce((d, t) => (t.date > d ? t.date : d), txns[0]!.date),
+      lastDate: txns.reduce((d, c) => (c.t.date > d ? c.t.date : d), txns[0]!.t.date),
     });
   }
   return out.sort((a, b) => b.typical - a.typical);
@@ -183,7 +188,7 @@ export function lowEnvelopes(paced: readonly Pace[], n: number): LowEnvelope[] {
  * that actually varies with behaviour — is still extrapolated at the current
  * rate, because "at this rate" is what a person means about groceries.
  *
- * Spending on a sinking category is never extrapolated either: those are
+ * Spending from a savings envelope is never extrapolated either: it is
  * periodic by definition and already funded as reserves.
  */
 export function pace(view: MonthView, clock: MonthClock, state: State): Pace[] {
@@ -203,9 +208,8 @@ export function pace(view: MonthView, clock: MonthClock, state: State): Pace[] {
       const t = state.txns.get(line.txnId);
       if (!t) continue;
       const amount = cents(Math.abs(line.amount));
-      const key = chargeKey(t.payee, line.category);
-      const sinking = isSpend(line.category)
-        && state.categories.get(line.category)?.sinking !== undefined;
+      const key = chargeKey(t.payee, e.envelope.id);
+      const sinking = state.envelopes.get(e.envelope.id)?.sinking !== undefined;
       if (byKey.has(key) || sinking) {
         committed = add(committed, amount);
       } else {
@@ -315,7 +319,7 @@ export function drift(state: State, month: Month, lookback = 3): Drift[] {
 
 export interface Recurring {
   readonly payee: string;
-  readonly category: string | null;
+  readonly envelope: string | null;
   readonly months: readonly Month[];
   readonly typical: Cents;
   /** True when it recurs but no rule covers it — a subscription you haven't noticed. */
@@ -350,7 +354,7 @@ export function recurring(state: State, opts: { minMonths?: number; tolerance?: 
     const covered = state.rules.some((r) => key.includes(r.match.toLowerCase()));
     out.push({
       payee: txns[0]!.payee,
-      category: txns[0]!.category,
+      envelope: txns[0]!.envelope,
       months,
       typical: typical as Cents,
       unruled: !covered,
@@ -411,8 +415,7 @@ interface BillPart extends BillPaid { readonly month: Month; readonly charge: st
 /**
  * Each live envelope's bills: the fixed charges that land in it, and the dates
  * and names members gave. Receipts are counted by part, as `pace` counts them,
- * and a charge is placed by the receipt's own category, as `pace` places it:
- * the two walks stay apart so no figure moves.
+ * and a charge is placed by the envelope its part is sorted into, as `pace` places it.
  */
 export function billsOf(
   state: State,
@@ -426,16 +429,14 @@ export function billsOf(
   const landed = new Map<EnvelopeId, Map<string, Set<Month>>>();
   const charged = new Map<EnvelopeId, Map<string, FixedCharge>>();
   for (const t of state.txns.values()) {
-    // whole receipts place a charge, by the receipt's category
-    const f = byKey.get(chargeKey(t.payee, t.category));
-    const home = f ? envelopeFor(state, t) : null;
-    if (f && home) (charged.get(home.id) ?? charged.set(home.id, new Map()).get(home.id)!).set(f.key, f);
-    // parts say what landed and what was paid
+    // parts say what was charged, what landed and what was paid, each in its live envelope
     for (const p of partsOf(t)) {
-      if (!isSpend(p.category)) continue;
-      const env = envelopeFor(state, { ...t, category: p.category });
+      if (!isSpend(p.envelope)) continue;
+      const env = state.envelopes.get(p.envelope);
       if (!env) continue;
-      const charge = chargeKey(t.payee, p.category);
+      const charge = chargeKey(t.payee, p.envelope);
+      const f = byKey.get(charge);
+      if (f) (charged.get(env.id) ?? charged.set(env.id, new Map()).get(env.id)!).set(f.key, f);
       const month = monthOf(t.date);
       (parts.get(env.id) ?? parts.set(env.id, []).get(env.id)!).push({
         txnId: t.id, day: t.date, month, amount: cents(-p.amount), payee: t.payee, charge, key: billKey(t.payee),
@@ -613,36 +614,59 @@ export function billsExpected(bills: readonly Bill[], month: Month): Cents {
 
 // ─── the queue ────────────────────────────────────────────────────────────────
 
-export interface Unsorted {
+export interface ToSort {
   readonly count: number;
   /** Money out. This is the figure that means "spending not yet accounted for". */
   readonly outflow: Cents;
   /** Money in — paycheques and card payments that just haven't been ruled yet. */
   readonly inflow: Cents;
   readonly oldest: Day | null;
-  readonly txnIds: readonly string[];
+  readonly txnIds: readonly TxnId[];
+  /** For a split receipt held for a part: the envelopes of its parts that are not there. */
+  readonly missing: ReadonlyMap<TxnId, readonly EnvelopeId[]>;
+}
+
+/** The parts of a receipt whose envelope is neither live nor kept by its month's history. */
+function missingParts(state: State, t: Txn): EnvelopeId[] {
+  const month = monthOf(t.date);
+  return partsOf(t).flatMap((p) =>
+    isSpend(p.envelope) && !state.envelopes.has(p.envelope) && !keptIn(state, p.envelope, month) ? [p.envelope] : []);
 }
 
 /**
- * Uncategorised transactions, with money in and money out kept apart.
+ * Whether To sort holds this receipt: it has no envelope, or it (or a part of
+ * it) names one that is not here, unless its month keeps that envelope in its
+ * history. A split held for a part still counts its other parts where they are.
+ */
+export function inToSort(state: State, t: Txn): boolean {
+  return t.envelope === null || missingParts(state, t).length > 0;
+}
+
+/**
+ * The receipts To sort holds, with money in and money out kept apart.
  *
  * Summing the absolute value of both would report an unsorted paycheque and a
  * card payment as if they were unexplained spending — on a real import that
  * reads as tens of thousands of dollars missing, which is alarming and false.
  */
-export function unsorted(state: State): Unsorted {
-  const ids: string[] = [];
+export function toSort(state: State): ToSort {
+  const ids: TxnId[] = [];
+  const missing = new Map<TxnId, EnvelopeId[]>();
   let outflow = ZERO;
   let inflow = ZERO;
   let oldest: Day | null = null;
   for (const t of state.txns.values()) {
-    if (t.category !== null) continue;
+    if (t.envelope !== null) {
+      const gone = missingParts(state, t);
+      if (!gone.length) continue;
+      if (t.envelope === SPLIT) missing.set(t.id, gone);
+    }
     ids.push(t.id);
     if (t.amount < 0) outflow = add(outflow, cents(-t.amount));
     else inflow = add(inflow, cents(t.amount));
     if (!oldest || t.date < oldest) oldest = t.date;
   }
-  return { count: ids.length, outflow, inflow, oldest, txnIds: ids };
+  return { count: ids.length, outflow, inflow, oldest, txnIds: ids, missing };
 }
 
 // ─── where to pull money from ─────────────────────────────────────────────────
@@ -666,7 +690,7 @@ export function donors(view: MonthView, clock: MonthClock, exclude: EnvelopeId, 
   const paced = new Map(pace(view, clock, state).map((p) => [p.envelope, p]));
   const out: Donor[] = [];
   for (const e of view.envelopes) {
-    if (e.envelope.id === exclude) continue;
+    if (e.envelope.id === exclude || e.removed) continue;
     if (e.available <= 0) continue;
     const p = paced.get(e.envelope.id);
     // keep back whatever it still looks likely to spend
@@ -688,7 +712,7 @@ export interface Snapshot {
   readonly view: MonthView;
   readonly pace: readonly Pace[];
   readonly drift: readonly Drift[];
-  readonly unsorted: Unsorted;
+  readonly toSort: ToSort;
   readonly recurring: readonly Recurring[];
   readonly balanced: boolean;
 }
@@ -707,7 +731,7 @@ export function snapshot(state: State, month: Month, today: Day): Snapshot | nul
     month, clock, view,
     pace: pace(view, clock, state),
     drift: drift(state, month),
-    unsorted: unsorted(state),
+    toSort: toSort(state),
     recurring: recurring(state).filter((r) => r.unruled),
     balanced: Math.abs(view.toAssign) < 100,
   };

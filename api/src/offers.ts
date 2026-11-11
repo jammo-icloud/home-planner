@@ -20,7 +20,7 @@ import { raiseDriftCards } from './drift.ts';
 import { monthView } from './envelopes.ts';
 import { RETIRED } from './plan-rules.ts';
 import { ReplayError } from './replay.ts';
-import { unsorted } from './analytics.ts';
+import { toSort } from './analytics.ts';
 import { savingsCheck } from './sinking.ts';
 import {
   ProposalStore, ToolError, appendAfterEffect, inOrder, oneEffectAtATime, recordedArgs, runEffect, toolByName, touches,
@@ -328,7 +328,7 @@ export function waiting(state: State, who: Actor, events: readonly Event[]): Wai
     if (state.txns.has(e.txn)) continue; // put back since
     out.push({ kind: 'flag', event: e.id });
   }
-  const u = unsorted(state);
+  const u = toSort(state);
   if (u.count) out.push({ kind: 'unsorted', count: u.count });
   return out;
 }

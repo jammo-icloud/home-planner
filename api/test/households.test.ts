@@ -25,14 +25,12 @@ const fresh = async () => {
 /** A household with facts, a budget and a month — one of each band. */
 async function furnished(store: Awaited<ReturnType<Households['open']>>) {
   await store.append('alice', [
-    { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
-    { op: 'category.define', category: 'elec', label: 'Electricity', kind: 'House' },
-    { op: 'rule.add', rule: 'r1', match: 'SAFEWAY', category: 'food' },
+    { op: 'category.add', category: 'people', label: 'People' },
+    { op: 'rule.add', rule: 'r1', match: 'SAFEWAY', envelope: 'daily' },
     { op: 'txn.add', txns: [
-      { id: 't1', date: '2026-08-02', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', category: 'food' },
+      { id: 't1', date: '2026-08-02', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', envelope: 'daily' },
     ] },
-    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
-      match: { categories: ['food'] }, template: parseDollars('1000.00'), order: 0 },
+    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', category: 'people', template: parseDollars('1000.00'), order: 0 },
     { op: 'month.open', month: '2026-08', income: parseDollars('5000.00') },
     { op: 'assign', month: '2026-08', envelope: 'daily',
       to: parseDollars('1100.00'), why: 'topping up' },
@@ -139,8 +137,8 @@ describe('a backup is the log', () => {
     assert.equal(b.skipped.length, 0);
     assert.equal(b.label, 'Rivera');
     assert.equal(b.owner, 'alice');
-    assert.ok(b.counts.facts >= 4);
-    assert.ok(b.counts.budgets >= 1);
+    assert.ok(b.counts.facts >= 2);
+    assert.ok(b.counts.budgets >= 2, 'the category and the envelope');
     assert.ok(b.counts.months >= 2);
     assert.equal(b.counts.people, 1, 'the claim');
   });
@@ -171,14 +169,13 @@ describe('a backup is the log', () => {
     assert.equal(store.state.envelopes.size, 0, 'a full ledger and no plan is a sensible place to start');
   });
 
-  test('restoring a budget without its categories is refused as nonsense, not attempted', async () => {
-    // The dependency runs one way. An envelope feeding on a category that is not
-    // there does not collide — it means nothing.
+  test('a budget restores with its categories, which are in its own band', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
     const plan = planRestore(store.state, parseBackup(await backupOf()), ['budgets']);
-    assert.ok(plan.missingPrerequisites.some((m) => /category "food"/.test(m)));
-    assert.throws(() => eventsToApply(plan), /missing prerequisite/);
+    assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
+    await store.adopt(eventsToApply(plan));
+    assert.deepEqual([[...store.state.categories.keys()], store.state.envelopes.get('daily')!.category], [['people'], 'people']);
   });
 
   test('months without their budget are refused the same way', async () => {
@@ -208,12 +205,12 @@ describe('a split survives a restore', () => {
     const hh = new Households(await dir());
     const { store: from } = await hh.create('alice', 'Rivera');
     await from.append('alice', [
-      { op: 'category.define', category: 'food', label: 'Groceries' },
-      { op: 'category.define', category: 'elec', label: 'Electricity' },
+      { op: 'category.add', category: 'food', label: 'Groceries' },
+      { op: 'category.add', category: 'elec', label: 'Electricity' },
       { op: 'txn.add', txns: [
-        { id: 'c1', date: '2026-08-02', payee: 'BIGBOX', amount: parseDollars('-100.00'), dedupeKey: 'c1', category: null }] },
+        { id: 'c1', date: '2026-08-02', payee: 'BIGBOX', amount: parseDollars('-100.00'), dedupeKey: 'c1', envelope: null }] },
       { op: 'txn.split', txn: 'c1', parts: [
-        { category: 'food', amount: parseDollars('-60.00') }, { category: 'elec', amount: parseDollars('-40.00') }] },
+        { envelope: 'daily', amount: parseDollars('-60.00') }, { envelope: 'elec', amount: parseDollars('-40.00') }] },
     ]);
     const backup = parseBackup(await readFile(from.path, 'utf8'));
 
@@ -222,9 +219,9 @@ describe('a split survives a restore', () => {
     assert.deepEqual(plan.collisions, []);
     await store.adopt(eventsToApply(plan));
     const t = store.state.txns.get('c1')!;
-    assert.equal(t.category, '__split');
+    assert.equal(t.envelope, '__split');
     assert.deepEqual(t.split, [
-      { category: 'food', amount: parseDollars('-60.00') }, { category: 'elec', amount: parseDollars('-40.00') }]);
+      { envelope: 'daily', amount: parseDollars('-60.00') }, { envelope: 'elec', amount: parseDollars('-40.00') }]);
   });
 });
 
@@ -233,9 +230,8 @@ describe('an envelope with no figure yet survives a restore', () => {
     const hh = new Households(await dir());
     const { store: from } = await hh.create('alice', 'Rivera');
     await from.append('alice', [
-      { op: 'category.define', category: 'rent', label: 'Rent' },
-      { op: 'envelope.define', envelope: 'rent', label: 'Rent', group: 'House',
-        match: { categories: ['rent'] }, template: parseDollars('1500.00'), order: 0,
+      { op: 'category.add', category: 'rent', label: 'Rent' },
+      { op: 'envelope.define', envelope: 'rent', label: 'Rent', category: 'rent', template: parseDollars('1500.00'), order: 0,
         needsFigure: true, source: 'Rent index, Placitas, 2026-06' },
     ]);
     const backup = parseBackup(await readFile(from.path, 'utf8'));
@@ -256,17 +252,17 @@ describe('an edited split survives a restore', () => {
     const hh = new Households(await dir());
     const { store: from } = await hh.create('alice', 'Rivera');
     await from.append('alice', [
-      { op: 'category.define', category: 'food', label: 'Groceries' },
-      { op: 'category.define', category: 'elec', label: 'Electricity' },
-      { op: 'category.define', category: 'fun', label: 'Fun' },
+      { op: 'category.add', category: 'food', label: 'Groceries' },
+      { op: 'category.add', category: 'elec', label: 'Electricity' },
+      { op: 'category.add', category: 'fun', label: 'Fun' },
       { op: 'txn.add', txns: [
-        { id: 'c1', date: '2026-08-02', payee: 'BIGBOX', amount: parseDollars('-100.00'), dedupeKey: 'c1', category: null }] },
+        { id: 'c1', date: '2026-08-02', payee: 'BIGBOX', amount: parseDollars('-100.00'), dedupeKey: 'c1', envelope: null }] },
       { op: 'txn.split', txn: 'c1', parts: [
-        { category: 'food', amount: parseDollars('-60.00') }, { category: 'elec', amount: parseDollars('-40.00') }] },
+        { envelope: 'daily', amount: parseDollars('-60.00') }, { envelope: 'elec', amount: parseDollars('-40.00') }] },
       { op: 'txn.split', txn: 'c1', parts: [
-        { category: 'food', amount: parseDollars('-50.00') }, { category: 'elec', amount: parseDollars('-30.00') },
-        { category: 'fun', amount: parseDollars('-20.00') }] },
-      ...(wholeAtEnd ? [{ op: 'txn.categorize' as const, txn: 'c1', category: 'food', manual: true }] : []),
+        { envelope: 'daily', amount: parseDollars('-50.00') }, { envelope: 'elec', amount: parseDollars('-30.00') },
+        { envelope: 'fun', amount: parseDollars('-20.00') }] },
+      ...(wholeAtEnd ? [{ op: 'txn.sort' as const, txn: 'c1', envelope: 'daily', manual: true }] : []),
     ]);
     return parseBackup(await readFile(from.path, 'utf8'));
   };
@@ -278,17 +274,17 @@ describe('an edited split survives a restore', () => {
     assert.deepEqual(plan.collisions, []);
     await store.adopt(eventsToApply(plan));
     assert.deepEqual(store.state.txns.get('c1')!.split, [
-      { category: 'food', amount: parseDollars('-50.00') }, { category: 'elec', amount: parseDollars('-30.00') },
-      { category: 'fun', amount: parseDollars('-20.00') }]);
+      { envelope: 'daily', amount: parseDollars('-50.00') }, { envelope: 'elec', amount: parseDollars('-30.00') },
+      { envelope: 'fun', amount: parseDollars('-20.00') }]);
   });
 
-  test('a chain that ends in a categorize restores to a whole receipt', async () => {
+  test('a chain that ends in a sort restores to a whole receipt', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
     const plan = planRestore(store.state, await chainBackup(true), ['facts']);
     await store.adopt(eventsToApply(plan));
     const t = store.state.txns.get('c1')!;
-    assert.equal(t.category, 'food');
+    assert.equal(t.envelope, 'daily');
     assert.equal(t.split, undefined);
   });
 });
@@ -299,10 +295,10 @@ describe('a restore carries history rather than re-making it', () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('alice', 'Rivera');
     await store.append('alice', [
-      { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
+      { op: 'category.add', category: 'food', label: 'Groceries' },
       { op: 'txn.add', txns: [
-        { id: 't1', date: '2026-03-04', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', category: 'food' },
-        { id: 't2', date: '2026-03-05', payee: 'DUPLICATE', amount: parseDollars('-10.00'), dedupeKey: 't2', category: 'food' },
+        { id: 't1', date: '2026-03-04', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', envelope: 'daily' },
+        { id: 't2', date: '2026-03-05', payee: 'DUPLICATE', amount: parseDollars('-10.00'), dedupeKey: 't2', envelope: 'daily' },
       ] },
     ]);
     // Written straight to the file, as a log from before reasons were required.
@@ -352,7 +348,7 @@ describe('a restore carries history rather than re-making it', () => {
 
     // The plan itself catches this first; adopt is the last line of defence for
     // a caller that skipped the plan.
-    const second = parseBackup(backup).events.filter((e) => e.op === 'category.define');
+    const second = parseBackup(backup).events.filter((e) => e.op === 'txn.add');
     await assert.rejects(() => store.adopt([...second]), /already in this log/);
   });
 
@@ -361,9 +357,7 @@ describe('a restore carries history rather than re-making it', () => {
     const { store } = await hh.create('bob', 'Fresh');
     await store.adopt(eventsToApply(planRestore(store.state, parseBackup(await backupOf()), ['facts'])));
 
-    const [made] = await store.append('bob', {
-      op: 'category.define', category: 'fuel', label: 'Fuel', kind: 'House',
-    });
+    const [made] = await store.append('bob', { op: 'category.add', category: 'fuel', label: 'Fuel' });
     const seen = new Set((await readFile(store.path, 'utf8')).trim().split('\n')
       .map((l) => (JSON.parse(l) as Event).id));
     assert.equal(seen.size, store.state.eventCount, 'every id in the log is distinct');
@@ -379,63 +373,23 @@ describe('a collision refuses, and says what it was', () => {
     return readFile(store.path, 'utf8');
   };
 
-  test('the same category id meaning something else', async () => {
-    const hh = new Households(await dir());
-    const { store } = await hh.create('bob', 'Fresh');
-    await store.append('bob', { op: 'category.define', category: 'food', label: 'Eating out', kind: 'People' });
-
-    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts']);
-    const c = plan.collisions.find((x) => x.kind === 'category')!;
-    assert.equal(c.what, 'food');
-    assert.match(c.why, /already calls "food" Eating out/);
-    assert.throws(() => eventsToApply(plan), /nothing was restored/);
-  });
-
-  test('a category with the same id and the same meaning is not a collision', async () => {
-    const hh = new Households(await dir());
-    const { store } = await hh.create('bob', 'Fresh');
-    await store.append('bob', { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' });
-    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts']);
-    assert.equal(plan.collisions.filter((c) => c.kind === 'category').length, 0);
-  });
-
   test('a receipt already in the ledger', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
     await store.append('bob', [
-      { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
       { op: 'txn.add', txns: [
-        { id: 't1', date: '2026-08-02', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', category: 'food' },
+        { id: 't1', date: '2026-08-02', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', envelope: 'daily' },
       ] },
     ]);
     const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts']);
     assert.ok(plan.collisions.some((c) => c.kind === 'transaction'));
   });
 
-  test('an incoming envelope claiming a category something here already feeds on', async () => {
-    // Two envelopes over one category makes a receipt land in whichever was
-    // defined last — silently, and differently after every replay.
-    const hh = new Households(await dir());
-    const { store } = await hh.create('bob', 'Fresh');
-    await store.append('bob', [
-      { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
-      { op: 'envelope.define', envelope: 'other', label: 'Something else',
-        group: 'People', match: { categories: ['food'] }, template: parseDollars('50.00'), order: 0 },
-    ]);
-    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budgets']);
-    const c = plan.collisions.find((x) => x.kind === 'envelope-category')!;
-    assert.match(c.why, /food already feeds Something else/);
-    assert.throws(() => eventsToApply(plan), /collision/);
-  });
-
   test('nothing is written when a plan is refused', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
-    await store.append('bob', [
-      { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
-      { op: 'envelope.define', envelope: 'other', label: 'Something else',
-        group: 'People', match: { categories: ['food'] }, template: parseDollars('50.00'), order: 0 },
-    ]);
+    await store.append('bob', { op: 'txn.add', txns: [
+      { id: 't1', date: '2026-08-02', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', envelope: null }] });
     const before = store.state.eventCount;
 
     const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budgets']);
@@ -556,8 +510,9 @@ describe('restoring a whole household keeps its zone and model, and chooses its 
 describe('the scope of every event is decided, not guessed', () => {
   test('one band each, across the whole vocabulary', () => {
     const samples: [Event['op'], string][] = [
-      ['txn.add', 'facts'], ['category.define', 'facts'], ['rule.add', 'facts'],
-      ['household.locate', 'budgets'], ['envelope.define', 'budgets'], ['income.source.define', 'budgets'],
+      ['txn.add', 'facts'], ['txn.sort', 'facts'], ['txn.split', 'facts'], ['rule.add', 'facts'],
+      ['household.locate', 'budgets'], ['category.add', 'budgets'], ['category.rename', 'budgets'], ['category.move', 'budgets'],
+      ['category.remove', 'budgets'], ['envelope.define', 'budgets'], ['income.source.define', 'budgets'],
       ['month.open', 'months'], ['assign', 'months'], ['move', 'months'],
       ['household.claim', 'people'], ['member.add', 'people'], ['briefing.read', 'people'],
       ['areas.set', 'settings'], ['areas.add', 'settings'], ['areas.remove', 'settings'], ['areas.move', 'settings'],
@@ -577,9 +532,9 @@ describe('an old single-log install is brought forward, not stranded', () => {
     await store.load();
     await store.append(owner, { op: 'household.claim', label: 'Rivera' });
     await store.append(owner, [
-      { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
+      { op: 'category.add', category: 'food', label: 'Groceries' },
       { op: 'txn.add', txns: [
-        { id: 't1', date: '2026-03-04', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', category: 'food' },
+        { id: 't1', date: '2026-03-04', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', envelope: 'daily' },
       ] },
     ]);
     return path;
@@ -638,7 +593,7 @@ describe('an old single-log install is brought forward, not stranded', () => {
     const path = join(await mkdtemp(join(tmpdir(), 'pb-old-')), 'events.jsonl');
     const store = new Store({ path });
     await store.load();
-    await store.append('dana', { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' });
+    await store.append('dana', { op: 'category.add', category: 'food', label: 'Groceries' });
     assert.equal(await adoptSingleLog(hh, path, 'alice'), null);
   });
 
@@ -1055,7 +1010,7 @@ describe('removing a household', () => {
   test('a household made again under the same name starts empty', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('alex', 'Wren');
-    await store.append('alex', { op: 'category.define', category: 'food', label: 'Food' });
+    await store.append('alex', { op: 'category.add', category: 'food', label: 'Food' });
     assert.equal(store.state.categories.size, 1);
     await hh.remove('wren');
     const made = await hh.create('alex', 'Wren');
@@ -1080,7 +1035,7 @@ describe('removing a household', () => {
     const { store } = await hh.create('alex', 'Wren');
     await hh.remove('wren');
     await assert.rejects(
-      store.append('alex', { op: 'category.define', category: 'food', label: 'Food' }),
+      store.append('alex', { op: 'category.add', category: 'food', label: 'Food' }),
       (err: Error & { status?: number }) => err.message === 'this household was removed' && err.status === 409,
     );
     assert.equal(existsSync(join(hh.dir, 'wren')), false);
@@ -1098,7 +1053,7 @@ describe('removing a household', () => {
     await hh.remove('wren');           // counted before that load finishes
     const late = await loading;
     assert.equal(late.closed, true);
-    await assert.rejects(late.append('alex', { op: 'category.define', category: 'food', label: 'Food' }));
+    await assert.rejects(late.append('alex', { op: 'category.add', category: 'food', label: 'Food' }));
     assert.equal(existsSync(join(d, 'wren')), false);
     const fresh = await hh.open('wren');
     assert.notEqual(fresh, late, 'the late load was never cached');

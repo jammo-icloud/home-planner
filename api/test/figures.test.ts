@@ -28,14 +28,14 @@ async function fresh(seed: NewEvent[] = []): Promise<Store> {
 }
 
 const env = (store: Store, id: string): Envelope => store.state.envelopes.get(id)!;
+/** An envelope with no figure yet, under a heading of its own. */
 const withEnv = (id: string, label = id): NewEvent[] => [
-  { op: 'category.define', category: id, label },
-  { op: 'envelope.define', envelope: id, label, group: 'Home',
-    match: { categories: [id] }, template: cents(0), rollover: true, order: 0, needsFigure: true },
+  { op: 'category.add', category: id, label: label },
+  { op: 'envelope.define', envelope: id, label, category: id, template: cents(0), rollover: true, order: 0, needsFigure: true },
 ];
-const txn = (id: string, date: string, amount: number, category: string): NewEvent => ({
+const txn = (id: string, date: string, amount: number, envelope: string): NewEvent => ({
   op: 'txn.add',
-  txns: [{ id, date, payee: 'VALLEY MARKET', amount: cents(amount), dedupeKey: id, category }],
+  txns: [{ id, date, payee: 'VALLEY MARKET', amount: cents(amount), dedupeKey: id, envelope }],
 });
 const hint = (s: Store, id: string) => hintFor(s.state, env(s, id), '2026-11');
 
@@ -55,7 +55,7 @@ describe('hints', () => {
     });
     assert.equal(hint(s, 'dining')!.text, "Last month's imports show $90 at restaurants");
     assert.equal(hint(s, 'transport')!.text, "Last month's imports show $150 on fuel and transport");
-    assert.equal(lastMonthSpent(s.state, ['groceries'], '2026-11'), 61240);
+    assert.equal(lastMonthSpent(s.state, 'groceries', '2026-11'), 61240);
   });
 
   test('no receipts, or refunds that net to nothing, give no hint', async () => {
@@ -120,16 +120,16 @@ describe('averages of receipts', () => {
       // This month, and seven months back: in no window.
       txn('p4', '2026-11-01', -99999, 'pets'), txn('p5', '2026-04-30', -99999, 'pets'),
     ]);
-    assert.equal(spentOver(s.state, ['pets'], '2026-11', 1), 30000);
-    assert.equal(spentOver(s.state, ['pets'], '2026-11', 3), 30000);
+    assert.equal(spentOver(s.state, 'pets', '2026-11', 1), 30000);
+    assert.equal(spentOver(s.state, 'pets', '2026-11', 3), 30000);
     // Two of the six months had receipts: the mean of those two, not a third of it.
-    assert.equal(spentOver(s.state, ['pets'], '2026-11', 6), 19000);
-    assert.equal(spentOver(s.state, ['books'], '2026-11', 6), null);
-    assert.equal(lastMonthSpent(s.state, ['pets'], '2026-11'), 30000);
-    assert.equal(lastMonthSpent(s.state, ['books'], '2026-11'), 0);
+    assert.equal(spentOver(s.state, 'pets', '2026-11', 6), 19000);
+    assert.equal(spentOver(s.state, 'books', '2026-11', 6), null);
+    assert.equal(lastMonthSpent(s.state, 'pets', '2026-11'), 30000);
+    assert.equal(lastMonthSpent(s.state, 'books', '2026-11'), 0);
   });
 
-  test('hintFor offers the averages to any envelope with categories, 3-month first', async () => {
+  test('hintFor offers the averages to any envelope, 3-month first', async () => {
     const s = await fresh([
       ...withEnv('pets'),
       txn('p1', '2026-10-12', -10000, 'pets'), txn('p2', '2026-08-12', -20000, 'pets'), txn('p3', '2026-05-12', -60000, 'pets'),
@@ -168,8 +168,7 @@ describe('averages of receipts', () => {
   test('a sinking envelope gets no averages', async () => {
     const s = await fresh([
       ...withEnv('travel'),
-      { op: 'envelope.define', envelope: 'travel', label: 'travel', group: 'Future',
-        match: { categories: ['travel'] }, template: cents(0), order: 0, needsFigure: true,
+      { op: 'envelope.define', envelope: 'travel', label: 'travel', category: 'travel', template: cents(0), order: 0, needsFigure: true,
         sinking: { kind: 'by', target: cents(120000), by: '2027-06' } },
       txn('t1', '2026-10-01', -50000, 'travel'),
     ]);
@@ -268,9 +267,8 @@ describe('the cover for a short envelope', () => {
   const TODAY = '2026-11-04';
   // An envelope with a figure, funded by its template when the month opens.
   const funded = (id: string, amount: number, label = id): NewEvent[] => [
-    { op: 'category.define', category: id, label },
-    { op: 'envelope.define', envelope: id, label, group: 'Home',
-      match: { categories: [id] }, template: cents(amount), rollover: true, order: 0 },
+    { op: 'category.add', category: id, label: label },
+    { op: 'envelope.define', envelope: id, label, category: id, template: cents(amount), rollover: true, order: 0 },
   ];
   const open = (income: number): NewEvent => ({ op: 'month.open', month: '2026-11', income: cents(income) });
   const coverOf = (s: Store, id = 'groceries') => {

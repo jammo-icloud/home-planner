@@ -334,8 +334,8 @@ describe('search across the household', () => {
   test('each of a note, question, answer, briefing, change, removed payee and a card is found', async () => {
     const s = await fresh({ folder: false });
     await s.append('alice', [
-      { op: 'category.define', category: 'groceries', label: 'Groceries' },
-      { op: 'txn.add', txns: [{ id: 't1', date: DAY, payee: 'Quokka Market', amount: parseDollars('-1.00'), dedupeKey: 't1', category: null }] },
+      { op: 'category.add', category: 'groceries', label: 'Groceries' },
+      { op: 'txn.add', txns: [{ id: 't1', date: DAY, payee: 'Quokka Market', amount: parseDollars('-1.00'), dedupeKey: 't1', envelope: null }] },
     ]);
     const [note] = await s.append('bob', { op: 'thread.note', text: 'Wombat is on the list.' });
     const [ask] = await s.append('alice', { op: 'thread.ask', question: 'Is the numbat fed?' });

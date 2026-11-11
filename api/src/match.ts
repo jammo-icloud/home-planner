@@ -1,11 +1,9 @@
 /**
  * Sorting receipts in the language of envelopes, with Haiku suggesting.
  *
- * A person thinks "that goes in Food", not "that is category groceries". So the
- * picker lists the household's envelopes, and choosing one records the
- * category that feeds it — a category feeds at most one envelope, so the
- * choice is never ambiguous. Payee-narrowed envelopes are
- * labelled per receipt, so the label always says where this receipt will land.
+ * A person thinks "that goes in Groceries". So the picker lists the household's
+ * envelopes by name under their categories, and choosing one sorts the receipt
+ * into that envelope: the option's value is the envelope's id.
  *
  * Rules run first: free and exact. Whatever they leave is offered to Haiku as
  * payee names and envelope names only — no amounts, dates or accounts — and
@@ -14,10 +12,9 @@
 
 import { classify, claudeConfigured, unavailableReason } from './claude.ts';
 import type { Source } from './connectors.ts';
-import { envelopeFor } from './envelopes.ts';
-import { categorize } from './replay.ts';
+import { byRule } from './replay.ts';
 import { INCOME, SPLIT, TRANSFER } from './types.ts';
-import type { Assignment, State, Txn } from './types.ts';
+import type { SortedInto, State } from './types.ts';
 
 export interface PickerOption { readonly value: string; readonly label: string; readonly group: string }
 export interface Suggestion {
@@ -58,36 +55,23 @@ export function modelSource(state: State, env: NodeJS.ProcessEnv = process.env):
   if (state.settings.model !== null) return 'saved';
   return env['CLAUDE_MATCH_MODEL']?.trim() ? 'from the deployment' : 'default';
 }
-const ELSEWHERE = 'Not in this budget';
 const NOT_SPENDING = 'Not spending';
 
 /** Offered last, to the person and to the model alike: one list serves both. */
 export const SPLIT_OPTION: PickerOption = { value: SPLIT, label: 'Split across envelopes…', group: 'Several envelopes' };
 
 /**
- * What a receipt can be sorted into, labelled by envelope.
- *
- * Envelopes in their order, then categories no envelope matches
- * (still choosable — a receipt must never be impossible to sort), then the two
- * kinds of money that are not spending.
+ * What a receipt can be sorted into: each live envelope by name, grouped under
+ * its category's label, in category order then envelope order; then the two
+ * kinds of money that are not spending; then a split.
  */
-export function pickerOptions(state: State, t: Pick<Txn, 'payee' | 'memo'> | null): PickerOption[] {
-  const placed: (PickerOption & { order: number })[] = [];
-  const elsewhere: PickerOption[] = [];
-  for (const c of state.categories.values()) {
-    if (c.archived) continue;
-    const probe = { payee: t?.payee ?? '', ...(t?.memo ? { memo: t.memo } : {}), category: c.id } as Txn;
-    const env = envelopeFor(state, probe);
-    if (!env) { elsewhere.push({ value: c.id, label: c.label, group: ELSEWHERE }); continue; }
-    placed.push({
-      value: c.id, group: env.group, order: env.order,
-      label: env.match.categories.length > 1 ? `${env.label} · ${c.label}` : env.label,
-    });
-  }
-  placed.sort((x, y) => x.order - y.order || x.label.localeCompare(y.label));
+export function pickerOptions(state: State): PickerOption[] {
+  const place = new Map([...state.categories.keys()].map((id, i) => [id, i]));
+  const rank = (c: string) => place.get(c) ?? place.size;
+  const envelopes = [...state.envelopes.values()]
+    .sort((a, b) => rank(a.category) - rank(b.category) || a.order - b.order);
   return [
-    ...placed.map(({ order: _, ...o }) => o),
-    ...elsewhere.sort((x, y) => x.label.localeCompare(y.label)),
+    ...envelopes.map((e) => ({ value: e.id, label: e.label, group: state.categories.get(e.category)?.label ?? e.category })),
     { value: TRANSFER, label: 'Transfer between our accounts', group: NOT_SPENDING },
     { value: INCOME, label: 'Income', group: NOT_SPENDING },
     SPLIT_OPTION,
@@ -172,7 +156,7 @@ export async function suggest(state: State, payees: readonly string[], options: 
  * a rule has already said to divide.
  *
  * Those are a person's to divide, so they are never sent. An open row that
- * `categorize` would mark split (the queue, whose rows carry the memo it reads)
+ * `byRule` would mark split (the queue, whose rows carry the memo it reads)
  * comes back in `toDivide`; a row already marked split (Import) is just left
  * out, since that screen already knows.
  *
@@ -180,18 +164,18 @@ export async function suggest(state: State, payees: readonly string[], options: 
  * still an import, so the reason comes back beside an empty answer.
  */
 export async function suggestForRows(state: State,
-  rows: readonly { id: string; payee: string; memo?: string; category: Assignment | string | null }[]):
+  rows: readonly { id: string; payee: string; memo?: string; envelope: SortedInto | string | null }[]):
   Promise<{ suggested: Map<string, Suggestion>; toDivide: Set<string>; error?: string }> {
   const suggested = new Map<string, Suggestion>();
   const toDivide = new Set<string>();
   const open: typeof rows[number][] = [];
   for (const r of rows) {
-    if (r.category !== null) continue;
-    if (categorize(state.rules, r) === SPLIT) toDivide.add(r.id); else open.push(r);
+    if (r.envelope !== null) continue;
+    if (byRule(state.rules, r) === SPLIT) toDivide.add(r.id); else open.push(r);
   }
   if (!open.length) return { suggested, toDivide };
   try {
-    const byPayee = await suggest(state, open.map((r) => r.payee), pickerOptions(state, null));
+    const byPayee = await suggest(state, open.map((r) => r.payee), pickerOptions(state));
     for (const r of open) {
       const s = byPayee.get(r.payee.trim());
       if (s) suggested.set(r.id, s);
@@ -202,10 +186,10 @@ export async function suggestForRows(state: State,
   }
 }
 
-/** What a filed receipt or a part of one is called on a card: a split, a transfer, income, or its category's label. */
-export const filedLabel = (state: State, c: Assignment): string =>
-  c === SPLIT ? 'a split' : c === TRANSFER ? 'a transfer' : c === INCOME ? 'income'
-  : state.categories.get(c)?.label ?? c;
+/** What a sorted receipt or a part of one is called on a card: a split, a transfer, income, or its envelope's name (a removed one's too). */
+export const filedLabel = (state: State, e: SortedInto): string =>
+  e === SPLIT ? 'a split' : e === TRANSFER ? 'a transfer' : e === INCOME ? 'income'
+  : state.envelopes.get(e)?.label ?? state.removedEnvelopes.get(e)?.label ?? e;
 
 /**
  * Why a rule string may not be offered, or null when it may: empty, under 3
@@ -214,7 +198,7 @@ export const filedLabel = (state: State, c: Assignment): string =>
  *
  * A rule rewrites every future receipt it matches, so one that contradicts what
  * a person already did is worse than none. The scan reads receipts the way
- * `categorize` does — payee and memo, lower-cased, by substring — so what it
+ * `byRule` does — payee and memo, lower-cased, by substring — so what it
  * rejects is exactly what the rule would have swept up. A receipt nobody has
  * filed yet never blocks; a split counts as filed under "a split", which is
  * only agreeable to a rule that also says split.
@@ -226,8 +210,8 @@ export function ruleProblem(state: State, payee: string | null, rule: string, ta
   if (state.rules.some((r) => r.match.trim().toLowerCase() === match)) return 'already a rule';
   const elsewhere = new Set<string>();
   for (const t of state.txns.values()) {
-    if (t.category === null || t.category === target) continue;
-    if (categorize([{ id: '', match, category: target }], t) !== null) elsewhere.add(filedLabel(state, t.category));
+    if (t.envelope === null || t.envelope === target) continue;
+    if (byRule([{ id: '', match, envelope: target }], t) !== null) elsewhere.add(filedLabel(state, t.envelope));
   }
   return elsewhere.size ? `already filed under ${[...elsewhere].join(', ')}` : null;
 }

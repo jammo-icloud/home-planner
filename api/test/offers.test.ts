@@ -24,19 +24,14 @@ async function ctx(who = 'alice'): Promise<ToolContext> {
   await store.append('alice', [
     { op: 'household.claim', label: 'Home' },
     { op: 'member.add', member: 'bob', why: 'my partner' },
-    { op: 'category.define', category: 'groceries', label: 'Groceries' },
-    { op: 'category.define', category: 'fun', label: 'Fun' },
-    { op: 'category.define', category: 'travel', label: 'Travel' },
-    { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'People',
-      match: { categories: ['groceries'] }, template: parseDollars('600.00'), order: 0 },
-    { op: 'envelope.define', envelope: 'fun', label: 'Fun', group: 'People',
-      match: { categories: ['fun'] }, template: parseDollars('300.00'), order: 1 },
-    { op: 'envelope.define', envelope: 'trip', label: 'Travel', group: 'Future',
-      match: { categories: ['travel'] }, template: parseDollars('400.00'), order: 2 },
+    { op: 'category.add', category: 'people', label: 'People' },
+    { op: 'envelope.define', envelope: 'food', label: 'Food', category: 'people', template: parseDollars('600.00'), order: 0 },
+    { op: 'envelope.define', envelope: 'fun', label: 'Fun', category: 'people', template: parseDollars('300.00'), order: 1 },
+    { op: 'envelope.define', envelope: 'trip', label: 'Travel', category: 'people', template: parseDollars('400.00'), order: 2 },
     { op: 'month.open', month: '2026-08', income: parseDollars('1300.00') },
     { op: 'txn.add', txns: [
-      { id: 'x1', date: '2026-08-03', payee: 'HILLTOP FOODS', amount: parseDollars('-580.00'), dedupeKey: 'x1', category: 'groceries' },
-      { id: 'x2', date: '2026-08-04', payee: 'MYSTERY SHOP', amount: parseDollars('-10.00'), dedupeKey: 'x2', category: null },
+      { id: 'x1', date: '2026-08-03', payee: 'HILLTOP FOODS', amount: parseDollars('-580.00'), dedupeKey: 'x1', envelope: 'food' },
+      { id: 'x2', date: '2026-08-04', payee: 'MYSTERY SHOP', amount: parseDollars('-10.00'), dedupeKey: 'x2', envelope: null },
     ] },
   ]);
   return { store, who, today: TODAY, proposals: new ProposalStore(), sid: null };
@@ -48,7 +43,7 @@ const moveArgs = (from: string, to: string, amountCents = 12000) =>
 
 async function spendOnFood(c: ToolContext, id: string) {
   await c.store.append('alice', { op: 'txn.add', txns: [
-    { id, date: '2026-08-12', payee: 'SAFEWAY', amount: parseDollars('-15.00'), dedupeKey: id, category: 'groceries' },
+    { id, date: '2026-08-12', payee: 'SAFEWAY', amount: parseDollars('-15.00'), dedupeKey: id, envelope: 'food' },
   ] });
 }
 
@@ -230,7 +225,7 @@ describe('what is waiting', () => {
       headline: 'h', body: 'b', writtenBy: 'fallback' });
     const [removal] = await c.store.append('alice', { op: 'txn.remove', txn: 'x2', why: 'duplicate' });
     await c.store.append('alice', { op: 'txn.add', txns: [
-      { id: 'x2', date: '2026-08-04', payee: 'MYSTERY SHOP', amount: parseDollars('-10.00'), dedupeKey: 'x2', category: null },
+      { id: 'x2', date: '2026-08-04', payee: 'MYSTERY SHOP', amount: parseDollars('-10.00'), dedupeKey: 'x2', envelope: null },
     ] });
     assert.ok(!(await kinds(c, 'bob')).some((x) => x.kind === 'flag' && x.event === removal!.id));
   });
@@ -306,7 +301,7 @@ describe('an ask to take a plan', () => {
 
 describe('an effect stage', () => {
   const note: NewEvent = { op: 'thread.note', text: 'effect ran' };
-  const stored: NewEvent = { op: 'category.define', category: 'gifts', label: 'Gifts' };
+  const stored: NewEvent = { op: 'category.add', category: 'gifts', label: 'Gifts' };
 
   /** A write tool that proposes one stored event and runs `effect` at decision time. */
   const effectTool = (name: string, effect: NonNullable<Tool['effect']>): Tool => ({
@@ -331,9 +326,9 @@ describe('an effect stage', () => {
       const o = await open(c, 't_effect_ok');
       const written = await decide(c, o.id, 'approved');
       assert.deepEqual(seen, [{ x: 1 }]);
-      assert.deepEqual(written.map((e) => e.op), ['proposal.decide', 'category.define', 'thread.note']);
+      assert.deepEqual(written.map((e) => e.op), ['proposal.decide', 'category.add', 'thread.note']);
       const tail = (await c.store.since(null)).slice(-3);
-      assert.deepEqual(tail.map((e) => e.op), ['proposal.decide', 'category.define', 'thread.note']);
+      assert.deepEqual(tail.map((e) => e.op), ['proposal.decide', 'category.add', 'thread.note']);
       assert.equal(new Set(tail.map((e) => e.at)).size, 1);
       assert.equal(c.store.state.thread.offers.get(o.id)?.status, 'approved');
     });
@@ -389,7 +384,7 @@ describe('an effect stage', () => {
     await withTool(effectTool('t_effect_commit', async () => [note]), async () => {
       const p = await runTool(toolByName.get('t_effect_commit')!, { x: 1 }, c) as Proposal;
       const { committed } = await commit(p.id, c);
-      assert.deepEqual(committed.map((e) => e.op), ['category.define', 'thread.note']);
+      assert.deepEqual(committed.map((e) => e.op), ['category.add', 'thread.note']);
       assert.equal(new Set(committed.map((e) => e.at)).size, 1);
     });
   });
@@ -438,10 +433,10 @@ describe('an effect stage', () => {
     await withTool(first, async () => {
       const written = await decide(c, (await open(c, 't_effect_first')).id, 'approved');
       assert.deepEqual(handed, [[stored]]);
-      assert.deepEqual(written.map((e) => e.op), ['proposal.decide', 'thread.note', 'category.define']);
+      assert.deepEqual(written.map((e) => e.op), ['proposal.decide', 'thread.note', 'category.add']);
       const c2 = await ctx();
       const { committed } = await commit((await runTool(first, { x: 1 }, c2) as Proposal).id, c2);
-      assert.deepEqual(committed.map((e) => e.op), ['thread.note', 'category.define']);
+      assert.deepEqual(committed.map((e) => e.op), ['thread.note', 'category.add']);
     });
   });
 

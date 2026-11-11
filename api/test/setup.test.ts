@@ -152,19 +152,19 @@ describe("Today's setup notices", () => {
 
 describe("Today's budget notices", () => {
   const TODAY = '2026-11-02';
-  const category = (id: string): Line => ['alice', { op: 'category.define', category: id, label: id }];
+  const HOME: Line = ['alice', { op: 'category.add', category: 'home', label: 'Home' }];
   const envelope = (id: string, label: string, order: number, o: { figure?: boolean } = {}): Line => ['alice', {
-    op: 'envelope.define', envelope: id, label, group: 'Home', match: { categories: [id] },
+    op: 'envelope.define', envelope: id, label, category: 'home',
     template: cents(10000), rollover: true, order, ...(o.figure === false ? { needsFigure: true as const } : {}),
   } as NewEventShape];
   const open = (month = '2026-11'): Line => ['alice', { op: 'month.open', month, income: cents(100000) }];
-  const spend = (id: string, category: string, amount: number): Line => ['alice', {
-    op: 'txn.add', txns: [{ id, date: '2026-11-01', payee: 'VALLEY MARKET', amount: cents(amount), dedupeKey: id, category }],
+  const spend = (id: string, envelope: string, amount: number): Line => ['alice', {
+    op: 'txn.add', txns: [{ id, date: '2026-11-01', payee: 'VALLEY MARKET', amount: cents(amount), dedupeKey: id, envelope }],
   } as NewEventShape];
 
   test('envelopes needing a figure are one notice that opens the first', () => {
     const lines: Line[] = [...CLAIMED];
-    for (let i = 0; i < 17; i++) lines.push(category(`e${i}`));
+    lines.push(HOME);
     // Listed out of order: the first is the lowest order, not the first written.
     for (let i = 16; i >= 0; i--) lines.push(envelope(`e${i}`, `E${i}`, i + 1, { figure: false }));
     lines.push(open());
@@ -172,13 +172,13 @@ describe("Today's budget notices", () => {
       kind: 'figures', text: '17 envelopes still need a figure',
       action: { label: 'Go to the first one', open: 'budget', envelope: 'e0' },
     }]);
-    const one = stateOf(...CLAIMED, category('e0'),
+    const one = stateOf(...CLAIMED, HOME,
       envelope('e0', 'E0', 1, { figure: false }), open());
     assert.equal(budgetNotices(one, TODAY)[0]!.text, '1 envelope still needs a figure');
   });
 
   test('a short envelope with a figure is its own notice that opens its cover', () => {
-    const state = stateOf(...CLAIMED, category('groceries'),
+    const state = stateOf(...CLAIMED, HOME,
       envelope('groceries', 'Groceries', 1), open(), spend('t1', 'groceries', -14200));
     assert.deepEqual(budgetNotices(state, TODAY), [{
       kind: 'short', text: 'Groceries is short $42',
@@ -187,7 +187,7 @@ describe("Today's budget notices", () => {
   });
 
   test('an envelope with no figure yet is not also called short', () => {
-    const state = stateOf(...CLAIMED, category('groceries'),
+    const state = stateOf(...CLAIMED, HOME,
       envelope('groceries', 'Groceries', 1, { figure: false }), open(), spend('t1', 'groceries', -14200));
     assert.deepEqual(budgetNotices(state, TODAY).map((n) => n.kind), ['figures']);
   });

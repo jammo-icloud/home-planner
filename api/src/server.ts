@@ -46,7 +46,7 @@
  *   GET  /api/contacts?q=           the household's address book on the NAS, filtered by name
  *   GET  /api/contacts/:id          one person in it, for their phone number on a card
  *   POST /api/contacts              propose adding someone to it (a card; the NAS is asked once it is approved)
- *   POST /api/match                 envelope suggestions for unsorted receipts
+ *   POST /api/match                 envelope suggestions for receipts To sort holds
  *   POST /api/auth/login            username + password, checked against DSM (ten wrong a minute, a hundred an hour,
  *                                   per client address: 429 past that)
  *   POST /api/auth/logout           drop the session
@@ -205,11 +205,10 @@ import { APPROVE_IN_ONE, CARD_ONLY, ToolError, touches, commit, runTool, toolByN
 import type { Proposal, ToolContext } from './tools.ts';
 import { firstRun } from './first-run.ts';
 import { openMonths } from './envelopes.ts';
-import { missingStarter } from './starter.ts';
 import {
   areaIndex, ARRIVAL_MAX, DEFAULT_AREAS, GUEST_PREFIX, householdDay, isDay, isEmail, MODES, SCHEMES, SPLIT, SYSTEM, isSpend, monthOf, movesLeft, sameCalendar, zoneOf,
 } from './types.ts';
-import type { Actor, Assignment, Day, Event, Mode, NewEventShape, Scheme, SplitPart, State, Txn } from './types.ts';
+import type { Actor, Day, Event, Mode, NewEventShape, Scheme, SplitPart, State, Txn } from './types.ts';
 import { parse, dedupeKey } from './parse.ts';
 import { thread, threadDay } from './thread.ts';
 import { isLane } from './lanes.ts';
@@ -233,8 +232,8 @@ import { budgetNotices, folderSource, setupNotices, setupSteps, zoneSource } fro
 import { matchModel, modelChoices, modelSource, pickerOptions, suggestForRows } from './match.ts';
 import { cents, fmt, fmtExact } from './money.ts';
 import type { Cents } from './money.ts';
-import { lowEnvelopes, snapshot } from './analytics.ts';
-import { categorize, splitProblem, ReplayError } from './replay.ts';
+import { lowEnvelopes, snapshot, toSort } from './analytics.ts';
+import { byRule, splitProblem, ReplayError } from './replay.ts';
 import { ensureHousehold, ensureSection, markRead } from './briefing.ts';
 import { ClaudeRefused, claudeConfigured, claudeKey, testClaude } from './claude.ts';
 import {
@@ -1178,8 +1177,6 @@ const settingsOf = (
    * Members only, like the rest of this; a guest is never told why.
    */
   booking: { ...bookingView(state, booking, household), needsAddress: typeof bookUrl(resolvedEnv()) !== 'string' },
-  /** How many categories are in use (not archived), for the Household group's row. */
-  categoriesInUse: [...state.categories.values()].filter((c) => c.archived !== true).length,
 });
 
 /**
@@ -2485,17 +2482,15 @@ export async function start(
           dedupeKey: key,
           // Rules first: free, exact, and they run before anything is asked of
           // a person or a model.
-          category: categorize(state.rules, r),
+          envelope: byRule(state.rules, r),
         });
       }
 
       // A split rule marks a row for dividing, not for filing: it is not "ruled".
-      const ruled = fresh.filter((t) => t.category !== null && t.category !== SPLIT).length;
-      const toDivide = fresh.filter((t) => t.category === SPLIT).length;
-      // What the picker offers, in envelopes. A receipt only gets its own list
-      // when a payee-narrowed envelope would label it differently.
-      const options = pickerOptions(state, null);
-      const shared = JSON.stringify(options);
+      const ruled = fresh.filter((t) => t.envelope !== null && t.envelope !== SPLIT).length;
+      const toDivide = fresh.filter((t) => t.envelope === SPLIT).length;
+      // What the picker offers: one list, the same for every row.
+      const options = pickerOptions(state);
       // Whatever the rules left, Haiku suggests; a person still accepts each one.
       const { suggested, error } = await suggestForRows(state, fresh);
       return json(res, 200, {
@@ -2514,12 +2509,10 @@ export async function start(
         askSavings: parsed.format === 'csv' && state.savings.account !== null,
         ...(error ? { suggestError: error } : {}),
         rows: fresh.map((t) => {
-          const own = pickerOptions(state, t);
           const s = suggested.get(t.id);
           return {
             id: t.id, date: t.date, payee: t.payee, amount: fmtExact(t.amount),
-            amountCents: t.amount, category: t.category, account: t.account,
-            ...(JSON.stringify(own) !== shared ? { options: own } : {}),
+            amountCents: t.amount, envelope: t.envelope, account: t.account,
             ...(s ? { suggested: s.value, confidence: s.confidence,
                       ...(s.rule ? { rule: s.rule } : {}), ...(s.parts ? { parts: [...s.parts] } : {}) } : {}),
           };
@@ -2530,8 +2523,8 @@ export async function start(
     if (path === '/api/import/commit' && req.method === 'POST') {
       const body = (await readBody(req)) as
         { rows?: { id: string; date: string; payee: string; amountCents: number;
-                   account?: string; category?: string | null; suggestedBy?: string;
-                   split?: { category: string; amountCents: number }[] }[]; source?: string;
+                   account?: string; envelope?: string | null; suggestedBy?: string;
+                   split?: { envelope: string; amountCents: number }[] }[]; source?: string;
           balances?: { account?: unknown; cents?: unknown; asOf?: unknown }[]; savingsToday?: unknown };
       const balances = balanceEvents(active.state, body.balances, body.savingsToday, ctx.today);
       if (!body.rows?.length && !balances.length) throw new ToolError('nothing to import');
@@ -2539,7 +2532,8 @@ export async function start(
       const state = active.state;
       const seen = new Set<string>();
       for (const t of state.txns.values()) seen.add(t.dedupeKey);
-      const exists = (c: string) => state.categories.has(c) || !isSpend(c as Assignment);
+      // A live envelope, or money that is not spending.
+      const exists = (e: string) => state.envelopes.has(e) || !isSpend(e);
 
       // Every row is checked before anything is appended, so one bad split
       // refuses the whole import rather than landing half of it.
@@ -2547,38 +2541,38 @@ export async function start(
       const splits: NewEvent[] = [];
       for (const r of body.rows ?? []) {
         if (!r.id || seen.has(r.id)) continue; // checked again: the preview may be stale
-        if (r.category === SPLIT) {
+        if (r.envelope === SPLIT) {
           // The client sends null for a row nobody divided; __split with no parts is a client fault.
           if (!Array.isArray(r.split) || !r.split.length) throw new ToolError(`${r.payee} is marked to divide but is not divided`);
           const amount = cents(r.amountCents);
           // Whole cents only, as the tool does: checkParts refuses a stray fraction instead of rounding it.
           const parts: SplitPart[] = r.split.map((p) => {
-            if (!p || typeof p.category !== 'string' || typeof p.amountCents !== 'number') {
-              throw new ToolError(`${r.payee} has a part with no category or amount`);
+            if (!p || typeof p.envelope !== 'string' || typeof p.amountCents !== 'number') {
+              throw new ToolError(`${r.payee} has a part with no envelope or amount`);
             }
             return {
-              category: p.category as Assignment,
+              envelope: p.envelope,
               amount: Number.isInteger(p.amountCents) ? cents(p.amountCents) : p.amountCents as Cents,
             };
           });
-          const problem = splitProblem(parts, amount, state.categories, (c) => `no category ${c}`);
+          const problem = splitProblem(parts, amount, state.envelopes, (e) => `no envelope ${e}`);
           if (problem) throw new ToolError(problem);
           // The receipt arrives undivided and its split follows in the same batch.
           txns.push({
             id: r.id, date: r.date, payee: r.payee, amount,
             ...(r.account ? { account: r.account } : {}),
-            dedupeKey: r.id, category: null,
+            dedupeKey: r.id, envelope: null,
           });
           splits.push({ op: 'txn.split', txn: r.id, parts });
           continue;
         }
-        if (r.category && !exists(r.category)) throw new ToolError(`no category ${r.category}`);
+        if (r.envelope && !exists(r.envelope)) throw new ToolError(`no envelope ${r.envelope}`);
         txns.push({
           id: r.id, date: r.date, payee: r.payee, amount: cents(r.amountCents),
           ...(r.account ? { account: r.account } : {}),
-          dedupeKey: r.id, category: r.category ?? null,
+          dedupeKey: r.id, envelope: r.envelope ?? null,
           // Recorded only when Claude suggested it and a person kept it.
-          ...(r.suggestedBy === 'claude' && r.category ? { suggestedBy: 'claude' as const } : {}),
+          ...(r.suggestedBy === 'claude' && r.envelope ? { suggestedBy: 'claude' as const } : {}),
         });
       }
       if (!txns.length && !balances.length) return json(res, 200, { added: 0, note: 'every row was already in the ledger' });
@@ -2590,38 +2584,36 @@ export async function start(
         ...balances,
       ]);
       await raiseSavingsCardFor(ctx, written);
-      // Read after the append: a divided receipt's category is __split, so it counts as sorted.
+      // Read after the append: a divided receipt's envelope is __split, so it counts as sorted.
       return json(res, 200, {
         ...(txns.length ? {} : { note: 'every row was already in the ledger' }),
         balances: balances.length,
         added: txns.length,
         divided: splits.length,
-        sorted: txns.filter((t) => active.state.txns.get(t.id)?.category != null).length,
-        unsorted: [...active.state.txns.values()].filter((t) => t.category === null).length,
+        sorted: txns.filter((t) => active.state.txns.get(t.id)?.envelope != null).length,
+        // Everything To sort holds now, this import's and what was there before.
+        toSort: toSort(active.state).count,
       });
     }
 
-    // Categories are household facts, not month data, so they have their own
-    // route. Import and Activity both need them, and Activity needed them
-    // before any month had been loaded — which left the envelope picker empty.
-    // Suggestions for receipts already in the ledger with no envelope — the
-    // Unsorted list on Budget. Read-only: accepting one is a categorize proposal.
+    // Suggestions for receipts To sort holds with no envelope, and the picker's
+    // one list. Read-only: accepting one is a sort_receipts write.
     if (path === '/api/match' && req.method === 'POST') {
       const body = (await readBody(req)) as { txnIds?: string[] };
       const state = active.state;
       const rows = (body.txnIds ?? []).flatMap((id) => {
         const t = state.txns.get(id);
-        return t && t.category === null
-          ? [{ id: t.id, payee: t.payee, ...(t.memo ? { memo: t.memo } : {}), category: null }] : [];
+        return t && t.envelope === null
+          ? [{ id: t.id, payee: t.payee, ...(t.memo ? { memo: t.memo } : {}), envelope: null }] : [];
       });
       const { suggested, toDivide, error } = await suggestForRows(state, rows);
       // Every open receipt a split rule covers, named or not: the queue asks with
       // no ids on load, so nothing goes to Claude, and still learns what to divide.
       for (const t of state.txns.values()) {
-        if (t.category === null && categorize(state.rules, t) === SPLIT) toDivide.add(t.id);
+        if (t.envelope === null && byRule(state.rules, t) === SPLIT) toDivide.add(t.id);
       }
       return json(res, 200, {
-        options: pickerOptions(state, null),
+        options: pickerOptions(state),
         suggestions: Object.fromEntries([...suggested].map(([id, x]) => [id, {
           choice: x.value, ...(x.rule ? { rule: x.rule } : {}), ...(x.parts ? { parts: [...x.parts] } : {}),
         }])),
@@ -2649,17 +2641,6 @@ export async function start(
 
     if (path === '/api/budget/first-run' && req.method === 'GET') {
       return json(res, 200, firstRun(active.state, ctx.today));
-    }
-
-    if (path === '/api/categories' && req.method === 'GET') {
-      return json(res, 200, {
-        categories: [...active.state.categories.values()]
-          .map((c) => ({ id: c.id, label: c.label, kind: c.kind,
-            // An irregular cost's estimate, which a sinking envelope's goal is worked out from.
-            sinking: c.sinking ? { cost: fmtExact(c.sinking.cost), everyYears: c.sinking.everyYears } : null })),
-        // So the screen can offer the starter set only while it would add something.
-        starterMissing: (({ categories, rules }) => categories.length + rules.length)(missingStarter(active.state)),
-      });
     }
 
     // ── sharing ──────────────────────────────────────────────────────────────

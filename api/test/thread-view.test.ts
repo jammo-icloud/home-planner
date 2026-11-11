@@ -24,12 +24,9 @@ async function ctx(clock = { now: NOW }): Promise<ToolContext> {
   await store.append('alice', [
     { op: 'household.claim', label: 'Home' },
     { op: 'member.add', member: 'bob', why: 'my partner' },
-    { op: 'category.define', category: 'groceries', label: 'Groceries' },
-    { op: 'category.define', category: 'travel', label: 'Travel' },
-    { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'People',
-      match: { categories: ['groceries'] }, template: parseDollars('600.00'), order: 0 },
-    { op: 'envelope.define', envelope: 'trip', label: 'Travel', group: 'Future',
-      match: { categories: ['travel'] }, template: parseDollars('400.00'), order: 1 },
+    { op: 'category.add', category: 'people', label: 'People' },
+    { op: 'envelope.define', envelope: 'food', label: 'Food', category: 'people', template: parseDollars('600.00'), order: 0 },
+    { op: 'envelope.define', envelope: 'trip', label: 'Travel', category: 'people', template: parseDollars('400.00'), order: 1 },
     { op: 'month.open', month: '2026-08', income: parseDollars('1000.00') },
   ]);
   return { store, who: 'alice', today: '2026-08-13', proposals: new ProposalStore(), sid: null };
@@ -219,7 +216,7 @@ describe('the thread', () => {
         args: { month: '2026-09', incomeCents: 75000 } });
       await decide(c, done.id, 'approved');
       await c.store.append('alice', { op: 'txn.add', txns: [
-        { id: 't1', date: '2026-08-02', payee: 'A', amount: parseDollars('-1.00'), dedupeKey: 't1', category: null }] });
+        { id: 't1', date: '2026-08-02', payee: 'A', amount: parseDollars('-1.00'), dedupeKey: 't1', envelope: null }] });
       await c.store.append('bob', { op: 'txn.remove', txn: 't1', why: 'dupe' });
       const all = await entries(c);
       assert.equal(card(all, open.id).waits, true);
@@ -247,8 +244,7 @@ describe('the thread', () => {
       const c = await ctx();
       const [mv] = await c.store.append('alice', { op: 'move', month: '2026-08', from: 'trip', to: 'food', amount: parseDollars('5.00'), why: 'x' } as never);
       await c.store.append('alice', { op: 'booking.block', from: '2026-09-01', to: '2026-09-03', why: 'us' } as never);
-      await c.store.append('alice', { op: 'envelope.define', envelope: 'fun', label: 'Fun', group: 'People',
-        match: { categories: ['groceries'] }, template: parseDollars('50.00'), order: 2 } as never);
+      await c.store.append('alice', { op: 'envelope.define', envelope: 'fun', label: 'Fun', category: 'people', template: parseDollars('50.00'), order: 2 } as never);
       const all = await entries(c);
       const moved = all.find((e) => e.id === mv!.id) as Extract<ThreadEntry, { kind: 'change' }>;
       assert.deepEqual(moved.open, { envelope: 'food' });
@@ -278,7 +274,7 @@ describe('the thread', () => {
     test('an offer that removed a receipt, approved, is a card with the flag and no change', async () => {
       const c = await ctx();
       await c.store.append('alice', { op: 'txn.add', txns: [
-        { id: 't1', date: '2026-08-02', payee: 'Corner Shop', amount: parseDollars('-1.00'), dedupeKey: 't1', category: null }] });
+        { id: 't1', date: '2026-08-02', payee: 'Corner Shop', amount: parseDollars('-1.00'), dedupeKey: 't1', envelope: null }] });
       const [o] = await c.store.append('claude', { op: 'proposal.offer', tool: 'move_money', args: {}, summary: 'Remove it',
         effects: [], events: [{ op: 'txn.remove', txn: 't1', why: 'dupe' }], month: null, envelopes: [],
         fingerprint: 'f', prompt: { kind: 'briefing', ref: null } } as never);
@@ -418,12 +414,12 @@ describe('the thread', () => {
   test('direct changes are change entries, collapsed as Activity collapsed them; removals never collapse', async () => {
     const c = await ctx();
     await c.store.append('alice', { op: 'txn.add', txns: [
-      { id: 't1', date: '2026-08-02', payee: 'A', amount: parseDollars('-1.00'), dedupeKey: 't1', category: null },
-      { id: 't2', date: '2026-08-02', payee: 'B', amount: parseDollars('-2.00'), dedupeKey: 't2', category: null },
+      { id: 't1', date: '2026-08-02', payee: 'A', amount: parseDollars('-1.00'), dedupeKey: 't1', envelope: null },
+      { id: 't2', date: '2026-08-02', payee: 'B', amount: parseDollars('-2.00'), dedupeKey: 't2', envelope: null },
     ] });
     await c.store.append('alice', [
-      { op: 'txn.categorize', txn: 't1', category: 'groceries', manual: true },
-      { op: 'txn.categorize', txn: 't2', category: 'groceries', manual: true },
+      { op: 'txn.sort', txn: 't1', envelope: 'food', manual: true },
+      { op: 'txn.sort', txn: 't2', envelope: 'food', manual: true },
     ]);
     await c.store.append('bob', [
       { op: 'txn.remove', txn: 't1', why: 'dupe' },

@@ -20,9 +20,9 @@ import type { Cents } from './money.ts';
 import type { Location } from './types.ts';
 
 export interface Estimate {
-  /** The category this is evidence about. */
-  readonly category: string;
-  /** The name a person sees for that category, the starter set's own label. */
+  /** The envelope this is evidence about, by its starter id: rent, tax or elec. */
+  readonly envelope: string;
+  /** The name a person sees for that envelope, the starter set's own label. */
   readonly label: string;
   readonly monthly: Cents;
   /** Named so nobody mistakes a county median for their own bill. */
@@ -40,9 +40,9 @@ export interface LookupResult {
   readonly missing: readonly string[];
 }
 
-/** The starter label for a category id, so every source names it the way an envelope does. */
+/** The starter label for an envelope id, so every source names it the way the envelope does. */
 function labelOf(id: string): string {
-  return STARTER_CATEGORIES.find((c) => c.id === id)?.label ?? id;
+  return STARTER_CATEGORIES.flatMap((c) => c.envelopes).find((e) => e.id === id)?.label ?? id;
 }
 
 export type Fetch = typeof globalThis.fetch;
@@ -90,7 +90,7 @@ export async function rentFromZillow(
     }
     if (!latest) return null;
     return {
-      category: 'rent',
+      envelope: 'rent',
       label: labelOf('rent'),
       monthly: parseDollars(Number(latest).toFixed(2)),
       source: 'Zillow Observed Rent Index',
@@ -250,7 +250,7 @@ export async function censusCounty(
   const out: Estimate[] = [];
   if (rent && Number(rent) > 0) {
     out.push({
-      category: 'rent',
+      envelope: 'rent',
       label: labelOf('rent'),
       monthly: parseDollars(Number(rent).toFixed(2)),
       source: 'US Census ACS 5-year, table B25064',
@@ -261,7 +261,7 @@ export async function censusCounty(
   }
   if (tax && Number(tax) > 0) {
     out.push({
-      category: 'tax',
+      envelope: 'tax',
       label: labelOf('tax'),
       // Published annually; the budget holds monthly figures.
       monthly: cents(Math.round(parseDollars(Number(tax).toFixed(2)) / 12)),
@@ -330,7 +330,7 @@ export async function electricityFromEia(
 
   const price = Number(row['price']);
   return {
-    category: 'elec',
+    envelope: 'elec',
     label: labelOf('elec'),
     monthly: parseDollars(monthly.toFixed(2)),
     source: 'US EIA, electricity retail sales'
@@ -381,7 +381,7 @@ export async function lookUp(
       // Prefer the ZIP-level rent when there is one; a county median is a
       // fallback, not a second opinion.
       for (const r of rows) {
-        if (r.category === 'rent' && estimates.some((e) => e.category === 'rent')) continue;
+        if (r.envelope === 'rent' && estimates.some((e) => e.envelope === 'rent')) continue;
         estimates.push(r);
       }
     } else {

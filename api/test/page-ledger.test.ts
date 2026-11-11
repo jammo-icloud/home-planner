@@ -319,7 +319,9 @@ const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 const DRAWN_LATER: readonly string[] = [];
 /** Doors the server has closed that the page still knocks on, each until the page task that drops its last call (plan 2026-11-10-one-budget-envelopes, Ruling 20). */
 const RETIRING: readonly string[] = ['/api/tools/compare_budgets', '/api/tools/create_budget', '/api/tools/rename_budget',
-  '/api/tools/archive_budget', '/api/tools/set_budget_location', '/api/budgets'];
+  '/api/tools/archive_budget', '/api/tools/set_budget_location', '/api/budgets',
+  '/api/tools/categorize_transactions', '/api/tools/define_category', '/api/tools/archive_category', '/api/tools/add_starter_set',
+  '/api/categories'];
 
 describe('the page ledger', () => {
   test('a Calendar form says a refusal once: only a week that cannot be read uses the error box', () => {

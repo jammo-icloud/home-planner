@@ -19,15 +19,13 @@ async function fixture(opts: { spend?: boolean } = {}) {
   const store = new Store({ path });
   await store.load();
   await store.append('system', [
-    { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
-    { op: 'category.define', category: 'dine', label: 'Dining out', kind: 'People' },
-    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
-      match: { categories: ['food', 'dine'] }, template: parseDollars('1000.00'), order: 0 },
+    { op: 'category.add', category: 'people', label: 'People' },
+    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', category: 'people', template: parseDollars('1000.00'), order: 0 },
     { op: 'month.open', month: '2026-08', income: parseDollars('5000.00') },
   ]);
   if (opts.spend) {
     await store.append('system', { op: 'txn.add', txns: [
-      { id: 't1', date: '2026-08-02', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', category: 'food' },
+      { id: 't1', date: '2026-08-02', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', envelope: 'daily' },
     ] });
   }
   const ctx = { store, who: 'alice', today: TODAY, proposals: new ProposalStore(), sid: null } as never;
@@ -72,7 +70,7 @@ describe('closing a month', () => {
     const { store, ctx } = await fixture({ spend: true });
     await commit((await run('close_month',
       { month: '2026-08', closed: true, why: 'done' }, ctx)).id, ctx);
-    await store.append('alice', { op: 'category.define', category: 'pets', label: 'Pets', kind: 'People' });
+    await store.append('alice', { op: 'category.add', category: 'pets', label: 'Pets' });
     assert.equal(store.state.months.get('2026-08')!.closed, true);
   });
 
@@ -112,7 +110,7 @@ describe('closing a month', () => {
   test('it says what is still unsorted before you close on it', async () => {
     const { store, ctx } = await fixture({ spend: true });
     await store.append('system', { op: 'txn.add', txns: [
-      { id: 't9', date: '2026-08-09', payee: 'MYSTERY', amount: parseDollars('-9.00'), dedupeKey: 't9', category: null },
+      { id: 't9', date: '2026-08-09', payee: 'MYSTERY', amount: parseDollars('-9.00'), dedupeKey: 't9', envelope: null },
     ] });
     const p = await run('close_month', { month: '2026-08', closed: true, why: 'done' }, ctx);
     assert.ok(p.effects.some((e) => /1 receipts in it still have no envelope/.test(e)));
@@ -250,62 +248,33 @@ describe('opening a month at what actually comes in', () => {
   });
 });
 
-describe('categories are shared facts', () => {
-  test('a new one can be added and then fed into an envelope', async () => {
+describe('categories are headings', () => {
+  test('a new one can be added and then an envelope put under it', async () => {
     const { store, ctx } = await fixture();
-    await commit((await run('define_category',
-      { category: 'pets', label: 'Pets', kind: 'People' }, ctx)).id, ctx);
+    await store.append('alice', { op: 'category.add', category: 'pets', label: 'Pets' });
     assert.equal(store.state.categories.get('pets')!.label, 'Pets');
 
     await commit((await run('define_envelope', {
-      envelope: 'pets', label: 'Pets', group: 'People',
-      categories: ['pets'], templateCents: parseDollars('110.00'),
+      envelope: 'pets', label: 'Pets', category: 'pets', templateCents: parseDollars('110.00'),
     }, ctx)).id, ctx);
-    assert.ok(store.state.envelopes.has('pets'));
+    assert.equal(store.state.envelopes.get('pets')!.category, 'pets');
   });
 
   test('renaming changes the name everywhere and moves no money', async () => {
-    const { store, ctx } = await fixture({ spend: true });
+    const { store } = await fixture({ spend: true });
     const before = monthView(store.state, '2026-08')!.activity;
-    await commit((await run('define_category',
-      { category: 'food', label: 'Groceries (organic)' }, ctx)).id, ctx);
+    await store.append('alice', { op: 'category.rename', category: 'people', label: 'Everyday' });
 
-    assert.equal(store.state.categories.get('food')!.label, 'Groceries (organic)');
-    assert.equal(store.state.txns.get('t1')!.category, 'food', 'the receipt still points at the same fact');
+    assert.equal(store.state.categories.get('people')!.label, 'Everyday');
+    assert.equal(store.state.envelopes.get('daily')!.category, 'people', 'the envelope still sits under the same heading');
+    assert.equal(store.state.txns.get('t1')!.envelope, 'daily', 'the receipt is where it was');
     assert.equal(monthView(store.state, '2026-08')!.activity, before);
   });
 
   test('a duplicate name is refused', async () => {
-    const { ctx } = await fixture();
-    await assert.rejects(
-      () => run('define_category', { category: 'newone', label: 'Groceries' }, ctx), ToolError);
-  });
-
-  test('archiving keeps old receipts readable and says what still feeds on it', async () => {
-    const { store, ctx } = await fixture({ spend: true });
-    const p = await run('archive_category',
-      { category: 'food', archived: true, why: 'we stopped splitting this out' }, ctx);
-    assert.ok(p.effects.some((e) => /1 receipts stay in it/.test(e)));
-    assert.ok(p.effects.some((e) => /Still fed into: Daily life/.test(e)));
-
-    await commit(p.id, ctx);
-    assert.equal(store.state.categories.get('food')!.archived, true);
-    assert.equal(store.state.categories.get('food')!.label, 'Groceries', 'still resolvable');
-    assert.equal(monthView(store.state, '2026-08')!.activity, parseDollars('64.10'),
-      'and the money it holds is still counted');
-  });
-
-  test('it can be brought back into use', async () => {
-    const { store, ctx } = await fixture();
-    await commit((await run('archive_category', { category: 'dine', archived: true, why: 'unused' }, ctx)).id, ctx);
-    await commit((await run('archive_category', { category: 'dine', archived: false, why: 'back' }, ctx)).id, ctx);
-    assert.ok(!store.state.categories.get('dine')!.archived);
-  });
-
-  test('archiving needs a reason', async () => {
     const { store } = await fixture();
     await assert.rejects(
-      () => store.append('alice', { op: 'category.archive', category: 'dine', archived: true } as never),
-      ReplayError);
+      () => store.append('alice', { op: 'category.add', category: 'newone', label: 'people ' }), /There is already a category called People\./);
   });
 });
+

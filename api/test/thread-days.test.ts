@@ -83,9 +83,8 @@ async function household() {
     { op: 'household.zone', zone: 'America/Denver' },
     { op: 'member.add', member: 'bob', why: 'x' },
     { op: 'member.add', member: 'casey', why: 'x' },
-    { op: 'category.define', category: 'groceries', label: 'Groceries' },
-    { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'People',
-      match: { categories: ['groceries'] }, template: parseDollars('600.00'), order: 0 },
+    { op: 'category.add', category: 'people', label: 'People' },
+    { op: 'envelope.define', envelope: 'food', label: 'Food', category: 'people', template: parseDollars('600.00'), order: 0 },
     { op: 'month.open', month: '2026-11', income: parseDollars('1000.00') },
   ]);
   clock.now = NOW;
@@ -137,9 +136,9 @@ describe('thread()', () => {
   test('waiting is every item whatever is pressed, with what a row needs', async () => {
     const { store, clock } = await household();
     await store.append('alice', { op: 'txn.add', txns: [
-      { id: 'u1', date: '2026-11-04', payee: 'A', amount: parseDollars('-1.00'), dedupeKey: 'u1', category: null }] });
+      { id: 'u1', date: '2026-11-04', payee: 'A', amount: parseDollars('-1.00'), dedupeKey: 'u1', envelope: null }] });
     await store.append('bob', { op: 'txn.add', txns: [
-      { id: 'r1', date: '2026-11-04', payee: 'Corner Shop', amount: parseDollars('-12.40'), dedupeKey: 'r1', category: 'groceries' }] });
+      { id: 'r1', date: '2026-11-04', payee: 'Corner Shop', amount: parseDollars('-12.40'), dedupeKey: 'r1', envelope: 'food' }] });
     clock.now = '2026-11-10T17:30:00.000Z';
     const [o] = await store.append('claude', offerRaw('Move $50 to food'));
     clock.now = '2026-11-10T18:00:00.000Z';

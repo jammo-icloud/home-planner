@@ -55,14 +55,11 @@ before(async () => {
   await seed.load();
   await seed.append('tester', [
     { op: 'household.claim', label: 'Sandbox' },
-    { op: 'category.define', category: 'groceries', label: 'Groceries' },
-    { op: 'category.define', category: 'travel', label: 'Travel' },
-    { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'People',
-      match: { categories: ['groceries'] }, template: parseDollars('600.00'), order: 0 },
-    { op: 'envelope.define', envelope: 'trip', label: 'Travel', group: 'Future',
-      match: { categories: ['travel'] }, template: parseDollars('400.00'), order: 1 },
+    { op: 'category.add', category: 'people', label: 'People' },
+    { op: 'envelope.define', envelope: 'food', label: 'Food', category: 'people', template: parseDollars('600.00'), order: 0 },
+    { op: 'envelope.define', envelope: 'trip', label: 'Travel', category: 'people', template: parseDollars('400.00'), order: 1 },
     { op: 'month.open', month, income: parseDollars('1000.00') },
-    { op: 'rule.add', rule: 'r-bigbox', match: 'BIGBOX', category: '__split' },
+    { op: 'rule.add', rule: 'r-bigbox', match: 'BIGBOX', envelope: '__split' },
   ]);
   const [kept] = await seed.append('claude', { op: 'thread.briefing', day: '2026-01-01', source: 'household',
     headline: 'Kept in Drive', doc: DOC, writtenBy: 'claude' });
@@ -207,14 +204,14 @@ describe('the thread routes', () => {
     const csv = 'Date,Payee,Amount\n' + `${month}-02,HILLTOP FOODS,-42.10\n` + `${month}-03,MYSTERY SHOP,-5.00\n`;
     const p = await call('POST', '/api/import/preview', { filename: 'x.csv', content: csv });
     assert.equal(p.status, 200);
-    assert.ok(p.json.options.some((o: any) => o.value === 'groceries' && o.label === 'Food' && o.group === 'People'));
+    assert.ok(p.json.options.some((o: any) => o.value === 'food' && o.label === 'Food' && o.group === 'People'));
     // No key here, so nothing is suggested and nothing says it failed.
     assert.ok(p.json.rows.every((r: any) => r.suggested === undefined));
     assert.equal(p.json.suggestError, undefined);
 
     const king = p.json.rows.find((r: any) => r.payee === 'HILLTOP FOODS');
     const c = await call('POST', '/api/import/commit', { source: 'x.csv', rows: [
-      { ...king, category: 'groceries', suggestedBy: 'claude' },
+      { ...king, envelope: 'food', suggestedBy: 'claude' },
     ] });
     assert.equal(c.status, 200);
     const page = await call('GET', '/api/thread');
@@ -235,8 +232,8 @@ describe('the thread routes', () => {
     assert.equal(p.status, 200);
     const bigbox = p.json.rows.find((r: any) => /BIGBOX/.test(r.payee));
     const king = p.json.rows.find((r: any) => /HILLTOP/.test(r.payee));
-    assert.equal(bigbox.category, '__split');
-    assert.equal(king.category, null);
+    assert.equal(bigbox.envelope, '__split');
+    assert.equal(king.envelope, null);
     assert.equal(p.json.toDivide, 1);
     assert.equal(p.json.ruled, 0);
     assert.equal(p.json.needsSorting, 2);
@@ -253,11 +250,11 @@ describe('the thread routes', () => {
     const csv = 'Date,Payee,Amount\n' + `${month}-04,BIGBOX WHSE #0999,-165.00\n`;
     const p = await call('POST', '/api/import/preview', { filename: 's.csv', content: csv });
     const bigbox = p.json.rows[0];
-    assert.equal(bigbox.category, '__split');
+    assert.equal(bigbox.envelope, '__split');
     assert.equal(bigbox.amountCents, -16500);
 
     const c = await call('POST', '/api/import/commit', { source: 's.csv', rows: [
-      { ...bigbox, split: [{ category: 'groceries', amountCents: -12000 }, { category: 'travel', amountCents: -4500 }] },
+      { ...bigbox, split: [{ envelope: 'food', amountCents: -12000 }, { envelope: 'trip', amountCents: -4500 }] },
     ] });
     assert.equal(c.status, 200);
     assert.equal(c.json.added, 1);
@@ -268,11 +265,11 @@ describe('the thread routes', () => {
     const at = log.findIndex((e) => e.op === 'txn.add' && e.txns.some((t: any) => t.id === bigbox.id));
     assert.ok(at >= 0, 'the receipt landed');
     const added = log[at].txns.find((t: any) => t.id === bigbox.id);
-    assert.equal(added.category, null, 'it arrives undivided, then the split divides it');
+    assert.equal(added.envelope, null, 'it arrives undivided, then the split divides it');
     assert.equal(added.suggestedBy, undefined);
     assert.equal(log[at + 1].op, 'txn.split');
     assert.equal(log[at + 1].txn, bigbox.id);
-    assert.deepEqual(log[at + 1].parts, [{ category: 'groceries', amount: -12000 }, { category: 'travel', amount: -4500 }]);
+    assert.deepEqual(log[at + 1].parts, [{ envelope: 'food', amount: -12000 }, { envelope: 'trip', amount: -4500 }]);
 
     // Replay has it as a split receipt: the same file is now all duplicates.
     const again = await call('POST', '/api/import/preview', { filename: 's.csv', content: csv });
@@ -293,21 +290,21 @@ describe('the thread routes', () => {
     };
 
     // Marked to divide but sent with no parts, or with an empty list.
-    await refused([{ ...king, category: 'groceries' }, { ...bigbox }], /BIGBOX WHSE #0888 is marked to divide but is not divided/);
+    await refused([{ ...king, envelope: 'food' }, { ...bigbox }], /BIGBOX WHSE #0888 is marked to divide but is not divided/);
     await refused([{ ...bigbox, split: [] }], /not divided/);
     // Parts that do not add up, a single part, a stray fraction, an unknown envelope.
-    await refused([{ ...bigbox, split: [{ category: 'groceries', amountCents: -12000 }, { category: 'travel', amountCents: -4000 }] }], /add up/);
-    await refused([{ ...bigbox, split: [{ category: 'groceries', amountCents: -16500 }] }], /at least two/);
-    await refused([{ ...bigbox, split: [{ category: 'groceries', amountCents: -12000.5 }, { category: 'travel', amountCents: -4499.5 }] }], /whole number of cents/);
-    await refused([{ ...bigbox, split: [{ category: 'groceries', amountCents: -12000 }, { category: 'nowhere', amountCents: -4500 }] }], /no category nowhere/);
+    await refused([{ ...bigbox, split: [{ envelope: 'food', amountCents: -12000 }, { envelope: 'trip', amountCents: -4000 }] }], /add up/);
+    await refused([{ ...bigbox, split: [{ envelope: 'food', amountCents: -16500 }] }], /at least two/);
+    await refused([{ ...bigbox, split: [{ envelope: 'food', amountCents: -12000.5 }, { envelope: 'trip', amountCents: -4499.5 }] }], /whole number of cents/);
+    await refused([{ ...bigbox, split: [{ envelope: 'food', amountCents: -12000 }, { envelope: 'nowhere', amountCents: -4500 }] }], /no envelope nowhere/);
 
-    // Only the real non-spend markers stand in for an envelope; any other __ name is not a category.
-    await refused([{ ...bigbox, split: [{ category: 'groceries', amountCents: -12000 }, { category: '__bogus', amountCents: -4500 }] }], /no category __bogus/);
+    // Only the real non-spend markers stand in for an envelope; any other __ name is no envelope.
+    await refused([{ ...bigbox, split: [{ envelope: 'food', amountCents: -12000 }, { envelope: '__bogus', amountCents: -4500 }] }], /no envelope __bogus/);
     // A plain row is held to the same rule: only the real markers stand in for an envelope.
-    await refused([{ ...bigbox, category: '__bogus' }], /no category __bogus/);
+    await refused([{ ...bigbox, envelope: '__bogus' }], /no envelope __bogus/);
     // A malformed part is a client fault, not a crash.
-    await refused([{ ...bigbox, split: [null, { category: 'travel', amountCents: -4500 }] }], /part with no category or amount/);
-    await refused([{ ...bigbox, split: [{ category: 7, amountCents: -12000 }, { category: 'travel', amountCents: -4500 }] }], /part with no category or amount/);
+    await refused([{ ...bigbox, split: [null, { envelope: 'trip', amountCents: -4500 }] }], /part with no envelope or amount/);
+    await refused([{ ...bigbox, split: [{ category: 7, amountCents: -12000 }, { envelope: 'trip', amountCents: -4500 }] }], /part with no envelope or amount/);
 
     // Nothing was appended, so neither receipt exists: both still preview as new.
     const log = await logged();
@@ -320,7 +317,7 @@ describe('the thread routes', () => {
 
   test('the import preview carries a suggestion\'s rule and parts beside it', async () => {
     const f = fake([said(JSON.stringify({ matches: [
-      { payee: 'TARGET #77', choice: '__split', confidence: 0.9, rule: 'target', parts: ['groceries', 'travel'] },
+      { payee: 'TARGET #77', choice: '__split', confidence: 0.9, rule: 'target', parts: ['food', 'trip'] },
     ] }))]);
     try {
       const csv = 'Date,Payee,Amount\n' + `${month}-02,TARGET #77,-65.00\n` + `${month}-03,BIGBOX WHSE #0100,-165.00\n`;
@@ -328,7 +325,7 @@ describe('the thread routes', () => {
       const row = p.json.rows.find((r: any) => /TARGET/.test(r.payee));
       assert.equal(row.suggested, '__split');
       assert.equal(row.rule, 'target');
-      assert.deepEqual(row.parts, ['groceries', 'travel']);
+      assert.deepEqual(row.parts, ['food', 'trip']);
       assert.doesNotMatch(JSON.stringify(f.calls[0].messages), /BIGBOX/);
     } finally { setClaudeClient(null); }
   });
@@ -337,18 +334,18 @@ describe('the thread routes', () => {
     const csv = 'Date,Payee,Amount\n' + `${month}-02,HILLTOP FOODS #12 SPRINGFIELD,-42.10\n` + `${month}-03,BIGBOX WHSE #0100,-165.00\n`;
     const p = await call('POST', '/api/import/preview', { filename: 'q.csv', content: csv });
     // Committed unsorted on purpose: the ledger holds an open Bigbox receipt that only a rule marks as a split.
-    const rows = p.json.rows.map((r: any) => ({ ...r, category: null }));
+    const rows = p.json.rows.map((r: any) => ({ ...r, envelope: null }));
     assert.equal((await call('POST', '/api/import/commit', { source: 'q.csv', rows })).status, 200);
     const king = rows.find((r: any) => /HILLTOP/.test(r.payee)).id;
     const bigbox = rows.find((r: any) => /BIGBOX/.test(r.payee)).id;
 
     const f = fake([said(JSON.stringify({ matches: [
-      { payee: 'HILLTOP FOODS #12 SPRINGFIELD', choice: 'groceries', confidence: 0.95, rule: 'hilltop foods' },
+      { payee: 'HILLTOP FOODS #12 SPRINGFIELD', choice: 'food', confidence: 0.95, rule: 'hilltop foods' },
     ] }))]);
     try {
       const r = await call('POST', '/api/match', { txnIds: [king, bigbox] });
       assert.equal(r.status, 200);
-      assert.deepEqual(r.json.suggestions[king], { choice: 'groceries', rule: 'hilltop foods' });
+      assert.deepEqual(r.json.suggestions[king], { choice: 'food', rule: 'hilltop foods' });
       assert.equal(r.json.suggestions[bigbox], undefined);
       assert.deepEqual(r.json.toDivide, [bigbox]);
       assert.doesNotMatch(JSON.stringify(f.calls[0].messages), /BIGBOX/);
@@ -358,7 +355,7 @@ describe('the thread routes', () => {
   test('/api/match with no ids still lists every open receipt a split rule covers, and asks Claude nothing', async () => {
     const csv = 'Date,Payee,Amount\n' + `${month}-04,BIGBOX WHSE #0999,-55.00\n`;
     const p = await call('POST', '/api/import/preview', { filename: 'n.csv', content: csv });
-    const rows = p.json.rows.map((r: any) => ({ ...r, category: null }));
+    const rows = p.json.rows.map((r: any) => ({ ...r, envelope: null }));
     assert.equal((await call('POST', '/api/import/commit', { source: 'n.csv', rows })).status, 200);
     const id = rows[0].id;
 
@@ -616,8 +613,8 @@ describe('drift on Today', () => {
     const s = new Store({ path: join(await mkdtemp(join(tmpdir(), 'pb-restore-facts-')), 'events.jsonl') });
     await s.load();
     await s.append('alice', { op: 'household.claim', label: 'Elsewhere' });
-    await s.append('alice', [{ op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
-      { op: 'txn.add', txns: [{ id: 'srv-t1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 'srv-t1', category: 'food' }] }]);
+    await s.append('alice', [{ op: 'category.add', category: 'food', label: 'Groceries' },
+      { op: 'txn.add', txns: [{ id: 'srv-t1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 'srv-t1', envelope: 'food' }] }]);
     const content = await readFile(s.path, 'utf8');
     const first = await as(aliceDsm, 'POST', '/api/restore/preview', { content, scopes: ['facts'] });
     assert.equal(first.json.canApply, true, JSON.stringify(first.json));

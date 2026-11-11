@@ -26,11 +26,11 @@ export type Scope = 'facts' | 'budgets' | 'months' | 'people' | 'thread' | 'sett
 /** Which band of the model an event belongs to. Every event belongs to one. */
 export function scopeOf(e: Event): Scope {
   switch (e.op) {
-    case 'category.define': case 'category.archive': case 'category.sinking':
-    case 'txn.add': case 'txn.categorize': case 'txn.split': case 'txn.remove': case 'account.balance':
+    case 'txn.add': case 'txn.sort': case 'txn.split': case 'txn.remove': case 'account.balance':
     case 'rule.add': case 'rule.remove':
       return 'facts';
     case 'household.locate':
+    case 'category.add': case 'category.rename': case 'category.move': case 'category.remove':
     case 'envelope.define': case 'envelope.remove': case 'bill.set': case 'bill.remove':
     case 'income.source.define': case 'income.source.remove':
       return 'budgets';
@@ -157,8 +157,9 @@ const DOING: Partial<Record<Event['op'], string>> = {
   'plan.block': 'setting time aside for a plan', 'plan.unblock': 'freeing time set aside for a plan',
   'calendar.appointment': 'adding an appointment', 'calendar.appointment.change': 'changing an appointment',
   'calendar.appointment.remove': 'removing an appointment',
-  'txn.categorize': 'sorting a receipt', 'txn.split': 'splitting a receipt', 'txn.remove': 'removing a receipt',
-  'category.archive': 'archiving a category', 'envelope.define': 'setting up an envelope', 'envelope.remove': 'removing an envelope',
+  'txn.sort': 'sorting a receipt', 'txn.split': 'splitting a receipt', 'txn.remove': 'removing a receipt',
+  'category.add': 'adding a category', 'category.rename': 'renaming a category', 'category.move': 'moving a category',
+  'category.remove': 'removing a category', 'envelope.define': 'setting up an envelope', 'envelope.remove': 'removing an envelope',
   'bill.set': 'setting a bill', 'bill.remove': 'removing a bill',
   'month.open': 'opening a month', 'month.close': 'closing a month', 'assign': 'setting an envelope for a month',
   'move': 'moving money between envelopes', 'income.set': "setting a month's income",
@@ -258,42 +259,12 @@ export function planRestore(
   // ── facts ────────────────────────────────────────────────────────────────
   if (wanted.has('facts')) {
     for (const e of take) {
-      if (e.op === 'category.define' && target.categories.has(e.category)) {
-        const here = target.categories.get(e.category)!;
-        if (here.label !== e.label) {
-          collisions.push({
-            kind: 'category', what: e.category,
-            why: `this household already calls "${e.category}" ${here.label}; the backup calls it ${e.label}`,
-          });
-        }
-      }
       if (e.op === 'txn.add') {
         for (const t of e.txns) {
           if (target.txns.has(t.id)) {
             collisions.push({
               kind: 'transaction', what: `${t.date} ${t.payee}`,
               why: 'a receipt with that identity is already in this ledger',
-            });
-          }
-        }
-      }
-    }
-  }
-
-  // ── budgets ──────────────────────────────────────────────────────────────
-  if (wanted.has('budgets')) {
-    for (const e of take) {
-      // An envelope arriving from a backup may claim a category that something
-      // here already feeds on — the same guard that stops two envelopes sharing
-      // a category, which would make a receipt land in whichever was defined last.
-      if (e.op === 'envelope.define') {
-        for (const env of target.envelopes.values()) {
-          if (env.id === e.envelope) continue;
-          const clash = e.match.categories.find((c) => env.match.categories.includes(c));
-          if (clash) {
-            collisions.push({
-              kind: 'envelope-category', what: `${e.label} → ${clash}`,
-              why: `${clash} already feeds ${env.label}`,
             });
           }
         }
@@ -541,20 +512,6 @@ export function planRestore(
       missingPrerequisites.push(`months need envelopes (${nowhere.join(', ')}) that are not here and not in the backup`);
     }
   }
-  if (wanted.has('budgets') && !wanted.has('facts')) {
-    const known = target.categories;
-    const fromBackup = new Set(
-      backup.events.filter((e) => e.op === 'category.define').map((e) => (e as { category: string }).category));
-    const needed = new Set(take.flatMap((e) => e.op === 'envelope.define' ? e.match.categories : []));
-    for (const c of needed) {
-      if (!known.has(c)) {
-        missingPrerequisites.push(fromBackup.has(c)
-          ? `envelopes feed on category "${c}", which is in the backup but not selected`
-          : `envelopes feed on category "${c}", which does not exist here`);
-      }
-    }
-  }
-
   // The backstop. The checks above name each refusal they know of in words a
   // person can act on; whatever they did not foresee, the fold itself is asked,
   // on a copy of this household, and its own words are the collision. Only

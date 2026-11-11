@@ -87,7 +87,7 @@ describe('the thread in the log', () => {
   test('claude may only offer, answer and brief', async () => {
     const s = await household([
     ]);
-    await assert.rejects(s.append('claude', { op: 'category.define', category: 'mine', label: 'Mine now' }), /claude cannot/);
+    await assert.rejects(s.append('claude', { op: 'category.add', category: 'mine', label: 'Mine now' }), /claude cannot/);
     await assert.rejects(s.append('claude', { op: 'thread.note', text: 'hello' }), /claude cannot/);
     await s.append('claude', { op: 'thread.answer', replyTo: 'q1', text: 'Here is why.', tools: [], model: 'm' });
     await s.append('claude', {
@@ -111,23 +111,23 @@ describe('the thread in the log', () => {
   });
 
   test('an accepted suggestion records that Claude suggested it', async () => {
-    const s = await household([{ op: 'category.define', category: 'food', label: 'Food' }]);
+    const s = await household([{ op: 'category.add', category: 'food', label: 'Food' }]);
     await s.append('alice', { op: 'txn.add', txns: [{
       id: 't1', date: '2026-10-02', payee: 'HILLTOP FOODS', amount: -4200 as never,
-      dedupeKey: 't1', category: 'food', suggestedBy: 'claude',
+      dedupeKey: 't1', envelope: 'food', suggestedBy: 'claude',
     }] });
     assert.equal(s.state.txns.get('t1')?.suggestedBy, 'claude');
     await s.append('alice', { op: 'txn.add', txns: [{
-      id: 't2', date: '2026-10-02', payee: 'SAFEWAY', amount: -100 as never, dedupeKey: 't2', category: null,
+      id: 't2', date: '2026-10-02', payee: 'SAFEWAY', amount: -100 as never, dedupeKey: 't2', envelope: null,
     }] });
-    await s.append('alice', { op: 'txn.categorize', txn: 't2', category: 'food', suggestedBy: 'claude' });
+    await s.append('alice', { op: 'txn.sort', txn: 't2', envelope: 'food', suggestedBy: 'claude' });
     assert.equal(s.state.txns.get('t2')?.suggestedBy, 'claude');
     // Confirming the same envelope (as remembering a rule does) keeps where it came from…
-    await s.append('alice', { op: 'txn.categorize', txn: 't2', category: 'food', manual: true });
+    await s.append('alice', { op: 'txn.sort', txn: 't2', envelope: 'food', manual: true });
     assert.equal(s.state.txns.get('t2')?.suggestedBy, 'claude');
     // …and choosing a different one is a person's choice, not Claude's.
-    await s.append('alice', { op: 'category.define', category: 'fun', label: 'Fun' });
-    await s.append('alice', { op: 'txn.categorize', txn: 't2', category: 'fun', manual: true });
+    await s.append('alice', { op: 'category.add', category: 'fun', label: 'Fun' });
+    await s.append('alice', { op: 'txn.sort', txn: 't2', envelope: 'fun', manual: true });
     assert.equal(s.state.txns.get('t2')?.suggestedBy, undefined);
   });
 
@@ -149,7 +149,7 @@ describe('the thread in the log', () => {
   });
 
   test('a restore can take the conversation without the money, and says so', async () => {
-    const s = await household([{ op: 'category.define', category: 'food', label: 'Food' }]);
+    const s = await household([{ op: 'category.add', category: 'food', label: 'Food' }]);
     await s.append('alice', { op: 'thread.note', text: 'trip is paid for' });
     await offered(s);
     const backup = parseBackup(await readFile(s.path, 'utf8'));

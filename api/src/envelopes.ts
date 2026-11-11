@@ -1,82 +1,75 @@
 /**
- * Rolling facts up into the household's envelopes.
+ * Rolling receipts up into the household's envelopes.
  *
- * This is the join between the two layers. A transaction carries a category
- * forever; the envelopes decide which one that category lands in. Change the
- * mapping and every past month recomputes — correct for a view, and the reason
- * categorizing work is never wasted.
+ * A person sorts each receipt into one envelope, or splits it across several,
+ * and each part counts there and only there. A part in an envelope since
+ * removed counts in that envelope's history only in a month that was closed
+ * when it went and is closed still; anywhere else it counts nowhere, and To
+ * sort holds the receipt (analytics.ts).
  */
 
 import { ZERO, add, sub, max, cents } from './money.ts';
 import type { Cents } from './money.ts';
+import { ToolError } from './errors.ts';
 import { fundedFor, plannedFor, trailFor } from './replay.ts';
-import { isSpend, monthOf, partsOf, prevMonth } from './types.ts';
+import { INCOME, SPLIT, TRANSFER, isSpend, monthOf, partsOf, prevMonth, slug } from './types.ts';
 import type {
-  Adjustment, CategoryId, Envelope, EnvelopeId, Month, MonthPlan, State, Txn,
+  Adjustment, CategoryId, Envelope, EnvelopeId, Month, MonthPlan, State,
 } from './types.ts';
 
 /**
- * Does this transaction belong in this envelope?
- *
- * Takes a probe rather than a whole Txn: a split receipt asks once per part,
- * with the part's category and the receipt's payee and memo.
+ * Whether a removed envelope keeps `month` in its history: the month was
+ * closed when it was removed, and is closed still. Reopening it sends its
+ * receipts to To sort; closing a month after the removal does not take them.
  */
-export function matches(env: Envelope, t: Pick<Txn, 'payee' | 'memo' | 'category'>): boolean {
-  if (!isSpend(t.category)) return false;
-  if (!env.match.categories.includes(t.category)) return false;
-  if (env.match.payee) {
-    const hay = `${t.payee ?? ''} ${t.memo ?? ''}`.toLowerCase();
-    if (!hay.includes(env.match.payee.toLowerCase())) return false;
-  }
-  return true;
+export function keptIn(state: Pick<State, 'removedEnvelopes' | 'months'>, envelope: EnvelopeId, month: Month): boolean {
+  const gone = state.removedEnvelopes.get(envelope);
+  return gone !== undefined && gone.keptIn.includes(month) && state.months.get(month)?.closed === true;
+}
+
+// ─── ids ──────────────────────────────────────────────────────────────────────
+
+const RESERVED: ReadonlySet<string> = new Set([TRANSFER, INCOME, SPLIT]);
+/** Ids already taken: a map of the state, or that and the ones a proposal is making. */
+interface Taken { has(id: string): boolean }
+
+/** `base`, else `base-2`, `base-3`… the first that `taken` does not hold. */
+function fresh(base: string, taken: (id: string) => boolean): string {
+  if (!taken(base)) return base;
+  for (let n = 2; ; n++) if (!taken(`${base}-${n}`)) return `${base}-${n}`;
+}
+
+function idBase(label: string): string {
+  const base = slug(label);
+  if (!base) throw new ToolError('that name has no letters or numbers in it');
+  return base;
 }
 
 /**
- * Which envelope owns a transaction, or null if none does.
- *
- * Payee-narrowed envelopes win over plain category ones, so the months of a
- * move can define "Utilities — old house" (electricity + payee
- * EXAMPLE POWER) alongside a catch-all
- * without the order of definition deciding the answer.
+ * The id a new envelope called `label` takes: from its name, then `-2`, `-3`…
+ * while a live envelope, a removed one or a reserved value has it. A removed
+ * envelope's id is never given again, so a new envelope of the same name never
+ * pulls old receipts back. `base` keeps a starter row's own id when it is free.
  */
-export function envelopeFor(state: Pick<State, 'envelopes'>, t: Pick<Txn, 'payee' | 'memo' | 'category'>): Envelope | null {
-  let broad: Envelope | null = null;
-  for (const env of state.envelopes.values()) {
-    if (!matches(env, t)) continue;
-    if (env.match.payee) return env;
-    broad ??= env;
-  }
-  return broad;
+export function envelopeIdFor(
+  state: { readonly envelopes: Taken; readonly removedEnvelopes: Taken }, label: string, base?: string,
+): EnvelopeId {
+  return fresh(base ?? idBase(label), (id) => state.envelopes.has(id) || state.removedEnvelopes.has(id) || RESERVED.has(id));
 }
 
-/**
- * Categories the envelopes claim more than once without narrowing by payee.
- * Ambiguous ownership would double-count, so the envelope editor blocks on this.
- */
-export function overlappingCategories(state: Pick<State, 'envelopes'>): Map<string, EnvelopeId[]> {
-  const seen = new Map<string, EnvelopeId[]>();
-  for (const env of state.envelopes.values()) {
-    if (env.match.payee) continue;
-    for (const c of env.match.categories) {
-      const list = seen.get(c) ?? [];
-      list.push(env.id);
-      seen.set(c, list);
-    }
-  }
-  for (const [c, list] of seen) if (list.length < 2) seen.delete(c);
-  return seen;
+/** The id a new category called `label` takes: from its name, then `-2`… while a live category has it. */
+export function categoryIdFor(state: { readonly categories: Taken }, label: string, base?: string): CategoryId {
+  return fresh(base ?? idBase(label), (id) => state.categories.has(id));
 }
 
 // ─── month rollup ─────────────────────────────────────────────────────────────
 
 /**
  * One part of one receipt landing in an envelope. A plain receipt is one line;
- * a split receipt is a line per part that lands here, so two parts of the same
- * receipt can both be lines of one envelope.
+ * a split receipt is a line per part that lands here.
  */
 export interface EnvelopeLine {
   readonly txnId: string;
-  readonly category: CategoryId;
   /** Money out, positive. The part's share, not the whole receipt. */
   readonly amount: Cents;
   readonly split: boolean;
@@ -102,6 +95,12 @@ export interface EnvelopeView {
   readonly txnIds: readonly string[];
   /** Each part that lands here. What pace and the receipts list count. */
   readonly lines: readonly EnvelopeLine[];
+  /**
+   * Only in a month that keeps a removed envelope: its `envelope` is built from
+   * the record (rollover false, template 0), and it sits after its category's
+   * live envelopes.
+   */
+  readonly removed?: true;
 }
 
 export interface MonthView {
@@ -111,9 +110,8 @@ export interface MonthView {
   readonly funded: Cents;
   readonly activity: Cents;
   readonly toAssign: Cents;
+  /** In category order, then envelope order; a removed envelope kept here after its category's live ones. */
   readonly envelopes: readonly EnvelopeView[];
-  /** Spent on categories no envelope matches. Never silently dropped. */
-  readonly outside: { readonly total: Cents; readonly txnIds: readonly string[] };
   readonly moveCount: number;
 }
 
@@ -121,8 +119,7 @@ export interface MonthView {
  * Roll one month of the budget up.
  *
  * Rollover walks back through earlier open months rather than keeping a running
- * balance, so recomputing any month is self-contained and a changed mapping
- * propagates without a migration.
+ * balance, so recomputing any month is self-contained.
  */
 export function monthView(state: State, month: Month): MonthView | null {
   const plan = state.months.get(month);
@@ -130,26 +127,19 @@ export function monthView(state: State, month: Month): MonthView | null {
 
   const activity = new Map<EnvelopeId, Cents>();
   const lines = new Map<EnvelopeId, EnvelopeLine[]>();
-  const outsideIds: string[] = [];
-  let outsideTotal = ZERO;
   let totalActivity = ZERO;
 
   for (const t of state.txns.values()) {
     if (monthOf(t.date) !== month) continue;
-    // Each part is its own spending: its own envelope, or outside. A split
-    // receipt's marker category is not spending, so only its parts count.
+    // Each part is its own spending, in its own envelope. A split receipt's
+    // marker is not spending, so only its parts count.
     for (const p of partsOf(t)) {
-      if (!isSpend(p.category)) continue;
+      if (!isSpend(p.envelope)) continue;
+      if (!state.envelopes.has(p.envelope) && !keptIn(state, p.envelope, month)) continue;
       const out = cents(-p.amount); // outflow positive
-      const env = envelopeFor(state, { ...t, category: p.category });
-      if (!env) {
-        outsideTotal = add(outsideTotal, out);
-        if (!outsideIds.includes(t.id)) outsideIds.push(t.id);
-        continue;
-      }
-      activity.set(env.id, add(activity.get(env.id) ?? ZERO, out));
-      (lines.get(env.id) ?? lines.set(env.id, []).get(env.id)!)
-        .push({ txnId: t.id, category: p.category, amount: out, split: !!t.split });
+      activity.set(p.envelope, add(activity.get(p.envelope) ?? ZERO, out));
+      (lines.get(p.envelope) ?? lines.set(p.envelope, []).get(p.envelope)!)
+        .push({ txnId: t.id, amount: out, split: !!t.split });
       totalActivity = add(totalActivity, out);
     }
   }
@@ -158,8 +148,7 @@ export function monthView(state: State, month: Month): MonthView | null {
   let plannedSum = ZERO;
   let fundedSum = ZERO;
 
-  const ordered = [...state.envelopes.values()].sort((a, b) => a.order - b.order);
-  for (const env of ordered) {
+  const view = (env: Envelope, removed: boolean): EnvelopeView => {
     const planned = plannedFor(plan, env.id);
     const funded = fundedFor(plan, env.id);
     const act = activity.get(env.id) ?? ZERO;
@@ -167,7 +156,7 @@ export function monthView(state: State, month: Month): MonthView | null {
     const available = sub(add(carried, funded), act);
     plannedSum = add(plannedSum, planned);
     fundedSum = add(fundedSum, funded);
-    envelopes.push({
+    return {
       envelope: env,
       planned, funded, carried, activity: act, available,
       overspent: available < 0,
@@ -175,8 +164,11 @@ export function monthView(state: State, month: Month): MonthView | null {
       trail: trailFor(plan, env.id),
       txnIds: [...new Set((lines.get(env.id) ?? []).map((l) => l.txnId))],
       lines: lines.get(env.id) ?? [],
-    });
-  }
+      ...(removed ? { removed: true as const } : {}),
+    };
+  };
+
+  for (const env of ordered(state, month)) envelopes.push(view(env.envelope, env.removed));
 
   return {
     month,
@@ -186,16 +178,36 @@ export function monthView(state: State, month: Month): MonthView | null {
     activity: totalActivity,
     toAssign: sub(plan.income, fundedSum),
     envelopes,
-    outside: { total: outsideTotal, txnIds: outsideIds },
     moveCount: plan.adjustments.filter((a) => a.kind === 'move').length / 2,
   };
+}
+
+/**
+ * The envelopes a month shows, in category order then envelope order, each
+ * category's removed envelopes this month keeps after its live ones. Any whose
+ * category is not here come last.
+ */
+function ordered(state: State, month: Month): { envelope: Envelope; removed: boolean }[] {
+  const place = new Map([...state.categories.keys()].map((id, i) => [id, i]));
+  const rank = (c: CategoryId) => place.get(c) ?? place.size;
+  const live = [...state.envelopes.values()].map((envelope) => ({ envelope, removed: false }));
+  const gone = [...state.removedEnvelopes.values()]
+    .filter((r) => keptIn(state, r.id, month))
+    .map((r) => ({
+      envelope: { id: r.id, label: r.label, category: r.category, rollover: false, template: ZERO, order: 0 } as Envelope,
+      removed: true,
+    }));
+  return [...live, ...gone].sort((a, b) =>
+    rank(a.envelope.category) - rank(b.envelope.category)
+    || Number(a.removed) - Number(b.removed)
+    || (a.removed ? a.envelope.label.localeCompare(b.envelope.label) : a.envelope.order - b.envelope.order));
 }
 
 /**
  * What an envelope carries into `month` from the one before.
  *
  * Recursive by design: each month's leftover depends on the one before it.
- * Bounded by how many months are actually open, and memoised per call tree.
+ * Bounded by how many months are actually open.
  */
 export function carriedInto(
   state: State, month: Month, env: EnvelopeId,
@@ -213,13 +225,7 @@ export function carriedInto(
   let act = ZERO;
   for (const t of state.txns.values()) {
     if (monthOf(t.date) !== prev) continue;
-    for (const p of partsOf(t)) {
-      if (!isSpend(p.category)) continue;
-      const probe = { ...t, category: p.category };
-      if (!matches(envelope, probe)) continue;
-      if (envelopeFor(state, probe)?.id !== env) continue;
-      act = add(act, cents(-p.amount));
-    }
+    for (const p of partsOf(t)) if (p.envelope === env) act = add(act, cents(-p.amount));
   }
 
   const carried = envelope.rollover ? carriedInto(state, prev, env, seen) : ZERO;

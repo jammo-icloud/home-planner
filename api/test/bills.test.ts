@@ -25,29 +25,28 @@ import type { DistributiveOmit } from '../src/util-types.ts';
 let n = 0;
 export const ev = (b: DistributiveOmit<Event, 'id' | 'at' | 'who'>, at = '2026-11-02T18:00:00Z'): Event =>
   ({ id: `e${++n}`, at, who: 'alice', ...b }) as Event;
-export const pay = (id: string, date: string, payee: string, dollars: string, category: string | null): Txn =>
-  ({ id, date, payee, amount: parseDollars(dollars), dedupeKey: id, category });
+export const pay = (id: string, date: string, payee: string, dollars: string, envelope: string | null): Txn =>
+  ({ id, date, payee, amount: parseDollars(dollars), dedupeKey: id, envelope });
 
-const envelope = (envelope: string, label: string, categories: string[], template: string, order: number, extra: object = {}) =>
-  ev({ op: 'envelope.define', envelope, label, group: 'House', match: { categories },
+const envelope = (envelope: string, label: string, template: string, order: number, extra: object = {}) =>
+  ev({ op: 'envelope.define', envelope, label, category: 'house',
     template: parseDollars(template), rollover: false, order, ...extra } as never);
 
-/** Claimed by alice. Harbor: `util` "Utilities" {elec, water}, `daily` "Daily life" {groceries}, `heat` "Heating" {gas, template 0}, `roof` "Roof" {roofing, sinking: { kind: 'every' }}. October and November open. */
+/** Claimed by alice. Under House: `util` "Utilities", `daily` "Daily life", `heat` "Heating" (template 0), `roof` "Roof" (saved in Savings, every, no estimate). October and November open. */
 export const houseEvents = (txns: readonly Txn[] = [], more: readonly Event[] = []): Event[] => [
   ev({ op: 'household.claim', label: 'Home' }),
-  ...(['elec:Electricity', 'water:Water', 'groceries:Groceries', 'gas:Gas', 'roofing:Roofing'] as const).map((c) =>
-    ev({ op: 'category.define', category: c.split(':')[0]!, label: c.split(':')[1]! })),
-  envelope('util', 'Utilities', ['elec', 'water'], '300.00', 0),
-  envelope('daily', 'Daily life', ['groceries'], '600.00', 1),
-  envelope('heat', 'Heating', ['gas'], '0.00', 2),
-  envelope('roof', 'Roof', ['roofing'], '0.00', 3, { sinking: { kind: 'every' } }),
+  ev({ op: 'category.add', category: 'house', label: 'House' }),
+  envelope('util', 'Utilities', '300.00', 0),
+  envelope('daily', 'Daily life', '600.00', 1),
+  envelope('heat', 'Heating', '0.00', 2),
+  envelope('roof', 'Roof', '0.00', 3, { sinking: { kind: 'every', estimate: null } }),
   ev({ op: 'month.open', month: '2026-10', income: parseDollars('9600.00') }),
   ev({ op: 'month.open', month: '2026-11', income: parseDollars('9600.00') }),
   ...(txns.length ? [ev({ op: 'txn.add', txns })] : []),
   ...more,
 ];
 export const house = (txns: readonly Txn[] = [], more: readonly Event[] = []): State => replay(houseEvents(txns, more));
-export const POWER = ['2026-08-14', '2026-09-14', '2026-10-14'].map((d) => pay(`p${d}`, d, 'EXAMPLE POWER BILLP', '-146.00', 'elec'));
+export const POWER = ['2026-08-14', '2026-09-14', '2026-10-14'].map((d) => pay(`p${d}`, d, 'EXAMPLE POWER BILLP', '-146.00', 'util'));
 export const SET = { op: 'bill.set', envelope: 'util', bill: 'example power billp', name: 'Example Power', date: { kind: 'due', per: 'month', day: 16 } } as const;
 const bills = (s: State) => [...s.bills.values()];
 
@@ -75,7 +74,7 @@ describe('a bill in the log', () => {
   });
   test('an append keeps every bill (thaw)', () => {
     const one = apply(house(), [ev(SET)]);
-    const two = apply(one, [ev({ op: 'category.define', category: 'x', label: 'X' })]);
+    const two = apply(one, [ev({ op: 'category.add', category: 'x', label: 'X' })]);
     assert.deepEqual(bills(two), bills(one));
     assert.equal(bills(two).length, 1);
   });
@@ -97,9 +96,9 @@ describe('a bill in the log', () => {
     assert.throws(() => house([], [ev(SET), ev({ ...gone, bill: SET.bill })]), /named by hand/);
     assert.throws(() => house([], [ev(gone)]), /no such bill/);
   });
-  test('envelope.remove leaves its bills in the state', () => {
+  test('envelope.remove takes its bills out of the state', () => {
     const s = house([], [ev(SET), ev({ op: 'envelope.remove', envelope: 'util', why: 'moved' })]);
-    assert.equal(bills(s).length, 1);
+    assert.equal(bills(s).length, 0);
   });
 });
 
@@ -178,7 +177,7 @@ describe("an envelope's bills", () => {
     assert.equal(fixedCharges(house(POWER))[0]!.lastDate, '2026-10-14');
   });
   test('every live envelope has an entry, one with nothing funded listing its bills', () => {
-    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'gas'));
+    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'heat'));
     const s = house(gas);
     assert.deepEqual([...billsOf(s).keys()].sort(), ['daily', 'heat', 'roof', 'util']);
     assert.equal(list(s, 'heat')[0]!.about, 5000);
@@ -193,39 +192,48 @@ describe("an envelope's bills", () => {
     assert.deepEqual(list(t, 'util').map((b) => b.name), ['Zed', 'Abel', 'EXAMPLE POWER BILLP']);
   });
   test('a bill named by hand takes a payee that contains it; its name stays', () => {
-    const water = ['2026-09-30', '2026-10-30'].map((d) => pay(`w${d}`, d, 'EXAMPLE WATER #4471', '-48.00', 'water'));
+    const water = ['2026-09-30', '2026-10-30'].map((d) => pay(`w${d}`, d, 'EXAMPLE WATER #4471', '-48.00', 'util'));
     const s = house(water, [ev({ ...SET, bill: 'water', name: 'The water', byHand: true })]);
     assert.deepEqual(list(s, 'util').map((b) => [b.key, b.name, b.about, b.receipts.length]), [['water', 'The water', 4800, 2]]);
   });
   test('seen once, it has a date and no figure', () => {
-    const s = house([pay('o', '2026-10-02', 'EXAMPLE WATER', '-48.00', 'water')], [ev({ ...SET, bill: 'example water', name: 'EXAMPLE WATER' })]);
+    const s = house([pay('o', '2026-10-02', 'EXAMPLE WATER', '-48.00', 'util')], [ev({ ...SET, bill: 'example water', name: 'EXAMPLE WATER' })]);
     assert.deepEqual(list(s, 'util').map((b) => [b.about, b.lastPaid?.day]), [[null, '2026-10-02']]);
   });
-  test('two fixed charges of one payee in one envelope are one bill, charge by charge', () => {
-    const s = house([...['2026-09-05', '2026-10-05'].map((d) => pay(`a${d}`, d, 'P2P PAYMENT', '-100.00', 'elec')),
-                     ...['2026-09-12', '2026-10-12'].map((d) => pay(`b${d}`, d, 'P2P PAYMENT', '-60.00', 'water'))]);
+  test('one payee twice a month in one envelope is one charge seen twice, so no fixed bill', () => {
+    // Grouped by payee and envelope: the $100 and the $60 are one charge, seen twice in each month.
+    const s = house([...['2026-09-05', '2026-10-05'].map((d) => pay(`a${d}`, d, 'P2P PAYMENT', '-100.00', 'util')),
+                     ...['2026-09-12', '2026-10-12'].map((d) => pay(`b${d}`, d, 'P2P PAYMENT', '-60.00', 'util'))]);
+    assert.deepEqual(list(s, 'util'), []);
+    assert.deepEqual(fixedCharges(s), []);
+  });
+  test('two fixed charges a bill named by hand holds are one bill, charge by charge', () => {
+    const s = house([...['2026-09-05', '2026-10-05'].map((d) => pay(`a${d}`, d, 'P2P PAYMENT RENT', '-100.00', 'util')),
+                     ...['2026-09-12', '2026-10-12'].map((d) => pay(`b${d}`, d, 'P2P PAYMENT CLEANER', '-60.00', 'util'))],
+      [ev({ ...SET, bill: 'p2p payment', name: 'P2P', byHand: true, date: null })]);
     const [b, ...rest] = list(s, 'util');
     assert.deepEqual([rest.length, b!.about, b!.charges.map((c) => c.typical).sort()], [0, 16000, [10000, 6000].sort()]);
   });
   test('a refund lands but is no receipt', () => {
-    const s = house([...POWER, pay('r', '2026-11-03', 'EXAMPLE POWER BILLP', '12.40', 'elec')]);
+    const s = house([...POWER, pay('r', '2026-11-03', 'EXAMPLE POWER BILLP', '12.40', 'util')]);
     const b = list(s, 'util')[0]!;
     assert.deepEqual([b.receipts.length, b.lastPaid?.day, b.charges[0]!.landed.has('2026-11')], [3, '2026-10-14', true]);
   });
   test('a split part is a receipt for its share', () => {
-    const one = pay('sp', '2026-11-02', 'EXAMPLE POWER BILLP', '-146.00', 'elec');
-    const cut = ev({ op: 'txn.split', txn: 'sp', parts: [{ category: 'elec', amount: parseDollars('-100.00') }, { category: 'groceries', amount: parseDollars('-46.00') }] });
+    // A charge is counted by part too, so the share here is near the bill's usual amount.
+    const one = pay('sp', '2026-11-02', 'EXAMPLE POWER BILLP', '-200.00', 'util');
+    const cut = ev({ op: 'txn.split', txn: 'sp', parts: [{ envelope: 'util', amount: parseDollars('-140.00') }, { envelope: 'daily', amount: parseDollars('-60.00') }] });
     const b = list(house([...POWER, one], [cut]), 'util')[0]!;
-    assert.deepEqual([b.receipts.length, b.lastPaid?.amount, b.charges[0]!.landed.has('2026-11')], [4, 10000, true]);
+    assert.deepEqual([b.receipts.length, b.lastPaid?.amount, b.charges[0]!.landed.has('2026-11')], [4, 14000, true]);
   });
   test('a receipt goes to the longest key it contains', () => {
-    const rows = ['2026-09-30', '2026-10-30'].map((d) => pay(`w${d}`, d, 'EXAMPLE WATER #4471', '-48.00', 'water'));
+    const rows = ['2026-09-30', '2026-10-30'].map((d) => pay(`w${d}`, d, 'EXAMPLE WATER #4471', '-48.00', 'util'));
     const d = { kind: 'due', per: 'month', day: 20 } as const;
     const s = house(rows, [ev({ ...SET, bill: 'example', name: 'Example', byHand: true, date: d }), ev({ ...SET, bill: 'example water', name: 'Example Water', byHand: true, date: d })]);
     assert.deepEqual(list(s, 'util').map((b) => [b.key, b.receipts.length]).sort((x, y) => (x[0]! < y[0]! ? -1 : 1)), [['example', 0], ['example water', 2]]);
   });
   test("an all-digit payee is nobody's bill", () => {
-    const s = house(['2026-09-04', '2026-10-04'].map((d) => pay(`n${d}`, d, '1234', '-30.00', 'water')));
+    const s = house(['2026-09-04', '2026-10-04'].map((d) => pay(`n${d}`, d, '1234', '-30.00', 'util')));
     assert.deepEqual(list(s, 'util'), []);
   });
 });
@@ -233,31 +241,32 @@ describe("an envelope's bills", () => {
 describe('a date a member set is never orphaned', () => {
   const dated = () => [ev(SET)];
   const date = (s: State, env: string) => list(s, env).find((b) => b.key === 'example power billp')?.date;
-  const sortAll = (cat: string) => POWER.map((t) => ev({ op: 'txn.categorize', txn: t.id, category: cat }));
-  test('re-sorted to another category of its envelope, nothing changes', () => {
-    assert.deepEqual(date(house(POWER, [...dated(), ...sortAll('water')]), 'util'), SET.date);
+  const sortAll = (envelope: string) => POWER.map((t) => ev({ op: 'txn.sort', txn: t.id, envelope }));
+  test('sorted again into its own envelope, nothing changes', () => {
+    assert.deepEqual(date(house(POWER, [...dated(), ...sortAll('util')]), 'util'), SET.date);
   });
   test('re-sorted into another envelope, it follows; back, it comes home', () => {
-    const away = house(POWER, [...dated(), ...sortAll('groceries')]);
+    const away = house(POWER, [...dated(), ...sortAll('daily')]);
     assert.deepEqual([date(away, 'daily'), date(away, 'util')], [SET.date, undefined]);
-    assert.deepEqual(date(house(POWER, [...dated(), ...sortAll('groceries'), ...sortAll('elec')]), 'util'), SET.date);
+    assert.deepEqual(date(house(POWER, [...dated(), ...sortAll('daily'), ...sortAll('util')]), 'util'), SET.date);
   });
   test('it stops following once a bill.set says so', () => {
-    const s = house(POWER, [...dated(), ...sortAll('groceries'), ev({ ...SET, envelope: 'daily', date: null })]);
+    const s = house(POWER, [...dated(), ...sortAll('daily'), ev({ ...SET, envelope: 'daily', date: null })]);
     assert.deepEqual([date(s, 'daily'), date(s, 'util')], [null, SET.date]);
   });
   test('it does not follow into a savings envelope', () => {
-    const s = house(POWER, [...dated(), ...sortAll('roofing')]);
+    const s = house(POWER, [...dated(), ...sortAll('roof')]);
     assert.deepEqual([date(s, 'util'), date(s, 'roof')], [SET.date, null]);
   });
   test('whatever the general normaliser finds, the date still shows', () => {
     assert.deepEqual(list(house(POWER, dated()), 'util', { fixed: [] }).map((b) => [b.key, b.date, b.receipts.length]), [['example power billp', SET.date, 3]]);
   });
-  test('an envelope removed takes its bill off the list; defined again, it is back', () => {
+  test('an envelope removed takes its bill and its date with it; its id is not given again', () => {
     const gone = ev({ op: 'envelope.remove', envelope: 'util', why: 'moved' });
-    assert.deepEqual(list(house(POWER, [...dated(), gone]), 'util'), []);
-    const again = ev({ op: 'envelope.define', envelope: 'util', label: 'Utilities', group: 'House', match: { categories: ['elec', 'water'] }, template: parseDollars('300.00'), rollover: false, order: 0 } as never);
-    assert.deepEqual(date(house(POWER, [...dated(), gone, again]), 'util'), SET.date);
+    const s = house(POWER, [...dated(), gone]);
+    assert.deepEqual([list(s, 'util'), bills(s)], [[], []]);
+    const again = ev({ op: 'envelope.define', envelope: 'util', label: 'Utilities', category: 'house', template: parseDollars('300.00'), rollover: false, order: 0 });
+    assert.throws(() => house(POWER, [...dated(), gone, again]), /util was removed; a new envelope takes a new id/);
   });
 });
 
@@ -277,7 +286,7 @@ describe('the dates a bill falls on', () => {
 describe('what pays a date', () => {
   const dated = (date: BillDate, txns: Txn[]) => list(house(txns, [ev({ ...SET, date })]), 'util')[0]!;
   const monthly = (day: number) => ({ kind: 'due', per: 'month', day }) as BillDate;
-  const at = (id: string, day: string) => pay(id, day, 'EXAMPLE POWER BILLP', '-146.00', 'elec');
+  const at = (id: string, day: string) => pay(id, day, 'EXAMPLE POWER BILLP', '-146.00', 'util');
   const paidBy = (b: Bill, from: string, to: string) => billOccurrences(b, from, to).map((o) => [o.day, o.paid?.day ?? null]);
 
   test('the nearest date, across the edge of a month', () =>
@@ -289,7 +298,7 @@ describe('what pays a date', () => {
   test('a window holding only the receipt finds the occurrence it paid', () =>
     assert.deepEqual(paidBy(dated(monthly(1), [at('a', '2026-10-31')]), '2026-10-31', '2026-10-31'), [['2026-11-01', '2026-10-31']]));
   test('a refund pays nothing', () =>
-    assert.deepEqual(paidBy(dated(monthly(16), [pay('r', '2026-11-15', 'EXAMPLE POWER BILLP', '12.40', 'elec')]), '2026-11-01', '2026-11-30'), [['2026-11-16', null]]));
+    assert.deepEqual(paidBy(dated(monthly(16), [pay('r', '2026-11-15', 'EXAMPLE POWER BILLP', '12.40', 'util')]), '2026-11-01', '2026-11-30'), [['2026-11-16', null]]));
   test('a quarterly date has nothing between its dates', () => {
     const b = dated({ kind: 'due', per: 'quarter', on: '2026-08-14' }, POWER);
     assert.deepEqual(billOccurrences(b, '2026-11-01', '2026-11-30').map((o) => o.day), ['2026-11-14']);
@@ -306,16 +315,18 @@ describe('what pays a date', () => {
     assert.deepEqual(billOccurrences(b, '2026-11-01', '2026-11-30').map((o) => [o.day, o.paid?.day]), [['2026-11-21', '2026-11-20']]);
   });
   test('undated with charges partly landed is not paid, and expects the rest', () => {
-    const p2p = (d: string, cat: string, amt: string) => pay(`${cat}${d}`, d, 'EXAMPLE P2P', amt, cat);
-    const txns = ['2026-08-05', '2026-09-05', '2026-10-05'].flatMap((d) => [p2p(d, 'elec', '-100.00'), p2p(d, 'water', '-60.00')]);
-    const b = list(house([...txns, p2p('2026-11-05', 'elec', '-100.00')]), 'util')[0]!;
+    // Two fixed charges in one bill: a bill named by hand holds the payees it is part of.
+    const p2p = (d: string, who: string, amt: string) => pay(`${who}${d}`, d, `EXAMPLE P2P ${who.toUpperCase()}`, amt, 'util');
+    const txns = ['2026-08-05', '2026-09-05', '2026-10-05'].flatMap((d) => [p2p(d, 'rent', '-100.00'), p2p(d, 'cleaner', '-60.00')]);
+    const hand = ev({ ...SET, bill: 'example p2p', name: 'Example P2P', byHand: true, date: null });
+    const b = list(house([...txns, p2p('2026-11-05', 'rent', '-100.00')], [hand]), 'util')[0]!;
     assert.equal(b.charges.length, 2);
     const [o, ...rest] = billOccurrences(b, '2026-11-01', '2026-11-30');
     assert.deepEqual(rest, []);
     assert.deepEqual([o!.paid, o!.about], [null, 6000]);
   });
   test('undated with only a refund this month: no occurrence', () => {
-    assert.deepEqual(billOccurrences(list(house([...POWER, pay('r', '2026-11-03', 'EXAMPLE POWER BILLP', '12.40', 'elec')]), 'util')[0]!, '2026-11-01', '2026-11-30'), []);
+    assert.deepEqual(billOccurrences(list(house([...POWER, pay('r', '2026-11-03', 'EXAMPLE POWER BILLP', '12.40', 'util')]), 'util')[0]!, '2026-11-01', '2026-11-30'), []);
   });
 });
 
@@ -324,10 +335,10 @@ describe('what a month still expects', () => {
   const b = (s: State) => list(s, 'util');
   const with_ = (date: BillDate, txns = POWER) => b(house(txns, [ev({ ...SET, date })]));
   test('undated: every month, as now', () => assert.equal(billsExpected(b(house(POWER)), month), 14600));
-  test('undated, landed: nothing', () => assert.equal(billsExpected(b(house([...POWER, pay('n', '2026-11-03', 'EXAMPLE POWER BILLP', '-146.00', 'elec')])), month), 0));
+  test('undated, landed: nothing', () => assert.equal(billsExpected(b(house([...POWER, pay('n', '2026-11-03', 'EXAMPLE POWER BILLP', '-146.00', 'util')])), month), 0));
   test('dated monthly and unpaid: its typical', () => assert.equal(billsExpected(with_({ kind: 'due', per: 'month', day: 16 }), month), 14600));
   test('dated, paid by a receipt last month: nothing, then the next', () => {
-    const edge = ['2026-08-31', '2026-09-30', '2026-10-31'].map((d) => pay(`x${d}`, d, 'EXAMPLE POWER BILLP', '-146.00', 'elec'));
+    const edge = ['2026-08-31', '2026-09-30', '2026-10-31'].map((d) => pay(`x${d}`, d, 'EXAMPLE POWER BILLP', '-146.00', 'util'));
     const d = with_({ kind: 'due', per: 'month', day: 1 }, edge);
     assert.deepEqual([billsExpected(d, '2026-11'), billsExpected(d, '2026-12')], [0, 14600]);
   });
@@ -336,10 +347,10 @@ describe('what a month still expects', () => {
     assert.deepEqual([billsExpected(q, '2026-11'), billsExpected(q, '2026-12')], [14600, 0]);
   });
   test('a date with no typical amount adds nothing', () => {
-    assert.equal(billsExpected(b(house([pay('o', '2026-10-02', 'EXAMPLE WATER', '-48.00', 'water')], [ev({ ...SET, bill: 'example water', name: 'X' })])), month), 0);
+    assert.equal(billsExpected(b(house([pay('o', '2026-10-02', 'EXAMPLE WATER', '-48.00', 'util')], [ev({ ...SET, bill: 'example water', name: 'X' })])), month), 0);
   });
   test('several bills add up', () => {
-    const water = ['2026-09-30', '2026-10-30'].map((d) => pay(`w${d}`, d, 'EXAMPLE WATER #4471', '-48.00', 'water'));
+    const water = ['2026-09-30', '2026-10-30'].map((d) => pay(`w${d}`, d, 'EXAMPLE WATER #4471', '-48.00', 'util'));
     assert.equal(billsExpected(b(house([...POWER, ...water])), month), 14600 + 4800);
   });
 });
@@ -419,7 +430,7 @@ describe('set_bill', () => {
       [{ op: 'bill.remove', envelope: 'util', bill: 'example water', name: 'Example Water' }]]);
   });
   test('a followed bill is written to its own record, never a second one', async () => {
-    const move = POWER.map((t) => ev({ op: 'txn.categorize', txn: t.id, category: 'groceries' }));
+    const move = POWER.map((t) => ev({ op: 'txn.sort', txn: t.id, envelope: 'daily' }));
     const c = await ctx(POWER, [ev(SET), ...move]);
     const off = run({ envelope: 'daily', bill: 'example power billp', clear: true }, c) as Proposal;
     assert.equal((off.events[0] as { envelope: string }).envelope, 'util');
@@ -434,7 +445,7 @@ describe('set_bill', () => {
     assert.equal(c.store.state.bills.size, 1);
   });
   test('a new name that another envelope\'s receipts hold is refused, not lost', async () => {
-    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'gas'));
+    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'heat'));
     const c = await ctx([...POWER, ...gas]);
     assert.throws(() => run({ name: 'Example Gas', kind: 'due', per: 'month', day: 3 }, c), /Example Gas is already a bill in Heating: set its date there/);
     assert.ok(run({ envelope: 'heat', name: 'Example Gas', kind: 'due', per: 'month', day: 3 }, c));
@@ -460,12 +471,12 @@ describe('set_bill', () => {
     no({ bill: 'example power billp', remove: true }, /that bill comes from the receipts: clear its date instead/);
   });
   test('a name two bills match', async () => {
-    const paper = ['2026-09-20', '2026-10-20'].map((d) => pay(`pp${d}`, d, 'EXAMPLE PAPER', '-20.00', 'water'));
+    const paper = ['2026-09-20', '2026-10-20'].map((d) => pay(`pp${d}`, d, 'EXAMPLE PAPER', '-20.00', 'util'));
     const c = await ctx([...POWER, ...paper]);
     assert.throws(() => run({ name: 'example', kind: 'due', per: 'month', day: 3 }, c), /two bills match that name: say more of it/);
   });
   test('a hand-named bill the receipts have since found is not removed', async () => {
-    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'elec'));
+    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'util'));
     const hand = ev({ op: 'bill.set', envelope: 'util', bill: 'example gas', name: 'Example Gas', byHand: true, date: null });
     const c = await ctx([...POWER, ...gas], [hand]);
     assert.throws(() => run({ bill: 'example gas', remove: true }, c), /that bill comes from the receipts: clear its date instead/);
@@ -480,7 +491,7 @@ describe("get_month's bills", () => {
     assert.deepEqual(util.bills, [{ key: 'example power billp', name: 'EXAMPLE POWER BILLP', byHand: false, about: '$146', lastPaid: '2026-10-14', line: 'about $146 · last paid 14 Oct' }]);
   });
   test('a savings envelope has none, and one with nothing funded lists its own', async () => {
-    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'gas'));
+    const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'heat'));
     const out = await gm(await ctx([...POWER, ...gas]));
     assert.deepEqual(out.envelopes.find((e: any) => e.id === 'roof').bills, []);
     assert.deepEqual(out.envelopes.find((e: any) => e.id === 'heat').bills.map((b: any) => b.line), ['about $50 · last paid 9 Oct']);
@@ -522,17 +533,17 @@ describe('a bill on the calendar', () => {
     }
   });
   test('a receipt takes the row to its own day', () => {
-    const s = house([...POWER, pay('n', '2026-11-15', 'EXAMPLE POWER BILLP', '-143.20', 'elec')], [ev(SET)]);
+    const s = house([...POWER, pay('n', '2026-11-15', 'EXAMPLE POWER BILLP', '-143.20', 'util')], [ev(SET)]);
     assert.deepEqual(rows(s, ...NOV).map((r) => [r.day, r.kind, r.amount]), [['2026-11-15', 'paid', '$143.20']]);
   });
   test('an unpaid date before it was set, in a month gone by, is not drawn', () => assert.deepEqual(rows(house([], [ev(SET)]), '2026-10-01', '2026-10-31'), []));
   test('a savings envelope has no row', () => {
-    const roofing = ['2026-09-20', '2026-10-20'].map((d) => pay(`r${d}`, d, 'EXAMPLE ROOFING', '-80.00', 'roofing'));
+    const roofing = ['2026-09-20', '2026-10-20'].map((d) => pay(`r${d}`, d, 'EXAMPLE ROOFING', '-80.00', 'roof'));
     assert.deepEqual(rows(house(roofing), ...NOV), []);
   });
   describe('less left than its bills', () => {
     const room = (s: State) => monthView(s, '2026-11')!.envelopes.find((e) => e.envelope.id === 'util')!.available;
-    const leaving = (cents: number) => house([...POWER, pay('w', '2026-11-01', 'EXAMPLE WATER ONE OFF', `-${((room(house(POWER)) - cents) / 100).toFixed(2)}`, 'water')]);
+    const leaving = (cents: number) => house([...POWER, pay('w', '2026-11-01', 'EXAMPLE WATER ONE OFF', `-${((room(house(POWER)) - cents) / 100).toFixed(2)}`, 'util')]);
     test('util is funded for these tests', () => assert.ok(room(house(POWER)) >= 14600));
     test('a short row on today, first, and on the bill it is about', () => {
       const got = rows(leaving(1400), ...NOV);
@@ -550,9 +561,9 @@ describe('a bill on the calendar', () => {
       assert.equal(anyShort(rows(leaving(1400), '2026-12-01', '2026-12-31', '2026-12-05')), false);
     });
     test('one still without a figure is never short', () => {
-      const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'gas'));
+      const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'heat'));
       // houseEvents defines heat with no needsFigure; defined again here with it, so no other test's figures move.
-      const noFigure = house(gas, [envelope('heat', 'Heating', ['gas'], '0.00', 2, { needsFigure: true })]);
+      const noFigure = house(gas, [envelope('heat', 'Heating', '0.00', 2, { needsFigure: true })]);
       assert.equal(monthView(noFigure, '2026-11')!.envelopes.find((e) => e.envelope.id === 'heat')!.envelope.needsFigure, true, 'heat has no figure yet');
       assert.equal(anyShort(rows(noFigure, ...NOV)), false);
     });

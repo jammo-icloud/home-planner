@@ -13,7 +13,7 @@ import { SEARCH_KINDS } from '../src/search.ts';
 import { NotAllowed, SessionLost, SynologyError } from '../src/synology.ts';
 import type { Proposal, ToolContext } from '../src/tools.ts';
 import { monthView } from '../src/envelopes.ts';
-import { TRANSFER, SPLIT } from '../src/types.ts';
+import { INCOME, TRANSFER, SPLIT } from '../src/types.ts';
 import * as edits from '../src/plan-edits.ts';
 import { RETIRED } from '../src/plan-rules.ts';
 
@@ -25,20 +25,17 @@ async function ctx(): Promise<ToolContext> {
   const store = new Store({ path, now: () => new Date(NOW) });
   await store.load();
   await store.append('system', [
-    { op: 'category.define', category: 'groceries', label: 'Groceries' },
-    { op: 'category.define', category: 'dining', label: 'Dining out' },
-    { op: 'category.define', category: 'electricity', label: 'Electricity' },
-    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
-      match: { categories: ['groceries', 'dining'] }, template: parseDollars('1525.00'), rollover: false, order: 0 },
-    { op: 'envelope.define', envelope: 'util', label: 'Utilities', group: 'House',
-      match: { categories: ['electricity'] }, template: parseDollars('300.00'), rollover: false, order: 1 },
+    { op: 'category.add', category: 'people', label: 'People' },
+    { op: 'category.add', category: 'house', label: 'House' },
+    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', category: 'people', template: parseDollars('1525.00'), rollover: false, order: 0 },
+    { op: 'envelope.define', envelope: 'util', label: 'Utilities', category: 'house', template: parseDollars('300.00'), rollover: false, order: 1 },
     { op: 'month.open', month: '2026-08', income: parseDollars('9600.00') },
     { op: 'txn.add', txns: [
-      { id: 'x1', date: '2026-08-03', payee: 'VALLEY MARKET #101', amount: parseDollars('-84.21'), dedupeKey: 'x1', category: 'groceries' },
-      { id: 'x2', date: '2026-08-06', payee: 'CORNER BISTRO', amount: parseDollars('-1300.00'), dedupeKey: 'x2', category: 'dining' },
-      { id: 'x3', date: '2026-08-08', payee: 'EXAMPLE POWER', amount: parseDollars('-120.00'), dedupeKey: 'x3', category: 'electricity' },
-      { id: 'x4', date: '2026-08-09', payee: 'QUIKSTOP 10001', amount: parseDollars('-10.15'), dedupeKey: 'x4', category: null },
-      { id: 'x5', date: '2026-08-10', payee: 'PAYMENT THANK YOU', amount: parseDollars('2400.50'), dedupeKey: 'x5', category: TRANSFER },
+      { id: 'x1', date: '2026-08-03', payee: 'VALLEY MARKET #101', amount: parseDollars('-84.21'), dedupeKey: 'x1', envelope: 'daily' },
+      { id: 'x2', date: '2026-08-06', payee: 'CORNER BISTRO', amount: parseDollars('-1300.00'), dedupeKey: 'x2', envelope: 'daily' },
+      { id: 'x3', date: '2026-08-08', payee: 'EXAMPLE POWER', amount: parseDollars('-120.00'), dedupeKey: 'x3', envelope: 'util' },
+      { id: 'x4', date: '2026-08-09', payee: 'QUIKSTOP 10001', amount: parseDollars('-10.15'), dedupeKey: 'x4', envelope: null },
+      { id: 'x5', date: '2026-08-10', payee: 'PAYMENT THANK YOU', amount: parseDollars('2400.50'), dedupeKey: 'x5', envelope: TRANSFER },
     ] },
   ]);
   return { store, who: 'alice', today: TODAY, proposals: new ProposalStore(), sid: null };
@@ -81,15 +78,13 @@ describe('the tool surface', () => {
 });
 
 describe('reads answer questions in one call', () => {
-  test("get_month answers each envelope's flag, source and hint, the card and the groups in order", async () => {
+  test("get_month answers each envelope's flag, source, hint and category, the card and the categories in order", async () => {
     const c = await ctx();
     await c.store.append('system', [
-      { op: 'category.define', category: 'upkeep', label: 'Repairs & upkeep' },
-      { op: 'category.define', category: 'rent', label: 'Rent or mortgage' },
-      { op: 'envelope.define', envelope: 'upkeep', label: 'Repairs', group: 'Food',
-        match: { categories: ['upkeep'] }, template: parseDollars('0.00'), rollover: true, order: 2, needsFigure: true },
-      { op: 'envelope.define', envelope: 'rent', label: 'Rent', group: 'Home',
-        match: { categories: ['rent'] }, template: parseDollars('900.00'), rollover: true, order: 3,
+      { op: 'category.add', category: 'home', label: 'Home' },
+      { op: 'category.add', category: 'kids', label: 'Children' },
+      { op: 'envelope.define', envelope: 'upkeep', label: 'Repairs', category: 'home', template: parseDollars('0.00'), rollover: true, order: 2, needsFigure: true },
+      { op: 'envelope.define', envelope: 'rent', label: 'Rent', category: 'home', template: parseDollars('900.00'), rollover: true, order: 3,
         source: 'Public data for Harbor' },
     ]);
     const r = call('get_month', {}, c) as Record<string, any>;
@@ -103,17 +98,22 @@ describe('reads answer questions in one call', () => {
     assert.equal(r.card.tone, 'warm');
     assert.equal(r.card.headline, '$7,775 still to assign');
     assert.equal(r.card.next, 'upkeep');
-    assert.deepEqual(r.groups, ['Home', 'Food', 'House', 'People']);
+    // Every heading in order, the empty one too; each envelope names its own.
+    assert.deepEqual(r.categories, [
+      { id: 'people', label: 'People', envelopes: 1 }, { id: 'house', label: 'House', envelopes: 1 },
+      { id: 'home', label: 'Home', envelopes: 2 }, { id: 'kids', label: 'Children', envelopes: 0 }]);
+    assert.deepEqual(r.envelopes.map((e: any) => [e.id, e.category]), [['daily', 'people'], ['util', 'house'], ['upkeep', 'home'], ['rent', 'home']]);
+    for (const gone of ['groups', 'spentOutsideThisBudget', 'unsorted']) assert.equal(gone in r, false, gone);
+    assert.equal('group' in r.envelopes[0] || 'categories' in r.envelopes[0], false);
   });
 
-  test('get_month answers basis as exact dollars and hint for every envelope with categories', async () => {
+  test('get_month answers basis as exact dollars and a hint for every envelope', async () => {
     const c = await ctx();
     await c.store.append('system', [
-      { op: 'envelope.define', envelope: 'util', label: 'Utilities', group: 'House',
-        match: { categories: ['electricity'] }, template: parseDollars('100.00'), rollover: false, order: 1,
+      { op: 'envelope.define', envelope: 'util', label: 'Utilities', category: 'house', template: parseDollars('100.00'), rollover: false, order: 1,
         basis: { amount: parseDollars('1200.00'), per: 'year' } },
       { op: 'txn.add', txns: [
-        { id: 'j1', date: '2026-07-05', payee: 'VALLEY MARKET #101', amount: parseDollars('-600.00'), dedupeKey: 'j1', category: 'groceries' },
+        { id: 'j1', date: '2026-07-05', payee: 'VALLEY MARKET #101', amount: parseDollars('-600.00'), dedupeKey: 'j1', envelope: 'daily' },
       ] },
     ]);
     const r = call('get_month', {}, c) as Record<string, any>;
@@ -141,7 +141,7 @@ describe('reads answer questions in one call', () => {
     assert.equal(r['income'], '$9,600');
     assert.equal(r['spent'], '$1,504');       // 84.21 + 1300 + 120, transfer excluded
     assert.equal(r['balanced'], false);
-    assert.equal(r['unsorted'].count, 1);
+    assert.equal(r['toSort'].count, 1);
     // $1,384 of $1,525 by day 13 is not over yet — it is heading there, and the
     // distinction is the whole point: one is a fact, the other is a warning.
     const daily = r['pace'].find((p: any) => p.envelope === 'daily');
@@ -159,38 +159,41 @@ describe('reads answer questions in one call', () => {
     assert.equal(r['transactions'].length, 2, 'the actual spending is included');
     assert.equal(r['transactions'][0].payee, 'CORNER BISTRO');
     assert.ok(r['pacing'].projectedToSpend, 'and a projection to explain the trajectory');
-    assert.deepEqual(r['feedsFrom'].categories, ['groceries', 'dining']);
+    assert.equal(r['category'], 'people');
+    assert.equal('feedsFrom' in r, false);
   });
 
-  // x4 (-10.15) split groceries -6.15 / dining -4.00; both feed Harbor's daily.
+  // x4 (-10.15) split Daily life -6.15 / Utilities -4.00.
   const splitX4 = (c: ToolContext) => c.store.append('alice', { op: 'txn.split', txn: 'x4', parts: [
-    { category: 'groceries', amount: parseDollars('-6.15') }, { category: 'dining', amount: parseDollars('-4.00') }] });
+    { envelope: 'daily', amount: parseDollars('-6.15') }, { envelope: 'util', amount: parseDollars('-4.00') }] });
 
-  test('list_transactions shows the parts, and a category filter finds a part', async () => {
+  test('list_transactions shows the parts, and an envelope filter finds a part', async () => {
     const c = await ctx();
     await splitX4(c);
-    const dining = call('list_transactions', { category: 'dining' }, c) as Record<string, any>;
-    const row = dining['transactions'].find((t: any) => t.id === 'x4');
-    assert.ok(row, 'a part in dining finds the receipt');
-    assert.equal(row.category, SPLIT);
+    const util = call('list_transactions', { envelope: 'util' }, c) as Record<string, any>;
+    const row = util['transactions'].find((t: any) => t.id === 'x4');
+    assert.ok(row, 'a part in Utilities finds the receipt');
+    assert.equal(row.envelope, SPLIT);
     assert.equal(row.parts.length, 2);
-    assert.deepEqual(row.parts, [{ category: 'groceries', amount: '-$6.15' }, { category: 'dining', amount: '-$4.00' }]);
+    assert.deepEqual(row.parts, [{ envelope: 'daily', amount: '-$6.15' }, { envelope: 'util', amount: '-$4.00' }]);
     assert.equal(row.amount, '-$10.15');
+    assert.equal('missing' in row, false);
     const all = call('list_transactions', {}, c) as Record<string, any>;
     assert.equal(all['transactions'].find((t: any) => t.id === 'x1').parts, null);
-    assert.equal((call('list_transactions', { category: 'electricity' }, c) as Record<string, any>)['matched'], 1, 'a plain receipt still filters');
-    assert.equal((call('list_transactions', { uncategorizedOnly: true }, c) as Record<string, any>)['matched'], 0, 'a split is sorted');
+    assert.equal(all['transactions'].find((t: any) => t.id === 'x1').envelope, 'daily');
+    assert.equal(util['matched'], 2, 'a plain receipt (x3) and a part (x4) both filter');
+    assert.equal((call('list_transactions', { toSortOnly: true }, c) as Record<string, any>)['matched'], 0, 'a split is sorted');
   });
 
-  test('under a category filter the totals count only the matching parts, and the marker lists the splits', async () => {
+  test('under an envelope filter the totals count only the matching parts, and the marker lists the splits', async () => {
     const c = await ctx();
     await splitX4(c);
-    const money = (category: string) => call('list_transactions', { category }, c) as Record<string, any>;
-    assert.equal(money('groceries')['moneyOut'], '$90.36', '84.21 + 6.15, not the whole $10.15 receipt');
-    assert.equal(money('groceries')['total'], '$90');
-    assert.equal(money('dining')['moneyOut'], '$1,304.00', '1300.00 + 4.00');
-    assert.equal(money('dining')['moneyIn'], '$0.00');
-    assert.equal(money('dining')['transactions'].find((t: any) => t.id === 'x4').amount, '-$10.15', 'the row keeps the whole receipt');
+    const money = (envelope: string) => call('list_transactions', { envelope }, c) as Record<string, any>;
+    assert.equal(money('daily')['moneyOut'], '$1,390.36', '84.21 + 1300.00 + 6.15, not the whole $10.15 receipt');
+    assert.equal(money('daily')['total'], '$1,390');
+    assert.equal(money('util')['moneyOut'], '$124.00', '120.00 + 4.00');
+    assert.equal(money('util')['moneyIn'], '$0.00');
+    assert.equal(money('util')['transactions'].find((t: any) => t.id === 'x4').amount, '-$10.15', 'the row keeps the whole receipt');
     const marker = money(SPLIT);
     assert.deepEqual(marker['transactions'].map((t: any) => t.id), ['x4']);
     assert.equal(marker['moneyOut'], '$10.15');
@@ -201,13 +204,11 @@ describe('reads answer questions in one call', () => {
     await splitX4(c);
     const r = call('explain_envelope', { envelope: 'daily' }, c) as Record<string, any>;
     const quik = r['transactions'].filter((t: any) => t.payee === 'QUIKSTOP 10001');
-    assert.equal(quik.length, 2);
-    assert.deepEqual(quik.map((t: any) => [t.category, t.amount, t.of]),
-      [['groceries', '-$6.15', '-$10.15'], ['dining', '-$4.00', '-$10.15']]);
+    assert.deepEqual(quik.map((t: any) => [t.envelope, t.amount, t.of]), [['daily', '-$6.15', '-$10.15']]);
     const plain = r['transactions'].find((t: any) => t.payee === 'CORNER BISTRO');
     assert.equal(plain.of, undefined);
     assert.equal(plain.amount, '-$1,300.00');
-    assert.equal(r['spentExact'], '$1,394.36'); // 84.21 + 1300 + 6.15 + 4.00
+    assert.equal(r['spentExact'], '$1,390.36'); // 84.21 + 1300 + 6.15
   });
 
   test('explain_envelope entries carry the receipt id, its whole amount and its parts', async () => {
@@ -218,7 +219,7 @@ describe('reads answer questions in one call', () => {
     for (const e of quik) {
       assert.equal(e.txn, 'x4');
       assert.equal(e.amountCents, c.store.state.txns.get('x4')!.amount);
-      assert.deepEqual(e.parts, [{ category: 'groceries', amountCents: -615 }, { category: 'dining', amountCents: -400 }]);
+      assert.deepEqual(e.parts, [{ envelope: 'daily', amountCents: -615 }, { envelope: 'util', amountCents: -400 }]);
     }
     const plain = r['transactions'].find((t: any) => t.payee === 'CORNER BISTRO');
     assert.equal(plain.txn, 'x2');
@@ -226,14 +227,12 @@ describe('reads answer questions in one call', () => {
     assert.equal(plain.parts, null);
   });
 
-  test('removing an envelope and archiving a category count a split part as held', async () => {
+  test('removing an envelope counts a split with a part in it as one receipt going back to To sort', async () => {
     const c = await ctx();
     await splitX4(c);
     const rm = call('remove_envelope', { envelope: 'daily', why: 'test' }, c) as Record<string, any>;
-    // x1, x2 and x4 (once, though both its parts are in daily)
-    assert.ok(rm['effects'].some((e: string) => e.startsWith('3 receipts totalling $1,394.36')), rm['effects'].join('|'));
-    const ar = call('archive_category', { category: 'dining', archived: true, why: 'test' }, c) as Record<string, any>;
-    assert.ok(ar['effects'].some((e: string) => e.startsWith('2 receipts stay in it')), ar['effects'].join('|'));
+    // x1, x2 and x4, all in August, which is not closed
+    assert.ok(rm['effects'].includes('Its 3 receipts from this month go back to To sort.'), rm['effects'].join('|'));
   });
 
   test('find_donors will not offer an envelope that still needs its money', async () => {
@@ -250,9 +249,9 @@ describe('reads answer questions in one call', () => {
     // directions would report an unsorted paycheque as spending.
     const c = await ctx();
     await c.store.append('alice', { op: 'txn.add', txns: [
-      { id: 'x6', date: '2026-08-11', payee: 'ACME DEPOSIT', amount: parseDollars('250.00'), dedupeKey: 'x6', category: null },
+      { id: 'x6', date: '2026-08-11', payee: 'ACME DEPOSIT', amount: parseDollars('250.00'), dedupeKey: 'x6', envelope: null },
     ] });
-    const r = call('list_transactions', { uncategorizedOnly: true }, c) as Record<string, any>;
+    const r = call('list_transactions', { toSortOnly: true }, c) as Record<string, any>;
     assert.equal(r.matched, 2);
     assert.equal(r.moneyOut, '$10.15');
     assert.equal(r.moneyIn, '$250.00');
@@ -262,7 +261,7 @@ describe('reads answer questions in one call', () => {
     const c = await ctx();
     const all = call('list_transactions', {}, c) as Record<string, any>;
     assert.equal(all['matched'], 5);
-    const unsorted = call('list_transactions', { uncategorizedOnly: true }, c) as Record<string, any>;
+    const unsorted = call('list_transactions', { toSortOnly: true }, c) as Record<string, any>;
     assert.equal(unsorted['matched'], 1);
     assert.equal(unsorted['transactions'][0].payee, 'QUIKSTOP 10001');
     const byPayee = call('list_transactions', { payeeContains: 'valley' }, c) as Record<string, any>;
@@ -285,7 +284,7 @@ describe('reads answer questions in one call', () => {
       { op: 'assign', month: '2026-08', envelope: 'e', to: parseDollars('10.00'), why: 'w' },
       { op: 'move', month: '2026-08', from: 'a', to: 'z', amount: parseDollars('5.00'), why: 'w' },
       { op: 'month.open', month: '2026-08', income: parseDollars('1.00') },
-      { op: 'rule.add', rule: 'r', match: 'X', category: 'c' },
+      { op: 'rule.add', rule: 'r', match: 'X', envelope: 'c' },
     ];
     for (const o of ops) {
       const line = describeEvent({ id: 'i', at: NOW, who: 'alice', ...o } as never);
@@ -302,7 +301,11 @@ describe('every op reads as a sentence', () => {
   const ops = [
     { op: 'household.locate', location: { label: 'Springfield, IL' }, why: 'w' },
     { op: 'household.locate', location: null, why: 'w' },
-    { op: 'category.archive', category: 'c', archived: false, why: 'w' },
+    { op: 'category.add', category: 'c', label: 'Food' },
+    { op: 'category.rename', category: 'c', label: 'Food and drink' },
+    { op: 'category.move', category: 'c', to: 1 },
+    { op: 'category.remove', category: 'c' },
+    { op: 'txn.sort', txn: 't', envelope: null },
     { op: 'month.close', month: '2026-08', closed: true, why: 'w' },
     { op: 'month.discard', month: '2026-08', why: 'w' },
     { op: 'income.source.define', source: 's', label: 'Salary', amount: parseDollars('1.00') },
@@ -360,17 +363,33 @@ describe('with the household at hand, a sentence uses names', () => {
       'moved $5 from Utilities to Daily life');
     assert.equal(at({ op: 'assign', month: '2026-08', envelope: 'daily', to: parseDollars('10.00'), why: 'w' }),
       'set Daily life to $10');
-    assert.equal(at({ op: 'txn.categorize', txn: 'x4', category: 'groceries' }), 'categorized a transaction as Groceries');
-    assert.equal(at({ op: 'txn.categorize', txn: 'x4', category: TRANSFER }), 'categorized a transaction as a transfer');
+    assert.equal(at({ op: 'txn.sort', txn: 'x4', envelope: 'daily' }), 'sorted a receipt into Daily life');
+    assert.equal(at({ op: 'txn.sort', txn: 'x4', envelope: TRANSFER }), 'marked a receipt as a transfer');
+    assert.equal(at({ op: 'txn.sort', txn: 'x4', envelope: INCOME }), 'marked a receipt as income');
+    assert.equal(at({ op: 'txn.sort', txn: 'x4', envelope: null }), 'took a receipt out of its envelope');
+    assert.equal(at({ op: 'txn.split', txn: 'x4', parts: [{ envelope: 'daily', amount: -615 }, { envelope: 'util', amount: -400 }] }),
+      'split a receipt across Daily life $6.15 and Utilities $4.00');
+    assert.equal(at({ op: 'rule.add', rule: 'r', match: 'QUIKSTOP', envelope: 'daily' }), 'added the rule "QUIKSTOP" for Daily life');
+    assert.equal(at({ op: 'category.add', category: 'food', label: 'Food' }), 'added the category Food');
+    assert.equal(at({ op: 'category.rename', category: 'people', label: 'Food and drink' }), 'renamed a category to Food and drink');
+    assert.equal(at({ op: 'category.move', category: 'people', to: 1 }), 'moved the category People to place 2');
+    assert.equal(at({ op: 'category.remove', category: 'house' }), 'removed the category House');
+    assert.equal(at({ op: 'envelope.define', envelope: 'gym', label: 'Gym', category: 'people', template: 0 }), 'set up the envelope Gym under People');
+  });
+
+  test('a removed envelope reads by the name it had', async () => {
+    const c = await ctx();
+    await c.store.append('alice', { op: 'envelope.remove', envelope: 'util', why: 'moved' });
+    const at = (o: Record<string, unknown>) => describeEvent({ id: 'i', at: NOW, who: 'alice', ...o } as never, c.store.state).what;
+    assert.equal(at({ op: 'txn.sort', txn: 'x3', envelope: 'util' }), 'sorted a receipt into Utilities');
+    assert.equal(at({ op: 'envelope.remove', envelope: 'util', why: 'moved' }), 'removed envelope Utilities');
   });
 
   test('a flagged envelope is not short on the Budget screen either', async () => {
     const c = await ctx();
     await c.store.append('system', [
-      { op: 'category.define', category: 'upkeep', label: 'Repairs & upkeep' },
-      { op: 'envelope.define', envelope: 'upkeep', label: 'Repairs', group: 'House',
-        match: { categories: ['upkeep'] }, template: parseDollars('0.00'), rollover: true, order: 2, needsFigure: true },
-      { op: 'txn.add', txns: [{ id: 'x8', date: '2026-08-12', payee: 'VALLEY MARKET #101', amount: parseDollars('-50.00'), dedupeKey: 'x8', category: 'upkeep' }] },
+      { op: 'envelope.define', envelope: 'upkeep', label: 'Repairs', category: 'house', template: parseDollars('0.00'), rollover: true, order: 2, needsFigure: true },
+      { op: 'txn.add', txns: [{ id: 'x8', date: '2026-08-12', payee: 'VALLEY MARKET #101', amount: parseDollars('-50.00'), dedupeKey: 'x8', envelope: 'upkeep' }] },
     ]);
     const r = call('get_month', {}, c) as Record<string, any>;
     const upkeep = r.envelopes.find((e: any) => e.id === 'upkeep');
@@ -378,7 +397,7 @@ describe('with the household at hand, a sentence uses names', () => {
     assert.equal(upkeep.short, null);
     // One with a figure is short, with its cover in cents and exact dollars.
     await c.store.append('system', [
-      { op: 'txn.add', txns: [{ id: 'x7', date: '2026-08-12', payee: 'EXAMPLE POWER', amount: parseDollars('-250.00'), dedupeKey: 'x7', category: 'electricity' }] },
+      { op: 'txn.add', txns: [{ id: 'x7', date: '2026-08-12', payee: 'EXAMPLE POWER', amount: parseDollars('-250.00'), dedupeKey: 'x7', envelope: 'util' }] },
     ]);
     const again = call('get_month', {}, c) as Record<string, any>;
     const util = again.envelopes.find((e: any) => e.id === 'util');
@@ -426,7 +445,7 @@ describe('writes propose, they never execute', () => {
     const c = await ctx();
     // Utilities carries $300; $320 spent leaves it $20 short.
     await c.store.append('system', [
-      { op: 'txn.add', txns: [{ id: 'x9', date: '2026-08-11', payee: 'EXAMPLE POWER', amount: parseDollars('-200.00'), dedupeKey: 'x9', category: 'electricity' }] },
+      { op: 'txn.add', txns: [{ id: 'x9', date: '2026-08-11', payee: 'EXAMPLE POWER', amount: parseDollars('-200.00'), dedupeKey: 'x9', envelope: 'util' }] },
     ]);
     const short = monthView(c.store.state, '2026-08')!.envelopes.find((e) => e.envelope.id === 'util')!;
     assert.equal(short.available, parseDollars('-20.00'));
@@ -474,55 +493,56 @@ describe('writes propose, they never execute', () => {
     assert.ok(p.effects.some((e) => /Planned stays \$1,525/.test(e)));
   });
 
-  test('categorizing proposes a rule and says how much it would cover', async () => {
+  test('sorting proposes a rule and says how much it would cover', async () => {
     const c = await ctx();
-    const p = call('categorize_transactions', {
-      assignments: [{ txnId: 'x4', category: 'groceries', alsoAddRuleMatching: 'QUIKSTOP' }],
+    const p = call('sort_receipts', {
+      assignments: [{ txnId: 'x4', envelope: 'daily', alsoAddRuleMatching: 'QUIKSTOP' }],
     }, c) as Proposal;
-    assert.equal(p.events.length, 2, 'the categorization and the rule');
+    assert.equal(p.events.length, 2, 'the sort and the rule');
+    assert.deepEqual(p.events[1], { op: 'rule.add', rule: 'r-quikstop', match: 'QUIKSTOP', envelope: 'daily' });
     assert.ok(p.effects.some((e) => /would cover 1 transaction\b/.test(e)));
 
     await commit(p.id, c);
-    assert.equal(c.store.state.txns.get('x4')!.category, 'groceries');
+    assert.equal(c.store.state.txns.get('x4')!.envelope, 'daily');
     assert.equal(c.store.state.rules.at(-1)!.match, 'QUIKSTOP');
   });
 
-  test('an unknown category is refused — the taxonomy is fixed', async () => {
+  test('an envelope that is not here is refused, 404', async () => {
     const c = await ctx();
     assert.throws(
-      () => call('categorize_transactions', { assignments: [{ txnId: 'x4', category: 'invented' }] }, c),
-      /categories are fixed/,
+      () => call('sort_receipts', { assignments: [{ txnId: 'x4', envelope: 'invented' }] }, c),
+      (e: unknown) => e instanceof ToolError && e.status === 404 && /no envelope invented/.test(e.message),
     );
   });
 
-  // x4 already divided groceries -6.15 / dining -4.00, as a first save would leave it.
+  // x4 already divided Daily life -6.15 / Utilities -4.00, as a first save would leave it.
   const splitX4 = (c: ToolContext) => c.store.append('alice', { op: 'txn.split', txn: 'x4', parts: [
-    { category: 'groceries', amount: parseDollars('-6.15') }, { category: 'dining', amount: parseDollars('-4.00') }] });
+    { envelope: 'daily', amount: parseDollars('-6.15') }, { envelope: 'util', amount: parseDollars('-4.00') }] });
   const split = (parts: unknown, extra: Record<string, unknown> = {}) =>
-    ({ assignments: [{ txnId: 'x4', category: SPLIT, parts, ...extra }] });
+    ({ assignments: [{ txnId: 'x4', envelope: SPLIT, parts, ...extra }] });
 
   test('a split entry proposes txn.split and says each part', async () => {
     const c = await ctx();
-    const p = call('categorize_transactions', split([
-      { category: 'groceries', amount: -615 }, { category: 'dining', amount: -400 }]), c) as Proposal;
+    const p = call('sort_receipts', split([
+      { envelope: 'daily', amount: -615 }, { envelope: 'util', amount: -400 }]), c) as Proposal;
     assert.equal(p.events.length, 1);
     assert.equal(p.events[0]!.op, 'txn.split');
-    assert.ok(p.effects.some((e) => /2026-08-09 QUIKSTOP 10001 .*is split: Groceries \$6\.15, Dining out \$4\.00/.test(e)), p.effects.join('|'));
+    assert.ok(p.effects.some((e) => /2026-08-09 QUIKSTOP 10001 .*is split: Daily life \$6\.15, Utilities \$4\.00/.test(e)), p.effects.join('|'));
     await commit(p.id, c);
     const t = c.store.state.txns.get('x4')!;
-    assert.equal(t.category, SPLIT);
-    assert.deepEqual(t.split, [{ category: 'groceries', amount: -615 }, { category: 'dining', amount: -400 }]);
+    assert.equal(t.envelope, SPLIT);
+    assert.deepEqual(t.split, [{ envelope: 'daily', amount: -615 }, { envelope: 'util', amount: -400 }]);
   });
 
   test('a receipt already split can be divided again: one replacement event, said as such', async () => {
     const c = await ctx();
     await splitX4(c);
-    const p = call('categorize_transactions', split([
-      { category: 'groceries', amount: -515 }, { category: 'dining', amount: -300 }, { category: 'electricity', amount: -200 }]), c) as Proposal;
+    const p = call('sort_receipts', split([
+      { envelope: 'daily', amount: -515 }, { envelope: 'util', amount: -300 }, { envelope: TRANSFER, amount: -200 }]), c) as Proposal;
     assert.equal(p.events.length, 1);
     assert.equal(p.events[0]!.op, 'txn.split');
     assert.equal((p.events[0] as { parts: readonly unknown[] }).parts.length, 3);
-    assert.ok(p.effects.some((e) => /2026-08-09 QUIKSTOP 10001 .*is divided again: Groceries \$5\.15, Dining out \$3\.00, Electricity \$2\.00/.test(e)), p.effects.join('|'));
+    assert.ok(p.effects.some((e) => /2026-08-09 QUIKSTOP 10001 .*is divided again: Daily life \$5\.15, Utilities \$3\.00, a transfer \$2\.00/.test(e)), p.effects.join('|'));
     await commit(p.id, c);
     assert.equal(c.store.state.txns.get('x4')!.split!.length, 3);
   });
@@ -530,110 +550,110 @@ describe('writes propose, they never execute', () => {
   test('sorting a split receipt whole clears the parts and says so', async () => {
     const c = await ctx();
     await splitX4(c);
-    const p = call('categorize_transactions', { assignments: [{ txnId: 'x4', category: 'groceries' }] }, c) as Proposal;
+    const p = call('sort_receipts', { assignments: [{ txnId: 'x4', envelope: 'daily' }] }, c) as Proposal;
     assert.equal(p.events.length, 1);
-    assert.equal(p.events[0]!.op, 'txn.categorize');
-    assert.ok(p.effects.some((e) => /is no longer split; becomes groceries/.test(e)), p.effects.join('|'));
+    assert.equal(p.events[0]!.op, 'txn.sort');
+    assert.ok(p.effects.some((e) => /is no longer split; goes into Daily life/.test(e)), p.effects.join('|'));
     await commit(p.id, c);
     const t = c.store.state.txns.get('x4')!;
-    assert.equal(t.category, 'groceries');
+    assert.equal(t.envelope, 'daily');
     assert.equal(t.split, undefined);
   });
 
   test('a re-split whose parts no longer add up is refused and proposes nothing', async () => {
     const c = await ctx();
     await splitX4(c);
-    assert.throws(() => call('categorize_transactions', split([
-      { category: 'groceries', amount: -515 }, { category: 'dining', amount: -300 }]), c),
+    assert.throws(() => call('sort_receipts', split([
+      { envelope: 'daily', amount: -515 }, { envelope: 'util', amount: -300 }]), c),
       /the parts of a split must add up to the receipt/);
     assert.equal(c.store.state.txns.get('x4')!.split!.length, 2, 'the existing split stands');
   });
 
-  test('a split that does not add up, has one part, or names a missing category is refused', async () => {
+  test('a split that does not add up, has one part, or names a missing envelope is refused', async () => {
     const c = await ctx();
-    assert.throws(() => call('categorize_transactions', split([
-      { category: 'groceries', amount: -615 }, { category: 'dining', amount: -300 }]), c), /add up/);
-    assert.throws(() => call('categorize_transactions', split([
-      { category: 'groceries', amount: -1015 }]), c), /at least two/);
-    assert.throws(() => call('categorize_transactions', split([
-      { category: 'groceries', amount: -615 }, { category: 'invented', amount: -400 }]), c), /categories are fixed/);
-    assert.throws(() => call('categorize_transactions', split([
-      { category: 'groceries', amount: -515.5 }, { category: 'dining', amount: -499.5 }]), c), /whole number of cents/);
-    assert.throws(() => call('categorize_transactions', split([
-      { category: 'groceries', amount: -515 }, { category: 'groceries', amount: -500 }]), c), /appears twice/);
-    assert.throws(() => call('categorize_transactions', split(undefined), c), /parts/);
-    assert.equal(c.store.state.txns.get('x4')!.category, null, 'nothing was written');
+    assert.throws(() => call('sort_receipts', split([
+      { envelope: 'daily', amount: -615 }, { envelope: 'util', amount: -300 }]), c), /add up/);
+    assert.throws(() => call('sort_receipts', split([
+      { envelope: 'daily', amount: -1015 }]), c), /at least two/);
+    assert.throws(() => call('sort_receipts', split([
+      { envelope: 'daily', amount: -615 }, { envelope: 'invented', amount: -400 }]), c), /no envelope invented/);
+    assert.throws(() => call('sort_receipts', split([
+      { envelope: 'daily', amount: -515.5 }, { envelope: 'util', amount: -499.5 }]), c), /whole number of cents/);
+    assert.throws(() => call('sort_receipts', split([
+      { envelope: 'daily', amount: -515 }, { envelope: 'daily', amount: -500 }]), c), /appears twice/);
+    assert.throws(() => call('sort_receipts', split(undefined), c), /parts/);
+    assert.equal(c.store.state.txns.get('x4')!.envelope, null, 'nothing was written');
   });
 
   test('a split can take transfer and income parts', async () => {
     const c = await ctx();
-    const p = call('categorize_transactions', split([
-      { category: 'groceries', amount: -615 }, { category: TRANSFER, amount: -400 }]), c) as Proposal;
-    assert.ok(p.effects.some((e) => /Groceries \$6\.15, a transfer \$4\.00/.test(e)), p.effects.join('|'));
+    const p = call('sort_receipts', split([
+      { envelope: 'daily', amount: -615 }, { envelope: TRANSFER, amount: -400 }]), c) as Proposal;
+    assert.ok(p.effects.some((e) => /Daily life \$6\.15, a transfer \$4\.00/.test(e)), p.effects.join('|'));
   });
 
   test('a split cannot be credited to Claude', async () => {
     const c = await ctx();
-    assert.throws(() => call('categorize_transactions', split([
-      { category: 'groceries', amount: -615 }, { category: 'dining', amount: -400 }], { suggestedBy: 'claude' }), c), /suggestedBy/);
+    assert.throws(() => call('sort_receipts', split([
+      { envelope: 'daily', amount: -615 }, { envelope: 'util', amount: -400 }], { suggestedBy: 'claude' }), c), /suggestedBy/);
   });
 
   test('a rule can target split, and says it will ask a person', async () => {
     const c = await ctx();
-    const p = call('categorize_transactions', split([
-      { category: 'groceries', amount: -615 }, { category: 'dining', amount: -400 }],
+    const p = call('sort_receipts', split([
+      { envelope: 'daily', amount: -615 }, { envelope: 'util', amount: -400 }],
       { alsoAddRuleMatching: 'QUIK' }), c) as Proposal;
     assert.equal(p.events.length, 2);
     assert.equal(p.events[1]!.op, 'rule.add');
-    assert.equal((p.events[1] as { category: string }).category, SPLIT);
+    assert.equal((p.events[1] as { envelope: string }).envelope, SPLIT);
     assert.ok(p.effects.some((e) => /Rule "QUIK" would ask a person to divide 1 receipt from now on/.test(e)), p.effects.join('|'));
-    assert.equal(describeEvent({ id: 'i', at: NOW, who: 'alice', ...p.events[1]! } as never, c.store.state).what, 'added rule "QUIK" to a split');
+    assert.equal(describeEvent({ id: 'i', at: NOW, who: 'alice', ...p.events[1]! } as never, c.store.state).what, 'added the rule "QUIK" for a split');
     await commit(p.id, c);
-    assert.equal(c.store.state.rules.at(-1)!.category, SPLIT);
+    assert.equal(c.store.state.rules.at(-1)!.envelope, SPLIT);
   });
 
   test('a rule that targets split pluralises its count, and a blank rule is no rule', async () => {
     const c = await ctx();
     await c.store.append('system', [{ op: 'txn.add', txns: [
-      { id: 'x6', date: '2026-08-11', payee: 'QUIKSTOP 20002', amount: parseDollars('-5.00'), dedupeKey: 'x6', category: null }] }]);
-    const parts = [{ category: 'groceries', amount: -615 }, { category: 'dining', amount: -400 }];
-    const p = call('categorize_transactions', split(parts, { alsoAddRuleMatching: 'QUIK' }), c) as Proposal;
+      { id: 'x6', date: '2026-08-11', payee: 'QUIKSTOP 20002', amount: parseDollars('-5.00'), dedupeKey: 'x6', envelope: null }] }]);
+    const parts = [{ envelope: 'daily', amount: -615 }, { envelope: 'util', amount: -400 }];
+    const p = call('sort_receipts', split(parts, { alsoAddRuleMatching: 'QUIK' }), c) as Proposal;
     assert.ok(p.effects.some((e) => /ask a person to divide 2 receipts from now on/.test(e)), p.effects.join('|'));
-    const r = call('categorize_transactions', split(parts, { alsoAddRuleMatching: ' ' }), c) as Proposal;
+    const r = call('sort_receipts', split(parts, { alsoAddRuleMatching: ' ' }), c) as Proposal;
     assert.equal(r.events.length, 1);
   });
 
   test('a two-letter rule is refused; a rule that contradicts history warns on the card', async () => {
     const c = await ctx();
-    assert.throws(() => call('categorize_transactions', {
-      assignments: [{ txnId: 'x4', category: 'dining', alsoAddRuleMatching: 'AL' }] }, c), /at least 3 characters/);
-    assert.throws(() => call('categorize_transactions', {
-      assignments: [{ txnId: 'x4', category: 'dining', alsoAddRuleMatching: 'S' }] }, c), /at least 3 characters/);
-    assert.throws(() => call('categorize_transactions', split([
-      { category: 'groceries', amount: -615 }, { category: 'dining', amount: -400 }],
+    assert.throws(() => call('sort_receipts', {
+      assignments: [{ txnId: 'x4', envelope: 'daily', alsoAddRuleMatching: 'AL' }] }, c), /at least 3 characters/);
+    assert.throws(() => call('sort_receipts', {
+      assignments: [{ txnId: 'x4', envelope: 'daily', alsoAddRuleMatching: 'S' }] }, c), /at least 3 characters/);
+    assert.throws(() => call('sort_receipts', split([
+      { envelope: 'daily', amount: -615 }, { envelope: 'util', amount: -400 }],
       { alsoAddRuleMatching: 'AL' }), c), /at least 3 characters/);
 
-    // x1 is VALLEY MARKET, filed under Groceries; the tool warns but still proposes.
-    const p = call('categorize_transactions', {
-      assignments: [{ txnId: 'x4', category: 'dining', alsoAddRuleMatching: 'VALLEY' }] }, c) as Proposal;
+    // x1 is VALLEY MARKET, sorted into Daily life; a rule for Utilities warns but is still proposed.
+    const p = call('sort_receipts', {
+      assignments: [{ txnId: 'x4', envelope: 'util', alsoAddRuleMatching: 'VALLEY' }] }, c) as Proposal;
     assert.equal(p.events.length, 2);
-    assert.ok(p.effects.some((e) => /Rule "VALLEY" also matches 1 receipt filed elsewhere \(Groceries\)/.test(e)), p.effects.join('|'));
+    assert.ok(p.effects.some((e) => /Rule "VALLEY" also matches 1 receipt filed elsewhere \(Daily life\)/.test(e)), p.effects.join('|'));
     assert.ok(p.effects.some((e) => /Rule "VALLEY" would cover 1 transaction\b/.test(e)), 'the existing coverage line stays');
   });
 
   test('re-using a rule\'s match still warns about history, and says what it replaces', async () => {
     const c = await ctx();
-    await c.store.append('system', { op: 'rule.add', rule: 'r-valley', match: 'VALLEY', category: 'groceries' });
-    const p = call('categorize_transactions', {
-      assignments: [{ txnId: 'x4', category: 'dining', alsoAddRuleMatching: 'valley' }] }, c) as Proposal;
-    assert.ok(p.effects.some((e) => /Replaces the rule "VALLEY" → Groceries/.test(e)), p.effects.join('|'));
-    assert.ok(p.effects.some((e) => /also matches 1 receipt filed elsewhere \(Groceries\)/.test(e)), p.effects.join('|'));
+    await c.store.append('system', { op: 'rule.add', rule: 'r-valley', match: 'VALLEY', envelope: 'daily' });
+    const p = call('sort_receipts', {
+      assignments: [{ txnId: 'x4', envelope: 'util', alsoAddRuleMatching: 'valley' }] }, c) as Proposal;
+    assert.ok(p.effects.some((e) => /Replaces the rule "VALLEY" → Daily life/.test(e)), p.effects.join('|'));
+    assert.ok(p.effects.some((e) => /also matches 1 receipt filed elsewhere \(Daily life\)/.test(e)), p.effects.join('|'));
   });
 
   test('a rule that is not in this receipt is still proposed', async () => {
     const c = await ctx();
-    const p = call('categorize_transactions', {
-      assignments: [{ txnId: 'x4', category: 'dining', alsoAddRuleMatching: 'RESTAURANT' }] }, c) as Proposal;
+    const p = call('sort_receipts', {
+      assignments: [{ txnId: 'x4', envelope: 'daily', alsoAddRuleMatching: 'RESTAURANT' }] }, c) as Proposal;
     assert.equal(p.events.length, 2, 'a person may type a broader rule');
   });
 
@@ -667,6 +687,98 @@ describe('writes propose, they never execute', () => {
       assert.ok(err instanceof ToolError);
       assert.equal(err.status, 404);
     }
+  });
+});
+
+describe('sort_receipts', () => {
+  const sort = (c: ToolContext, item: Record<string, unknown>) => call('sort_receipts', { assignments: [{ txnId: 'x4', ...item }] }, c) as Proposal;
+  test('into an envelope, split, as a transfer or as income', async () => {
+    const c = await ctx();
+    assert.deepEqual(sort(c, { envelope: 'util' }).events, [{ op: 'txn.sort', txn: 'x4', envelope: 'util', manual: true }]);
+    assert.deepEqual(sort(c, { envelope: SPLIT, parts: [{ envelope: 'daily', amount: -615 }, { envelope: INCOME, amount: -400 }] }).events,
+      [{ op: 'txn.split', txn: 'x4', parts: [{ envelope: 'daily', amount: -615 }, { envelope: INCOME, amount: -400 }] }]);
+    assert.deepEqual(sort(c, { envelope: TRANSFER }).events, [{ op: 'txn.sort', txn: 'x4', envelope: TRANSFER, manual: true }]);
+    assert.deepEqual(sort(c, { envelope: INCOME }).events, [{ op: 'txn.sort', txn: 'x4', envelope: INCOME, manual: true }]);
+    await commit(sort(c, { envelope: TRANSFER }).id, c);
+    assert.equal(c.store.state.txns.get('x4')!.envelope, TRANSFER);
+  });
+  test('a suggestion a person accepts is marked suggestedBy', async () => {
+    const c = await ctx();
+    const p = sort(c, { envelope: 'daily', suggestedBy: 'claude' });
+    assert.deepEqual(p.events, [{ op: 'txn.sort', txn: 'x4', envelope: 'daily', manual: true, suggestedBy: 'claude' }]);
+    await commit(p.id, c);
+    assert.equal(c.store.state.txns.get('x4')!.suggestedBy, 'claude');
+  });
+  test('an id that is not a live envelope is no envelope, 404, and a removed one too', async () => {
+    const c = await ctx();
+    const no = (envelope: string) => assert.throws(() => sort(c, { envelope }),
+      (e: unknown) => e instanceof ToolError && e.status === 404 && e.message === `no envelope ${envelope}`);
+    no('nope');
+    await c.store.append('alice', { op: 'envelope.remove', envelope: 'util', why: 'moved' });
+    no('util');
+    assert.throws(() => sort(c, { envelope: SPLIT, parts: [{ envelope: 'daily', amount: -615 }, { envelope: 'util', amount: -400 }] }), /no envelope util/);
+  });
+  test('alsoAddRuleMatching writes rule.add with the envelope', async () => {
+    const c = await ctx();
+    const p = sort(c, { envelope: 'util', alsoAddRuleMatching: 'QUIKSTOP' });
+    assert.deepEqual(p.events[1], { op: 'rule.add', rule: 'r-quikstop', match: 'QUIKSTOP', envelope: 'util' });
+    await commit(p.id, c);
+    assert.deepEqual(c.store.state.rules.at(-1), { id: 'r-quikstop', match: 'QUIKSTOP', envelope: 'util' });
+  });
+});
+
+describe('remove_envelope', () => {
+  /** Food (Dining) and Fun (Gym); September (closed), October and November open; today is in November. */
+  async function gymCtx(more: (Record<string, unknown>)[] = []): Promise<ToolContext> {
+    const path = join(await mkdtemp(join(tmpdir(), 'pb-remove-')), 'events.jsonl');
+    const store = new Store({ path, now: () => new Date('2026-11-20T09:00:00Z') });
+    await store.load();
+    const pay = (id: string, date: string, payee: string, dollars: string) =>
+      ({ id, date, payee, amount: parseDollars(dollars), dedupeKey: id, envelope: null });
+    await store.append('alice', [
+      { op: 'category.add', category: 'food', label: 'Food' },
+      { op: 'category.add', category: 'fun', label: 'Fun' },
+      { op: 'envelope.define', envelope: 'dining', label: 'Dining', category: 'food', template: parseDollars('200.00') },
+      { op: 'envelope.define', envelope: 'gym', label: 'Gym', category: 'fun', template: parseDollars('40.00') },
+      { op: 'month.open', month: '2026-09', income: parseDollars('5000.00') },
+      { op: 'month.open', month: '2026-10', income: parseDollars('5000.00') },
+      { op: 'month.open', month: '2026-11', income: parseDollars('5000.00') },
+      { op: 'month.close', month: '2026-09', closed: true, why: 'done' },
+      { op: 'txn.add', txns: [pay('g9', '2026-09-05', 'EXAMPLE GYM', '-40.00'), pay('g11', '2026-11-05', 'EXAMPLE GYM', '-40.00'),
+        pay('b11', '2026-11-12', 'CORNER BISTRO', '-80.00')] },
+      { op: 'txn.sort', txn: 'g9', envelope: 'gym', manual: true },
+      { op: 'txn.sort', txn: 'g11', envelope: 'gym', manual: true },
+      { op: 'txn.split', txn: 'b11', parts: [{ envelope: 'dining', amount: parseDollars('-50.00') }, { envelope: 'gym', amount: parseDollars('-30.00') }] },
+      ...more as never[],
+    ]);
+    return { store, who: 'alice', today: '2026-11-20', proposals: new ProposalStore(), sid: null };
+  }
+  const remove = (c: ToolContext) => call('remove_envelope', { envelope: 'gym', why: 'cancelled the membership' }, c) as Proposal;
+
+  test('the rules that sort into it go first, then the envelope; its receipts, rule and bill in words', async () => {
+    const c = await gymCtx([
+      { op: 'rule.add', rule: 'r-gym', match: 'EXAMPLE GYM', envelope: 'gym' },
+      { op: 'bill.set', envelope: 'gym', bill: 'example gym', name: 'EXAMPLE GYM', date: { kind: 'due', per: 'month', day: 5 } },
+    ]);
+    const p = remove(c);
+    assert.deepEqual(p.events, [{ op: 'rule.remove', rule: 'r-gym' }, { op: 'envelope.remove', envelope: 'gym', why: 'cancelled the membership' }]);
+    assert.ok(p.effects.includes('Its 2 receipts from this month go back to To sort, and the rule "EXAMPLE GYM" goes with it.'), p.effects.join('|'));
+    assert.ok(p.effects.includes('Its bill EXAMPLE GYM goes with it.'), p.effects.join('|'));
+    await commit(p.id, c);
+    assert.deepEqual([c.store.state.envelopes.has('gym'), c.store.state.rules.length, c.store.state.bills.size], [false, 0, 0]);
+  });
+  test('receipts in October and November, both open, are from months not yet closed', async () => {
+    const c = await gymCtx([
+      { op: 'txn.add', txns: [{ id: 'g10', date: '2026-10-05', payee: 'EXAMPLE GYM', amount: parseDollars('-40.00'), dedupeKey: 'g10', envelope: 'gym' }] },
+      { op: 'txn.remove', txn: 'b11', why: 'a duplicate' },
+    ]);
+    assert.ok(remove(c).effects.includes('Its 2 receipts from months not yet closed go back to To sort.'), remove(c).effects.join('|'));
+  });
+  test('nothing to send back, and one receipt, read as such', async () => {
+    const none = await gymCtx([{ op: 'txn.remove', txn: 'g11', why: 'x' }, { op: 'txn.remove', txn: 'b11', why: 'x' }]);
+    assert.ok(remove(none).effects.includes('No receipts go back to To sort.'), remove(none).effects.join('|'));
+    const one = await gymCtx([{ op: 'txn.remove', txn: 'b11', why: 'x' }]);
+    assert.ok(remove(one).effects.includes('Its 1 receipt from this month goes back to To sort.'), remove(one).effects.join('|'));
   });
 });
 

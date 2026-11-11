@@ -164,20 +164,19 @@ describe('a restore in place says no in words wherever the fold would', () => {
 describe('a preview changes nothing', () => {
   test('a receipt the backup sorts again stays as it is here until the restore is applied', async () => {
     const { store: src } = await new Households(await dir()).create('alice', 'Theirs');
-    await src.append('alice', [{ op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
-      { op: 'txn.add', txns: [{ id: 't1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 't1', category: 'food' }] }]);
+    await src.append('alice', [
+      { op: 'txn.add', txns: [{ id: 't1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 't1', envelope: 'food' }] }]);
     const target = await alicesHere();
     await target.adopt(eventsToApply(planRestore(target.state, await backupOf(src), ['facts'], await target.ids())));
-    // The backup moves on: a new category, and the receipt sorted into it.
-    await src.append('alice', [{ op: 'category.define', category: 'fun', label: 'Fun', kind: 'People' },
-      { op: 'txn.categorize', txn: 't1', category: 'fun' }]);
+    // The backup moves on: the receipt sorted into another envelope.
+    await src.append('alice', [{ op: 'txn.sort', txn: 't1', envelope: 'fun' }]);
     const before = structuredClone(target.state);
     const plan = planRestore(target.state, await backupOf(src), ['facts'], await target.ids());
     assert.deepEqual(plan.collisions, []);
-    assert.equal(target.state.txns.get('t1')!.category, 'food', 'a preview changed the live household');
+    assert.equal(target.state.txns.get('t1')!.envelope, 'food', 'a preview changed the live household');
     assert.deepStrictEqual(target.state, before);
     await target.adopt(eventsToApply(plan));
-    assert.equal(target.state.txns.get('t1')!.category, 'fun');
+    assert.equal(target.state.txns.get('t1')!.envelope, 'fun');
   });
 });
 
@@ -221,7 +220,8 @@ describe('a restore in place takes only what is not already here', () => {
 
   test('the same facts twice: nothing to take, and the summary says why', async () => {
     const { store: src } = await new Households(await dir()).create('alice', 'Theirs');
-    await src.append('alice', { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' });
+    await src.append('alice', { op: 'txn.add', txns: [
+      { id: 't1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 't1', envelope: null }] });
     const backup = await backupOf(src);
     const target = await alicesHere();
     await target.adopt(eventsToApply(planRestore(target.state, backup, ['facts'], await target.ids())));
@@ -262,20 +262,20 @@ describe('the promise holds: a clean plan always applies', () => {
     ["bob's, with a time zone and money", async () => {
       const { store } = await new Households(await dir()).create('bob', 'Bobs');
       await store.append('bob', [{ op: 'household.zone', zone: 'America/Denver' },
-        { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
-        { op: 'txn.add', txns: [{ id: 't-inv', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 't-inv', category: 'food' }] }]);
+        { op: 'category.add', category: 'food', label: 'Groceries' },
+        { op: 'txn.add', txns: [{ id: 't-inv', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 't-inv', envelope: 'food' }] }]);
       await store.append('bob', { op: 'guest.allow', email: 'dana@example.com', name: 'Dana', why: 'a friend' });
       return store;
     }],
     ["alice's, after bob left and his plan was asked of casey", alicesAfterBobLeft],
     ["alice's, with a receipt split and then sorted again at the end", async () => {
       const { store } = await new Households(await dir()).create('alice', 'Theirs');
-      await store.append('alice', [{ op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
-        { op: 'category.define', category: 'fun', label: 'Fun', kind: 'People' },
-        { op: 'txn.add', txns: [{ id: 't-sort', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 't-sort', category: 'food' }] }]);
+      await store.append('alice', [{ op: 'category.add', category: 'food', label: 'Groceries' },
+        { op: 'category.add', category: 'fun', label: 'Fun' },
+        { op: 'txn.add', txns: [{ id: 't-sort', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 't-sort', envelope: 'food' }] }]);
       await store.append('alice', { op: 'txn.split', txn: 't-sort', parts: [
-        { category: 'food', amount: parseDollars('-5.00') }, { category: 'fun', amount: parseDollars('-7.00') }] });
-      await store.append('alice', { op: 'txn.categorize', txn: 't-sort', category: 'fun' });
+        { envelope: 'food', amount: parseDollars('-5.00') }, { envelope: 'fun', amount: parseDollars('-7.00') }] });
+      await store.append('alice', { op: 'txn.sort', txn: 't-sort', envelope: 'fun' });
       return store;
     }],
     ["alice's, with a note on a plan by bob", async () => {
@@ -389,8 +389,8 @@ describe('a restore as a household of its own', () => {
     const { store: src } = await new Households(await dir()).create('bob', 'Bobs');
     await src.append('bob', { op: 'member.add', member: 'alice', why: 'she lives here' });
     await src.append('bob', [
-      { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
-      { op: 'txn.add', txns: [{ id: 't1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-64.10'), dedupeKey: 't1', category: 'food' }] },
+      { op: 'category.add', category: 'food', label: 'Groceries' },
+      { op: 'txn.add', txns: [{ id: 't1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-64.10'), dedupeKey: 't1', envelope: 'food' }] },
       { op: 'household.locate', location: { label: 'Springfield, IL' }, why: 'where we live' },
     ]);
     await src.append('bob', { op: 'plan.create', plan: 'p-bob', title: 'Clean the gutters', area: 'House' });

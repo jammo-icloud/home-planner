@@ -7,7 +7,8 @@ import type { Event, State } from '../src/types.ts';
 /** Every figure the budget gives, in plain rows, so a field added to a type later does not alter them. */
 export type Figures = { fixed: readonly unknown[]; months: Record<string, any> };
 
-export function readLog(name: 'bills-old-log'): Event[] {
+/** A fixture log by name, from ./fixtures/<name>.jsonl. */
+export function readLog(name: string): Event[] {
   const text = readFileSync(new URL(`./fixtures/${name}.jsonl`, import.meta.url), 'utf8');
   return text.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as Event);
 }
@@ -39,5 +40,5 @@ export function figuresOf(state: State): Figures {
       };
     }
   }
-  return { fixed: fixedCharges(state).map((f) => [f.key, f.payee, f.category, f.typical, f.months]), months };
+  return { fixed: fixedCharges(state).map((f) => [f.key, f.payee, f.envelope, f.typical, f.months]), months };
 }

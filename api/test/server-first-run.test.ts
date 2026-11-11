@@ -27,7 +27,7 @@ delete process.env['ANTHROPIC_API_KEY'];
 delete process.env['ANTHROPIC_AUTH_TOKEN'];
 
 const { start } = await import('../src/server.ts');
-const { STARTER_GROUPS } = await import('../src/starter.ts');
+const { STARTER_CATEGORIES } = await import('../src/starter.ts');
 
 let base = '';
 let close: () => Promise<void> = async () => {};
@@ -61,7 +61,7 @@ after(async () => { await close(); await nas.close(); });
 
 // The server reads today from the clock, so the month to open is whatever this month is.
 const thisMonth = new Date().toISOString().slice(0, 7);
-const starterRows = STARTER_GROUPS.flatMap((g) => g.envelopes.map((e) => ({ label: e.label, group: g.name, category: e.id })));
+const starterRows = STARTER_CATEGORIES.flatMap((c) => c.envelopes.map((e) => ({ label: e.label, id: e.id, category: c.id })));
 
 /** A household of its own, opened: each test that needs a budget not started makes one. */
 const fresh = async (label: string) => assert.equal((await call('POST', '/api/households', { label })).status, 200);
@@ -109,11 +109,9 @@ describe('approving in the request that runs the tool', () => {
 
   test('a tool outside the set is refused with approve and writes nothing', async () => {
     const last = (await where('Capital City, IL')).json.lastEventId;
-    const r = await approve('define_category', { category: 'pets', label: 'Pets' });
+    const r = await approve('close_month', { month: thisMonth, closed: true, why: 'done' });
     assert.equal(r.status, 400);
     assert.match(r.json.error, /not approved in one step/);
-    const cats = await call('GET', '/api/categories');
-    assert.ok(!cats.json.categories.some((c: any) => c.id === 'pets'));
     const next = (await where('Ogdenville, IL')).json.lastEventId;
     assert.equal(seq(next), seq(last) + 1, 'one write after the last one before the refusal');
   });

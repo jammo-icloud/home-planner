@@ -9,9 +9,9 @@
 import { fmtExact } from './money.ts';
 import { incomeSuggestion } from './figures.ts';
 import { sourcesFor } from './income.ts';
-import { PRICED, STARTER_GROUPS } from './starter.ts';
+import { PRICED, STARTER_CATEGORIES } from './starter.ts';
 import { monthOf } from './types.ts';
-import type { Day, Month, State } from './types.ts';
+import type { CategoryId, Day, EnvelopeId, Month, State } from './types.ts';
 
 export type FirstRunStep = 'where' | 'income' | 'envelopes';
 
@@ -30,18 +30,20 @@ export interface FirstRun {
   };
   /** Where the household is, as its label says it. */
   readonly location: string | null;
-  readonly groups: readonly {
-    readonly name: string;
-    readonly envelopes: readonly { readonly id: string; readonly label: string; readonly priced: boolean }[];
+  /** The starter categories, each with its starter envelopes, the ones pricing can fill marked. */
+  readonly categories: readonly {
+    readonly id: CategoryId;
+    readonly label: string;
+    readonly envelopes: readonly { readonly id: EnvelopeId; readonly label: string; readonly priced: boolean }[];
   }[];
 }
 
 export function firstRun(state: State, today: Day): FirstRun {
   const month = monthOf(today);
-  // The groups are the starter set, with the rows pricing can fill marked.
-  const groups = STARTER_GROUPS.map((g) => ({
-    name: g.name,
-    envelopes: g.envelopes.map((e) => ({ id: e.id, label: e.label, priced: PRICED.has(e.id) })),
+  // The starter set, with the rows pricing can fill marked.
+  const categories = STARTER_CATEGORIES.map((c) => ({
+    id: c.id, label: c.label,
+    envelopes: c.envelopes.map((e) => ({ id: e.id, label: e.label, priced: PRICED.has(e.id) })),
   }));
   const started = state.location !== null || state.envelopes.size > 0;
   const monthOpen = state.months.has(month);
@@ -68,6 +70,6 @@ export function firstRun(state: State, today: Day): FirstRun {
       hasSource,
     },
     location: state.location?.label ?? null,
-    groups,
+    categories,
   };
 }

@@ -8,7 +8,7 @@ import { cents } from '../src/money.ts';
 import { Store } from '../src/store.ts';
 import type { NewEvent } from '../src/store.ts';
 import { firstRun } from '../src/first-run.ts';
-import { STARTER_GROUPS } from '../src/starter.ts';
+import { STARTER_CATEGORIES } from '../src/starter.ts';
 import { APPROVE_IN_ONE, TOOLS } from '../src/tools.ts';
 
 const NOW = '2026-11-04T09:00:00Z';
@@ -25,9 +25,8 @@ async function fresh(seed: NewEvent[] = []): Promise<Store> {
 const placitas: NewEvent = { op: 'household.locate', location: { label: 'Springfield, IL' }, why: 'where we live' };
 const open: NewEvent = { op: 'month.open', month: '2026-11', income: cents(0) };
 const envelope: NewEvent[] = [
-  { op: 'category.define', category: 'groceries', label: 'Groceries' },
-  { op: 'envelope.define', envelope: 'groceries', label: 'Groceries', group: 'Food',
-    match: { categories: ['groceries'] }, template: cents(0), rollover: true, order: 0, needsFigure: true },
+  { op: 'category.add', category: 'food', label: 'Food' },
+  { op: 'envelope.define', envelope: 'groceries', label: 'Groceries', category: 'food', template: cents(0), rollover: true, order: 0, needsFigure: true },
 ];
 const pay = (amount: number): NewEvent => ({ op: 'income.source.define', source: 'pay', label: 'Pay',
   earner: 'alex', amount: cents(amount), frequency: 'monthly', anchor: '2026-10-01' });
@@ -86,13 +85,14 @@ describe('where the walkthrough is', () => {
     assert.equal(firstRun((await fresh()).state, TODAY).hasEnvelopes, false);
   });
 
-  test('the groups are the starter groups, rent, tax and elec marked priced', async () => {
+  test('the categories are the starter categories, rent, tax and elec marked priced', async () => {
     const s = await fresh([placitas]);
     const r = firstRun(s.state, TODAY);
-    assert.deepEqual(r.groups.map((g) => g.name), STARTER_GROUPS.map((g) => g.name));
-    const rows = r.groups.flatMap((g) => g.envelopes);
+    assert.deepEqual(r.categories.map((c) => [c.id, c.label]), STARTER_CATEGORIES.map((c) => [c.id, c.label]));
+    assert.equal('groups' in r, false);
+    const rows = r.categories.flatMap((c) => c.envelopes);
     assert.deepEqual(rows.filter((e) => e.priced).map((e) => e.id).sort(), ['elec', 'rent', 'tax']);
-    assert.equal(rows.length, STARTER_GROUPS.flatMap((g) => g.envelopes).length);
+    assert.equal(rows.length, STARTER_CATEGORIES.flatMap((c) => c.envelopes).length);
   });
 
   test('hasSource is true once an income source is recorded', async () => {

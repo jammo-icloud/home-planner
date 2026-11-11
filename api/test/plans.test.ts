@@ -442,12 +442,11 @@ describe('board and card', () => {
   async function withBudget() {
     const t = await store();
     await t.s.append('alice', [
-      { op: 'category.define', category: 'repairs', label: 'Repairs' },
-      { op: 'envelope.define', envelope: 'house', label: 'House upkeep', group: 'House',
-        match: { categories: ['repairs'] }, template: parseDollars('100.00'), rollover: false, order: 0 },
+      { op: 'category.add', category: 'repairs', label: 'Repairs' },
+      { op: 'envelope.define', envelope: 'house', label: 'House upkeep', category: 'repairs', template: parseDollars('100.00'), rollover: false, order: 0 },
       { op: 'month.open', month: '2026-10', income: parseDollars('1000.00') },
       { op: 'txn.add', txns: [
-        { id: 'x1', date: '2026-10-05', payee: 'HARDWARE', amount: parseDollars('-35.50'), dedupeKey: 'x1', category: 'repairs' },
+        { id: 'x1', date: '2026-10-05', payee: 'HARDWARE', amount: parseDollars('-35.50'), dedupeKey: 'x1', envelope: 'house' },
       ] },
     ]);
     return t;

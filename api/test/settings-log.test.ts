@@ -83,9 +83,8 @@ describe("the household's choices", () => {
   });
 
   test("a seed's facts written as system still replay", () => {
-    const seeded = replay([line('system', { op: 'category.define', category: 'groceries', label: 'Groceries' }, 'e1'),
-      line('system', { op: 'envelope.define', envelope: 'groceries', label: 'Groceries', group: 'Food',
-        match: { categories: ['groceries'] }, template: 0 }, 'e2')]);
+    const seeded = replay([line('system', { op: 'category.add', category: 'groceries', label: 'Groceries' }, 'e1'),
+      line('system', { op: 'envelope.define', envelope: 'groceries', label: 'Groceries', category: 'groceries', template: 0 }, 'e2')]);
     assert.equal(seeded.envelopes.size, 1);
   });
 
