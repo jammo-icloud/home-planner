@@ -442,7 +442,7 @@ if DSM itself is reachable from outside (the planner alone on 443 is not
 enough); otherwise phones sync at home or over VPN.
 
 **Setting up a phone is two things.** Each member opens **Set up your iPhone**
-from the person menu, and the sheet has two sections.
+from Settings › You › Your iPhone and Mac, and the sheet has two sections.
 
 *The Home Screen* is a QR code of the planner's own address with `?add=home`
 on the end. It needs no profile and no code, and it works for any address the
@@ -468,8 +468,8 @@ phone asks for the member's NAS password when the profile is installed. The
 profile is **signed** with the NAS's certificate when a copy of it is on the volume,
 so iOS says *Verified*; see [Signing the calendar profile](#signing-the-calendar-profile).
 Without that copy it is unsigned, and iOS says *Not Signed* in red; the profile
-installs all the same. Settings › Set up your iPhone says beside the button which
-it is. Installing it again replaces the first.
+installs all the same. Set up your iPhone (Settings › You › Your iPhone and Mac)
+says beside the button which it is. Installing it again replaces the first.
 
 **The address rule** concerns the calendar code only. A code is refused at any
 `http` address other than localhost, so for the calendar account the planner

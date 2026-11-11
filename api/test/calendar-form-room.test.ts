@@ -16,13 +16,18 @@ function setup() {
   const run = new Function('$', `let calOpen = null, calPanelDay = null;\n${code}\nreturn { calMount, closeCalOpen };`)((id: string) => els[id]);
   return { classes, run };
 }
-const form = () => ({ scrollIntoView() {}, isConnected: true, replaceWith() {} });
 
-test('an open form keeps a screen of room under it, and closing gives it back', () => {
+test('an open form adds no room under the page: the Calendar ends where its content ends (0.9.2)', () => {
   const { classes, run } = setup();
-  run.calMount(null, form(), { focus() {} });
-  assert.ok(classes.has('cal-room'));
+  const scrolled: unknown[] = [];
+  let focused = false;
+  run.calMount(null, { scrollIntoView: (o: unknown) => scrolled.push(o), isConnected: true, replaceWith() {} }, { focus() { focused = true; } });
+  assert.deepEqual([...classes], []);
+  // The form still comes into view at its top, and its first field takes focus.
+  assert.deepEqual(scrolled, [{ block: 'start' }]);
+  assert.ok(focused);
   run.closeCalOpen();
-  assert.ok(!classes.has('cal-room'));
-  assert.match(page, /#calendar\.cal-room\{padding-bottom:100vh\}/);
+  assert.deepEqual([...classes], []);
+  assert.doesNotMatch(page, /cal-room/);
+  assert.doesNotMatch(page, /#calendar[^{]*\{[^}]*padding-bottom:\s*100v?h/);
 });

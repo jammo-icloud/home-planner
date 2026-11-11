@@ -529,6 +529,12 @@ describe('a bill on the calendar', () => {
     assert.deepEqual(rows(s, ...NOV).map((r) => [r.day, r.kind, r.about, r.noReceipt]), [['2026-11-16', 'due', '$146', undefined]]);
     assert.deepEqual(rows(s, ...NOV, '2026-11-20').map((r) => [r.day, r.kind, r.noReceipt]), [['2026-11-16', 'due', true]]);
   });
+  test('an Auto Pay or Pay by date keeps its own kind on the calendar, never collapsed to due (0.9.2)', () => {
+    for (const kind of ['autopay', 'payby'] as const) {
+      const s = house(POWER, [ev({ ...SET, date: { kind, per: 'month', day: 16 } })]);
+      assert.deepEqual(rows(s, ...NOV).map((r) => [r.day, r.kind, r.about]), [['2026-11-16', kind, '$146']]);
+    }
+  });
   test('a receipt takes the row to its own day', () => {
     const s = house([...POWER, pay('n', '2026-11-15', 'EXAMPLE POWER BILLP', '-143.20', 'elec')], [ev(SET)]);
     assert.deepEqual(rows(s, ...NOV).map((r) => [r.day, r.kind, r.amount]), [['2026-11-15', 'paid', '$143.20']]);

@@ -132,7 +132,8 @@ list where you left it. A reminder on Today opens the page it is about.
 where documents live (the Drive folder), the household's time zone, the
 Household calendar, whether the household takes bookings, and the model that
 suggests envelopes. Each choice is an event in the household's log, with the
-owner's name and the date on it.
+owner's name and the date on it. Once every step is chosen the checklist leaves
+the list, and each choice is changed from its own row in the Household group.
 
 **A DSM administrator, under Settings › This NAS.** Any account in DSM's administrators
 group sees a This NAS group in Settings. It holds what belongs to
@@ -150,8 +151,9 @@ such as the DSM port and how many proxies are in front, stay in `.env`.
 Without a Claude key the app still runs: the briefing is a plain summary of
 the same figures, and receipts are sorted by rule and by hand.
 
-Members set up an iPhone from Set up your iPhone: a QR code that puts Home
-Planner on the Home Screen, and a calendar account for the Household calendar.
+Members set up an iPhone from Settings › You › Your iPhone and Mac: a QR code
+that puts Home Planner on the Home Screen, and a calendar account for the
+Household calendar.
 
 Settings ends your own section with the version running, the commit it was
 built from and when, so you can see which build is live.

@@ -27,7 +27,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F9FE" />
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F131A" />
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/tokens.css?v=0.9.1" />
+<link rel="stylesheet" href="/tokens.css?v=0.9.2" />
 <style>
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -1099,7 +1099,7 @@
   /* an event, wherever it is drawn. Source is the fill; shape says what kind:
      solid is an appointment or time set aside, dashed is not yet real. */
   .ev{position:relative;display:block;padding:4px 7px;border-radius:7px;font-size:var(--fs-micro);line-height:1.3;
-    overflow:hidden;text-decoration:none}
+    text-decoration:none}
   button.ev{font-family:inherit;text-align:left;border:0;margin:0;cursor:pointer}
   .ev .t{display:block;font-weight:var(--fw-semibold);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .ev .s{display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
@@ -1142,11 +1142,19 @@
   .week .adrow{grid-column:2 / -1;display:grid;grid-template-columns:repeat(7,minmax(0,1fr));grid-auto-flow:row dense;gap:4px;
     align-content:start;min-height:44px;padding:6px 4px;background:var(--surface-sunken);border-bottom:var(--stroke) solid var(--line-strong)}
   .week .adrow .ev{margin:0 2px;min-width:0}
+  /* A pressable box's 44px hit area (.hit) lies under every drawn box, so a press on a box is always that box's; it
+     reaches at most 4px to each side, the gap to a neighbour, and a column's stop at its top (the all-day row's edge). */
+  .week .adrow{isolation:isolate}
+  .week .ev.hit::after{z-index:-1;min-width:min(var(--tap),calc(100% + var(--sp-2)))}
   .week .hours{position:relative;height:calc(var(--hour) * var(--hours))}
   .week .col{position:relative;height:calc(var(--hour) * var(--hours));border-left:var(--stroke) solid var(--hair);
-    background:repeating-linear-gradient(to bottom,var(--hair) 0 1px,transparent 1px var(--hour))}
+    background:repeating-linear-gradient(to bottom,var(--hair) 0 1px,transparent 1px var(--hour));
+    isolation:isolate;clip-path:inset(calc(-1 * var(--sp-1)) -100vw 0)}
   .week .col.is-today{background-color:color-mix(in srgb,var(--accent-tint) 45%,transparent)}
-  .week .col .ev{position:absolute}
+  /* A timed box clips its own words (its second line gives way first), so its hit area can reach past its edges. */
+  .week .col .ev{position:absolute;display:flex;flex-direction:column}
+  .week .col .ev .t{flex:none}
+  .week .col .ev .s{flex:0 1 auto;min-height:0}
   .week .now{position:absolute;left:0;right:0;height:2px;background:var(--accent);z-index:2;pointer-events:none}
   .week .now::before{content:'';position:absolute;left:-4px;top:-3px;width:8px;height:8px;border-radius:50%;background:var(--accent)}
   .week .hl{position:absolute;right:8px;font-size:var(--fs-micro);color:var(--ink-faint);transform:translateY(-50%)}
@@ -1524,7 +1532,8 @@
   .daystrip .marks{display:flex;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px var(--sp-1);min-height:var(--sp-4);max-width:100%}
   .daystrip .mk-n{font-size:var(--fs-micro);color:var(--ink-soft)}
   .daystrip .mk-m{font-size:var(--fs-micro);line-height:1}
-  .daystrip .mk-m.due{color:var(--caution)}
+  .daystrip .mk-m:is(.due,.payby,.bill){color:var(--caution)}
+  .daystrip .mk-m.autopay{color:var(--ink-soft)}
   .daystrip .mk-m.short{color:var(--problem);font-weight:var(--fw-semibold)}
   .daystrip .mk-m.paid{color:var(--ink-soft)}
   .daystrip .mk-c,.daystrip .mk-h{display:inline-block;width:var(--mark);height:var(--mark)}
@@ -1556,6 +1565,8 @@
   .erow.cal.clash{outline:var(--stroke-heavy) solid var(--problem);outline-offset:calc(-1 * var(--sp-1))}
   .erow.cal.held{background:repeating-linear-gradient(135deg,var(--hatch-line) 0 var(--stroke-heavy),transparent var(--stroke-heavy) var(--sp-2)),var(--surface-sunken);color:var(--ink-soft)}
   .erow.cal.paid,.erow.cal.paid .cal-when b{color:var(--ink-soft)}
+  /* An Auto Pay bill pays itself: quiet, never drawn as waiting on anyone, unless its envelope is short. */
+  .erow.cal.autopay,.erow.cal.autopay .cal-when b{color:var(--ink-soft)}
   .erow.cal.landed{background:var(--accent-tint)}
   .erow.cal.landed .cal-when,.erow.cal.landed .cal-sub{color:var(--ink-soft)}
   .erow.cal.add,.erow.cal.add .cal-slot{color:var(--accent-ink)}
@@ -1571,7 +1582,6 @@
   .daystrip.month .dn{display:none}
   .daystrip .outside .dd{color:var(--ink-faint)}
   .card.cal-panel{padding:0}
-  #calendar.cal-room{padding-bottom:100vh}
   .cal-form{padding:var(--sp-3) var(--sp-4);scroll-margin-top:calc(var(--sp-9) + var(--sp-4))}
   .list > .cal-form{border-top:var(--stroke) solid var(--hair)}
   .cal-form h2{font-size:var(--fs-body)}
@@ -1594,7 +1604,8 @@
   .week .dh .marks{display:flex;align-items:center;gap:var(--sp-1);min-height:var(--sp-4)}
   .week .dh .mk-n{font-size:var(--fs-micro);color:var(--ink-soft)}
   .week .dh .mk-m{font-size:var(--fs-micro);line-height:1}
-  .week .dh .mk-m.due{color:var(--caution)}
+  .week .dh .mk-m:is(.due,.payby,.bill){color:var(--caution)}
+  .week .dh .mk-m.autopay{color:var(--ink-soft)}
   .week .dh .mk-m.short{color:var(--problem);font-weight:var(--fw-semibold)}
   .week .dh .mk-m.paid{color:var(--ink-soft)}
   .week .dh .mk-c,.week .dh .mk-h{display:inline-block;width:var(--mark);height:var(--mark)}
@@ -1604,6 +1615,7 @@
   .week .dh[aria-current="date"]{box-shadow:inset 0 0 0 var(--stroke-heavy) var(--ink)}
   .ev.money{background:var(--caution-tint);color:var(--caution)}
   .ev.money.paid{background:var(--surface-sunken);color:var(--ink-soft)}
+  .ev.money.autopay{background:var(--surface-sunken);color:var(--ink-soft);box-shadow:inset 0 0 0 var(--stroke) var(--line)}
   .ev.money.short{background:var(--problem-tint);color:var(--problem)}
   /* ── end of calendar ── */
 </style>
@@ -1671,7 +1683,6 @@
           <div id="me-main">
             <p class="quiet-line" id="who"></p>
             <button type="button" class="menu-item" role="menuitem" id="me-settings">Settings</button>
-            <button type="button" class="menu-item" role="menuitem" id="me-phone">Set up your iPhone</button>
             <div id="me-apps" hidden></div>
             <button type="button" class="menu-item" role="menuitem" id="switch-hh" data-keep-open aria-haspopup="menu" hidden>Switch household <span aria-hidden="true">›</span></button>
             <button type="button" class="menu-item" role="menuitem" id="me-new-hh" hidden>Create a new household</button>
@@ -2300,7 +2311,7 @@ $('signout').addEventListener('click', async () => {
 });
 
 // ── shared: what every screen calls ───────────────────────────────────────
-const BUILD = '0.9.1';
+const BUILD = '0.9.2';
 
 /**
  * Which household's screens these are: moved on whenever a household is left (a switch, the picker, sign-out), so a
@@ -10546,7 +10557,8 @@ function closePage({ refocus = true } = {}) {
   restorePick = null;
   document.removeEventListener('keydown', pageEscape);
   // A step opened from Setup goes Back to Setup, drawn again with what is chosen now, focus on the step.
-  if (page?.from) {
+  // Once every step is chosen Setup is gone, and Back goes to the list at the step's own row instead.
+  if (page?.from && pageFor(page.from.key, page.from.group)) {
     settingsPage = page.from;
     renderSettingsPage();
     if (refocus) settingsHost().querySelector(`.set-page [data-key="${CSS.escape(page.returnTo)}"]`)?.focus({ preventScroll: true });
@@ -10555,7 +10567,8 @@ function closePage({ refocus = true } = {}) {
   if (onHouseholds()) renderNasPanel(); else renderSettingsList();
   if (!page) return;
   const row = settingsHost().querySelector(`[data-key="${CSS.escape(page.returnTo)}"]`);
-  if (page.listScroll === null) row?.scrollIntoView({ block: 'center' }); else window.scrollTo({ top: page.listScroll });
+  // A step whose Setup is gone was never seen at a scroll of the list: its row comes into view.
+  if (page.listScroll === null || page.from) row?.scrollIntoView({ block: 'center' }); else window.scrollTo({ top: page.listScroll });
   if (refocus) row?.focus({ preventScroll: true });
 }
 
@@ -10584,7 +10597,7 @@ function renderSettingsPage() {
   s.id = `set-${page.key}-page`;
   const head = node('div', 'set-page-head');
   const back = textBtn('', 'back set-back', 'set-back', () => closePage());
-  back.append(icon('back', 'i'), onHouseholds() ? 'This NAS' : page.from ? pageFor(page.from.key, page.from.group)?.title ?? 'Settings' : 'Settings');
+  back.append(icon('back', 'i'), backLabel(page));
   const h = node(onHouseholds() ? 'h2' : 'h1', '', it.title);
   h.id = 'set-page-h';
   h.tabIndex = -1;
@@ -10613,6 +10626,12 @@ function renderSettingsPage() {
   }
   if (onHouseholds()) s.scrollIntoView({ block: 'start' }); else window.scrollTo({ top: 0 });
   focusFirst(s);
+}
+
+/** Where the open page's Back goes, in words: This NAS, Setup for a step opened from it while it is there, else Settings. */
+function backLabel(page) {
+  if (onHouseholds()) return 'This NAS';
+  return (page.from && pageFor(page.from.key, page.from.group)?.title) || 'Settings';
 }
 
 /**
@@ -10661,6 +10680,9 @@ function redrawPage(want, { auto = false } = {}) {
   const onHead = active === s.querySelector('#set-page-h');
   const keep = want ?? (had ? active.dataset?.key : null);
   fillNotes(s.querySelector('.set-now'), it.notes);
+  // A step's Back said Setup; once its choice leaves nothing unchosen, Setup is gone and Back says where it goes now.
+  const backLine = s.querySelector('.set-back')?.lastChild;
+  if (backLine?.nodeType === Node.TEXT_NODE) backLine.textContent = backLabel(page);
   const body = s.querySelector('.set-page-body');
   body.replaceChildren(...(readOnlyPage(it) || !it.body ? [] : [it.body()].flat().filter(Boolean)));
   const fresh = auto ? body.querySelector('[data-autofocus]') : null;
@@ -11006,7 +11028,7 @@ function phoneItem() {
 
 // ── Set up your iPhone ─────────────────────────────────────────────────────
 //
-// A sheet at the top of <main>, from the person menu or the row above, with
+// A sheet at the top of <main>, from the row above only (Settings › You), with
 // two separate things. Section 1 is a QR code of Home Planner's own address
 // with the banner's marker: drawn on open, never a code, never the NAS's
 // address. Section 2 is the calendar account: its button asks for a one-time
@@ -11056,7 +11078,6 @@ function closePhoneSheet(redraw = true) {
   if (redraw) backFromSheet(); else settingsSheetFrom = null;
 }
 $('phone-close').addEventListener('click', () => closePhoneSheet());
-$('me-phone').addEventListener('click', () => void openPhoneSheet());
 
 /** Where the code would be while the NAS's address is unset; `full` adds who sets it. */
 function phoneUnset(ps, full) {
@@ -11368,18 +11389,21 @@ const stepDone = (id) => settingsData.setup.steps.find((x) => x.id === id)?.done
 const STEP_ROW = { folder: 'documents', zone: 'zone', calendar: 'hcal', booking: 'guests', model: 'model' };
 
 /**
- * Setup: the guided version of the Household group. Its page lists the five
- * steps in the order they are asked, each a row that opens the page it is
- * chosen on; Back from that page comes here again.
+ * Setup: the guided version of the Household group, there only while a step
+ * is not chosen; once all are, the Household group's own rows are where they
+ * change. Its page lists the five steps in the order they are asked, each a
+ * row that opens the page it is chosen on; Back from that page comes here
+ * again, or, once Setup is gone, to that step's row on the list.
  */
 function setupItem() {
   const su = settingsData.setup;
   const steps = SETUP_ORDER.map((id) => su.steps.find((x) => x.id === id)).filter(Boolean);
   const done = steps.filter((s) => s.done).length;
+  if (done === steps.length) return null;
   return {
     key: 'setup', title: 'Setup', list: true,
-    status: done === steps.length ? 'All chosen' : `${done} of ${steps.length} chosen`,
-    attention: done < steps.length,
+    status: `${done} of ${steps.length} chosen`,
+    attention: true,
     line: su.youOwn ? 'What a new household chooses first, in the order it is asked. Only you choose these.'
       : `What a new household chooses first, in the order it is asked. Only ${su.owner ?? 'the owner'} chooses these.`,
     body: () => {
@@ -12736,9 +12760,13 @@ function dayMarks(day, data, lens) {
   const v = dayView(day, data, lens);
   const states = v.shown.filter(isPlanRow).map((e) => e.plan?.state);
   const glyph = states.includes('doing') ? 'doing' : states.includes('planning') ? 'planning' : states.includes('done') ? 'done' : null;
-  const money = v.money.some((m) => m.short) ? 'short' : v.money.some((m) => m.kind !== 'paid') ? 'due' : v.money.length ? 'paid' : null;
+  // Short outranks every kind; then a bill a person pays, in its own kind; Auto Pay pays itself, so it only outranks paid.
+  const money = v.money.some((m) => m.short) ? 'short' : MONEY_MARK_ORDER.find((k) => v.money.some((m) => m.kind === k)) ?? null;
   return { count: v.shown.length, glyph, money, clash: v.timed.some((e) => e.clash), held: v.shown.some((e) => e.held) };
 }
+
+/** The money mark a day takes when nothing on it is short: the first kind it has, in this order. */
+const MONEY_MARK_ORDER = ['due', 'payby', 'bill', 'autopay', 'paid'];
 
 /** The marks that are on, in the order they are drawn; a phone keeps the first `limit`. */
 function markList(m, limit = Infinity) {
@@ -12746,7 +12774,7 @@ function markList(m, limit = Infinity) {
 }
 
 const GLYPH_WORDS = { planning: 'a plan in planning', doing: 'a plan in progress', done: 'a plan done' };
-const MONEY_MARK_WORDS = { short: 'money short', due: 'money', paid: 'bills paid' };
+const MONEY_MARK_WORDS = { short: 'money short', due: 'a bill due', payby: 'a bill to pay by', bill: 'a bill', autopay: 'a bill on Auto Pay', paid: 'bills paid' };
 
 /** A day's accessible name: the date and every mark. */
 function marksWords(dayWords, m) {
@@ -12835,7 +12863,7 @@ function rowWords(e, day, me) {
   return parts.join(', ');
 }
 
-const MONEY_KIND_WORDS = { due: 'Due', autopay: 'Auto Pay', payby: 'Pay By', bill: 'Bill', paid: 'Paid' };
+const MONEY_KIND_WORDS = { due: 'Due', autopay: 'Auto Pay', payby: 'Pay by', bill: 'Bill', paid: 'Paid' };
 
 /** A money row's accessible name. */
 function moneyWords(m) {
@@ -12911,7 +12939,7 @@ function evOpen(e) {
 
 function evNode(e, clampedBefore = false, clampedAfter = false) {
   const open = evOpen(e);
-  const el = node(open ? 'button' : 'div', evClasses(e));
+  const el = node(open ? 'button' : 'div', `${evClasses(e)}${open ? ' hit' : ''}`);
   if (open) {
     el.type = 'button';
     el.addEventListener('click', () => { void open(null); });
@@ -13272,9 +13300,12 @@ function dayHead(key, data, lens) {
   return b;
 }
 
+/** An Auto Pay bill pays itself: drawn quiet, not as one waiting on a person, unless its envelope is short. */
+const quietBill = (m) => m.kind === 'autopay' && !m.short;
+
 /** A bill on the desk's all-day row: the same row the card draws, as a box. */
 function moneyBox(m) {
-  const el = node('button', `ev money${m.kind === 'paid' ? ' paid' : m.kind === 'short' ? ' short' : ''}`);
+  const el = node('button', `ev money hit${m.kind === 'paid' ? ' paid' : m.kind === 'short' ? ' short' : quietBill(m) ? ' autopay' : ''}`);
   el.type = 'button';
   el.setAttribute('aria-label', moneyWords(m));
   el.addEventListener('click', () => { void openBudgetAt(m.budget, m.envelope, m.kind === 'short' && m.over ? 'cover' : 'bills'); });
@@ -13421,7 +13452,7 @@ function moneyRow(m) {
   if (m.kind === 'paid') return calRow({ ...base, cls: 'paid', when: [KIND_WORDS.paid], sub: m.name, figure: m.amount });
   const sub = [m.name + (m.noReceipt ? ' · no receipt yet' : '')];
   if (m.short) sub.push(' · ', node('span', 'cal-short', m.over ? `${m.over} over` : `${m.left} left`));
-  return calRow({ ...base, when: [KIND_WORDS[m.kind]], sub, figure: m.about ? `about ${m.about}` : undefined });
+  return calRow({ ...base, cls: quietBill(m) ? 'autopay' : '', when: [KIND_WORDS[m.kind]], sub, figure: m.about ? `about ${m.about}` : undefined });
 }
 
 /** The now line, between the timed rows that have begun and those that have not. */
@@ -13537,9 +13568,7 @@ function calMount(anchor, el, first) {
     calPanelDay = null;
     for (const h of $('cal-week')?.querySelectorAll('.dh[aria-expanded="true"]') ?? []) h.setAttribute('aria-expanded', 'false');
   }
-  // A short day leaves no page below a short form, and scrolling stops at the page's end: while a form is open the
-  // Calendar keeps a screen of room under it, so its first field reaches the top half even with the keyboard up.
-  $('calendar').classList.add('cal-room');
+  // As far towards the top as the page lets it: no room is added under a short day, so the page ends where it ends.
   el.scrollIntoView({ block: 'start' });
   first.focus({ preventScroll: true });
 }
@@ -13559,7 +13588,6 @@ function closeCalOpen(focus) {
     $('cal-keep').setAttribute('aria-expanded', 'false');
     $('cal-new').setAttribute('aria-expanded', 'false');
   }
-  $('calendar').classList.remove('cal-room');
   focus?.focus();
 }
 

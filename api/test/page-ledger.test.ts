@@ -422,3 +422,77 @@ describe('after the final review', () => {
     assert.match(ask, /sayBusy\+\+;[\s\S]*sayBusy--;/);
   });
 });
+
+// ── 0.9.2: the Settings tidy and three Calendar fixes. Every element the release touches, with its fate. ──
+describe('the page ledger: 0.9.2', () => {
+  const setupCode = between(script, 'function setupItem(', '/** Whether Universal Search reads');
+  const groupsCode = between(script, 'function settingsGroups(', '/** A row by its key');
+  const closeCode = between(script, 'function closePage(', '/** Whether the open page is one the person may only read');
+  const KEPT_092: readonly Line[] = [
+    // Setup's five rows stay in the Household group, Budget with its categories untouched, Setup still first while it is there.
+    ['setup', 'items: [setupItem(), zoneItem(), modelItem(), membersItem(), budgetItem(), hcalItem(), guestsItem(), documentsItem(),', 'page'],
+    ['setup', "const STEP_ROW = { folder: 'documents', zone: 'zone', calendar: 'hcal', booking: 'guests', model: 'model' };", 'page'],
+    ['setup', "if (su.first === step.id) b.setAttribute('aria-current', 'step');", 'page'],
+    ['setup', "const reads = ['conflicts', 'hcal', 'setup'];", 'page'],
+    ['setup', 'openSettings(a.group, a.row)', 'today'],
+    ['setup', "const index = node('nav', 'set-index');", 'page'],
+    // The phone's one way in: the You group's row, opening its sheet, whose Done comes back to the list.
+    ['phone', 'items: [appearanceItem(), conflictsItem(), phoneItem()],', 'page'],
+    ['phone', "open: () => { sheetFromSettings('row-phone'); void openPhoneSheet(); },", 'page'],
+    ['phone', 'id="phone-sec"', 'page'], ['phone', "$('phone-close').addEventListener('click', () => closePhoneSheet());", 'page'],
+    ['phone', 'id="me-settings">Settings</button>', 'page'],
+    // A bill's own words, everywhere the Calendar says one.
+    ['bill', "const KIND_WORDS = { due: 'DUE', autopay: 'AUTO PAY', payby: 'PAY BY', bill: 'BILL', paid: 'PAID' };", 'calendar'],
+    ['bill', "const BILL_KINDS = [['due', 'Due'], ['autopay', 'Auto Pay'], ['payby', 'Pay by']];", 'page'],
+    ['bill', '.ev.money.short{background:var(--problem-tint);color:var(--problem)}', 'css'],
+    ['bill', "figure: m.over ? `${m.over} over` : `${m.left} left`, figCls: 'cal-short'", 'calendar'],
+    ['bill', "if (m.short) sub.push(' · ', node('span', 'cal-short'", 'calendar'],
+    // The form still comes into view at its top, its first field focused.
+    ['form', "el.scrollIntoView({ block: 'start' });\n  first.focus({ preventScroll: true });", 'calendar'],
+  ];
+  const ADDED_092: readonly Line[] = [
+    ['setup', 'if (done === steps.length) return null;', 'page'], ['setup', 'function backLabel(page) {', 'page'],
+    ['setup', 'if (page?.from && pageFor(page.from.key, page.from.group)) {', 'page'],
+    ['bill', "const MONEY_MARK_ORDER = ['due', 'payby', 'bill', 'autopay', 'paid'];", 'calendar'],
+    ['bill', "autopay: 'a bill on Auto Pay'", 'calendar'], ['bill', "payby: 'Pay by'", 'calendar'],
+    ['bill', "const quietBill = (m) => m.kind === 'autopay' && !m.short;", 'calendar'],
+    ['bill', '.mk-m:is(.due,.payby,.bill){color:var(--caution)}', 'css'], ['bill', '.mk-m.autopay{color:var(--ink-soft)}', 'css'],
+    ['bill', '.ev.money.autopay{', 'css'], ['bill', '.erow.cal.autopay,', 'css'],
+    ['hit', "`${evClasses(e)}${open ? ' hit' : ''}`", 'calendar'], ['hit', "node('button', `ev money hit", 'calendar'],
+    ['hit', '.week .ev.hit::after{z-index:-1;', 'css'], ['hit', '.week .adrow{isolation:isolate}', 'css'],
+    ['hit', 'isolation:isolate;clip-path:inset(', 'css'], ['hit', '.week .col .ev .s{flex:0 1 auto;min-height:0}', 'css'],
+  ];
+  const GONE_092: readonly Line[] = [
+    ['phone', 'id="me-phone"', 'page'], ['phone', "$('me-phone')", 'page'],
+    ['bill', "'Pay By'", 'page'], ['bill', "v.money.some((m) => m.kind !== 'paid') ? 'due'", 'calendar'], ['bill', "due: 'money'", 'calendar'],
+    ['setup', "'All chosen'", 'page'],
+    ['form', 'cal-room', 'page'],
+    ['hit', 'overflow:hidden;text-decoration:none', 'css'],
+  ];
+  test('what 0.9.2 keeps, adds and takes away', () => {
+    assert.deepEqual(missing(KEPT_092, true), []);
+    assert.deepEqual(missing(ADDED_092, true), []);
+    assert.deepEqual(missing(GONE_092, false), []);
+  });
+  test('the markers are found', () => assert.ok(setupCode.length > 300 && groupsCode.length > 300 && closeCode.length > 300));
+  test('Setup is a row only while a step is not chosen', () => {
+    const SETUP_ORDER = ['folder', 'zone', 'calendar', 'booking', 'model'];
+    const run = (done: boolean[]) => new Function('settingsData', 'SETUP_ORDER', 'SETUP_LABELS', 'STEP_ROW', 'pageFor', 'node', 'settingItem', 'settingsPage', 'openPage',
+      `${setupCode}\nreturn setupItem();`)(
+      { setup: { youOwn: true, owner: 'alice', first: null, steps: SETUP_ORDER.map((id, i) => ({ id, done: done[i] })) } },
+      SETUP_ORDER, {}, {}, () => null, () => ({}), () => ({}), null, () => {});
+    assert.equal(run([true, true, true, true, true]), null);
+    const one = run([true, false, true, true, true]);
+    assert.deepEqual([one.key, one.status, one.attention], ['setup', '4 of 5 chosen', true]);
+    assert.match(groupsCode, /\]\.filter\(Boolean\)/, 'a null row is left out of the list and of the side index');
+  });
+  test("a step opened from Setup goes Back to Setup while it is there, else to the list at the step's own row", () => {
+    assert.match(closeCode, /if \(page\.listScroll === null \|\| page\.from\) row\?\.scrollIntoView\(\{ block: 'center' \}\)/);
+    assert.match(between(script, 'function redrawPage(', '/** A refusal in the open page'), /backLine\.textContent = backLabel\(page\)/);
+    assert.match(between(script, 'function renderSettingsPage(', '/** Where the open page'), /back\.append\(icon\('back', 'i'\), backLabel\(page\)\)/);
+  });
+  test('no document sends anyone to the phone sheet through the person menu', () => {
+    for (const doc of ['../../README.md', '../../DEPLOY.md']) assert.doesNotMatch(read(doc), /iPhone\*{0,2}\s+from the person menu/i, doc);
+    assert.match(read('../../DEPLOY.md'), /from Settings › You › Your iPhone and Mac/);
+  });
+});

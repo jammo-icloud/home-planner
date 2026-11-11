@@ -75,6 +75,16 @@ describe('the marks', () => {
     assert.equal(marks(m(['due', false]), off('budget')).money, null);
     assert.equal(marks({ ...m(['due', false]), money: null }).money, null);
   });
+  test("money: each unpaid bill marks its own kind; Auto Pay is the quiet one, under any bill that waits on a person (0.9.2)", () => {
+    const m = (...k: [string, boolean][]) => on([], k.map(([kind, short]) => ({ day: D, kind, short })));
+    assert.deepEqual([['due'], ['payby'], ['autopay'], ['bill']].map(([k]) => marks(m([k!, false])).money), ['due', 'payby', 'autopay', 'bill']);
+    // A bill a person pays outranks one that pays itself; Auto Pay outranks paid; short outranks all, whatever its kind.
+    assert.equal(marks(m(['autopay', false], ['payby', false])).money, 'payby');
+    assert.equal(marks(m(['autopay', false], ['due', false], ['payby', false])).money, 'due');
+    assert.equal(marks(m(['paid', false], ['autopay', false])).money, 'autopay');
+    assert.equal(marks(m(['autopay', true])).money, 'short');
+    assert.equal(marks(m(['autopay', false], ['short', true])).money, 'short');
+  });
   test('a filter never clears a real clash on a row it leaves showing', () => {
     const d = on([timed('A', 9, 11, { clash: true }), timed('B', 10, 12, { clash: true, ...hers })]);
     assert.deepEqual([marks(d, lens({ pressed: 'alice' })).clash, marks(d, lens({ pressed: 'bob' })).clash], [true, false]);
@@ -86,10 +96,16 @@ describe('the marks', () => {
   });
   test('the accessible name says the date and every mark', () => {
     const say = (m: object) => f.marksWords('Saturday 14 November', m);
-    assert.equal(say({ count: 4, glyph: 'doing', money: 'due', clash: true, held: true }), 'Saturday 14 November, 4 things, a plan in progress, money, a clash, nights held');
+    assert.equal(say({ count: 4, glyph: 'doing', money: 'due', clash: true, held: true }), 'Saturday 14 November, 4 things, a plan in progress, a bill due, a clash, nights held');
     assert.equal(say({ count: 1, glyph: 'planning', money: 'short', clash: false, held: false }), 'Saturday 14 November, 1 thing, a plan in planning, money short');
     assert.equal(say({ count: 1, glyph: 'done', money: 'paid', clash: false, held: false }), 'Saturday 14 November, 1 thing, a plan done, bills paid');
     assert.equal(say({ count: 0, glyph: null, money: null, clash: false, held: false }), 'Saturday 14 November, nothing on');
+  });
+  test("the money mark says the bill's own kind (0.9.2)", () => {
+    const say = (money: string) => f.marksWords('Saturday 14 November', { count: 0, glyph: null, money, clash: false, held: false });
+    assert.deepEqual(['due', 'payby', 'autopay', 'bill'].map(say), [
+      'Saturday 14 November, a bill due', 'Saturday 14 November, a bill to pay by',
+      'Saturday 14 November, a bill on Auto Pay', 'Saturday 14 November, a bill']);
   });
 });
 
@@ -129,7 +145,8 @@ describe('the card', () => {
     assert.equal(f.rowWords({ ...roofer, proposed: 'o1' }, D, 'alice'), '09:00 to 10:00, Roofer visit, on Household, proposed, not approved, for Fix the gate');
     assert.equal(f.moneyWords({ kind: 'autopay', label: 'Utilities', name: 'Example Power', about: '$146', short: false }), 'Auto Pay, Utilities, Example Power, about $146');
     assert.equal(f.moneyWords({ kind: 'short', billKind: 'bill', label: 'Utilities', name: 'Example Power', about: '$146', left: '$14', short: true }), 'Bill, Utilities, Example Power, about $146, $14 left');
-    assert.equal(f.moneyWords({ kind: 'payby', label: 'Util', name: 'Example Power', short: false }), 'Pay By, Util, Example Power');
+    assert.equal(f.moneyWords({ kind: 'payby', label: 'Util', name: 'Example Power', short: false }), 'Pay by, Util, Example Power');
+    assert.equal(f.moneyWords({ kind: 'short', billKind: 'autopay', label: 'Util', name: 'Example Power', about: '$146', over: '$20', short: true }), 'Auto Pay, Util, Example Power, about $146, $20 over');
   });
   test('a deep link: a row a filter hides draws under Everyone; one no longer there opens the day', () => {
     const d = on([timed('Hers', 9, 10, { evt_id: 7, ...hers }), timed('Mine', 11, 12, { evt_id: 8 })]);
