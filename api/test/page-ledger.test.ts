@@ -563,6 +563,13 @@ const ADDED_010: readonly Line[] = [
   // Pins moved here from the 0.7.0 lists (T3, T113, S19): a notice and a change open the envelope alone; Today's problem is said once.
   ['T3', 'openBudgetAt(a.envelope, a.cover === true)', 'today'], ['S19', 'openBudgetAt(o.envelope)', 'today'],
   ['T113', "new Error('The budget is not started yet.')", 'today'],
+  // Fix round 1: the menu hidden until the budget is started (as the base hid it with no budget), and the pins the review found missing.
+  ['B8', "$('budget-menu-btn').closest('.menu').hidden = !budgetMeta.started;", 'budget'], ['B8', "$('month-discard').addEventListener('click', () => {\n  if (!month) return;", 'budget'],
+  ['B1', "$('budget-month').textContent = monthLong(result.month);", 'budget'],
+  ['B77', "box.append('The budget is not started yet. ', textBtn('Open Budget'", 'page'],
+  ['B80', `"This month isn't open"`, 'plan'], ['B80', '{ envelope: envSel.value || null }', 'plan'],
+  ['B27', "node(e.removed ? 'div' : 'button'", 'budget'], ['B27', "node('span', 'erow-title')", 'budget'],
+  ['B18', "appendChild(rows);\n  }\n  // The check against the account is about the savings envelopes together, wherever they sit: after the last band.\n  if (result.savings) $('bands').appendChild(savingsCheckLine(result.savings));", 'budget'],
 ];
 const GONE_010: readonly Line[] = [
   // Task 7: every trace of a second budget, Compare, the outside note and the savings band of its own.

@@ -186,7 +186,9 @@
   /* A removed envelope a closed month keeps: a row that opens nothing, marked in quiet words. */
   .erow.removed{cursor:default}
   .erow.removed:active{background:none}
-  .erow-removed{font-size:var(--fs-micro);font-weight:var(--fw-regular);color:var(--ink-soft)}
+  .erow-title{display:flex;align-items:baseline;gap:var(--sp-1);min-width:0}
+  .erow-title .erow-name{min-width:0}
+  .erow-removed{flex:none;font-size:var(--fs-micro);font-weight:var(--fw-regular);color:var(--ink-soft)}
 
   /* An envelope's page: the Settings page frame, then the card and the sections under it. */
   .ep,.ep-q{scroll-margin-top:72px}
@@ -3467,8 +3469,7 @@ function moneyRailRows(money) {
   const rows = [{ lead: null, text: 'To assign', value: money.toAssign, valueCls: '', open }];
   // The server says what is left, or how far over: the page reads neither as a number.
   for (const l of money.low) {
-    rows.push({ lead: null, text: l.label, value: l.over ? `${l.over} over` : `${l.left} left`, valueCls: l.over ? 'over' : '',
-      open: () => openBudgetAt(l.envelope) });
+    rows.push({ lead: null, text: l.label, value: l.over ? `${l.over} over` : `${l.left} left`, valueCls: l.over ? 'over' : '', open });
   }
   return { rows, line: null };
 }
@@ -4646,14 +4647,14 @@ async function loadBudget() {
   for (const c of result.categories) {
     $('bands').appendChild(categoryBand(c, result.envelopes.filter((e) => e.category === c.id)));
   }
-  // The check against the account is about the savings envelopes together, wherever they sit: under the last category.
-  if (result.savings) $('bands').appendChild(savingsCheckLine(result.savings));
   const orphans = result.envelopes.filter((e) => !known.has(e.category));
   if (orphans.length) {
     const rows = node('div', 'list');
     for (const e of orphans) rows.appendChild(envelopeRow(e));
     $('bands').appendChild(node('div', 'band')).appendChild(rows);
   }
+  // The check against the account is about the savings envelopes together, wherever they sit: after the last band.
+  if (result.savings) $('bands').appendChild(savingsCheckLine(result.savings));
   if (envelopePage?.view === 'envelope') renderEnvelopePage();
   else if (rowFocus && !envelopePage) $('bands').querySelector(`[data-envelope="${CSS.escape(rowFocus)}"]`)?.focus({ preventScroll: true });
 }
@@ -4757,8 +4758,10 @@ function envelopeRow(e) {
     sub = `left of ${F}`;
   }
   const left = node('span', 'erow-l');
-  const label = node('span', 'erow-name', e.label);
-  if (e.removed) label.append(' ', node('span', 'erow-removed', 'removed'));
+  const name = node('span', 'erow-name', e.label);
+  // Beside the name, not in it: a long name gives way and the word is never cut off.
+  const label = e.removed ? node('span', 'erow-title') : name;
+  if (e.removed) label.append(name, ' ', node('span', 'erow-removed', 'removed'));
   left.append(label, ' ', envBar(e, 'span', 'bar'));
   const right = node('span', 'erow-r');
   right.append(node('span', `erow-amt${tone}`, amt), ' ', node('span', 'erow-sub', sub));
@@ -6067,6 +6070,8 @@ async function loadBudgetMeta() {
   const data = await api('/api/budget');
   if (turn !== householdTurn) return;
   budgetMeta = data;
+  // Not started, the walkthrough is the whole screen: the head's menu (where it is, the month's plan) has nothing to act on.
+  $('budget-menu-btn').closest('.menu').hidden = !budgetMeta.started;
 }
 
 /** Reload whatever screen is showing. */
@@ -6297,7 +6302,6 @@ function walkBudgetStep() {
         budget: id, label: where || postal, ...(postal ? { postal } : {}), why: 'set when the budget was made',
       }).catch((ex) => { refused = ex; });
     }
-    await loadBudgetMeta();
     await loadBudget();
     if (refused) showProblem(refused);
   });
@@ -6354,7 +6358,6 @@ function walkIncomeStep(fr) {
       return;
     }
     walkIncomeEdit = null;
-    await loadBudgetMeta();
     await loadBudget();
   }
 
@@ -6461,7 +6464,6 @@ function walkEnvelopesStep(fr) {
     } catch (ex) { msg.textContent = ex.message; count(); return; }
     walkDraft = null;
     pricingFor = fr.budget;
-    await loadBudgetMeta();
     await loadBudget();
     window.scrollTo({ top: 0 });
   });
@@ -6484,7 +6486,6 @@ function walkPricingStep(fr) {
     $('manage-panel').textContent = '';
     $('loading').hidden = false;
     try {
-      await loadBudgetMeta();
       await loadBudget();
     } catch (ex) { showProblem(ex); }
     finally { $('loading').hidden = true; }
@@ -6975,6 +6976,8 @@ $('cat-archive').addEventListener('click', async () => {
 });
 
 $('month-close').addEventListener('click', () => {
+  // No month read yet (the walkthrough, or a load still out): nothing to close.
+  if (!month) return;
   const closing = !month.closed;
   panel(closing ? `Close ${monthLong(month.month)}` : `Reopen ${monthLong(month.month)}`, [
     { name: 'why', label: 'Why',
@@ -6987,6 +6990,7 @@ $('month-close').addEventListener('click', () => {
 });
 
 $('month-discard').addEventListener('click', () => {
+  if (!month) return;
   panel(`Discard ${monthLong(month.month)}'s plan`, [
     { name: 'why', label: 'Why', placeholder: 'e.g. opened too early', wide: true },
   ], (i) => ({
