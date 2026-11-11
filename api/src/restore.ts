@@ -648,7 +648,7 @@ export function planRestore(
     if (bills.size) parts.push(counted(bills.size, 'bill', 'bills'));
     if (located) parts.push('where the household is');
     summary.push(parts.length ? `the budget: ${listed(parts)}`
-      : `the budget: ${counted(counts.budget, 'line', 'lines')} that leave nothing standing in it`);
+      : 'the budget: changes that were all undone later');
   }
   if (counts.months) {
     const opened = take.filter((e) => e.op === 'month.open').length;

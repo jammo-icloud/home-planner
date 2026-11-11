@@ -612,7 +612,7 @@
     padding:14px 16px;border:1px solid var(--line);border-radius:var(--r-card);background:var(--surface-raised)}
   .month-end p{margin:0;font-size:var(--fs-ui)}
   #income-sec{margin-top:16px;padding:14px;border:1px solid var(--line);border-radius:var(--r-card);background:var(--surface-raised)}
-  #income-sec .row,#cat-sec .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
+  #income-sec .row{display:flex;gap:8px;flex-wrap:wrap;margin-top:10px}
   .inc-toggle{font:inherit;color:inherit;background:none;border:none;padding:0;cursor:pointer;border-radius:6px}
   .inc-toggle .k::after{content:'';display:inline-block;width:5px;height:5px;margin:0 1px 2px 6px;
     border-right:1.5px solid currentColor;border-bottom:1.5px solid currentColor;transform:rotate(45deg)}
@@ -622,8 +622,6 @@
   .sheet{margin-bottom:22px;padding:16px;border:1px solid var(--line);border-radius:var(--r-card);background:var(--surface-raised);box-shadow:var(--e-1)}
   .sheet-head{display:flex;justify-content:space-between;align-items:center;gap:12px}
   .sheet-head h2{font-size:var(--fs-title)}
-  .cat-kind{margin-top:12px;font-size:var(--fs-small)}
-  .cat-kind b{display:block;font-size:var(--fs-micro);font-weight:600;color:var(--ink-soft);margin-bottom:2px}
   #manage-panel:not(:empty){margin-bottom:22px}
 
   /* ── today ─────────────────────────────────────────────────────────── */
@@ -1697,20 +1695,6 @@
   <main class="wrap">
     <!-- Panels opened from a menu land here, at the top, whichever screen is showing. -->
     <div id="manage-panel"></div>
-    <section id="cat-sec" class="sheet" hidden aria-labelledby="cat-h">
-      <div class="sheet-head">
-        <h2 id="cat-h">Categories</h2>
-        <button class="btn" id="cat-close" type="button">Done</button>
-      </div>
-      <p class="quiet">Shared by every budget. An envelope is a group of them.</p>
-      <div id="cat-list"></div>
-      <div class="row">
-        <button class="btn" id="cat-new" type="button">Add a category</button>
-        <button class="btn" id="cat-edit" type="button">Rename one</button>
-        <button class="btn" id="cat-archive" type="button">Stop using one</button>
-        <button class="btn" id="cat-starter" type="button" hidden>Add the starter set</button>
-      </div>
-    </section>
     <!-- Set up your iPhone: a QR code that opens Home Planner for the Home
          Screen, and the calendar account as a one-time QR code for a profile,
          a download for a Mac and the steps to type it. Drawn by openPhoneSheet. -->
@@ -2273,10 +2257,10 @@ $('me-settings').addEventListener('click', () => void openSettings());
 // dependency runs one way, taking months without their budget is refused as
 // nonsense rather than attempted.
 const BANDS = [
-  { key: 'facts', name: 'Receipts, categories and rules',
-    what: 'What was actually spent, and how it is sorted. Depends on nothing.' },
-  { key: 'budgets', name: 'Budgets and envelopes',
-    what: 'The plan: how categories are grouped and what they are funded at. Needs its categories.' },
+  { key: 'facts', name: 'Receipts and rules',
+    what: "What was actually spent, and which envelope each is in. Needs the budget's envelopes." },
+  { key: 'budget', name: 'Budget',
+    what: 'The categories, the envelopes and what they are funded at, the income and where it is.' },
   { key: 'months', name: 'Months and adjustments',
     what: 'Opened plans and every move made in them. Needs the budget they belong to.' },
   { key: 'thread', name: 'Conversation and decisions',
@@ -3120,7 +3104,7 @@ function renderToday() {
  */
 function todayEscape(ev) {
   if (view !== 'today' || ev.key !== 'Escape' || ev.isComposing || ev.defaultPrevented) return;
-  if (ev.target.closest?.('#cat-sec, #phone-sec')) return;
+  if (ev.target.closest?.('#phone-sec')) return;
   // One step per press: a form open among the visible days first, then search. Days a search hides are not reached into.
   if (!$('briefing').classList.contains('searching-record') && cancelOpen($('days'))) ev.preventDefault();
   else if (leaveSearch()) ev.preventDefault();
@@ -4605,11 +4589,6 @@ async function loadBudget() {
   if (load !== budgetLoads) return;
   // Pricing comes straight after the envelopes and nothing records it, so the walkthrough holds it.
   if (fr.step || pricingFor !== null) { clearEnvelopePage(); drawWalk(fr); return; }
-  // Every committed change comes back through here, so this is where a cached
-  // category list goes stale — a category added a moment ago has to be in the
-  // pickers below without a reload.
-  categoriesCache = null;
-  if (!$('cat-sec').hidden) void renderCategories();
   // Before the month is asked for: receipts belong to the household, not to a
   // month, and a month not opened yet must not hide them.
   loadUnsorted().catch((ex) => console.warn('unsorted queue:', ex.message));
@@ -5108,8 +5087,8 @@ function closeEnvelopePage({ refocus = true } = {}) {
 function envPageEscape(ev) {
   if (!envelopePage) { document.removeEventListener('keydown', envPageEscape); return; }
   if (ev.key !== 'Escape' || ev.defaultPrevented) return;
-  // A sheet over the page (the categories, your iPhone) has its own Done: nothing under it goes Back.
-  if (!$('cat-sec').hidden || !$('phone-sec').hidden) return;
+  // The phone sheet over the page has its own Done: nothing under it goes Back.
+  if (!$('phone-sec').hidden) return;
   const host = $('env-page');
   const t = ev.target;
   if (!(t === document.body || t === document.documentElement || host.contains(t))) return;
@@ -7387,47 +7366,6 @@ $('inc-toggle').addEventListener('click', () => {
   $('inc-toggle').setAttribute('aria-expanded', String(open));
 });
 
-// Categories are the household's, so they open from its menu, at the top of
-// whichever screen is showing.
-async function renderCategories() {
-  const cats = await categoryList();
-  const box = $('cat-list');
-  box.textContent = '';
-  const kinds = new Map();
-  for (const c of cats) {
-    const k = c.kind || 'Other';
-    if (!kinds.has(k)) kinds.set(k, []);
-    kinds.get(k).push(c.label);
-  }
-  if (!kinds.size) {
-    box.innerHTML = '<p class="quiet">None yet. Add the starter set, or one at a time.</p>';
-    return;
-  }
-  for (const [kind, labels] of kinds) {
-    const row = document.createElement('div');
-    row.className = 'cat-kind';
-    const b = document.createElement('b');
-    b.textContent = kind;
-    row.append(b, document.createTextNode(labels.join(', ')));
-    box.appendChild(row);
-  }
-}
-/** The Categories panel, at the top of the page whichever screen is showing. */
-async function openCategories() {
-  $('cat-sec').hidden = false;
-  await renderCategories();
-  // At the top of <main>, under the sticky bar: the page goes to its top so none of it is covered.
-  window.scrollTo({ top: 0 });
-}
-$('cat-close').addEventListener('click', () => {
-  $('cat-sec').hidden = true;
-  $('manage-panel').textContent = '';
-  backFromSheet();
-});
-
-// Categories are household facts. Adding one is safe; nothing can be deleted,
-// because receipts name their category and an unresolvable one is worse than
-// an unused one.
 // ── income ─────────────────────────────────────────────────────────────────
 const FREQ_LABELS = {
   monthly: 'Once a month', semimonthly: 'Twice a month (24 a year)',
@@ -7630,44 +7568,6 @@ $('bud-seed').addEventListener('click', async () => {
     p.textContent = ex.message;
     card.appendChild(p);
   }
-});
-
-// The common categories and the card-payment rules, for a household that
-// started without them. Proposes only what is missing.
-$('cat-starter').addEventListener('click', () => {
-  panel('Add the starter set', [], () => ({ tool: 'add_starter_set', args: {} }));
-});
-
-$('cat-new').addEventListener('click', () => {
-  panel('Add a category', [
-    { name: 'label', label: 'Name', placeholder: 'e.g. Pets' },
-    { name: 'kind', label: 'Band', options: ['House', 'People', 'Future'].map((g) => ({ value: g, label: g })) },
-  ], (i) => ({
-    tool: 'define_category',
-    args: { category: i.label.value, label: i.label.value, kind: i.kind.value },
-  }));
-});
-
-$('cat-edit').addEventListener('click', async () => {
-  const cats = await categoryList();
-  panel('Rename a category', [
-    { name: 'category', label: 'Which', options: cats.map((c) => ({ value: c.id, label: c.label })) },
-    { name: 'label', label: 'New name', placeholder: 'the name it should have' },
-  ], (i) => ({
-    tool: 'define_category',
-    args: { category: i.category.value, label: i.label.value },
-  }));
-});
-
-$('cat-archive').addEventListener('click', async () => {
-  const cats = await categoryList();
-  panel('Stop using a category', [
-    { name: 'category', label: 'Which', options: cats.map((c) => ({ value: c.id, label: c.label })) },
-    { name: 'why', label: 'Why', placeholder: 'Receipts already in it keep their name', wide: true },
-  ], (i) => ({
-    tool: 'archive_category',
-    args: { category: i.category.value, archived: true, why: i.why.value },
-  }));
 });
 
 $('month-close').addEventListener('click', () => {
@@ -8446,13 +8346,6 @@ async function askToRestore(box, r, trigger) {
   box.append(form, refused, row);
 }
 
-/** Fetched once. Restoring needs it, and Today may be the first screen opened. */
-let categoriesCache = null;
-async function categoryList() {
-  if (!categoriesCache) categoriesCache = (await api('/api/categories')).categories;
-  return categoriesCache;
-}
-
 // ── plan: the board and the card ───────────────────────────────────────────
 //
 // The household's to-do board, read from the log. A member's edit is written
@@ -8606,7 +8499,7 @@ function closeArea({ refocus = true, key = null } = {}) {
 function areaEscape(ev) {
   if (!areaPage) { document.removeEventListener('keydown', areaEscape); return; }
   if (ev.key !== 'Escape' || ev.isComposing || ev.defaultPrevented) return;
-  if (!$('cat-sec').hidden || !$('phone-sec').hidden) return;
+  if (!$('phone-sec').hidden) return;
   const host = $('area-page');
   const t = ev.target;
   if (!(t === document.body || t === document.documentElement || host.contains(t))) return;
@@ -9420,7 +9313,7 @@ async function closeCard({ removed = false } = {}) {
 function cardEscape(ev) {
   if (view !== 'plan-card') { document.removeEventListener('keydown', cardEscape); return; }
   if (ev.key !== 'Escape' || ev.isComposing || ev.defaultPrevented) return;
-  if (!$('cat-sec').hidden || !$('phone-sec').hidden) return;
+  if (!$('phone-sec').hidden) return;
   const host = $('plan-card');
   const t = ev.target;
   if (!(t === document.body || t === document.documentElement || host.contains(t))) return;
@@ -10848,7 +10741,7 @@ function settingsGroups() {
       title: 'Household',
       hint: `${others.length === 1 ? 'You both see' : 'Everyone in the household sees'} and change${others.length === 1 ? '' : 's'} these. `
         + "Every change goes in the household's history.",
-      items: [setupItem(), zoneItem(), modelItem(), membersItem(), budgetItem(), hcalItem(), guestsItem(), documentsItem(),
+      items: [setupItem(), zoneItem(), modelItem(), membersItem(), savingsItem(), hcalItem(), guestsItem(), documentsItem(),
         linksItem(), backupItem(), ...(settingsData.setup.youOwn && !inSandbox ? [removeItem()] : [])].filter(Boolean),
     },
   ];
@@ -11057,8 +10950,8 @@ function backLabel(page) {
 function pageEscape(e) {
   if (!settingsPage) { document.removeEventListener('keydown', pageEscape); return; }
   if (e.key !== 'Escape' || e.defaultPrevented) return;
-  // A sheet over the page (the categories, your iPhone) has its own Done: nothing under it goes Back.
-  if (!$('cat-sec').hidden || !$('phone-sec').hidden) return;
+  // The phone sheet over the page has its own Done: nothing under it goes Back.
+  if (!$('phone-sec').hidden) return;
   const s = settingsHost().querySelector('.set-page');
   const t = e.target;
   if (!s || !(t === document.body || t === document.documentElement || s.contains(t))) return;
@@ -11125,7 +11018,7 @@ function clearPageErr() {
   if (err) { err.hidden = true; err.textContent = ''; }
 }
 
-/** A sheet opened from Settings (your iPhone, the categories): where its Done comes back to. */
+/** A sheet opened from Settings (your iPhone): where its Done comes back to. */
 let settingsSheetFrom = null;
 const sheetFromSettings = (key) => { settingsSheetFrom = view === 'settings' ? { y: window.scrollY, key } : null; };
 function backFromSheet() {
@@ -11476,7 +11369,7 @@ async function openPhoneSheet() {
   if (fresh && settingsData) settingsData = { ...settingsData, dsmPublicUrl: fresh.dsmPublicUrl, phoneSetup: fresh.phoneSetup };
   drawPhoneSheet(ps);
   $('phone-sec').hidden = false;
-  // At the top of <main>, under the sticky bar, like Categories.
+  // At the top of <main>, under the sticky bar: the page goes to its top so none of it is covered.
   window.scrollTo({ top: 0 });
   $('phone-h').setAttribute('tabindex', '-1');
   $('phone-h').focus({ preventScroll: true });
@@ -11711,29 +11604,19 @@ function linksForm() {
  * accounts imports have seen, and what it last showed. Budget checks the funds
  * against it; what it shows can be typed here at any time.
  */
-function budgetItem() {
+function savingsItem() {
   const sv = settingsData.savings ?? { account: null, accounts: [], balance: null };
-  const cats = plural(settingsData.categoriesInUse ?? 0, 'category', 'categories');
-  const status = `${cats} · ${sv.balance ? `Savings ${sv.balance.exact}` : sv.account ? `Savings account ${sv.account}` : 'No savings account'}`;
+  const status = sv.balance ? `Savings ${sv.balance.exact}` : sv.account ? `Savings account ${sv.account}` : 'No savings account';
   return {
-    key: 'budget', title: 'Budget', status, list: true,
-    line: 'The categories every budget shares, and the account the envelopes saved in Savings live in.',
-    body: budgetForm,
+    key: 'savings', title: 'Savings account', status, list: true,
+    line: 'The account the envelopes saved in Savings live in.',
+    body: savingsForm,
   };
 }
 
-function budgetForm() {
+function savingsForm() {
   const sv = settingsData.savings ?? { account: null, accounts: [], balance: null };
   const rows = node('div', 'rows');
-  // The categories have their own sheet, shared by every budget: this line opens it.
-  const cats = node('div', 'rowi');
-  const ce = node('span', 'end');
-  ce.appendChild(textBtn('Edit the categories', 'btn bare small', 'budget-categories', () => {
-    sheetFromSettings('budget-categories');
-    void openCategories();
-  }));
-  cats.append(node('span', '', `${plural(settingsData.categoriesInUse ?? 0, 'category', 'categories')} in use`), ce);
-  rows.appendChild(cats);
   if (editing('savings')) {
     rows.appendChild(fieldsForm({
       fields: [{
@@ -12492,7 +12375,7 @@ function restoreForm() {
   file.addEventListener('change', async () => {
     const f = file.files?.[0];
     if (!f) return;
-    const next = { name: f.name, content: null, chosen: new Set(['facts', 'budgets', 'months', 'thread']), preview: null, reading: true, done: 0 };
+    const next = { name: f.name, content: null, chosen: new Set(['facts', 'budget', 'months', 'thread']), preview: null, reading: true, done: 0 };
     restorePick = next;
     clearPageErr();
     redrawPage('restore-file');
@@ -14664,14 +14547,13 @@ function forgetHousehold() {
   $('say-note').textContent = '';
   sayHeld = false;
 
-  // Budget: a load still out draws nothing; the month, the walkthrough's place and the categories go.
+  // Budget: a load still out draws nothing; the month and the walkthrough's place go.
   budgetLoads++;
   month = null;
   pricingFor = null;
   walkIncomeEdit = null;
   walkDraft = null;
   walkFr = null;
-  categoriesCache = null;
   budgetMeta = {};
   $('budget-month').textContent = '';
   $('where-note').textContent = '';
@@ -14685,8 +14567,6 @@ function forgetHousehold() {
   // A short form left open on the list (an add, a rename) goes with the household it was for; the add rows come back.
   listFormClose?.(false);
   bandMenus.length = 0;
-  $('cat-sec').hidden = true;
-  $('cat-list').textContent = '';
   $('manage-panel').textContent = '';
   // Import's file and what it found.
   preview = null;

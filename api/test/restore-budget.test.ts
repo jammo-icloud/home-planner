@@ -151,6 +151,18 @@ describe('restoring a budget', () => {
     assert.deepEqual(said(await backupOf(src)), ['the budget: 1 category with no envelopes yet, 1 income source and where the household is']);
   });
 
+  test('a Budget band whose changes were all undone says so plainly, never counting lines', async () => {
+    const hh = await households();
+    const { store: src } = await hh.create('alice', 'Undone');
+    await src.append('alice', [
+      { op: 'category.add', category: 'kids', label: 'Children' },
+      { op: 'category.remove', category: 'kids' },
+    ]);
+    const fresh = (await hh.create('alice', 'Fresh')).store;
+    const said = planRestore(fresh.state, await backupOf(src), ['budget']).summary.filter((l) => l.startsWith('the budget'));
+    assert.deepEqual(said, ['the budget: changes that were all undone later']);
+  });
+
   test('a budget is empty only with no categories, envelopes, income sources, bills, location or months', async () => {
     const hh = await households();
     const made = async (n: number, events: object[]) => {

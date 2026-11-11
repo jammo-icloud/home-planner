@@ -146,7 +146,7 @@ const KEPT: readonly Line[] = [
 ['T103', 'Nothing in the household matches that.', 'page'], ['T104', 'The search could not be done just now.', 'page'], ['T105', 'Sign in again to search briefings, answers and files too.', 'page'], ['T112', 'function showProblem(', 'page'], ['T114', 'Open it from the template', 'page'],
 ['T118', "ev.key === 'Enter' && !ev.shiftKey", 'today'], ['T119', '!ev.isComposing', 'today'],
 ['S12', 'const dayKey', 'today'], ['S12', 'const timeOf', 'today'], ['S12', 'const fmtDate', 'today'], ['S12', 'const asOf', 'today'], ['S13', 'const docTexts', 'today'], ['S13', 'function readDocText(', 'today'], ['S13', 'const docRead', 'today'], ['S13', 'let docHousehold', 'today'],
-['S14', 'claudeOn = who.claude === true', 'page'], ['S20', 'id="unsorted-q"', 'page'], ['S20', 'async function categoryList(', 'page'], ['S24', 'let calWeek', 'page'], ['S27', 'const bookingHere', 'page'], ['S27', 'const dsmCalendarUrl', 'page'],
+['S14', 'claudeOn = who.claude === true', 'page'], ['S20', 'id="unsorted-q"', 'page'], ['S24', 'let calWeek', 'page'], ['S27', 'const bookingHere', 'page'], ['S27', 'const dsmCalendarUrl', 'page'],
 // The Calendar (0.9.0): what stands before the rebuild and after it.
 ['C2', 'aria-label="Previous week"', 'calendarMarkup'], ['C2', 'aria-label="Next week"', 'calendarMarkup'], ['C3', 'This week', 'calendarMarkup'], ['C4', '.formatRange(keyDate(calWeek), keyDate(days[6]))', 'calendar'],
 ['C13', "node('div', 'adlab', 'all day')", 'calendar'], ['C14', "hourLabels('hours')", 'calendar'], ['C14', '.week .col.is-today{', 'css'], ['C15', 'function timedBoxes(', 'calendar'], ['C15', "'↑ '", 'calendar'], ['C15', "' ↓'", 'calendar'],
@@ -321,9 +321,7 @@ const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
 const DRAWN_LATER: readonly string[] = [];
 /** Doors the server has closed that the page still knocks on, each until the page task that drops its last call (plan 2026-11-10-one-budget-envelopes, Ruling 20). */
-const RETIRING: readonly string[] = ['/api/tools/create_budget', '/api/tools/set_budget_location',
-  '/api/tools/define_category', '/api/tools/archive_category', '/api/tools/add_starter_set',
-  '/api/categories'];
+const RETIRING: readonly string[] = ['/api/tools/create_budget', '/api/tools/set_budget_location'];
 
 describe('the page ledger', () => {
   test('a Calendar form says a refusal once: only a week that cannot be read uses the error box', () => {
@@ -439,8 +437,8 @@ describe('the page ledger: 0.9.2', () => {
   const groupsCode = between(script, 'function settingsGroups(', '/** A row by its key');
   const closeCode = between(script, 'function closePage(', '/** Whether the open page is one the person may only read');
   const KEPT_092: readonly Line[] = [
-    // Setup's five rows stay in the Household group, Budget with its categories untouched, Setup still first while it is there.
-    ['setup', 'items: [setupItem(), zoneItem(), modelItem(), membersItem(), budgetItem(), hcalItem(), guestsItem(), documentsItem(),', 'page'],
+    // Setup's five rows stay in the Household group, the Savings account where Budget was (0.10.0's B63), Setup still first while it is there.
+    ['setup', 'items: [setupItem(), zoneItem(), modelItem(), membersItem(), savingsItem(), hcalItem(), guestsItem(), documentsItem(),', 'page'],
     ['setup', "const STEP_ROW = { folder: 'documents', zone: 'zone', calendar: 'hcal', booking: 'guests', model: 'model' };", 'page'],
     ['setup', "if (su.first === step.id) b.setAttribute('aria-current', 'step');", 'page'],
     ['setup', "const reads = ['conflicts', 'hcal', 'setup'];", 'page'],
@@ -563,6 +561,9 @@ const KEPT_010: readonly Line[] = [
   ['B53', 'Accept all suggestions', 'budget'], ['B55', 'What does Savings show today?', 'budget'],
   ['B56', 'Every receipt has an envelope.', 'budget'], ['B57', 'still need an envelope.', 'budget'], ['B59', 'Put it back', 'budget'],
   ['B83', 'In no envelope yet', 'today'], ['B47', "'Split across envelopes…'", 'matchSrc'],
+  // Task 11: the savings account's form, its hint, and the Months band's words.
+  ['B65', "submit: 'Record it'", 'page'], ['B65', 'Envelopes saved in Savings are checked against this account.', 'page'],
+  ['B68', 'Opened plans and every move made in them.', 'page'],
 ];
 const ADDED_010: readonly Line[] = [
   // Task 7: the head names the month; two tabs; Where it is for the household; the list by category; the words that named a budget.
@@ -626,6 +627,11 @@ const ADDED_010: readonly Line[] = [
   ['B48', "if (sel.closest('.split-line')) sel.dispatchEvent(new Event('change'));", 'budget'],
   ['B49', 'if (page.focusReceipts === draw) {', 'budget'], ['B60', 'envelope: sel.value || null', 'budget'],
   ['B57', '${out.added - out.sorted} still need an envelope.', 'budget'],
+  // Task 11: the guards name the phone sheet alone; Settings' Savings account row; Backup's two renamed bands and the scope `budget`.
+  ['B62', "if (!$('phone-sec').hidden) return;", 'page'],
+  ['B63', "key: 'savings', title: 'Savings account'", 'page'], ['B63', 'The account the envelopes saved in Savings live in.', 'page'],
+  ['B66', "name: 'Receipts and rules'", 'page'], ['B66', "Needs the budget's envelopes.", 'page'],
+  ['B67', "{ key: 'budget', name: 'Budget'", 'page'], ['B67', "new Set(['facts', 'budget', 'months', 'thread'])", 'page'],
 ];
 const GONE_010: readonly Line[] = [
   // Task 7: every trace of a second budget, Compare, the outside note and the savings band of its own.
@@ -642,9 +648,9 @@ const GONE_010: readonly Line[] = [
   ['B79', "b?.label ?? 'This budget'", 'page'], ['B80', "lab('Budget', budgetSel)", 'page'], ['B80', "a budget'}; this month isn't open", 'page'],
   ['B81', 'the budgets side by side', 'page'], ['B82', 'chosenBudget', 'page'], ['B82', 'loadBudgets', 'page'], ['B82', "'/api/budgets'", 'page'],
   ['B82', 'budget: month.budget', 'page'], ['B84', 'openBudgetAt(m.budget', 'page'],
-  // Task 8: the old Add an envelope panel, its Band and Fed by, its figure, and the tool it proposed. The Band pin names the
-  // envelope panel's field: the Categories sheet's own Band (Task 11's B61) is on the page until that sheet goes.
-  ['B24', "panel('Add an envelope'", 'page'], ['B24', 'Fed by (choose one or more)', 'page'], ['B24', "{ name: 'group', label: 'Band'", 'page'],
+  // Task 8: the old Add an envelope panel, its Band and Fed by, its figure, and the tool it proposed. With the Categories
+  // sheet gone (Task 11), no field anywhere on the page is called Band.
+  ['B24', "panel('Add an envelope'", 'page'], ['B24', 'Fed by (choose one or more)', 'page'], ['B24', "label: 'Band'", 'page'],
   ['B24', 'Leave it empty to give it a figure later.', 'page'], ['B24', 'catOptions', 'page'], ['B24', "tool: 'define_envelope'", 'page'],
   // Task 9: the group or Savings on the page's line, the estimates kept on the categories, and Remove's old line.
   ['B28', "e.sinking ? 'Saved in Savings' : e.group", 'page'],
@@ -657,6 +663,12 @@ const GONE_010: readonly Line[] = [
   ['B47', 'Not in this budget', 'matchSrc'], ['B47', 'records the category that feeds it', 'page'],
   ['B49', "'/api/tools/categorize_transactions'", 'page'], ['B54', 'r.options ?? preview.options', 'page'],
   ['B60', 'for (const c of await categoryList())', 'page'], ['B60', '...(sel.value ? { category: sel.value } : {})', 'page'],
+  // Task 11: the Categories sheet, its panels, its list and cache; Settings' categories line; Backup's old band names.
+  ['B61', 'cat-sec', 'page'], ['B61', 'function renderCategories(', 'page'], ['B61', 'function openCategories(', 'page'],
+  ['B61', 'Shared by every budget', 'page'], ['B61', "'Add the starter set'", 'page'], ['B61', "'Stop using a category'", 'page'],
+  ['B61', "['House', 'People', 'Future']", 'page'], ['B61', 'function categoryList(', 'page'], ['B61', 'categoriesCache', 'page'],
+  ['B61', '.cat-kind', 'css'], ['B64', 'Edit the categories', 'page'], ['B64', 'categoriesInUse', 'page'],
+  ['B66', 'Receipts, categories and rules', 'page'], ['B67', 'Budgets and envelopes', 'page'], ['B67', 'how categories are grouped', 'page'],
 ];
 /** To sort's own code, for what it may never say again. */
 const queue = between(script, '// ── the unsorted queue', '// ── reading the screen again');
