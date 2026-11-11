@@ -22,13 +22,16 @@ const planMarkup = markup.slice(markup.indexOf('<div id="plan"'), markup.indexOf
 const REGIONS = {
   plan: `${planMarkup}\n${between(script, '// ── plan: the board and the card', '// ── settings')}`,
   today: between(script, '// ── today', '// ── budget'),
-  todayMarkup: markup.slice(markup.indexOf('<div id="briefing"'), markup.indexOf('<!-- Budget, Import and Compare')),
+  todayMarkup: markup.slice(markup.indexOf('<div id="briefing"'), markup.indexOf('<div class="page-head budget-head"')),
   threadSrc: read('../src/thread.ts'),
   shared: between(script, '// ── shared: what every screen calls', '// ── today'),
   calendar: between(script, '// ── the calendar', '// ── views'),
   calendarMarkup: markup.slice(markup.indexOf('<div id="calendar"'), markup.indexOf('<div id="settings"')),
   calendarView: read('../src/calendar-view.ts'),
   css: between(page, '<style', '</style>'),
+  budget: between(script, '// ── budget', '// ── plan: the board and the card'),
+  budgetMarkup: markup.slice(markup.indexOf('<div class="page-head budget-head"'), markup.indexOf('<!-- Plan: the board')),
+  matchSrc: read('../src/match.ts'),
   page,
 } as const;
 type Region = keyof typeof REGIONS;
@@ -68,7 +71,7 @@ describe("the page ledger: Bills on the envelope's page, 0.9.0 Part 1", () => {
   });
   test('what the envelope page keeps', () => {
     assert.deepEqual(BILLS_KEPT.filter(([, t]) => !billsPage.includes(t)).map(([r, t]) => `${r}: ${t}`), []);
-    assert.ok(page.includes('const chosenBudget ='), 'S21');
+    assert.equal(page.includes('chosenBudget'), false, 'S21: one budget, none chosen');
     assert.ok(page.includes('id="unsorted-q"'), 'S20');
   });
   test('a saved bill reads the budget again even when the page changed meanwhile', async () => {
@@ -124,7 +127,7 @@ const KEPT: readonly Line[] = [
   ['card', 'function betweenSection('], ['card', 'function moneySection('], ['card', 'function peopleSection('], ['card', 'function whenSection('],
   ['card', 'function factsCard('], ['card', 'async function openCard('],
 // Today (0.8.0): what stands before the rebuild and after it.
-['T1', 'Put Home Planner on your Home Screen', 'todayMarkup'], ['T1', 'function homeBanner(', 'page'], ['T2', 'openSettings(a.group, a.row)', 'today'], ['T3', 'openBudgetAt(a.budget, a.envelope, a.cover === true)', 'today'],
+['T1', 'Put Home Planner on your Home Screen', 'todayMarkup'], ['T1', 'function homeBanner(', 'page'], ['T2', 'openSettings(a.group, a.row)', 'today'],
 ['T19', 'Sign in again to read the whole ${what}.', 'today'], ['T19', 'The full text is on the old NAS.', 'today'], ['T19', 'The whole ${what} could not be read just now.', 'today'],
 ['T24', 'Claude answered · ', 'today'], ['T25', 'Read the whole answer', 'today'], ['T26', 'Looked at ${looked.join(', 'today'], ['T27', "Claude didn't answer this one.", 'today'], ['T27', "'Ask again'", 'today'],
 ['T30', 'not in the ledger', 'page'], ['T30', 'function removedBlock(', 'page'], ['T31', 'Why it belongs after all', 'page'], ['T31', "'Leave it'", 'page'], ['T32', "'/api/thread/seen'", 'today'],
@@ -139,11 +142,11 @@ const KEPT: readonly Line[] = [
 ['T66', 'Replaced by a newer request', 'today'], ['T66', 'Withdrawn by them', 'today'], ['T67', "'Take it off the calendar'", 'today'], ['T68', 'Taken off the calendar by ', 'today'], ['T68', 'Left on the calendar by ', 'today'], ['T69', 'dataset.offer', 'today'], ['T69', 'dataset.drift', 'today'],
 ['T74', 'id="leave-note"', 'todayMarkup'], ['T75', 'id="ask-claude"', 'todayMarkup'], ['T76', "Claude isn't set up on this server. Notes still work.", 'today'], ['T77', 'Asking Claude…', 'today'], ['T78', "Claude couldn't answer: ${r.error}", 'today'],
 ['T81', 'Yours · what the briefing was written from', 'todayMarkup'], ['T83', '.today > .yours{', 'css'], ['T84', 'function calendarRail(', 'today'], ['T84', 'function eventWhen(', 'today'], ['T88', 'could not be read just now.`', 'today'], ['T89', 'cal.unavailable', 'today'], ['T90', 'Nothing on your calendars today or tomorrow.', 'today'],
-['T91', 'Plans that need you', 'todayMarkup'], ['T91', 'function plansRail(', 'today'], ['T93', 'Nothing of yours is due this week, or in Doing.', 'today'], ['T94', 'Money this month', 'todayMarkup'], ['T94', 'function moneyRail(', 'today'], ['T95', 'No budget has this month open yet.', 'today'],
-['T103', 'Nothing in the household matches that.', 'page'], ['T104', 'The search could not be done just now.', 'page'], ['T105', 'Sign in again to search briefings, answers and files too.', 'page'], ['T112', 'function showProblem(', 'page'], ['T113', 'This household has no budget yet. ', 'page'], ['T114', 'Open it from the template', 'page'],
+['T91', 'Plans that need you', 'todayMarkup'], ['T91', 'function plansRail(', 'today'], ['T93', 'Nothing of yours is due this week, or in Doing.', 'today'], ['T94', 'Money this month', 'todayMarkup'], ['T94', 'function moneyRail(', 'today'],
+['T103', 'Nothing in the household matches that.', 'page'], ['T104', 'The search could not be done just now.', 'page'], ['T105', 'Sign in again to search briefings, answers and files too.', 'page'], ['T112', 'function showProblem(', 'page'], ['T114', 'Open it from the template', 'page'],
 ['T118', "ev.key === 'Enter' && !ev.shiftKey", 'today'], ['T119', '!ev.isComposing', 'today'],
 ['S12', 'const dayKey', 'today'], ['S12', 'const timeOf', 'today'], ['S12', 'const fmtDate', 'today'], ['S12', 'const asOf', 'today'], ['S13', 'const docTexts', 'today'], ['S13', 'function readDocText(', 'today'], ['S13', 'const docRead', 'today'], ['S13', 'let docHousehold', 'today'],
-['S14', 'claudeOn = who.claude === true', 'page'], ['S20', 'id="unsorted-q"', 'page'], ['S20', 'async function categoryList(', 'page'], ['S21', 'const chosenBudget', 'page'], ['S24', 'let calWeek', 'page'], ['S27', 'const bookingHere', 'page'], ['S27', 'const dsmCalendarUrl', 'page'],
+['S14', 'claudeOn = who.claude === true', 'page'], ['S20', 'id="unsorted-q"', 'page'], ['S20', 'async function categoryList(', 'page'], ['S24', 'let calWeek', 'page'], ['S27', 'const bookingHere', 'page'], ['S27', 'const dsmCalendarUrl', 'page'],
 // The Calendar (0.9.0): what stands before the rebuild and after it.
 ['C2', 'aria-label="Previous week"', 'calendarMarkup'], ['C2', 'aria-label="Next week"', 'calendarMarkup'], ['C3', 'This week', 'calendarMarkup'], ['C4', '.formatRange(keyDate(calWeek), keyDate(days[6]))', 'calendar'],
 ['C13', "node('div', 'adlab', 'all day')", 'calendar'], ['C14', "hourLabels('hours')", 'calendar'], ['C14', '.week .col.is-today{', 'css'], ['C15', 'function timedBoxes(', 'calendar'], ['C15', "'↑ '", 'calendar'], ['C15', "' ↓'", 'calendar'],
@@ -222,12 +225,12 @@ const ADDED: readonly Line[] = [
   ['T7', 'function dayCard(', 'today'], ['T7', "'Today'", 'today'], ['T7', 'aria-expanded', 'today'], ['T7', 'function dayName(', 'shared'], ['T7', 'function monthName(', 'shared'], ['T7', 'function clockAt(', 'shared'],
   ['T8', 'New since you last looked', 'today'], ['S1', "api('/api/briefing/read', { upTo: threadData.last })", 'today'], ['S1', 'function watchLastRow(', 'today'], ['T9', "todayKind === 'all'", 'today'], ['T7', 'for (const day of daysOpen) if (!dayRows.has(day) && held.has(day))', 'today'],
   ['T11', "if (view === 'today') { window.scrollTo({ top: 0 }); await loadThread(); }", 'page'], ['T12', 'if (rowFormOpen()) return;', 'today'], ['S5', 'openTodayAt({ drift: e.drift })', 'page'], ['S5', 'openTodayAt({ offer: e.proposed })', 'page'], ['T109', "block: 'center'", 'shared'],
-  ['T111', "$('loading').hidden = false", 'today'], ['T113', "new Error('This household has no budgets yet.", 'today'], ['T114', "new Error('no open month')", 'today'], ['T115', 'Nothing yet today. Ask Claude something, or leave a note.', 'today'], ['T117', 'if (turn !== loadTurn || household !== householdTurn) return;', 'today'],
+  ['T111', "$('loading').hidden = false", 'today'], ['T114', "new Error('no open month')", 'today'], ['T115', 'Nothing yet today. Ask Claude something, or leave a note.', 'today'], ['T117', 'if (turn !== loadTurn || household !== householdTurn) return;', 'today'],
   ['S2', 'else await loadThread();', 'today'], ['S3', "$('days').addEventListener('focusin'", 'today'], ['S31', "$('days').addEventListener('focusout'", 'today'],
   ['frame', '<h1>Today</h1>', 'todayMarkup'], ['frame', 'id="today-day"', 'todayMarkup'], ['frame', 'id="t-kinds"', 'todayMarkup'], ['frame', 'id="t-people"', 'todayMarkup'], ['frame', 'id="t-waiting"', 'todayMarkup'], ['frame', 'id="day-today"', 'todayMarkup'], ['frame', 'id="earlier-days"', 'todayMarkup'], ['frame', '.day-open{', 'css'], ['frame', '.day-body', 'css'],
   // A row is lane, who, what and when (Task 8).
   ['T21', 'function entShell(', 'today'], ['T21', 'left a note', 'today'], ['T21', 'asked Claude', 'today'], ['T22', 'planCrumb(e.plan)', 'today'], ['T23', "e.kind === 'ask' && e.plan", 'today'], ['T29', "node('span', 'ent-why'", 'today'], ['T31', 'refused.textContent = ex.message', 'page'], ['T33', 'No reason was given for this.', 'today'],
-  ['S11', 'clockOf(', 'shared'], ['S29', 'name ?? nameOf(who)', 'today'], ['S19', 'openBudgetAt(o.budget, o.envelope)', 'today'],
+  ['S11', 'clockOf(', 'shared'], ['S29', 'name ?? nameOf(who)', 'today'],
   ['hand', ' handed ', 'today'], ['hand', ' took ', 'today'], ['cal', ' added ', 'today'], ['cal', 'the Household calendar', 'today'], ['cal', 'their own calendar', 'today'], ['cal', 'your own calendar', 'today'], ['cal', ' renamed ', 'today'], ['late', 'Suggested on ', 'today'], ['open', "'Open the plan'", 'today'], ['open', "'Open the envelope'", 'today'], ['open', "'Open the day'", 'today'],
   ['lane', 'function laneIcon(', 'shared'], ['lane', "'message-square':", 'shared'], ['lane', 'function claudeDisc(', 'shared'], ['lane', '.who.claude', 'css'], ['ent', '.ent{', 'css'], ['ent', 'cursor:pointer;text-decoration:underline', 'css'],
   // A waiting card is a dashed block in its own row (Task 9).
@@ -237,7 +240,7 @@ const ADDED: readonly Line[] = [
   // The briefing opens its day (Task 10).
   // Yours is a strip on a phone and a column on the desk (Task 11).
   ['T82', 'function yoursStrip(', 'today'], ['T85', ' more`', 'today'], ['T81', "'Yours'", 'today'], ['T87', 'function householdDisc(', 'shared'], ['T87', 'e.owner', 'today'], ['T96', 'yoursRails', 'today'], ['S10', 'householdDisc(e.label)', 'today'], ['S32', 'yoursStrip()', 'today'], ['strip', '.yours-strip', 'css'],
-  ['T14', "Claude · the day's briefing", 'today'], ['T14', 'Claude · briefing for ', 'today'], ['T14', '.day .claude', 'css'], ['T15', 'Briefing · written without Claude', 'today'], ['T16', "'headline'", 'today'], ['T17', 'Read the whole briefing', 'today'], ['T18', 'Reading the briefing…', 'today'],
+  ['T14', "Claude · the day's briefing", 'today'], ['T14', '.day .claude', 'css'], ['T15', 'Briefing · written without Claude', 'today'], ['T16', "'headline'", 'today'], ['T17', 'Read the whole briefing', 'today'], ['T18', 'Reading the briefing…', 'today'],
   // Kinds, people, empty days and the earlier months (Task 12).
   ['T4', 'const KINDS = ', 'today'], ['T4', "['all', 'All']", 'today'], ['T4', "['notes', 'Notes']", 'today'], ['T4', 'function pressKind(', 'today'], ['T4', "label: 'Whose'", 'today'], ['T4', "plural: 'entries'", 'today'], ['T4', '.filters.kinds', 'css'], ['T6', '`Show ${', 'today'], ['T6', 'function showMonth(', 'today'], ['sort', 'function flipSort(', 'today'], ['sort', "'Newest first'", 'today'], ['sort', "'Oldest first'", 'today'], ['sort', "'arrow-up-down':", 'shared'], ['empty', 'function emptyLine(', 'today'], ['empty', 'Nothing under ${', 'today'], ['left', 'and are left out.', 'today'], ['left', 'and is left out.', 'today'], ['bar', 'plural', 'shared'],
   ['T97', 'id="t-search-q"', 'todayMarkup'], ['T97', 'id="t-search-btn"', 'todayMarkup'], ['T97', 'Search the household', 'todayMarkup'], ['T98', 'setTimeout(() => { void askRecord(words); }, 250)', 'today'], ['T98', 'if (asked !== recordAsked) return;', 'today'], ['T99', 'in the record for', 'today'], ['T99', 'Claude answered: ', 'today'], ['T99', 'function markWords(', 'today'], ['T101', 'if (leaveSearch()) ev.preventDefault();', 'today'], ['T101', 'else if (leaveSearch()) ev.preventDefault();', 'today'], ['T101', "!$('briefing').classList.contains('searching-record') && cancelOpen($('days'))", 'today'], ['T102', "'Show in its day'", 'today'], ['T102', "'_blank', 'noopener'", 'today'], ['T107', 'function todaySearchReset(', 'today'], ['S23', 'todaySearchReset();', 'page'], ['S3', "$('t-search-q').addEventListener", 'today'],
@@ -252,7 +255,7 @@ const ADDED: readonly Line[] = [
   ['over', 'aria-label="Over the calendar"', 'calendarMarkup'], ['over', "'hp.calOver'", 'calendar'], ['over', "lucide('sun')", 'calendar'], ['over', 'function renderOverlays(', 'calendar'], ['over', '#cal-over{', 'css'],
   ['C21', 'function dayCell(', 'calendar'], ['C21', "node('span', 'marks')", 'calendar'], ['C21', '.daystrip .marks', 'css'], ['C22', 'marksWords(', 'calendar'], ['C23', 'calDay = key;', 'calendar'],
   ['C56', "Plans' dates, held nights, money and the record are still shown.", 'calendar'], ['C57', 'could not be read just now; the rest is shown.', 'calendar'],
-  ['S2', "else if (view === 'calendar') await loadCalendar(calWeek)", 'page'], ['S21', 'chosenBudget()', 'calendar'], ['S27', 'bookingHere()', 'calendar'], ['S27', 'dsmCalendarUrl()', 'calendar'], ['S14', 'peopleOrder()', 'calendar'],
+  ['S2', "else if (view === 'calendar') await loadCalendar(calWeek)", 'page'], ['S27', 'bookingHere()', 'calendar'], ['S27', 'dsmCalendarUrl()', 'calendar'], ['S14', 'peopleOrder()', 'calendar'],
   // The day card: one card of plain rows (Calendar Task 7).
   ['C24', 'function renderDayCard(', 'calendar'], ['C24', 'id="cal-card"', 'calendarMarkup'], ['C24', "'Nothing on.'", 'calendar'], ['C24', 'clashLine(', 'calendar'], ['C24', 'dayLong(', 'calendar'], ['row', 'function calRow(', 'calendar'], ['row', '.erow.cal{', 'css'], ['row', '--when', 'css'],
   ['C25', "'NIGHTS'", 'calendar'], ['C25', "'ALL DAY'", 'calendar'], ['C25', ' staying', 'calendar'], ['C25', 'kept by ${nameIn(', 'calendar'], ['C26', 'whenOf(', 'calendar'], ['C27', 'nowIndex(', 'calendar'], ['C27', '.cal-now{', 'css'], ['C31', 'openTodayAt({ offer: e.held.request })', 'calendar'],
@@ -318,8 +321,7 @@ const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
 const DRAWN_LATER: readonly string[] = [];
 /** Doors the server has closed that the page still knocks on, each until the page task that drops its last call (plan 2026-11-10-one-budget-envelopes, Ruling 20). */
-const RETIRING: readonly string[] = ['/api/tools/compare_budgets', '/api/tools/create_budget', '/api/tools/rename_budget',
-  '/api/tools/archive_budget', '/api/tools/set_budget_location', '/api/budgets',
+const RETIRING: readonly string[] = ['/api/tools/create_budget', '/api/tools/set_budget_location',
   '/api/tools/categorize_transactions', '/api/tools/define_category', '/api/tools/archive_category', '/api/tools/add_starter_set',
   '/api/categories', '/api/tools/define_envelope'];
 
@@ -535,5 +537,53 @@ describe('the page ledger: 0.9.2', () => {
   test('no document sends anyone to the phone sheet through the person menu', () => {
     for (const doc of ['../../README.md', '../../DEPLOY.md']) assert.doesNotMatch(read(doc), /iPhone\*{0,2}\s+from the person menu/i, doc);
     assert.match(read('../../DEPLOY.md'), /from Settings › You › Your iPhone and Mac/);
+  });
+});
+
+// ── 0.10.0: one budget, receipts sorted into envelopes, categories as headings. Rows B1 to B84 of plan 2026-11-10-one-budget-envelopes. ──
+const KEPT_010: readonly Line[] = [
+  // Task 7: the head's menu keeps Where it is, local pricing and Discard; the card, Income, Needs you, the rows and the month's end stay.
+  ['B4', 'id="bud-where"', 'budgetMarkup'], ['B4', 'Not set yet, so local costs cannot be looked up', 'budget'],
+  ['B5', 'id="bud-seed">Price it from local data', 'budgetMarkup'], ['B8', 'id="month-discard"', 'budgetMarkup'], ['B8', "`Discard ${name}'s plan`", 'budget'],
+  ['B13', 'id="ta-next"', 'budgetMarkup'], ['B13', '<span class="k">Planned</span>', 'budgetMarkup'],
+  ['B14', 'Record an income', 'budgetMarkup'], ['B14', 'id="inc-what-if"', 'budgetMarkup'], ['B15', 'id="needs-h">Needs you<', 'budgetMarkup'],
+  ['B19', 'function envelopeRow(', 'budget'], ['B19', "amt = 'No figure yet'", 'budget'],
+  ['B26', 'id="month-close"', 'budgetMarkup'], ['B26', '`Reopen ${name}`', 'budget'],
+];
+const ADDED_010: readonly Line[] = [
+  // Task 7: the head names the month; two tabs; Where it is for the household; the list by category; the words that named a budget.
+  ['B1', 'id="budget-month"', 'budgetMarkup'], ['B10', "const BUDGET_SUBS = ['budget', 'import'];", 'page'], ['B10', 'aria-label="Budget or Import"', 'budgetMarkup'],
+  ['B12', "panel('Where it is'", 'budget'], ['B12', "tool: 'set_location'", 'budget'],
+  ['B17', 'function categoryBand(', 'budget'], ['B17', 'for (const c of result.categories)', 'budget'],
+  ['B18', 'function savingsCheckLine(', 'budget'], ['B18', "openSettings('household', 'savings')", 'budget'],
+  ['B20', "'No envelopes yet'", 'budget'], ['B27', "'erow-removed'", 'budget'], ['B72', '`Open ${monthLong(fr.month)}`', 'budget'],
+  ['B75', "Claude · the budget's briefing", 'today'], ['B77', 'The budget is not started yet.', 'page'], ['B78', 'This month is not open yet.', 'today'],
+  ['B79', 'The budget has no plan for this month yet. ', 'page'], ['B80', "lab('Envelope', envSel)", 'plan'],
+  ['B84', 'async function loadBudgetMeta(', 'budget'], ['B84', "api('/api/budget')", 'budget'], ['B84', 'async function openBudgetAt(envelope, focus)', 'budget'],
+  // Pins moved here from the 0.7.0 lists (T3, T113, S19): a notice and a change open the envelope alone; Today's problem is said once.
+  ['T3', 'openBudgetAt(a.envelope, a.cover === true)', 'today'], ['S19', 'openBudgetAt(o.envelope)', 'today'],
+  ['T113', "new Error('The budget is not started yet.')", 'today'],
+];
+const GONE_010: readonly Line[] = [
+  // Task 7: every trace of a second budget, Compare, the outside note and the savings band of its own.
+  ['B1', 'function markChosenBudget(', 'page'], ['B2', 'budget-switch', 'page'], ['B3', 'budget-pick', 'page'],
+  ['B6', 'bud-rename', 'page'], ['B6', 'Rename this budget', 'page'], ['B7', 'bud-new', 'page'], ['B7', 'New budget', 'page'],
+  ['B9', 'bud-archive', 'page'], ['B9', 'Archive this budget', 'page'],
+  ['B10', 'data-sub="compare"', 'page'], ['B11', 'id="compare"', 'page'], ['B11', 'compare_budgets', 'page'], ['B11', 'function loadCompare(', 'page'],
+  ['B11', 'Pick two different budgets.', 'page'], ['B11', '.verdict', 'css'], ['B11', 'table.cmp', 'css'],
+  ['B12', 'blank if it is a period, not a place', 'page'], ['B12', 'Where is ${b?.label', 'page'],
+  ['B16', 'outside-box', 'page'], ['B16', 'no envelope here covers', 'page'], ['B16', 'Add an envelope for them', 'page'],
+  ['B17', 'result.groups', 'page'], ['B17', 'bands.get(e.group)', 'page'], ['B18', 'function savingsBand(', 'page'],
+  ['B72', "?.label ?? 'this budget'", 'page'], ['B75', 'Claude · briefing for ', 'page'], ['B76', 'live.length > 1 ? live.find', 'page'],
+  ['B77', 'no budgets yet', 'page'], ['B77', 'This household has no budget yet.', 'page'], ['B78', 'No budget has this month open yet.', 'page'],
+  ['B79', "b?.label ?? 'This budget'", 'page'], ['B80', "lab('Budget', budgetSel)", 'page'], ['B80', "a budget'}; this month isn't open", 'page'],
+  ['B81', 'the budgets side by side', 'page'], ['B82', 'chosenBudget', 'page'], ['B82', 'loadBudgets', 'page'], ['B82', "'/api/budgets'", 'page'],
+  ['B82', 'budget: month.budget', 'page'], ['B84', 'openBudgetAt(m.budget', 'page'],
+];
+describe('the page ledger: 0.10.0', () => {
+  test('what 0.10.0 keeps, adds and takes away', () => {
+    assert.deepEqual(missing(KEPT_010, true), []);
+    assert.deepEqual(missing(ADDED_010, true), []);
+    assert.deepEqual(missing(GONE_010, false), []);
   });
 });

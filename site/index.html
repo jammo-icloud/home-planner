@@ -180,6 +180,13 @@
   .erow-amt.fig{color:var(--figure-chip-ink)}
   .erow-sub{font-size:var(--fs-micro);color:var(--ink-soft);white-space:nowrap}
   .erow .chev{color:var(--ink-faint)}
+  /* A category's heading, where its menu will sit; an empty one says so under it. */
+  .band-head{display:flex;align-items:center;gap:var(--sp-2)}
+  .band > .quiet{margin:0}
+  /* A removed envelope a closed month keeps: a row that opens nothing, marked in quiet words. */
+  .erow.removed{cursor:default}
+  .erow.removed:active{background:none}
+  .erow-removed{font-size:var(--fs-micro);font-weight:var(--fw-regular);color:var(--ink-soft)}
 
   /* An envelope's page: the Settings page frame, then the card and the sections under it. */
   .ep,.ep-q{scroll-margin-top:72px}
@@ -397,33 +404,6 @@
 
   table.rows td:first-child{white-space:nowrap}
 
-  /* ── comparison ────────────────────────────────────────────────────── */
-  .vs{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:16px}
-  .vs select{font:inherit;font-size:var(--fs-input);padding:7px 10px;border:1px solid var(--line-strong);
-    border-radius:9px;background:var(--surface-raised);color:var(--ink)}
-  .verdict{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--r-card);
-    padding:16px;box-shadow:var(--e-1);margin-bottom:18px}
-  .verdict .big{font-size:var(--fs-display);font-weight:600;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
-  .verdict .big.more{color:var(--problem)}
-  .verdict .big.less{color:var(--good)}
-  .verdict .k{font-size:var(--fs-micro);font-weight:500;color:var(--ink-soft)}
-  .afford{display:flex;gap:18px;flex-wrap:wrap;margin-top:14px;padding-top:14px;
-    border-top:1px solid var(--hair);font-size:var(--fs-small)}
-  .afford .no{color:var(--problem)}
-  .afford .yes{color:var(--good)}
-
-  table.cmp{width:100%;border-collapse:collapse;font-size:var(--fs-small)}
-  table.cmp th{text-align:right;font-size:var(--fs-micro);font-weight:500;color:var(--ink-faint);padding:6px 8px}
-  table.cmp th:first-child{text-align:left}
-  table.cmp td{padding:8px;border-top:1px solid var(--hair);text-align:right;
-    font-variant-numeric:tabular-nums;white-space:nowrap}
-  table.cmp td:first-child{text-align:left;white-space:normal}
-  table.cmp td.more{color:var(--problem)}
-  table.cmp td.less{color:var(--good)}
-  table.cmp tr.only td:first-child::after{content:'only in one';margin-left:6px;font-size:var(--fs-micro);
-    color:var(--caution);background:var(--caution-tint);padding:1px 7px;border-radius:999px;white-space:nowrap}
-  table.cmp tr.band td{background:var(--hair);font-size:var(--fs-micro);font-weight:600;color:var(--ink-soft);border-top:none}
-
   /* ── income planner ────────────────────────────────────────────────── */
   .inc{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--r-card);
     padding:13px 15px;box-shadow:var(--e-1);margin-bottom:7px;
@@ -613,8 +593,6 @@
   #needs:not(:has(> .need:not([hidden]))){display:none}
   .need{margin:0 0 12px}
   .need h3{font-size:var(--fs-ui);font-weight:600;margin:0 0 4px}
-  #outside-box{background:var(--caution-tint);border:1px solid var(--caution-line);border-radius:var(--r-card);padding:12px 14px}
-  #outside-box p{margin:0 0 10px;color:var(--caution)}
   /* solid: a dashed edge is reserved for what waits on a person */
   .add-row{display:block;width:100%;margin-top:8px;font:inherit;font-size:var(--fs-ui);font-weight:500;color:var(--accent-ink);
     background:none;border:var(--stroke) solid var(--line);border-radius:var(--r-card);padding:12px;cursor:pointer}
@@ -1081,7 +1059,7 @@
     background:var(--surface-sunken);color:var(--ink-soft);font-size:var(--fs-small)}
   .unavailable svg.i{margin-top:var(--stroke-heavy)}
 
-  /* Budget's own sub-tabs: its budget's name and menu, then Budget, Import, Compare */
+  /* Budget's own sub-tabs: its name, month and menu, then Budget and Import */
   .budget-head > .menu{margin-right:auto}
   .budget-head .pill .name{font-size:var(--fs-headline);letter-spacing:-0.02em}
   @container page (max-width: 759px){
@@ -1797,32 +1775,24 @@
       </section>
     </div>
 
-    <!-- Budget, Import and Compare are one tab. Its head names the budget being
-         looked at (its menu switches and manages budgets) and picks among the three. -->
+    <!-- Budget and Import are one tab. Its head says Budget and the month shown (its menu
+         holds where the household is and the month's plan) and picks between the two. -->
     <div class="page-head budget-head" id="budget-head" hidden>
       <div class="menu">
         <button type="button" class="pill" id="budget-menu-btn" aria-haspopup="menu" aria-expanded="false" aria-controls="budget-menu">
-          <span class="txt"><span class="name" id="budget-label">Budget</span></span>
+          <span class="txt"><span class="name" id="budget-label">Budget</span><span class="sub" id="budget-month"></span></span>
           <svg class="i sm chev" viewBox="0 0 16 16" aria-hidden="true"><path d="M4 6l4 4 4-4"/></svg>
         </button>
         <div class="menu-list" id="budget-menu" role="menu" aria-labelledby="budget-menu-btn" hidden>
-          <div id="budget-switch" role="group" aria-label="Budgets"></div>
-          <label for="budget-pick" class="visually-hidden">Budget</label>
-          <select id="budget-pick" hidden></select>
-          <div class="menu-sep" role="separator"></div>
           <button type="button" class="menu-item" role="menuitem" id="bud-where"><span>Where it is<span class="sub" id="where-note"></span></span></button>
           <button type="button" class="menu-item" role="menuitem" id="bud-seed">Price it from local data</button>
-          <button type="button" class="menu-item" role="menuitem" id="bud-rename">Rename it</button>
-          <button type="button" class="menu-item" role="menuitem" id="bud-new">New budget</button>
           <div class="menu-sep" role="separator"></div>
           <button type="button" class="menu-item" role="menuitem" id="month-discard">Discard this month's plan</button>
-          <button type="button" class="menu-item danger" role="menuitem" id="bud-archive">Archive this budget</button>
         </div>
       </div>
-      <div class="seg" id="budget-seg" role="group" aria-label="Budget, Import or Compare">
+      <div class="seg" id="budget-seg" role="group" aria-label="Budget or Import">
         <button type="button" data-sub="budget" aria-pressed="true">Budget</button>
         <button type="button" data-sub="import" aria-pressed="false">Import</button>
-        <button type="button" data-sub="compare" aria-pressed="false">Compare</button>
       </div>
     </div>
 
@@ -1858,10 +1828,6 @@
 
       <section id="needs" aria-labelledby="needs-h">
         <h2 class="h" id="needs-h">Needs you</h2>
-        <div class="need" id="outside-box" hidden>
-          <p id="outside-note"></p>
-          <button class="btn" id="outside-add" type="button">Add an envelope for them</button>
-        </div>
         <div class="need" id="unsorted-q" hidden></div>
       </section>
 
@@ -1927,15 +1893,6 @@
           <span id="imp-note" class="quiet"></span>
         </div>
       </div>
-    </div>
-
-    <div id="compare" hidden>
-      <div class="vs">
-        <select id="cmp-a"></select>
-        <span class="quiet">against</span>
-        <select id="cmp-b"></select>
-      </div>
-      <div id="cmp-out"></div>
     </div>
 
     <!-- Plan: the board, one card of rows per area with an add row in each and "A new area" last, under a
@@ -2199,7 +2156,7 @@ let switching = false;
  * - the select refused (or its answer lost): the server still has a household open, so it is entered again by the
  *   same path that enters any household (`enterApp`, which asks whoami which one), back on the screen that was
  *   showing when it is the same household, and the error box says why the switch did not happen;
- * - the select taken and a later read failing (whoami, the budgets): the page is half the new household's, so it
+ * - the select taken and a later read failing (whoami, the budget's facts): the page is half the new household's, so it
  *   goes to the picker, which says what went wrong. So does a refused switch whose household cannot be entered again,
  *   and then it says the refusal as well.
  * Only one switch is in flight at a time (`switching`): a second is not started, so none can empty the page under
@@ -2788,7 +2745,7 @@ const nameIn = (who) => (who === myName ? 'you' : who);
 /** What Claude looked at, in words rather than tool names. Its suggestions are the cards, not this line. */
 const LOOKED = {
   get_month: 'this month', explain_envelope: 'an envelope', find_donors: 'where money could come from',
-  list_transactions: 'receipts', compare_budgets: 'the budgets side by side', get_activity: 'what changed',
+  list_transactions: 'receipts', get_activity: 'what changed',
   plan_income: 'income', look_up_local_costs: 'local costs',
 };
 
@@ -2843,10 +2800,9 @@ function readDocText(id, what) {
 /** The newest read of the thread; an older one that lands after it draws nothing. */
 let loadTurn = 0;
 
-/** The query for `GET /api/thread`: the budget, the kind and person pressed, the months read, the days open, then `extra`. */
+/** The query for `GET /api/thread`: the kind and person pressed, the months read, the days open, then `extra`. */
 function threadParams(extra = {}) {
   const q = new URLSearchParams();
-  if (chosenBudget()) q.set('budget', chosenBudget());
   if (todayKind !== 'all') q.set('lane', todayKind);
   if (livePerson() !== null) q.set('who', personPressed);
   if (todayThrough !== null) q.set('through', todayThrough);
@@ -2865,11 +2821,10 @@ async function loadThread(opts = {}) {
     // cannot be read leaves the last one drawn.
     const [page, rails] = await Promise.all([
       api(`/api/thread?${threadParams(opts.quiet ? { quiet: '1' } : {})}`),
-      opts.quiet ? null : api(`/api/today${chosenBudget() ? `?budget=${encodeURIComponent(chosenBudget())}` : ''}`).catch(() => null),
+      opts.quiet ? null : api('/api/today').catch(() => null),
     ]);
     if (turn !== loadTurn || household !== householdTurn) return;
     threadData = page;
-    $('budget-label').textContent = budgets.find((x) => x.id === chosenBudget())?.label ?? '';
     if (rails) {
       renderYours(rails);
       renderSetupNotes(rails.setup ?? [], rails.budget ?? []);
@@ -2886,7 +2841,7 @@ async function loadThread(opts = {}) {
     $('briefing').hidden = view !== 'today';
     // The thread is still worth reading with nothing to brief on; the way
     // forward sits above it.
-    if (page.noBudgets) showProblem(new Error('This household has no budgets yet. Create the first one to begin.'));
+    if (page.notStarted) showProblem(new Error('The budget is not started yet.'));
     else if (page.noOpenMonth) showProblem(new Error('no open month'));
   } catch (ex) {
     if (turn === loadTurn && household === householdTurn) showProblem(ex);
@@ -2920,7 +2875,7 @@ function renderSetupNotes(notes, budgetNotes = []) {
     p.dataset.kind = n.kind;
     p.append(icon('alert', 'i'), node('span', '', n.text));
     const a = n.action;
-    if (a) p.appendChild(textBtn(a.label, 'btn small hit', null, () => void openBudgetAt(a.budget, a.envelope, a.cover === true)));
+    if (a) p.appendChild(textBtn(a.label, 'btn small hit', null, () => void openBudgetAt(a.envelope, a.cover === true)));
     box.appendChild(p);
   }
   box.hidden = notes.length + budgetNotes.length === 0;
@@ -3507,12 +3462,13 @@ function planRows(plans) {
 }
 
 function moneyRailRows(money) {
-  if (!money) return { rows: [], line: node('p', 'none', 'No budget has this month open yet.') };
+  if (!money) return { rows: [], line: node('p', 'none', 'This month is not open yet.') };
   const open = () => showView('budget');
   const rows = [{ lead: null, text: 'To assign', value: money.toAssign, valueCls: '', open }];
   // The server says what is left, or how far over: the page reads neither as a number.
   for (const l of money.low) {
-    rows.push({ lead: null, text: l.label, value: l.over ? `${l.over} over` : `${l.left} left`, valueCls: l.over ? 'over' : '', open });
+    rows.push({ lead: null, text: l.label, value: l.over ? `${l.over} over` : `${l.left} left`, valueCls: l.over ? 'over' : '',
+      open: () => openBudgetAt(l.envelope) });
   }
   return { rows, line: null };
 }
@@ -3723,7 +3679,7 @@ function openFor(e, text) {
   if (!o) return;
   let link;
   if (o.plan) link = rowLink('Open the plan', () => void openCard(o.plan));
-  else if (o.budget) link = rowLink('Open the envelope', () => void openBudgetAt(o.budget, o.envelope));
+  else if (o.envelope) link = rowLink('Open the envelope', () => void openBudgetAt(o.envelope));
   else if (o.calendar) link = rowLink('Open the day', () => void openCalendarAt(o.calendar, o.key));
   if (link) text.appendChild(node('div', 'ent-actions')).appendChild(link);
 }
@@ -3740,7 +3696,7 @@ function briefingBlock(e, isToday) {
   if (e.writtenBy === 'claude') {
     by.append(icon('mark', 'mark'), e.source === 'household'
       ? "Claude · the day's briefing"
-      : `Claude · briefing for ${budgets.find((b) => b.id === e.budget)?.label ?? 'the household'}`);
+      : "Claude · the budget's briefing");
   } else by.append('Briefing · written without Claude');
   by.appendChild(node('span', 'byline-at', clockAt(e.at)));
   m.append(by, node('p', 'headline', e.headline));
@@ -3809,11 +3765,9 @@ function entryNode(e, ctx) {
 
   // A change made directly on a screen.
   const { row, text } = entShell(e);
-  const live = budgets.filter((b) => !b.archived);
-  const label = e.budget && live.length > 1 ? live.find((b) => b.id === e.budget)?.label : null;
   if (e.hand) handedText(text, e);
   else if (e.event) eventText(text, e);
-  else text.append(byWord(e), ` ${e.what}`, ...(label ? [` · ${label}`] : []));
+  else text.append(byWord(e), ` ${e.what}`);
   const why = e.why ? `“${e.why}”` : e.flag && !e.hand ? 'No reason was given for this.' : null;
   if (why) text.appendChild(node('span', 'ent-why', why));
   const bits = removalBits(e.flag, e.id, ctx);
@@ -4252,7 +4206,7 @@ function offerCard(o, ctx) {
     const ul = node('ul', 'effects');
     for (const eff of o.effects) ul.appendChild(node('li', '', eff));
     // Only a card with figures behind it comes back when they move; a plan's card has none to move.
-    return offerSettled(o, ul, settledLine('Put off by ', node('b', '', nameIn(o.decidedBy)), o.budget ? '. It comes back if its numbers change.' : '.'));
+    return offerSettled(o, ul, settledLine('Put off by ', node('b', '', nameIn(o.decidedBy)), o.month ? '. It comes back if its numbers change.' : '.'));
   }
 
   const { card, row } = waitingBlock({ cls: `offer${moved ? ' moved' : ''}`, title: o.summary, effects: o.effects });
@@ -4439,7 +4393,7 @@ async function askClaude(text, trigger) {
   $('ask-claude').disabled = true;
   note.textContent = 'Asking Claude…';
   try {
-    const r = await api('/api/thread/ask', { question: text, budget: chosenBudget() || null });
+    const r = await api('/api/thread/ask', { question: text });
     if (!trigger) say.value = '';
     await afterSend(r.question.id, 'claude');
     if (r.error) { note.textContent = `Claude couldn't answer: ${r.error}`; sayHeld = true; }
@@ -4466,7 +4420,7 @@ $('leave-note').addEventListener('click', async () => {
   if (!text) { $('say').focus(); return; }
   $('leave-note').disabled = true;
   try {
-    const r = await api('/api/thread/note', { text, budget: chosenBudget() || null });
+    const r = await api('/api/thread/note', { text });
     $('say').value = '';
     await afterSend(r.event.id, 'notes');
   } catch (ex) {
@@ -4617,17 +4571,12 @@ let budgetLoads = 0;
 
 async function loadBudget() {
   const load = ++budgetLoads;
-  // A budget with no envelopes is the walkthrough, at the step it was left on.
-  const asked = chosenBudget();
-  const fr = await api(`/api/budget/first-run${asked ? `?budget=${encodeURIComponent(asked)}` : ''}`);
+  // A budget with no envelopes is the walkthrough, at the step it was left on. Its facts (where
+  // it is, this month) are read beside it, so every committed change that reloads here has them fresh.
+  const [fr] = await Promise.all([api('/api/budget/first-run'), loadBudgetMeta()]);
   if (load !== budgetLoads) return;
-  if (fr.budget && fr.budget !== asked) {
-    localStorage.setItem('budget', fr.budget);
-    $('budget-pick').value = fr.budget;
-    markChosenBudget();
-  }
-  if (fr.step || pricingFor === fr.budget) { clearEnvelopePage(); drawWalk(fr); return; }
-  pricingFor = null;
+  // Pricing comes straight after the envelopes and nothing records it, so the walkthrough holds it.
+  if (fr.step || pricingFor !== null) { clearEnvelopePage(); drawWalk(fr); return; }
   // Every committed change comes back through here, so this is where a cached
   // category list goes stale — a category added a moment ago has to be in the
   // pickers below without a reload.
@@ -4636,10 +4585,6 @@ async function loadBudget() {
   // Before the month is asked for: receipts belong to the household, not to a
   // month, and a month not opened yet must not hide them.
   loadUnsorted().catch((ex) => console.warn('unsorted queue:', ex.message));
-  void api('/api/categories').then((r) => { $('cat-starter').hidden = !r.starterMissing; }).catch(() => {});
-  // Omitted rather than sent empty: the server picks a sensible default and,
-  // when there are none at all, says "no budgets yet" — which is what a brand
-  // new household needs to read, not "budget is required".
   // The screen changes only once the month is here: shown and emptied before it, a slow or
   // refused answer left the Budget screen a blank card with no rows (straight after the
   // walkthrough's Finish, until a reload).
@@ -4647,7 +4592,7 @@ async function loadBudget() {
   // A row with focus (Back from its page, a moment ago) keeps it through the redraw.
   let rowFocus = null;
   try {
-    ({ result } = await api('/api/tools/get_month', chosenBudget() ? { budget: chosenBudget() } : {}));
+    ({ result } = await api('/api/tools/get_month', {}));
   } finally {
     if (load === budgetLoads) {
       $('walk').hidden = true;
@@ -4658,6 +4603,8 @@ async function loadBudget() {
   }
   if (load !== budgetLoads) return;
   month = result;
+  // The head says which month the list is: the latest open one, which may not be this one.
+  $('budget-month').textContent = monthLong(result.month);
 
   // The card's words and colour are the server's, so Today and this screen never disagree.
   const { card } = result;
@@ -4668,8 +4615,7 @@ async function loadBudget() {
   $('ta-next').hidden = !card.next || result.closed === true;
   $('ta-green').textContent = card.green;
   $('t-income').textContent = result.income;
-  const here = budgets.find((x) => x.id === chosenBudget());
-  const loc = here?.location;
+  const loc = budgetMeta.location;
   $('where-note').textContent = loc
     ? [loc.label, loc.postal && `ZIP ${loc.postal}`, loc.county].filter(Boolean).join(', ')
     : 'Not set yet, so local costs cannot be looked up';
@@ -4691,63 +4637,61 @@ async function loadBudget() {
   void loadIncome();
   $('t-funded').textContent = result.funded;
   $('t-spent').textContent = result.spent;
-  // Sorted, but into a category no envelope here covers: in neither Spent nor
-  // the queue unless this says so.
-  $('outside-box').hidden = toCents(result.spentOutsideThisBudget) === 0;
-  $('outside-note').textContent = `${result.spentOutsideThisBudget} was spent in categories no envelope here covers, `
-    + 'so Spent leaves it out.';
 
-  // Grouped by band, and within a band in the order the envelopes were defined —
-  // the same shape as the plan they already know. Those saved in Savings are a band of their
-  // own, last, whatever group they were made in: the check against the
-  // account is about them together, and sits under them.
-  // The bands come in the server's order, the walkthrough's six first, so a
-  // budget made from it reads in the order it was made.
-  const bands = new Map(result.groups.map((g) => [g, []]));
-  const saved = [];
-  for (const e of result.envelopes) {
-    if (e.sinking) { saved.push(e); continue; }
-    if (!bands.has(e.group)) bands.set(e.group, []);
-    bands.get(e.group).push(e);
+  // One band per category, in the household's order, empty ones too; within it the envelopes in
+  // the server's order, those saved in Savings among them. A removed envelope a closed month keeps
+  // names its category; one whose category has since gone is drawn after the last band, with no
+  // heading of its own, rather than under a heading made up for it.
+  const known = new Set(result.categories.map((c) => c.id));
+  for (const c of result.categories) {
+    $('bands').appendChild(categoryBand(c, result.envelopes.filter((e) => e.category === c.id)));
   }
-  for (const [name, list] of bands) {
-    if (!list.length) continue;
-    const band = document.createElement('div');
-    band.className = 'band';
-    const h = document.createElement('h2');
-    h.textContent = name;
-    // One surface per group: eleven envelopes are a list, not eleven cards.
-    const rows = document.createElement('div');
-    rows.className = 'list';
-    for (const e of list) rows.appendChild(envelopeRow(e));
-    band.append(h, rows);
-    $('bands').appendChild(band);
+  // The check against the account is about the savings envelopes together, wherever they sit: under the last category.
+  if (result.savings) $('bands').appendChild(savingsCheckLine(result.savings));
+  const orphans = result.envelopes.filter((e) => !known.has(e.category));
+  if (orphans.length) {
+    const rows = node('div', 'list');
+    for (const e of orphans) rows.appendChild(envelopeRow(e));
+    $('bands').appendChild(node('div', 'band')).appendChild(rows);
   }
-  if (saved.length) $('bands').appendChild(savingsBand(saved, result.savings));
   if (envelopePage?.view === 'envelope') renderEnvelopePage();
   else if (rowFocus && !envelopePage) $('bands').querySelector(`[data-envelope="${CSS.escape(rowFocus)}"]`)?.focus({ preventScroll: true });
 }
 
-/** The envelopes saved in Savings, and under them what Savings showed against them. */
-function savingsBand(list, check) {
+/**
+ * One category: its heading (in `.band-head`, where its menu goes), then its envelopes as one list, or
+ * "No envelopes yet" while it has none. One surface per category: eleven envelopes are a list, not eleven cards.
+ */
+function categoryBand(c, list) {
   const band = node('div', 'band');
+  band.dataset.category = c.id;
+  const head = node('div', 'band-head');
+  head.appendChild(node('h2', '', c.label));
+  band.appendChild(head);
+  if (!list.length) {
+    band.appendChild(node('p', 'quiet', 'No envelopes yet'));
+    return band;
+  }
   const rows = node('div', 'list');
   for (const e of list) rows.appendChild(envelopeRow(e));
-  band.append(node('h2', '', 'Saved in Savings'), rows);
-  if (!check) return band;
+  band.appendChild(rows);
+  return band;
+}
+
+/** What Savings showed against the envelopes saved in it, under the last category. */
+function savingsCheckLine(check) {
   // Short is said in the overspent colour; anything that cannot be compared says what is missing, and where.
   const line = node('p', `savings-check ${check.status}`);
   line.append(check.words.held, ' ');
   if (check.words.showed) line.append(check.words.showed, ' ');
   line.appendChild(node('b', '', check.words.verdict));
   if (check.status === 'no-account' || check.status === 'no-balance' || check.status === 'stale') {
-    const go = node('button', 'link', 'Settings');
+    const go = node('button', 'link hit', 'Settings');
     go.type = 'button';
-    go.addEventListener('click', () => void openSettings('household', 'budget'));
+    go.addEventListener('click', () => void openSettings('household', 'savings'));
     line.appendChild(go);
   }
-  band.appendChild(line);
-  return band;
+  return line;
 }
 
 /**
@@ -4785,8 +4729,9 @@ function envBar(e, tag, cls) {
  * spaces between the columns are there for that, and take no room in the grid.
  */
 function envelopeRow(e) {
-  const row = node('button', `erow${e.needsFigure ? ' needs-figure' : e.short ? ' short' : ''}`);
-  row.type = 'button';
+  // A removed envelope a closed month keeps is history: the same row, marked removed, that opens nothing.
+  const row = node(e.removed ? 'div' : 'button', `erow${e.removed ? ' removed' : e.needsFigure ? ' needs-figure' : e.short ? ' short' : ''}`);
+  if (!e.removed) row.type = 'button';
   // So the card, Today and Back can find the row an envelope is drawn in.
   row.dataset.envelope = e.id;
   // Funded with what was carried in: what "left of" and "spent of" are measured against.
@@ -4812,9 +4757,12 @@ function envelopeRow(e) {
     sub = `left of ${F}`;
   }
   const left = node('span', 'erow-l');
-  left.append(node('span', 'erow-name', e.label), ' ', envBar(e, 'span', 'bar'));
+  const label = node('span', 'erow-name', e.label);
+  if (e.removed) label.append(' ', node('span', 'erow-removed', 'removed'));
+  left.append(label, ' ', envBar(e, 'span', 'bar'));
   const right = node('span', 'erow-r');
   right.append(node('span', `erow-amt${tone}`, amt), ' ', node('span', 'erow-sub', sub));
+  if (e.removed) { row.append(left, ' ', right); return row; }
   row.append(left, ' ', right, icon('go', 'i sm chev'));
   row.addEventListener('click', () => { openEnvelopePage(e.id); });
   return row;
@@ -4858,7 +4806,7 @@ function coverBlock(e) {
       for (const x of buttons) x.disabled = true;
       msg.textContent = '';
       try {
-        await approveNow(tool, { budget: month.budget, month: month.month, ...args });
+        await approveNow(tool, { month: month.month, ...args });
       } catch (ex) {
         // Covered already, by another tap or another member: the screen is out
         // of date, so it is read again and says why nothing moved.
@@ -5089,7 +5037,7 @@ function envFigureForm(e, { amount = '', per = 'month', question = false, onCanc
     try {
       // A figure typed as a monthly goes as a monthly alone, which clears an old basis.
       await approveNow('set_envelope_figure', {
-        budget: month.budget, envelope: e.id, month: month.month,
+        envelope: e.id, month: month.month,
         ...(got.per === 'month' ? { amountCents: got.amountCents } : { basis: { amountCents: got.amountCents, per: got.per } }),
       });
     } catch (ex) {
@@ -5257,19 +5205,14 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
 $('ta-next').addEventListener('click', () => { if (month?.card?.next) openEnvelopePage(month.card.next); });
 
 /**
- * From a notice on Today: the budget it is about chosen, the Budget screen
- * shown, and the envelope's page opened, at its cover or its figure.
+ * From a notice on Today or a row on the Calendar: the Budget screen shown, and
+ * the envelope's page opened, at its cover, its bills or its figure.
  */
-async function openBudgetAt(budget, envelope, focus) {
-  if (budget && budget !== chosenBudget()) {
-    localStorage.setItem('budget', budget);
-    $('budget-pick').value = budget;
-    markChosenBudget();
-    month = null;
-  }
+async function openBudgetAt(envelope, focus) {
   await showView('budget');
-  if (!envelope || view !== 'budget' || month?.budget !== chosenBudget()) return;
-  if (!month.envelopes.some((x) => x.id === envelope)) return;
+  if (!envelope || view !== 'budget' || !month) return;
+  // A removed envelope a closed month keeps has no page to open.
+  if (!month.envelopes.some((x) => x.id === envelope && !x.removed)) return;
   openEnvelopePage(envelope, { linked: true, focus: focus === true || focus === 'cover' ? 'cover' : focus === 'bills' ? 'bills' : null });
   if (focus === 'bills') $('env-page').querySelector('[data-key="bills"]')?.scrollIntoView({ block: 'start' });
 }
@@ -5476,10 +5419,10 @@ function openFundingPage() {
       // Moving between envelopes is zero-sum and leaves the month's total alone; assigning changes it.
       const { proposal } = from.value
         ? await api('/api/tools/move_money', {
-          budget: month.budget, month: month.month, from: from.value, to: e.id, amountCents: delta, why: reason,
+          month: month.month, from: from.value, to: e.id, amountCents: delta, why: reason,
         })
         : await api('/api/tools/set_assignment', {
-          budget: month.budget, month: month.month, envelope: e.id, toCents: t, why: reason,
+          month: month.month, envelope: e.id, toCents: t, why: reason,
         });
       if (envelopePage !== page) return;
       save.disabled = false;
@@ -5540,7 +5483,7 @@ function openRemovePage() {
     if (!reason) { say('Say why, in one line.'); why.focus({ preventScroll: true }); return; }
     go.disabled = true;
     try {
-      const { proposal } = await api('/api/tools/remove_envelope', { budget: month.budget, envelope: e.id, why: reason });
+      const { proposal } = await api('/api/tools/remove_envelope', { envelope: e.id, why: reason });
       if (envelopePage !== page) return;
       go.disabled = false;
       // The row to land on, read before the commit takes this one out of the list.
@@ -5644,7 +5587,7 @@ async function goalForm(slot, e, { onCancel }) {
   go.addEventListener('click', async () => {
     msg.textContent = '';
     try {
-      const args = { budget: month.budget, envelope: e.id, goal: kind.value };
+      const args = { envelope: e.id, goal: kind.value };
       if (kind.value === 'by') {
         const t = toCents(target.value);
         if (!Number.isFinite(t) || t <= 0) { target.focus(); throw new Error('The target is a dollar amount, like 4000'); }
@@ -5856,7 +5799,7 @@ function billForm(e, b, { close }) {
   acts.appendChild(cancel);
   const save = node('button', 'btn primary', 'Save');
   save.type = 'submit';
-  const base = { budget: month.budget, envelope: e.id };
+  const base = { envelope: e.id };
   const buttons = () => [...form.querySelectorAll('button')];
 
   // One door for save, clear and remove: a refusal is told in the form's own slot, what was typed kept.
@@ -5947,7 +5890,7 @@ async function loadUnsorted() {
   // rule says to divide; nothing is asked of Claude.
   const [{ result }, { options, toDivide }] = await Promise.all([
     api('/api/tools/list_transactions', { uncategorizedOnly: true, limit: 50 }),
-    api('/api/match', { budget: chosenBudget() || null, txnIds: [] }),
+    api('/api/match', { txnIds: [] }),
   ]);
   // A household left meanwhile: its receipts are not drawn into the next one's Budget.
   if (turn !== householdTurn) return;
@@ -6052,7 +5995,7 @@ async function loadUnsorted() {
       ask.disabled = true;
       ask.textContent = 'Asking Claude…';
       try {
-        const r = await api('/api/match', { budget: chosenBudget() || null, txnIds: rows.map((x) => x.id) });
+        const r = await api('/api/match', { txnIds: rows.map((x) => x.id) });
         let n = 0;
         for (const row of rows) {
           const s = r.suggestions[row.id];
@@ -6111,82 +6054,22 @@ async function loadUnsorted() {
   box.appendChild(go);
 }
 
-// ── which budget am I looking at ───────────────────────────────────────────
+// ── reading the screen again ───────────────────────────────────────────────
 //
-// Kept in the browser rather than the log. Two people can reasonably be looking
-// at different budgets at the same time — that is a view, not shared state, and
-// writing it to the log would put a preference in the household's history.
-let budgets = [];
+// The household has one budget. Its facts the head and the other screens lean
+// on (this month, where it is, the months open, whether it is started) are read
+// once per load and again after any change that could move them.
+/** `GET /api/budget`: { thisMonth, lastIncomeExact, location, envelopes, months, started }; empty until read. */
 let budgetMeta = {};
-const chosenBudget = () => localStorage.getItem('budget') || '';
 
-async function loadBudgets() {
+async function loadBudgetMeta() {
   const turn = householdTurn;
-  const data = await api('/api/budgets');
+  const data = await api('/api/budget');
   if (turn !== householdTurn) return;
-  budgets = data.budgets;
   budgetMeta = data;
-  const sel = $('budget-pick');
-  const live = budgets.filter((b) => !b.archived);
-  // With no budget to name, the head's menu would be a chevron alone over the row below it.
-  $('budget-menu-btn').closest('.menu').hidden = !live.length;
-  sel.textContent = '';
-  for (const b of live) {
-    const o = document.createElement('option');
-    o.value = b.id;
-    o.textContent = b.label;
-    sel.appendChild(o);
-  }
-  // A remembered choice that has since been archived should not strand you on
-  // a budget the switcher no longer offers. And the first-time default has to
-  // be a budget with a month actually open — picking blindly landed on one
-  // a house they have not moved into, and every screen failed.
-  if (!live.some((b) => b.id === chosenBudget())) {
-    const thisMonth = budgetMeta.thisMonth;
-    const best = live.find((b) => b.months.includes(thisMonth))
-      ?? live.find((b) => b.months.length)
-      ?? live[0];
-    localStorage.setItem('budget', best?.id ?? '');
-  }
-  sel.value = chosenBudget();
-
-  // The switcher's choices, as menu items that drive the select above.
-  const sw = $('budget-switch');
-  sw.textContent = '';
-  for (const b of live) {
-    const it = document.createElement('button');
-    it.type = 'button';
-    it.className = 'menu-item';
-    it.setAttribute('role', 'menuitemradio');
-    it.dataset.budget = b.id;
-    it.textContent = b.label;
-    it.addEventListener('click', () => {
-      if (b.id === chosenBudget()) return;
-      sel.value = b.id;
-      sel.dispatchEvent(new Event('change'));
-    });
-    sw.appendChild(it);
-  }
-  markChosenBudget();
 }
 
-/** The header names the budget being looked at, and the menu ticks it. */
-function markChosenBudget() {
-  const id = chosenBudget();
-  $('budget-label').textContent = budgets.find((b) => b.id === id)?.label ?? 'Budget';
-  for (const it of $('budget-switch').children) it.setAttribute('aria-checked', String(it.dataset.budget === id));
-}
-
-$('budget-pick').addEventListener('change', async (ev) => {
-  localStorage.setItem('budget', ev.target.value);
-  markChosenBudget();
-  month = null;
-  // Another budget's list: an envelope page open on this one has nothing to show.
-  clearEnvelopePage();
-  await refresh();
-});
-
-/** Reload whatever screen is showing, for the budget now chosen. */
+/** Reload whatever screen is showing. */
 async function refresh() {
   $('app-err').textContent = '';
   $('app-err').hidden = true;
@@ -6215,29 +6098,27 @@ function showProblem(ex) {
   }
   // The picker is already on its way (see api()); an error box under it would only confuse.
   if (/^no household is open/.test(ex.message)) return;
-  // "No budget yet" and "no open month" are Today's and Budget's to say: the
+  // "Not started" and "no open month" are Today's and Budget's to say: the
   // Plan board and the Calendar have nothing to do with either.
-  if (/no budgets yet|no open month|no months are open/i.test(ex.message)
-      && !(view === 'today' || BUDGET_SUBS.includes(view))) return;
+  const budgetWords = /not started yet|no open month|no months are open/i;
+  if (budgetWords.test(ex.message) && !(view === 'today' || BUDGET_SUBS.includes(view))) return;
   const box = $('app-err');
   box.textContent = '';
   box.hidden = false;
   // Pink for what went wrong; a quiet panel for "here is what to do next".
-  box.className = /no budgets yet|no open month|no months are open/i.test(ex.message) ? 'prompt' : 'err';
-  // A brand new household has no budget. The Budget screen is where one is made,
-  // as the first step of its walkthrough.
-  if (/no budgets yet/i.test(ex.message)) {
-    box.append('This household has no budget yet. ', textBtn('Open Budget', 'btn', null, () => showView('budget')));
+  box.className = budgetWords.test(ex.message) ? 'prompt' : 'err';
+  // A brand new household's budget is started on the Budget screen, by its walkthrough.
+  if (/not started yet/i.test(ex.message)) {
+    box.append('The budget is not started yet. ', textBtn('Open Budget', 'btn', null, () => showView('budget')));
     return;
   }
   // Two wordings for the same state: the briefing says "no open month", the
   // month itself says "no months are open". Both get the way forward.
   if (!/no open month|no months are open/i.test(ex.message)) { box.textContent = ex.message; return; }
 
-  const b = budgets.find((x) => x.id === chosenBudget());
-  box.textContent = `${b?.label ?? 'This budget'} has no plan for this month yet. `;
+  box.textContent = 'The budget has no plan for this month yet. ';
   // With no envelopes there is nothing to open it from: its walkthrough starts with the month.
-  if (b && !b.envelopes) {
+  if (budgetMeta.envelopes === 0) {
     if (view !== 'budget') box.appendChild(textBtn('Open Budget', 'btn', null, () => showView('budget')));
     return;
   }
@@ -6251,9 +6132,7 @@ function showProblem(ex) {
     open.disabled = true;
     said.textContent = '';
     try {
-      const { proposal } = await api('/api/tools/open_month', {
-        budget: chosenBudget(), month: budgetMeta.thisMonth,
-      });
+      const { proposal } = await api('/api/tools/open_month', { month: budgetMeta.thisMonth });
       box.textContent = '';
       const ul = document.createElement('ul');
       ul.className = 'effects';
@@ -6268,7 +6147,7 @@ function showProblem(ex) {
       go.addEventListener('click', async () => {
         go.disabled = true;
         await api('/api/commit', { proposalId: proposal.id });
-        await loadBudgets();
+        await loadBudgetMeta();
         await refresh();
       });
       box.append(ul, go);
@@ -6284,7 +6163,7 @@ function showProblem(ex) {
   // With envelopes but no income source the server refuses the template; the
   // Budget screen holds the income step that makes it possible.
   if (view !== 'budget') {
-    box.append(' ', textBtn('Open Budget', 'btn', null, () => void openBudgetAt(b?.id, null, false)));
+    box.append(' ', textBtn('Open Budget', 'btn', null, () => void openBudgetAt(null, false)));
   }
 }
 
@@ -6314,8 +6193,7 @@ function drawWalk(fr) {
   const alone = fr.step === 'income' && fr.hasEnvelopes;
   $('walk').classList.toggle('alone', alone);
   $('walk').querySelector('.walk-rail').hidden = alone;
-  const label = budgets.find((b) => b.id === fr.budget)?.label ?? 'this budget';
-  $('walk-h').textContent = alone ? `Open ${monthLong(fr.month)} for ${label}` : "Start the household's budget";
+  $('walk-h').textContent = alone ? `Open ${monthLong(fr.month)}` : "Start the household's budget";
   if (alone) {
     walkIncomeEdit = null;
     $('walk-step').replaceChildren(walkIncomeStep(fr));
@@ -6419,7 +6297,7 @@ function walkBudgetStep() {
         budget: id, label: where || postal, ...(postal ? { postal } : {}), why: 'set when the budget was made',
       }).catch((ex) => { refused = ex; });
     }
-    await loadBudgets();
+    await loadBudgetMeta();
     await loadBudget();
     if (refused) showProblem(refused);
   });
@@ -6476,7 +6354,7 @@ function walkIncomeStep(fr) {
       return;
     }
     walkIncomeEdit = null;
-    await loadBudgets();
+    await loadBudgetMeta();
     await loadBudget();
   }
 
@@ -6583,7 +6461,7 @@ function walkEnvelopesStep(fr) {
     } catch (ex) { msg.textContent = ex.message; count(); return; }
     walkDraft = null;
     pricingFor = fr.budget;
-    await loadBudgets();
+    await loadBudgetMeta();
     await loadBudget();
     window.scrollTo({ top: 0 });
   });
@@ -6599,14 +6477,14 @@ function walkPricingStep(fr) {
   const h = node('h3', '', 'Looking up what this place costs…');
   card.appendChild(h);
   el.append(node('h2', '', 'Pricing'), card);
-  // As a visit to the Budget screen does it: the budgets and the month read again, the
+  // As a visit to the Budget screen does it: the budget's facts and the month read again, the
   // screen drawn once the month is here, and a refusal said rather than left blank.
   const finish = async () => {
     pricingFor = null;
     $('manage-panel').textContent = '';
     $('loading').hidden = false;
     try {
-      await loadBudgets();
+      await loadBudgetMeta();
       await loadBudget();
     } catch (ex) { showProblem(ex); }
     finally { $('loading').hidden = true; }
@@ -6644,10 +6522,10 @@ function walkPricingStep(fr) {
   return el;
 }
 
-// ── managing budgets and envelopes ─────────────────────────────────────────
+// ── adding envelopes and categories ────────────────────────────────────────
 //
-// Everything here is a proposal. Changing an envelope changes only this
-// budget's reading of the ledger; the receipts underneath never move.
+// The panels the menus open, and the proposal a panel shows before anything is
+// written. Changing an envelope never moves the receipts underneath.
 function panel(title, fields, onSubmit, opts = {}) {
   const box = $('manage-panel');
   box.textContent = '';
@@ -6768,7 +6646,7 @@ function showManageProposal(card, row, proposal,
         m.textContent = done;
         $('manage-panel').appendChild(m);
       }
-      await loadBudgets();
+      await loadBudgetMeta();
       await refresh();
     } catch (ex) { yes.textContent = ex.message; }
   });
@@ -6797,7 +6675,6 @@ $('env-new').addEventListener('click', async () => {
     return {
       tool: 'define_envelope',
       args: {
-        budget: month.budget,
         envelope: i.label.value.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 16),
         label: i.label.value, group: i.group.value,
         categories: [...i.categories.selectedOptions].map((o) => o.value),
@@ -6813,9 +6690,6 @@ $('inc-toggle').addEventListener('click', () => {
   $('income-sec').hidden = !open;
   $('inc-toggle').setAttribute('aria-expanded', String(open));
 });
-
-// The note about spending no envelope covers offers the fix, not just the fact.
-$('outside-add').addEventListener('click', () => $('env-new').click());
 
 // Categories are the household's, so they open from its menu, at the top of
 // whichever screen is showing.
@@ -6855,24 +6729,6 @@ $('cat-close').addEventListener('click', () => {
   backFromSheet();
 });
 
-$('bud-new').addEventListener('click', () => {
-  panel('New budget', [
-    { name: 'label', label: 'Name', placeholder: 'e.g. Moving between' },
-    { name: 'copyFrom', label: 'Start from', options: [{ value: '', label: 'Empty' },
-      ...budgets.filter((b) => !b.archived).map((b) => ({ value: b.id, label: b.label }))] },
-  ], (i) => ({
-    tool: 'create_budget',
-    args: { label: i.label.value, ...(i.copyFrom.value ? { copyFrom: i.copyFrom.value } : {}) },
-  }));
-});
-
-$('bud-rename').addEventListener('click', () => {
-  const b = budgets.find((x) => x.id === chosenBudget());
-  panel('Rename this budget', [
-    { name: 'label', label: 'Name', value: b?.label ?? '' },
-  ], (i) => ({ tool: 'rename_budget', args: { budget: chosenBudget(), label: i.label.value } }));
-});
-
 // Categories are household facts. Adding one is safe; nothing can be deleted,
 // because receipts name their category and an unresolvable one is worse than
 // an unused one.
@@ -6888,7 +6744,7 @@ async function loadIncome() {
   const turn = householdTurn;
   let result;
   try {
-    ({ result } = await api('/api/tools/plan_income', { budget: chosenBudget(), months: 6 }));
+    ({ result } = await api('/api/tools/plan_income', { months: 6 }));
   } catch (ex) {
     if (turn !== householdTurn) return;
     throw ex;
@@ -6969,7 +6825,7 @@ $('inc-new').addEventListener('click', () => {
   ], (i) => ({
     tool: 'define_income_source',
     args: {
-      budget: chosenBudget(), label: i.label.value, earner: i.earner.value.trim().toLowerCase(),
+      label: i.label.value, earner: i.earner.value.trim().toLowerCase(),
       amountCents: toCents(i.amount.value), frequency: i.frequency.value, anchor: i.anchor.value.trim(),
     },
   }));
@@ -6999,7 +6855,7 @@ $('inc-what-if').addEventListener('click', () => {
     go.disabled = true;
     try {
       const { result } = await api('/api/tools/plan_income', {
-        budget: chosenBudget(), months: 12,
+        months: 12,
         imagine: [{
           label: inputs[0].value || 'a new income',
           earner: inputs[1].value.trim().toLowerCase() || undefined,
@@ -7023,25 +6879,24 @@ $('inc-what-if').addEventListener('click', () => {
   row.append(go, cancel);
 });
 
-// ── where a budget is, and what that place costs ────────────────────────────
+// ── where it is, and what that place costs ─────────────────────────────────
 //
-// A budget differs from another by being somewhere else. Recording the place is
-// what makes public cost data findable; the data is evidence about a place, and
-// never a prediction about this household.
+// Recording where the household is makes public cost data findable; the data is
+// evidence about a place, and never a prediction about this household.
 $('bud-where').addEventListener('click', () => {
-  const b = budgets.find((x) => x.id === chosenBudget());
-  panel(`Where is ${b?.label ?? 'this budget'} for`, [
-    { name: 'label', label: 'Place', value: b?.location?.label ?? '', placeholder: 'e.g. Springfield, IL — blank if it is a period, not a place' },
-    { name: 'postal', label: 'ZIP', value: b?.location?.postal ?? '', placeholder: 'unlocks rent data' },
+  const loc = budgetMeta.location;
+  panel('Where it is', [
+    { name: 'label', label: 'Place', value: loc?.label ?? '', placeholder: 'e.g. Springfield, IL' },
+    { name: 'postal', label: 'ZIP', value: loc?.postal ?? '', placeholder: 'unlocks rent data' },
     // Left blank rather than filled with the current codes: whatever is sent is
     // kept as typed, so a changed ZIP would otherwise keep the old county.
     { name: 'stateFips', label: 'Census state code', placeholder: 'found from the ZIP — only to override' },
     { name: 'countyFips', label: 'Census county code', placeholder: 'found from the ZIP — only to override' },
-    { name: 'why', label: 'Why', placeholder: 'e.g. this is the house we are moving to', wide: true },
+    { name: 'why', label: 'Why', placeholder: 'e.g. we moved', wide: true },
   ], (i) => ({
-    tool: 'set_budget_location',
+    tool: 'set_location',
     args: {
-      budget: chosenBudget(), label: i.label.value.trim(),
+      label: i.label.value.trim(),
       ...(i.postal.value.trim() ? { postal: i.postal.value.trim() } : {}),
       ...(i.stateFips.value.trim() ? { stateFips: i.stateFips.value.trim() } : {}),
       ...(i.countyFips.value.trim() ? { countyFips: i.countyFips.value.trim() } : {}),
@@ -7064,7 +6919,7 @@ $('bud-seed').addEventListener('click', async () => {
   try {
     // Straight to the proposal: the evidence and the figures it implies belong
     // on the same screen, so a number is never read without its source.
-    const { proposal } = await api('/api/tools/seed_from_location', { budget: chosenBudget() });
+    const { proposal } = await api('/api/tools/seed_from_location', {});
     h.textContent = proposal.summary;
     const row = document.createElement('div');
     row.className = 'row';
@@ -7127,26 +6982,16 @@ $('month-close').addEventListener('click', () => {
       wide: true },
   ], (i) => ({
     tool: 'close_month',
-    args: { budget: month.budget, month: month.month, closed: closing, why: i.why.value },
+    args: { month: month.month, closed: closing, why: i.why.value },
   }));
 });
 
 $('month-discard').addEventListener('click', () => {
   panel(`Discard ${monthLong(month.month)}'s plan`, [
-    { name: 'why', label: 'Why', placeholder: 'e.g. opened against the wrong budget', wide: true },
+    { name: 'why', label: 'Why', placeholder: 'e.g. opened too early', wide: true },
   ], (i) => ({
     tool: 'discard_month',
-    args: { budget: month.budget, month: month.month, why: i.why.value },
-  }));
-});
-
-$('bud-archive').addEventListener('click', () => {
-  const b = budgets.find((x) => x.id === chosenBudget());
-  panel(`Archive ${b?.label ?? 'this budget'}`, [
-    { name: 'why', label: 'Why', placeholder: 'e.g. we have moved, this is history now', wide: true },
-  ], (i) => ({
-    tool: 'archive_budget',
-    args: { budget: chosenBudget(), archived: true, why: i.why.value },
+    args: { month: month.month, why: i.why.value },
   }));
 });
 
@@ -7166,8 +7011,8 @@ async function showReceipts(body, e) {
     // The picker's options come with the receipts, so Edit opens at once. They
     // are only for editing: if they cannot be read the receipts still show.
     const [{ result }, picker] = await Promise.all([
-      api('/api/tools/explain_envelope', { budget: month.budget, month: month.month, envelope: e.id }),
-      api('/api/match', { budget: month.budget, txnIds: [] }).catch(() => null),
+      api('/api/tools/explain_envelope', { month: month.month, envelope: e.id }),
+      api('/api/match', { txnIds: [] }).catch(() => null),
     ]);
     if (gone()) return;
     const options = picker?.options ?? null;
@@ -7326,7 +7171,7 @@ $('file').addEventListener('change', async (ev) => {
     // kilobytes, so multipart parsing on the server buys nothing.
     const content = await file.text();
     const got = await api('/api/import/preview', {
-      filename: file.name, content, ...(chosenBudget() ? { budget: chosenBudget() } : {}),
+      filename: file.name, content,
     });
     // Read for a household since left: not this one's preview.
     if (turn !== householdTurn) return;
@@ -7675,7 +7520,6 @@ $('imp-commit').addEventListener('click', async () => {
     const out = await api('/api/import/commit', {
       rows: preview.rows, source: preview.filename, balances: preview.balances ?? [],
       ...(typed !== null ? { savingsToday: typed } : {}),
-      ...(preview.budget ? { budget: preview.budget } : {}),
     });
     // What a person kept of the model's: an envelope accepted, or a split it suggested, divided.
     const kept = preview.rows.filter((r) => (r.suggestedBy === 'claude' && r.category)
@@ -7882,149 +7726,6 @@ let categoriesCache = null;
 async function categoryList() {
   if (!categoriesCache) categoriesCache = (await api('/api/categories')).categories;
   return categoriesCache;
-}
-
-// ── comparison: what the move actually costs ───────────────────────────────
-//
-// Templates, not one month. A single month is whatever happened to happen in it;
-// the template is what the budget claims a month should cost, and that is the
-// thing you can compare across places you have not lived yet.
-function fillComparePickers() {
-  const live = budgets.filter((b) => !b.archived);
-  // Start from where you are and compare against somewhere else. Comparing
-  // the place you might move to against the place you live is the wrong way
-  // round — the budget you are living in is the baseline.
-  const here = chosenBudget();
-  const there = live.find((b) => b.id !== here)?.id ?? here;
-  for (const [id, preferred] of [['cmp-a', here], ['cmp-b', there]]) {
-    const sel = $(id);
-    const keep = sel.value;
-    sel.textContent = '';
-    for (const b of live) {
-      const o = document.createElement('option');
-      o.value = b.id;
-      o.textContent = b.label;
-      sel.appendChild(o);
-    }
-    sel.value = live.some((b) => b.id === keep) ? keep : preferred;
-  }
-}
-
-/**
- * Picking the budget that is already on the other side swaps them.
- *
- * The alternative is a dead end telling you to pick something else, when what
- * you plainly meant was "the other way round".
- */
-const onPick = (mine, other) => () => {
-  if ($(mine).value === $(other).value) {
-    const prev = [...$(other).options].map((o) => o.value)
-      .find((v) => v !== $(mine).value);
-    if (prev) $(other).value = prev;
-  }
-  void loadCompare();
-};
-$('cmp-a').addEventListener('change', onPick('cmp-a', 'cmp-b'));
-$('cmp-b').addEventListener('change', onPick('cmp-b', 'cmp-a'));
-
-async function loadCompare() {
-  const a = $('cmp-a').value;
-  const b = $('cmp-b').value;
-  const out = $('cmp-out');
-  out.textContent = '';
-  if (!a || !b) return;
-  if (a === b) {
-    out.innerHTML = '<p class="quiet">Pick two different budgets.</p>';
-    return;
-  }
-
-  // Answered, or refused, for a household since left: nothing drawn and nothing said.
-  const turn = householdTurn;
-  let result;
-  try {
-    ({ result } = await api('/api/tools/compare_budgets', { a, b }));
-  } catch (ex) {
-    if (turn !== householdTurn) return;
-    throw ex;
-  }
-  if (turn !== householdTurn) return;
-  const diff = toCents(result.monthlyDifference);
-
-  const verdict = document.createElement('div');
-  verdict.className = 'verdict';
-  const k = document.createElement('div');
-  k.className = 'k';
-  k.textContent = `${result.labels[b]} against ${result.labels[a]}, every month`;
-  const big = document.createElement('div');
-  big.className = `big ${diff > 0 ? 'more' : diff < 0 ? 'less' : ''}`;
-  // "more" and "less" carry the direction, so the number must not carry it too:
-  // "-$2,194 less" is a double negative that reads as costing more.
-  big.textContent = diff === 0
-    ? 'the same'
-    : `${result.monthlyDifference.replace('-', '')} ${diff > 0 ? 'more' : 'less'}`;
-  const year = document.createElement('div');
-  year.className = 'k';
-  year.textContent = diff === 0 ? `Both plans cost ${result.monthlyTotal[a]} a month.`
-    : `${result.monthlyDifferenceExact.replace('-', '')} a month, ${result.annualDifference.replace('-', '')} a year. `
-      + `The plan goes from ${result.monthlyTotal[a]} to ${result.monthlyTotal[b]} a month.`;
-  verdict.append(k, big, year);
-
-  // What it costs is half the question. Whether it fits is the other half.
-  const afford = document.createElement('div');
-  afford.className = 'afford';
-  for (const id of [a, b]) {
-    const f = result.affordability[id];
-    const span = document.createElement('span');
-    if (f.income === null) {
-      span.className = 'quiet';
-      span.textContent = `${result.labels[id]}: no income recorded`;
-    } else {
-      span.className = f.covered ? 'yes' : 'no';
-      span.textContent = f.covered
-        ? `${result.labels[id]}: covered, ${f.gap} spare in the leanest month`
-        : `${result.labels[id]}: short ${f.gap} in the leanest month`;
-    }
-    afford.appendChild(span);
-  }
-  verdict.appendChild(afford);
-  out.appendChild(verdict);
-
-  const table = document.createElement('table');
-  table.className = 'cmp';
-  const head = table.insertRow();
-  for (const h of ['Envelope', result.labels[a], result.labels[b], 'Difference']) {
-    const th = document.createElement('th');
-    th.textContent = h;
-    head.appendChild(th);
-  }
-
-  // Grouped the way the Budget screen groups, biggest movement first inside
-  // each band — the order the rows already arrive in.
-  const bands = new Map();
-  for (const r of result.byEnvelope) {
-    if (!bands.has(r.group)) bands.set(r.group, []);
-    bands.get(r.group).push(r);
-  }
-  for (const [band, rows] of bands) {
-    const br = table.insertRow();
-    br.className = 'band';
-    const cell = br.insertCell();
-    cell.colSpan = 4;
-    cell.textContent = band;
-
-    for (const r of rows) {
-      const tr = table.insertRow();
-      if (r.onlyIn) tr.className = 'only';
-      tr.insertCell().textContent = r.label;
-      tr.insertCell().textContent = r[a];
-      tr.insertCell().textContent = r[b];
-      const d = tr.insertCell();
-      const n = toCents(r.differenceExact);
-      d.className = n > 0 ? 'more' : n < 0 ? 'less' : '';
-      d.textContent = n === 0 ? '—' : r.difference;
-    }
-  }
-  out.appendChild(table);
 }
 
 // ── plan: the board and the card ───────────────────────────────────────────
@@ -10034,8 +9735,7 @@ function moneySection(v) {
 
 function moneyRows(v) {
   const rows = [];
-  const env = v.envelope ? budgets.find((b) => b.id === v.envelope.budget) : null;
-  rows.push(kv('Envelope', v.money?.label ?? (v.envelope ? `In ${env?.label ?? 'a budget'}; this month isn't open` : null)));
+  rows.push(kv('Envelope', v.money?.label ?? (v.envelope ? "This month isn't open" : null)));
   if (v.money) rows.push(kv('Left this month', v.money.left));
   rows.push(kv('Estimated cost', v.estimate == null ? null : dollars(v.estimate)));
   if (v.money?.monthsAtFunding != null) {
@@ -10047,24 +9747,17 @@ function moneyRows(v) {
 async function moneyForm(v, sec, btn) {
   btn.hidden = true;
   const form = node('form', 'sec-form');
-  const budgetSel = node('select', 'input');
   const envSel = node('select', 'input');
   const est = node('input', 'input');
   est.inputMode = 'decimal';
   est.placeholder = 'e.g. 4000';
   if (v.estimate != null) est.value = String(v.estimate / 100);
-  for (const b of budgets.filter((x) => !x.archived)) {
-    const o = node('option', '', b.label);
-    o.value = b.id;
-    budgetSel.appendChild(o);
-  }
-  if (v.envelope) budgetSel.value = v.envelope.budget;
   const msg = node('p', 'msg');
   // Whether the envelope picker holds a real choice: a list that loaded, and
   // someone picked from it. Otherwise Save leaves the plan's envelope alone.
   let listed = false;
   let picked = false;
-  // A budget's envelopes come from its open month: the same list the Budget screen shows.
+  // The envelopes come from the open month: the same list the Budget screen shows, a removed one's history left out.
   const fillEnvelopes = async () => {
     listed = false;
     envSel.textContent = '';
@@ -10072,21 +9765,20 @@ async function moneyForm(v, sec, btn) {
     none.value = '';
     envSel.appendChild(none);
     msg.textContent = '';
-    if (!budgetSel.value) return;
     try {
-      const { result } = await api('/api/tools/get_month', { budget: budgetSel.value });
+      const { result } = await api('/api/tools/get_month', {});
       for (const e of result.envelopes) {
+        if (e.removed) continue;
         const o = node('option', '', `${e.label} · ${e.left} left`);
         o.value = e.id;
         envSel.appendChild(o);
       }
-      if (v.envelope?.budget === budgetSel.value) envSel.value = v.envelope.envelope;
+      if (v.envelope) envSel.value = v.envelope;
       listed = true;
     } catch (ex) {
       msg.textContent = `Its envelopes can't be listed: ${ex.message}`;
     }
   };
-  budgetSel.addEventListener('change', () => { picked = true; void fillEnvelopes(); });
   envSel.addEventListener('change', () => { picked = true; });
   const lab = (text, el) => { const l = node('label', '', text); l.appendChild(el); return l; };
   const save = node('button', 'btn primary', 'Save');
@@ -10096,9 +9788,7 @@ async function moneyForm(v, sec, btn) {
     const raw = est.value.trim();
     const estimateCents = raw === '' ? null : toCents(raw);
     if (Number.isNaN(estimateCents) || estimateCents < 0) { msg.textContent = 'The estimate is a dollar amount, like 4000'; return; }
-    const envelope = picked && listed
-      ? { envelope: envSel.value ? { budget: budgetSel.value, envelope: envSel.value } : null }
-      : {};
+    const envelope = picked && listed ? { envelope: envSel.value || null } : {};
     save.disabled = true;
     void cardEdit(() => api(planPath(v.id), { ...envelope, estimateCents })).finally(() => { save.disabled = false; });
   });
@@ -10110,7 +9800,7 @@ async function moneyForm(v, sec, btn) {
   form.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); closeMoney(); } });
   const acts = node('div', 'actions');
   acts.append(save, cancelMoney);
-  form.append(lab('Budget', budgetSel), lab('Envelope', envSel), lab('Estimated cost, in dollars', est), msg, acts);
+  form.append(lab('Envelope', envSel), lab('Estimated cost, in dollars', est), msg, acts);
   sec.appendChild(form);
   await fillEnvelopes();
 }
@@ -11356,7 +11046,7 @@ function budgetForm() {
       onSave: (v) => {
         const c = toCents(v.amount);
         if (!Number.isFinite(c)) { pageErr(new Error('The balance is a dollar amount, like 12500.00')); return false; }
-        return saveSettings('/api/settings/savings/balance', { cents: c, ...(chosenBudget() ? { budget: chosenBudget() } : {}) },
+        return saveSettings('/api/settings/savings/balance', { cents: c },
           undefined, 'savings-balance');
       },
     }));
@@ -12019,7 +11709,7 @@ function membersItem() {
             { name: 'member', label: 'Their DSM account name', placeholder: 'exactly as it is on the NAS', key: 'member-invite' },
             { name: 'why', label: 'Why', placeholder: 'e.g. my partner' },
           ],
-          notes: [node('p', 'note', `They will see everything in ${here}, every budget, envelope and receipt, and can change it. The log records that you added them, and why.`)],
+          notes: [node('p', 'note', `They will see everything in ${here}, its budget, envelopes and receipts, and can change it. The log records that you added them, and why.`)],
           submit: 'Invite', cancel: null, autofocus: false, cls: 'invite',
           onSave: (v) => changeMembers('POST', v, 'member-invite', `${v.member.toLowerCase()} can now open ${here}.`),
         }));
@@ -12165,9 +11855,9 @@ function restoreForm() {
       return;
     }
     pick.done = done.restored;
-    // What was taken may hold areas, links or budgets: read them again, then say what was done.
+    // What was taken may hold areas, links or the budget: read them again, then say what was done.
     try { settingsData = await api('/api/settings'); keepFilesFrom(settingsData); renderHouseholdApps(); } catch { /* the next visit reads them */ }
-    try { await loadBudgets(); } catch { /* Budget reads them again when opened */ }
+    try { await loadBudgetMeta(); } catch { /* Budget reads them again when opened */ }
     if (restorePick === pick && settingsPage === page) {
       redrawPage();
       settingsHost().querySelector('.set-page .set-done')?.focus({ preventScroll: true });
@@ -12202,7 +11892,7 @@ function removeItem() {
     key: 'remove', title: 'Remove this household', list: true, status: '',
     line: 'For good, for everyone in it. A backup is the only way back.',
     body: () => [
-      node('p', 'note', "This deletes the household's log: its budgets, receipts, plans, rules, members and history. "
+      node('p', 'note', "This deletes the household's log: its budget, receipts, plans, rules, members and history. "
         + 'Everyone in it is signed out of it and lands on Choose a household.'),
       // What it leaves alone sits under the field, still above the button: the field opens in the top half of a phone.
       fieldsForm({
@@ -13031,8 +12721,7 @@ async function loadCalendar(weekStart) {
   const mine = ++calFetch;
   $('loading').hidden = false;
   try {
-    const budget = chosenBudget();
-    const r = await api(`/api/calendar?start=${days[0]}&end=${addDayKey(calWeek, 7)}${budget ? `&budget=${encodeURIComponent(budget)}` : ''}`);
+    const r = await api(`/api/calendar?start=${days[0]}&end=${addDayKey(calWeek, 7)}`);
     // Another week was asked for while this one was on its way: that one is drawn, not this.
     if (mine !== calFetch) return;
     // A day was pressed on the old strip while this week was on its way: the card is of a day in this week.
@@ -13098,8 +12787,7 @@ async function openPicker(month) {
   const from = calGridFrom;
   $('loading').hidden = false;
   try {
-    const budget = chosenBudget();
-    const r = await api(`/api/calendar?start=${from}&end=${addDayKey(from, 42)}${budget ? `&budget=${encodeURIComponent(budget)}` : ''}`);
+    const r = await api(`/api/calendar?start=${from}&end=${addDayKey(from, 42)}`);
     if (mine !== calFetch) return;
     calGridData = { ...r, week: from };
     renderCalendar();
@@ -13308,7 +12996,7 @@ function moneyBox(m) {
   const el = node('button', `ev money hit${m.kind === 'paid' ? ' paid' : m.kind === 'short' ? ' short' : quietBill(m) ? ' autopay' : ''}`);
   el.type = 'button';
   el.setAttribute('aria-label', moneyWords(m));
-  el.addEventListener('click', () => { void openBudgetAt(m.budget, m.envelope, m.kind === 'short' && m.over ? 'cover' : 'bills'); });
+  el.addEventListener('click', () => { void openBudgetAt(m.envelope, m.kind === 'short' && m.over ? 'cover' : 'bills'); });
   let top;
   let under;
   if (m.kind === 'paid') {
@@ -13445,7 +13133,7 @@ const eventCls = (e) => [e.proposed ? 'proposed' : '', e.drift ? 'drift' : '', e
 
 function moneyRow(m) {
   const base = { slot: laneIcon('budget'), title: m.label, words: moneyWords(m),
-    open: () => openBudgetAt(m.budget, m.envelope, m.kind === 'short' && m.over ? 'cover' : 'bills') };
+    open: () => openBudgetAt(m.envelope, m.kind === 'short' && m.over ? 'cover' : 'bills') };
   if (m.kind === 'short') {
     return calRow({ ...base, when: [KIND_WORDS[m.billKind], dayShort(m.billDay)], figure: m.over ? `${m.over} over` : `${m.left} left`, figCls: 'cal-short',
       sub: m.bills > 1 ? `${m.bills} bills, about ${m.about}` : `${m.name}, about ${m.about}` });
@@ -14057,7 +13745,7 @@ $('cal-new').addEventListener('click', () => {
 //
 // The screens, as a list. A shell shared with other household apps nests
 // these under one of its own tabs by changing this list, not the markup.
-// Budget holds three screens (Budget, Import, Compare), picked by the row at
+// Budget holds two screens (Budget and Import), picked by the row at
 // its top; Settings is a screen no tab names, reached from the household's menu.
 const TABS = [
   { view: 'today', label: 'Today', glyph: 'sun' },
@@ -14065,10 +13753,10 @@ const TABS = [
   { view: 'calendar', label: 'Calendar', glyph: 'calendar' },
   { view: 'budget', label: 'Budget', glyph: 'wallet' },
 ];
-const BUDGET_SUBS = ['budget', 'import', 'compare'];
-/** The tab a screen belongs to: a card is part of Plan; Import and Compare are part of Budget. */
+const BUDGET_SUBS = ['budget', 'import'];
+/** The tab a screen belongs to: a card is part of Plan; Import is part of Budget. */
 const tabOf = (v) => (v === 'plan-card' ? 'plan' : BUDGET_SUBS.includes(v) ? 'budget' : v);
-/** Which of Budget's three was last looked at on this device: a view, not shared state. */
+/** Which of Budget's two was last looked at on this device: a view, not shared state. Compare, remembered from before 0.10.0, is Budget. */
 function budgetSub() {
   try {
     const v = localStorage.getItem('hp.budgetTab');
@@ -14134,7 +13822,6 @@ async function showView(next) {
   // On Budget, loadBudget shows either the envelopes or the walkthrough, whichever this budget is at.
   if (view !== 'budget') { $('budget').hidden = true; $('walk').hidden = true; }
   $('import').hidden = view !== 'import';
-  $('compare').hidden = view !== 'compare';
   $('plan').hidden = view !== 'plan';
   $('plan-card').hidden = view !== 'plan-card';
   $('calendar').hidden = view !== 'calendar';
@@ -14143,11 +13830,6 @@ async function showView(next) {
   if (view === 'calendar') await loadCalendar(calWeek ?? todayKey());
   if (view === 'plan-card') { await loadCard(); window.scrollTo({ top: 0 }); }
   if (view === 'settings') { window.scrollTo({ top: 0 }); await loadSettings(); }
-  if (view === 'compare') {
-    $('loading').hidden = false;
-    try { fillComparePickers(); await loadCompare(); } catch (ex) { showProblem(ex); }
-    finally { $('loading').hidden = true; }
-  }
   if (view === 'budget') {
     $('loading').hidden = false;
     try { await loadBudget(); } catch (ex) { showProblem(ex); }
@@ -14265,25 +13947,22 @@ function forgetHousehold() {
   walkDraft = null;
   walkFr = null;
   categoriesCache = null;
-  budgets = [];
   budgetMeta = {};
-  $('budget-label').textContent = '';
+  $('budget-month').textContent = '';
   $('where-note').textContent = '';
-  $('budget-switch').textContent = '';
-  $('budget-pick').textContent = '';
   $('toassign').className = 'toassign';
   for (const id of ['ta-v', 'ta-line', 'ta-green', 't-income', 't-funded', 't-spent', 'inc-list', 'inc-projection',
-    'outside-note', 'unsorted-q', 'bands', 'month-note', 'walk-steps', 'walk-step']) $(id).textContent = '';
-  for (const id of ['ta-next', 'outside-box', 'unsorted-q', 'month-sec']) $(id).hidden = true;
+    'unsorted-q', 'bands', 'month-note', 'walk-steps', 'walk-step']) $(id).textContent = '';
+  for (const id of ['ta-next', 'unsorted-q', 'month-sec']) $(id).hidden = true;
   $('cat-sec').hidden = true;
   $('cat-list').textContent = '';
   $('manage-panel').textContent = '';
-  // Import's file and what it found, and Compare's pickers and verdict.
+  // Import's file and what it found.
   preview = null;
   $('file').value = '';
   for (const id of ['imp-err', 'imp-rules', 'imp-skipped', 'imp-sugg', 'imp-bal']) { $(id).textContent = ''; $(id).hidden = true; }
   $('imp-result').hidden = true;
-  for (const id of ['c-found', 'c-dupes', 'c-ruled', 'c-needs', 'imp-rows', 'imp-commit', 'imp-note', 'cmp-a', 'cmp-b', 'cmp-out']) $(id).textContent = '';
+  for (const id of ['c-found', 'c-dupes', 'c-ruled', 'c-needs', 'imp-rows', 'imp-commit', 'imp-note']) $(id).textContent = '';
 
   // Calendar: a week still out draws nothing, and nothing of the last one is kept. The week looked at stays.
   calFetch++;
@@ -14337,7 +14016,7 @@ function onlyToday() {
   forgetHousehold();
   view = 'today';
   settingsFrom = 'today';
-  for (const id of ['budget', 'walk', 'import', 'compare', 'plan', 'plan-card', 'calendar', 'settings', 'budget-head']) $(id).hidden = true;
+  for (const id of ['budget', 'walk', 'import', 'plan', 'plan-card', 'calendar', 'settings', 'budget-head']) $(id).hidden = true;
   $('briefing').hidden = false;
   markTabs();
 }
@@ -14537,7 +14216,7 @@ async function enterApp() {
   todayText = fmtDate(new Date().toLocaleDateString('en-CA'));
   $('today-date').textContent = pageWords();
   $('households').hidden = true;
-  await loadBudgets();
+  await loadBudgetMeta();
   if (turn !== householdTurn) return null;
   $('who').textContent = who.sandbox ? `${who.who}, in the sandbox` : `Signed in as ${who.who} on the NAS`;
   $('me-disc').textContent = (who.who || '?').slice(0, 1).toUpperCase();
