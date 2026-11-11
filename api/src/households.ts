@@ -193,7 +193,7 @@ export class Households {
    * When it is someone else, the people are left behind. Membership is the one
    * band of the model that is local to a server: those names are DSM accounts
    * on the machine the backup came from, and they may not exist here. What
-   * travels is the money — facts, budgets and months — under a claim by
+   * travels is the money — facts, budget and months — under a claim by
    * whoever holds the file, written before every carried line so their own
    * lines and the money fold. A carried line the fold still refuses because
    * its author, or whom it asks or hands a plan to, is not a member here is

@@ -19,7 +19,7 @@
 import { apply, guestEmail, needsMember, ReplayError, validate } from './replay.ts';
 import { goalSpelling, sameGoal, shelfGoals } from './plan-rules.ts';
 import type { ShelfView } from './plan-rules.ts';
-import { areaIndex, areaMoved, CONFIG_OPS, isGuest, RETIRED_OPS, SYSTEM } from './types.ts';
+import { areaIndex, areaMoved, billSlot, CONFIG_OPS, isGuest, RETIRED_OPS, SYSTEM } from './types.ts';
 import type { Event, State } from './types.ts';
 
 export type Scope = 'facts' | 'budget' | 'months' | 'people' | 'thread' | 'settings' | 'plans' | 'bookings';
@@ -138,14 +138,22 @@ export function unreadableBackup(b: ParsedBackup): string | null {
 }
 
 /**
- * Whether a household's budget has nothing in it yet: no category, envelope,
- * income source or bill, no location, and no month opened. Only such a budget
- * takes a backup's in place, since a household has one and two are never merged.
+ * Whether a household's budget has nothing in it yet: no category, envelope
+ * (live or removed), income source or bill, no location, and no month opened.
+ * Only such a budget takes a backup's in place, since a household has one and
+ * two are never merged. A removed envelope counts: its id is reserved here,
+ * and a backup naming it again would be refused by the fold in its own words.
  */
-export function budgetIsEmpty(s: Pick<State, 'categories' | 'envelopes' | 'incomeSources' | 'bills' | 'location' | 'months'>): boolean {
-  return s.categories.size === 0 && s.envelopes.size === 0 && s.incomeSources.size === 0
+export function budgetIsEmpty(s: Pick<State, 'categories' | 'envelopes' | 'removedEnvelopes' | 'incomeSources' | 'bills' | 'location' | 'months'>): boolean {
+  return s.categories.size === 0 && s.envelopes.size === 0 && s.removedEnvelopes.size === 0 && s.incomeSources.size === 0
     && s.bills.size === 0 && s.location === null && s.months.size === 0;
 }
+
+/** "1 receipt", "2 receipts". */
+const counted = (k: number, one: string, many: string): string => `${k} ${k === 1 ? one : many}`;
+/** "a", "a and b", "a, b and c". */
+const listed = (parts: readonly string[]): string =>
+  parts.length < 2 ? (parts[0] ?? '') : `${parts.slice(0, -1).join(', ')} and ${parts.at(-1)!}`;
 
 /**
  * The order lines are written in: each Budget line ahead of the receipts and
@@ -156,6 +164,8 @@ export function budgetIsEmpty(s: Pick<State, 'categories' | 'envelopes' | 'incom
  * month opened takes the envelopes there at that moment, and an envelope
  * removed keeps the months closed at that moment), and an envelope's removal
  * never past a rule, which it is refused beside. Each band keeps its own order.
+ * So restored lines can sit out of date order in the log; nothing in the fold
+ * reads the order of their times, only the order of the lines.
  */
 function budgetFirst(events: readonly Event[]): Event[] {
   const passes = (line: Event, earlier: Event) => scopeOf(earlier) === 'facts'
@@ -306,7 +316,13 @@ export function planRestore(
   // Months line left is a second budget's, and lands only where the budget is
   // still empty. Said once, whichever of the two bands brought it.
   const budgetLines = take.some((e) => scopeOf(e) === 'budget' || scopeOf(e) === 'months');
-  if (budgetLines && !budgetIsEmpty(target)) {
+  // Receipts and rules are sorted into envelopes. Without the Budget band, into
+  // a budget with none, they would all land in To sort. Into an empty budget
+  // that is a missing prerequisite (below); into one that is not empty,
+  // choosing Budget too would only collide, so it is the collision alone.
+  const needEnvelopes = !wanted.has('budget') && target.envelopes.size === 0
+    && take.some((e) => scopeOf(e) === 'facts' && e.op !== 'account.balance');
+  if ((budgetLines || needEnvelopes) && !budgetIsEmpty(target)) {
     collisions.push({ kind: 'budget', what: 'the budget', why: 'This household already has a budget. Restore it as a new household instead.' });
   }
 
@@ -551,12 +567,10 @@ export function planRestore(
         : `requests from ${email} need them on the guest list, which is not here and not in the backup`);
     }
   }
-  // Receipts and rules are sorted into envelopes. Into a budget with none, and
-  // without the Budget band, they would all land in To sort: named instead. One
-  // naming an envelope that is not here, where there are envelopes, is legal,
-  // and lands in To sort.
-  if (!wanted.has('budget') && target.envelopes.size === 0
-    && take.some((e) => scopeOf(e) === 'facts' && e.op !== 'account.balance')) {
+  // Receipts into an empty budget need the Budget band (`needEnvelopes`, above).
+  // One naming an envelope that is not here, where there are envelopes, is
+  // legal, and lands in To sort.
+  if (needEnvelopes && budgetIsEmpty(target)) {
     missingPrerequisites.push("Receipts and rules are sorted into envelopes, and this household's budget has none yet: "
       + 'choose Budget too, or restore it as a new household.');
   }
@@ -604,20 +618,37 @@ export function planRestore(
   }
   if (counts.facts) {
     const receipts = take.reduce((n, e) => n + (e.op === 'txn.add' ? e.txns.length : 0), 0);
-    summary.push(`${receipts} receipts, and the rules that sort them`);
+    summary.push(`${counted(receipts, 'receipt', 'receipts')}, and the rules that sort them`);
   }
   if (counts.budget) {
-    // What the budget will hold: the envelopes and categories the lines leave standing.
+    // What the budget will hold: what its lines leave standing, each part
+    // named only when there is some of it.
     const envelopes = new Set<string>();
     const categories = new Set<string>();
+    const sources = new Set<string>();
+    const bills = new Set<string>();
+    let located = false;
     for (const e of take) {
       if (e.op === 'envelope.define') envelopes.add(e.envelope);
-      else if (e.op === 'envelope.remove') envelopes.delete(e.envelope);
-      else if (e.op === 'category.add') categories.add(e.category);
+      else if (e.op === 'envelope.remove') {
+        envelopes.delete(e.envelope);
+        for (const b of bills) if (b.startsWith(billSlot(e.envelope, ''))) bills.delete(b);
+      } else if (e.op === 'category.add') categories.add(e.category);
       else if (e.op === 'category.remove') categories.delete(e.category);
+      else if (e.op === 'income.source.define') sources.add(e.source);
+      else if (e.op === 'income.source.remove') sources.delete(e.source);
+      else if (e.op === 'bill.set') bills.add(billSlot(e.envelope, e.bill));
+      else if (e.op === 'bill.remove') bills.delete(billSlot(e.envelope, e.bill));
+      else if (e.op === 'household.locate') located = e.location !== null;
     }
-    const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
-    summary.push(`the budget: ${n(envelopes.size, 'envelope', 'envelopes')} in ${n(categories.size, 'category', 'categories')}`);
+    const parts: string[] = [];
+    if (envelopes.size) parts.push(`${counted(envelopes.size, 'envelope', 'envelopes')} in ${counted(categories.size, 'category', 'categories')}`);
+    else if (categories.size) parts.push(`${counted(categories.size, 'category', 'categories')} with no envelopes yet`);
+    if (sources.size) parts.push(counted(sources.size, 'income source', 'income sources'));
+    if (bills.size) parts.push(counted(bills.size, 'bill', 'bills'));
+    if (located) parts.push('where the household is');
+    summary.push(parts.length ? `the budget: ${listed(parts)}`
+      : `the budget: ${counted(counts.budget, 'line', 'lines')} that leave nothing standing in it`);
   }
   if (counts.months) {
     const opened = take.filter((e) => e.op === 'month.open').length;

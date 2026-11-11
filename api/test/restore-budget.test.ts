@@ -71,7 +71,7 @@ describe('restoring a budget', () => {
     const { home, backup, fresh } = await setUp();
     const plan = planRestore(fresh.state, backup, ['facts', 'budget', 'months'], await fresh.ids());
     assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
-    assert.ok(plan.summary.includes('the budget: 2 envelopes in 1 category'), plan.summary.join(' | '));
+    assert.ok(plan.summary.includes('the budget: 2 envelopes in 1 category and where the household is'), plan.summary.join(' | '));
     await fresh.adopt(eventsToApply(plan));
     assert.deepEqual([...fresh.state.envelopes], [...home.state.envelopes]);
     assert.deepEqual([...fresh.state.categories], [...home.state.categories]);
@@ -107,6 +107,48 @@ describe('restoring a budget', () => {
     await other.adopt(eventsToApply(facts));
     assert.deepEqual([...other.state.envelopes.keys()], ['rent'], 'no envelope of the backup came with them');
     assert.deepEqual([...toSort(other.state).txnIds].sort(), ['t1', 't2']);
+  });
+
+  test('a household that added and removed its only envelope already has a budget, in the same words', async () => {
+    const { hh, backup } = await setUp();
+    const { store: emptied } = await hh.create('alice', 'Emptied');
+    await emptied.append('alice', [
+      { op: 'category.add', category: 'food', label: 'Food' },
+      { op: 'envelope.define', envelope: 'groceries', label: 'Groceries', category: 'food', template: parseDollars('600.00'), order: 0 },
+      { op: 'envelope.remove', envelope: 'groceries', why: 'starting again' },
+      { op: 'category.remove', category: 'food' },
+    ]);
+    assert.deepEqual([emptied.state.categories.size, emptied.state.envelopes.size, emptied.state.removedEnvelopes.size], [0, 0, 1]);
+    assert.equal(budgetIsEmpty(emptied.state), false);
+    const plan = planRestore(emptied.state, backup, ['facts', 'budget', 'months'], await emptied.ids());
+    assert.deepEqual([plan.collisions.map((c) => [c.kind, c.why]), plan.missingPrerequisites], [[['budget', ALREADY]], []],
+      'the spec\'s sentence, not the fold\'s words about a removed id');
+  });
+
+  test('receipts into a budget that is not empty but has no envelopes: the collision alone, never "choose Budget too"', async () => {
+    const { hh, backup } = await setUp();
+    const { store: headings } = await hh.create('alice', 'Headings only');
+    await headings.append('alice', { op: 'category.add', category: 'home', label: 'Home' });
+    const ids = await headings.ids();
+    for (const scopes of [['facts'], ['facts', 'months']] as const) {
+      const plan = planRestore(headings.state, backup, [...scopes], ids);
+      assert.deepEqual([plan.collisions.map((c) => c.why), plan.missingPrerequisites], [[ALREADY], []], scopes.join('+'));
+      assert.throws(() => eventsToApply(plan), /collision/);
+    }
+  });
+
+  test('the summary names what the Budget band brings, and no part it has none of', async () => {
+    const hh = await households();
+    const { store: src } = await hh.create('alice', 'Placed');
+    await src.append('alice', [
+      { op: 'household.locate', location: { label: 'Springfield, IL', postal: '62701' }, why: 'where we live' },
+      { op: 'income.source.define', source: 'pay', label: 'Pay', earner: 'alice', amount: parseDollars('5000.00'), frequency: 'monthly', anchor: '2026-11-01' },
+    ]);
+    const fresh = (await hh.create('alice', 'Fresh')).store;
+    const said = (backup: ParsedBackup) => planRestore(fresh.state, backup, ['budget']).summary.filter((l) => l.startsWith('the budget'));
+    assert.deepEqual(said(await backupOf(src)), ['the budget: 1 income source and where the household is']);
+    await src.append('alice', { op: 'category.add', category: 'kids', label: 'Children' });
+    assert.deepEqual(said(await backupOf(src)), ['the budget: 1 category with no envelopes yet, 1 income source and where the household is']);
   });
 
   test('a budget is empty only with no categories, envelopes, income sources, bills, location or months', async () => {

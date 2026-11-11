@@ -165,7 +165,7 @@ describe('a backup is the log', () => {
     assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
     assert.equal(plan.counts.budget, 0);
     assert.equal(plan.counts.months, 0);
-    assert.equal(plan.summary[0], '1 receipts, and the rules that sort them');
+    assert.equal(plan.summary[0], '1 receipt, and the rules that sort them');
     await store.append('bob', eventsToApply(plan) as never);
     assert.equal(store.state.txns.size, 1);
     assert.deepEqual([...store.state.envelopes.keys()], ['rent'], 'its own budget, and no other');
