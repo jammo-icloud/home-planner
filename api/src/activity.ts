@@ -95,6 +95,38 @@ export function envelopeBefores(log: readonly Event[]): Map<string, EnvelopeBefo
   return out;
 }
 
+/** Names as a list, "A, B and C", at most six of them and then "and N more". */
+function names(xs: readonly string[]): string {
+  const shown = xs.length > 6 ? xs.slice(0, 6) : xs;
+  const rest = xs.length - shown.length;
+  if (rest) return `${shown.join(', ')} and ${rest} more`;
+  return shown.length < 2 ? shown.join('') : `${shown.slice(0, -1).join(', ')} and ${shown.at(-1)}`;
+}
+
+/**
+ * Several envelope defines written together, as one line that names every envelope: the ones
+ * added ("added the envelopes Rent, Groceries and Dining under Home" when they share a category),
+ * then the ones changed, each by what it did when there are only a few.
+ */
+function envelopesLine(group: readonly Event[], state: State, befores: ReadonlyMap<string, EnvelopeBefore>): string {
+  const defines = group.filter((e): e is Extract<Event, { op: 'envelope.define' }> => e.op === 'envelope.define');
+  const added = defines.filter((e) => befores.get(e.id) === null);
+  const changed = defines.filter((e) => befores.get(e.id) !== null);
+  const parts: string[] = [];
+  if (added.length) {
+    const cats = new Set(added.map((e) => e.category));
+    const under = cats.size === 1 ? ` under ${state.categories.get(added[0]!.category)?.label ?? added[0]!.category}` : '';
+    parts.push(added.length === 1 ? describe(added[0]!, state, null).what
+      : `added the envelopes ${names(added.map((e) => e.label))}${under}`);
+  }
+  if (changed.length) {
+    parts.push(changed.length <= 3
+      ? changed.map((e) => describe(e, state, befores.get(e.id)).what).join('; ')
+      : `changed the envelopes ${names(changed.map((e) => e.label))}`);
+  }
+  return parts.join('; ');
+}
+
 /**
  * Every change anyone made directly, one line per decision, oldest first.
  *
@@ -119,7 +151,9 @@ export function changes(
     const removed = e.op === 'txn.remove' ? findRemoved(meaningful, e.txn, state) : undefined;
     out.push({
       id: e.id, at: e.at, who: e.who,
-      what: group.length > 1 ? `${d.what} (${group.length} times)` : d.what,
+      what: group.length === 1 ? d.what
+        : e.op === 'envelope.define' ? envelopesLine(group, state, befores)
+        : `${d.what} (${group.length} times)`,
       why: d.why, count: group.length, events: group,
       ...(removed ? { removed } : {}),
     });

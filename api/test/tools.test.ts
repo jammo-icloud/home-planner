@@ -12,7 +12,7 @@ import {
 import { SEARCH_KINDS } from '../src/search.ts';
 import { NotAllowed, SessionLost, SynologyError } from '../src/synology.ts';
 import type { EnvelopeBefore, Proposal, ToolContext } from '../src/tools.ts';
-import { changes } from '../src/activity.ts';
+import { changes, envelopeBefores } from '../src/activity.ts';
 import { monthView } from '../src/envelopes.ts';
 import { INCOME, TRANSFER, SPLIT } from '../src/types.ts';
 import * as edits from '../src/plan-edits.ts';
@@ -421,6 +421,47 @@ describe('with the household at hand, a sentence uses names', () => {
       ['added the envelope Gym under People', 'renamed the envelope Gym to Fitness', 'set Fitness to $40.00 a month']);
     // Given only the latest event, the log's record is still found when the whole log is passed.
     assert.deepEqual(changes(log.slice(-1), c.store.state, log).map((r) => r.what), ['set Fitness to $40.00 a month']);
+  });
+
+  test('envelopes written together, as first run writes them, are each named on the one line', async () => {
+    const c = await ctx();
+    const env = (id: string, label: string, category: string) =>
+      ({ op: 'envelope.define' as const, envelope: id, label, category, template: parseDollars('0.00'), needsFigure: true as const });
+    const lineFor = async (events: ReturnType<typeof env>[]) => {
+      const before = (await c.store.since(null)).length;
+      await c.store.append('alice', events);
+      const log = await c.store.since(null);
+      return changes(log.slice(before), c.store.state, log).map((r) => r.what);
+    };
+    assert.deepEqual(await lineFor([env('rent', 'Rent', 'house'), env('repairs', 'Repairs', 'house'), env('water', 'Water', 'house')]),
+      ['added the envelopes Rent, Repairs and Water under House']);
+    assert.deepEqual(await lineFor([env('groceries', 'Groceries', 'people'), env('elec', 'Electricity', 'house')]),
+      ['added the envelopes Groceries and Electricity']);
+    const many = ['A1', 'A2', 'A3', 'A4', 'A5', 'A6', 'A7', 'A8'].map((l) => env(l.toLowerCase(), l, 'people'));
+    assert.deepEqual(await lineFor(many), ['added the envelopes A1, A2, A3, A4, A5, A6 and 2 more under People']);
+    // Changes written together say each one while they are few, and name them all when they are many.
+    assert.deepEqual(await lineFor([{ ...env('rent', 'Housing', 'house') }, { ...env('water', 'Water', 'people') }]),
+      ['renamed the envelope Rent to Housing; put Water under People']);
+    assert.deepEqual(await lineFor(many.slice(0, 4).map((e) => ({ ...e, label: `${e.label}x` }))),
+      ['changed the envelopes A1x, A2x, A3x and A4x']);
+  });
+
+  test('an envelope removed and its name added again reads as added, and the old record is left as it was', async () => {
+    const c = await ctx();
+    const before = (await c.store.since(null)).length;
+    await c.store.append('alice', { op: 'envelope.define', envelope: 'gym', label: 'Gym', category: 'people', template: parseDollars('40.00') });
+    await c.store.append('alice', { op: 'envelope.remove', envelope: 'gym', why: 'cancelled the membership' });
+    await c.store.append('bob', { op: 'envelope.define', envelope: 'gym-2', label: 'Gym', category: 'people', template: parseDollars('0.00') });
+    const log = await c.store.since(null);
+    assert.deepEqual(changes(log.slice(before), c.store.state, log).map((r) => r.what),
+      ['added the envelope Gym under People', 'removed envelope Gym', 'added the envelope Gym under People']);
+    const befores = envelopeBefores(log);
+    const [first, again] = log.filter((e) => e.op === 'envelope.define' && e.label === 'Gym');
+    assert.equal(befores.get(first!.id), null);
+    assert.equal(befores.get(again!.id), null, 'gym-2 has no earlier record of its own');
+    const old = c.store.state.removedEnvelopes.get('gym');
+    assert.deepEqual([old?.label, old?.category], ['Gym', 'people'], "the old Gym's record is untouched");
+    assert.equal(c.store.state.envelopes.get('gym-2')?.template, parseDollars('0.00'));
   });
 
   test('a removed envelope reads by the name it had', async () => {
