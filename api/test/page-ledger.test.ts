@@ -643,7 +643,8 @@ const ADDED_010: readonly Line[] = [
   ['B70', "approveNow('set_location'", 'budget'], ['B70', 'walkWhereSkipped = true', 'budget'],
   ['B73', 'for (const [gi, g] of fr.categories.entries())', 'budget'], ['B73', 'categoryField(fr.categories', 'budget'],
   // Two rows Task 10 carried without a pin, so the completeness test below finds every row: Import's rules offered one by one.
-  ['B58', 'void ruleOffer(item, { match, envelope: r.envelope, label, txnId: r.id }', 'budget'],
+  ['B58', 'void ruleOffer(item, { match, envelope: r.envelope, label, txnId: r.id, quietRefusal: true }', 'budget'],
+  ['B58', 'if (turn !== householdTurn || (first && quietRefusal)) return false;', 'budget'],
   // The final review: the rule's words are a field a person may change, and a refusal is said under it, never nothing.
   ['B42', "epField('Receipts whose payee contains', text)", 'budget'], ['B42', "({ proposal } = await ask(typed));", 'budget'],
   ['B42', 'if (first) say(first.message);', 'budget'],

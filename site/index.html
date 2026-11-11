@@ -6126,15 +6126,16 @@ const ruleFor = (row) => row.rule || ruleSuggestion(row.payee);
  * starts from, in a field a person may change; `envelope` is where it sorts to and `label` its name. add_rule only
  * proposes: it is asked once when the offer is drawn, and a refusal (a rule there already, receipts filed elsewhere)
  * is said under the field, which stays editable. "Show the rule" asks with what is typed and shows what the rule
- * would do; only "Remember it" keeps it, and changing the text puts the shown rule away. Answers whether the offer
- * was drawn; `onDone` hears 'remembered' or 'dismissed' once it is answered.
+ * would do; only "Remember it" keeps it, and changing the text puts the shown rule away. With `quietRefusal`
+ * (Import, which offers one per payee), an offer refused as first offered is not drawn at all. Answers whether the
+ * offer was drawn; `onDone` hears 'remembered' or 'dismissed' once it is answered.
  */
-async function ruleOffer(box, { match, envelope, label, txnId }, onDone = () => {}) {
+async function ruleOffer(box, { match, envelope, label, txnId, quietRefusal = false }, onDone = () => {}) {
   const turn = householdTurn;
   const ask = (text) => api('/api/tools/add_rule', { match: text, envelope, ...(txnId ? { txnId } : {}) });
   let first = null;
   try { await ask(match); } catch (ex) { first = ex; }
-  if (turn !== householdTurn) return false;
+  if (turn !== householdTurn || (first && quietRefusal)) return false;
   // A household left, or the offer put away, while a press was out: nothing is drawn there.
   const gone = () => turn !== householdTurn || !box.isConnected;
   const q = node('p', 'quiet', envelope === '__split' ? 'Always ask to divide receipts like this one?' : `Remember this for ${label}?`);
@@ -8217,7 +8218,7 @@ $('imp-commit').addEventListener('click', async () => {
 /**
  * Suggestions someone accepted, offered as rules so the same payee is sorted by
  * rule next time and Claude is asked less: one offer per payee text, each shown
- * and kept on its own (ruleOffer). One the server refuses as offered says why under its field, which can be changed.
+ * and kept on its own (ruleOffer). One the server refuses as offered is not drawn, so Import never fills with refusals.
  */
 function offerRules(rows, options) {
   const box = $('imp-rules');
@@ -8238,7 +8239,7 @@ function offerRules(rows, options) {
     const item = node('div', 'rule-offer');
     box.appendChild(item);
     const label = options.find((o) => o.value === r.envelope)?.label ?? r.envelope;
-    void ruleOffer(item, { match, envelope: r.envelope, label, txnId: r.id }, (outcome) => {
+    void ruleOffer(item, { match, envelope: r.envelope, label, txnId: r.id, quietRefusal: true }, (outcome) => {
       if (outcome !== 'dismissed') return;
       item.remove();
       const next = settle()[0]?.querySelector('button');
