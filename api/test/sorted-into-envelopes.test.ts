@@ -119,6 +119,19 @@ describe('removing an envelope', () => {
     assert.equal(monthView(s, '2026-11')!.envelopes.find((e) => e.envelope.id === 'dining')!.activity, 5000);
     assert.equal(monthView(s, '2026-11')!.envelopes.some((e) => e.envelope.id === 'gym'), false);
   });
+  test("To sort's money out is a split's missing part, not the whole receipt; a whole receipt counts whole", () => {
+    // g11 is $40 whole; b11 is $80 of which $50 already counts in Dining, so only the Gym part's $30 is in no envelope.
+    assert.equal(toSort(removed()).outflow, 7000);
+  });
+  test('a fixed charge counts only receipts that count in an envelope: kept months, never To sort', () => {
+    const gym = (id: string, date: string) => [add(t(id, date, 'EXAMPLE GYM', '-40.00')), sortTo(id, 'gym')];
+    const s = house([...gym('g9', '2026-09-05'), ...gym('g10', '2026-10-05'), ...gym('g11', '2026-11-05'),
+      ev({ op: 'month.close', month: '2026-10', closed: true, why: 'done' }),
+      ev({ op: 'envelope.remove', envelope: 'gym', why: 'cancelled' })]);
+    assert.deepEqual(fixedCharges(s).map((f) => [f.key, f.months]), [['example gym|gym', ['2026-09', '2026-10']]]);
+    const nowhere = house(['2026-09-05', '2026-10-05', '2026-11-05'].map((d, i) => add({ ...t(`n${i}`, d, 'EXAMPLE GYM', '-40.00'), envelope: 'nowhere' })));
+    assert.deepEqual(fixedCharges(nowhere), [], 'an envelope that never was here gives no charge');
+  });
   test('a month closed after the removal keeps its receipts in To sort; a kept month reopened sends them there too', () => {
     const later = apply(removed(), [ev({ op: 'month.close', month: '2026-11', closed: true, why: 'done' })]);
     assert.ok(toSort(later).txnIds.includes('g11'));

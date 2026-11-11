@@ -93,8 +93,9 @@ export function fixedCharges(
   const byPayee = new Map<string, Charge[]>();
   for (const t of state.txns.values()) {
     if (t.amount >= 0) continue;
-    // transfers, income, splits and unsorted rows are not charges
-    if (!isSpend(t.envelope)) continue;
+    // transfers, income, splits and unsorted rows are not charges; nor is a
+    // receipt To sort holds, as it counts in no envelope
+    if (!isSpend(t.envelope) || inToSort(state, t)) continue;
     const key = chargeKey(t.payee, t.envelope);
     if (!key) continue;
     (byPayee.get(key) ?? byPayee.set(key, []).get(key)!).push({ t, envelope: t.envelope, amount: t.amount });
@@ -619,7 +620,7 @@ export function billsExpected(bills: readonly Bill[], month: Month): Cents {
 
 export interface ToSort {
   readonly count: number;
-  /** Money out. This is the figure that means "spending not yet accounted for". */
+  /** Money out. This is the figure that means "spending not yet accounted for": of a split held for a part, that part alone. */
   readonly outflow: Cents;
   /** Money in — paycheques and card payments that just haven't been ruled yet. */
   readonly inflow: Cents;
@@ -659,14 +660,19 @@ export function toSort(state: State): ToSort {
   let inflow = ZERO;
   let oldest: Day | null = null;
   for (const t of state.txns.values()) {
+    // A split held for a part: only that part's money is in no envelope; its other parts count where they are.
+    let amount = t.amount;
     if (t.envelope !== null) {
       const gone = missingParts(state, t);
       if (!gone.length) continue;
-      if (t.envelope === SPLIT) missing.set(t.id, gone);
+      if (t.envelope === SPLIT) {
+        missing.set(t.id, gone);
+        amount = (t.split ?? []).filter((p) => gone.includes(p.envelope)).reduce((n, p) => add(n, p.amount), ZERO);
+      }
     }
     ids.push(t.id);
-    if (t.amount < 0) outflow = add(outflow, cents(-t.amount));
-    else inflow = add(inflow, cents(t.amount));
+    if (amount < 0) outflow = add(outflow, cents(-amount));
+    else inflow = add(inflow, cents(amount));
     if (!oldest || t.date < oldest) oldest = t.date;
   }
   return { count: ids.length, outflow, inflow, oldest, txnIds: ids, missing };
