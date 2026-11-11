@@ -621,7 +621,7 @@ describe('drift on Today', () => {
     assert.ok(none.json.summary.includes('Every line selected from this backup is already here: there is nothing to restore.'), JSON.stringify(none.json.summary));
   });
 
-  test('facts restored in place twice: the second preview says there is nothing to restore, and the restore takes nothing', async () => {
+  test('receipts and their budget restored in place twice: the second preview says there is nothing to restore, and the restore takes nothing', async () => {
     await household('Facts twice');
     const s = new Store({ path: join(await mkdtemp(join(tmpdir(), 'pb-restore-facts-')), 'events.jsonl') });
     await s.load();
@@ -629,15 +629,15 @@ describe('drift on Today', () => {
     await s.append('alice', [{ op: 'category.add', category: 'food', label: 'Groceries' },
       { op: 'txn.add', txns: [{ id: 'srv-t1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 'srv-t1', envelope: 'food' }] }]);
     const content = await readFile(s.path, 'utf8');
-    const first = await as(aliceDsm, 'POST', '/api/restore/preview', { content, scopes: ['facts'] });
+    const first = await as(aliceDsm, 'POST', '/api/restore/preview', { content, scopes: ['facts', 'budget'] });
     assert.equal(first.json.canApply, true, JSON.stringify(first.json));
-    assert.equal((await as(aliceDsm, 'POST', '/api/restore', { content, scopes: ['facts'] })).status, 200);
-    const again = await as(aliceDsm, 'POST', '/api/restore/preview', { content, scopes: ['facts'] });
+    assert.equal((await as(aliceDsm, 'POST', '/api/restore', { content, scopes: ['facts', 'budget'] })).status, 200);
+    const again = await as(aliceDsm, 'POST', '/api/restore/preview', { content, scopes: ['facts', 'budget'] });
     assert.equal(again.status, 200);
     assert.equal(again.json.canApply, false, JSON.stringify(again.json));
     assert.deepEqual(again.json.summary, ['Every line selected from this backup is already here: there is nothing to restore.']);
     const before = ((await as(aliceDsm, 'GET', '/api/backup')).json as string).trim().split('\n').length;
-    const r = await as(aliceDsm, 'POST', '/api/restore', { content, scopes: ['facts'] });
+    const r = await as(aliceDsm, 'POST', '/api/restore', { content, scopes: ['facts', 'budget'] });
     assert.equal(r.json.restored ?? 0, 0, JSON.stringify(r.json));
     assert.equal(((await as(aliceDsm, 'GET', '/api/backup')).json as string).trim().split('\n').length, before, 'nothing was written');
   });

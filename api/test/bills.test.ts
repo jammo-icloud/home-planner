@@ -15,7 +15,7 @@ import { replay, apply } from '../src/replay.ts';
 import { billDateWords, billDatesIn, billKey, billLine, billOccurrences, billsExpected, billsOf, fixedCharges, monthClock, pace } from '../src/analytics.ts';
 import { describe as describeEvent, APPROVE_IN_ONE, ProposalStore, commit, toolByName, toolSchemas } from '../src/tools.ts';
 import type { Proposal, ToolContext } from '../src/tools.ts';
-import { newerBackup, parseBackup, planRestore, eventsToApply, scopeOf } from '../src/restore.ts';
+import { parseBackup, planRestore, eventsToApply, scopeOf, unreadableBackup } from '../src/restore.ts';
 import { Households } from '../src/households.ts';
 import { changes } from '../src/activity.ts';
 import type { Bill, BillPaid } from '../src/analytics.ts';
@@ -122,9 +122,9 @@ describe('what the log says about a bill', () => {
     assert.equal(said({ ...SET, date: null }, s), 'cleared the date on Example Power in Utilities');
     assert.equal(said({ op: 'bill.remove', envelope: 'util', bill: 'example water', name: 'Example Water' }, s), 'removed the bill Example Water from Utilities');
   });
-  test('scope is budgets', () => {
-    assert.equal(scopeOf({ op: 'bill.set' } as Event), 'budgets');
-    assert.equal(scopeOf({ op: 'bill.remove' } as Event), 'budgets');
+  test('scope is budget', () => {
+    assert.equal(scopeOf({ op: 'bill.set' } as Event), 'budget');
+    assert.equal(scopeOf({ op: 'bill.remove' } as Event), 'budget');
   });
 });
 
@@ -140,9 +140,9 @@ describe('a backup holding bills', () => {
     ]);
     await store.append('alice', rest.map(({ id, at, who, ...body }) => body) as never);
     const backup = parseBackup(await readFile(store.path, 'utf8'));
-    assert.deepEqual([backup.unknown, backup.skipped, newerBackup(backup)], [[], [], null]);
+    assert.deepEqual([backup.unknown, backup.skipped, unreadableBackup(backup)], [[], [], null]);
     const { store: fresh } = await hh.create('bob', 'Fresh');
-    const plan = planRestore(fresh.state, backup, ['facts', 'budgets']);
+    const plan = planRestore(fresh.state, backup, ['facts', 'budget']);
     assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
     await fresh.adopt(eventsToApply(plan));
     assert.equal(bills(store.state).length, 1);

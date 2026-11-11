@@ -727,6 +727,17 @@ export const CLAUDE_MAY: ReadonlySet<Op> = new Set<Op>(['thread.briefing', 'thre
 export const CONFIG_OPS: ReadonlySet<Op> = new Set<Op>(
   ['documents.folder', 'documents.moved', 'household.zone', 'guests.booking', 'envelopes.model']);
 
+/**
+ * Ops a log written before 0.10.0 holds, which kept several budgets and sorted
+ * receipts into categories. No op of today's has their name: to the fold each
+ * is unknown, and a backup holding one is refused by restore as from before
+ * 0.10.0, never as from a newer build.
+ */
+export const RETIRED_OPS: ReadonlySet<string> = new Set([
+  'budget.create', 'budget.rename', 'budget.archive', 'budget.locate',
+  'txn.categorize', 'category.define', 'category.archive', 'category.sinking',
+]);
+
 /** What `system` may write among CONFIG_OPS. Facts a seed wrote as `system` are not limited by this. */
 export const systemMay = (e: NewEventShape): boolean =>
   (e.op === 'documents.folder' && e.source === 'deployment') || (e.op === 'guests.booking' && !e.on);

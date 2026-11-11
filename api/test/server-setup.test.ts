@@ -343,6 +343,31 @@ describe('a backup from a newer build', () => {
   });
 });
 
+describe('a backup from before 0.10.0', () => {
+  test('is refused whole by the preview and by the restore, in a sentence naming 0.10.0', async () => {
+    const content = [{ id: 'o1', op: 'household.claim', label: 'Home' }, { id: 'o2', op: 'budget.create', budget: 'home', label: 'Home' },
+      { id: 'o3', op: 'txn.categorize', txn: 't1', category: 'food' }]
+      .map((e) => JSON.stringify({ at: '2026-10-01T09:00:00.000Z', who: 'alice', ...e })).join('\n');
+    const said = 'This backup was made before Home Planner 0.10.0, which keeps one budget and sorts receipts into envelopes. It cannot be restored into this version.';
+    const before = await readFile(households.path('home'), 'utf8');
+    for (const [path, body] of [['/api/restore/preview', { content, scopes: ['facts', 'budget'] }], ['/api/restore', { content, scopes: ['facts', 'budget'] }],
+      ['/api/restore', { content, asNewHousehold: 'Older' }]] as const) {
+      const r = await call(alice, 'POST', path, body);
+      assert.deepEqual([r.status, r.json.error], [400, said], `${path} ${JSON.stringify(Object.keys(body))}`);
+    }
+    assert.equal(await readFile(households.path('home'), 'utf8'), before, 'nothing was written');
+    assert.ok(!(await households.ids()).includes('older'), 'no household was made');
+  });
+
+  test("its band names are not taken quietly: 'budgets' is refused by name, by the preview and the restore", async () => {
+    const content = JSON.stringify({ id: 'b1', at: '2026-11-01T09:00:00.000Z', who: 'alice', op: 'household.claim', label: 'Home' });
+    for (const path of ['/api/restore/preview', '/api/restore']) {
+      const r = await call(alice, 'POST', path, { content, scopes: ['facts', 'budgets'] });
+      assert.deepEqual([r.status, r.json.error], [400, 'there is no band called budgets to restore'], path);
+    }
+  });
+});
+
 describe('a restore in place', () => {
   test("a backup's folder is not taken: the registry, the folder and the moves stay as they are, and the summary says so", async () => {
     const { Store } = await import('../src/store.ts');

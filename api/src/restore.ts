@@ -12,16 +12,18 @@
  *
  * Nothing here writes. It reports what would land and what would collide, and
  * a collision refuses rather than merging: a wrong merge is silent, and a
- * refusal is merely annoying.
+ * refusal is merely annoying. A household has one budget, so a backup's
+ * budget lands in place only where the budget is still empty.
  */
 
 import { apply, guestEmail, needsMember, ReplayError, validate } from './replay.ts';
 import { goalSpelling, sameGoal, shelfGoals } from './plan-rules.ts';
 import type { ShelfView } from './plan-rules.ts';
-import { areaIndex, areaMoved, CONFIG_OPS, isGuest, SYSTEM } from './types.ts';
+import { areaIndex, areaMoved, CONFIG_OPS, isGuest, RETIRED_OPS, SYSTEM } from './types.ts';
 import type { Event, State } from './types.ts';
 
-export type Scope = 'facts' | 'budgets' | 'months' | 'people' | 'thread' | 'settings' | 'plans' | 'bookings';
+export type Scope = 'facts' | 'budget' | 'months' | 'people' | 'thread' | 'settings' | 'plans' | 'bookings';
+export const SCOPES: readonly Scope[] = ['facts', 'budget', 'months', 'people', 'thread', 'settings', 'plans', 'bookings'];
 
 /** Which band of the model an event belongs to. Every event belongs to one. */
 export function scopeOf(e: Event): Scope {
@@ -33,7 +35,7 @@ export function scopeOf(e: Event): Scope {
     case 'category.add': case 'category.rename': case 'category.move': case 'category.remove':
     case 'envelope.define': case 'envelope.remove': case 'bill.set': case 'bill.remove':
     case 'income.source.define': case 'income.source.remove':
-      return 'budgets';
+      return 'budget';
     case 'month.open': case 'month.close': case 'month.discard':
     case 'assign': case 'move': case 'income.set': case 'prediction.record':
       return 'months';
@@ -111,29 +113,70 @@ export function parseBackup(text: string): ParsedBackup {
     events.push(e);
   }
 
-  const counts = { facts: 0, budgets: 0, months: 0, people: 0, thread: 0, settings: 0, plans: 0, bookings: 0 } as Record<Scope, number>;
+  const counts = noneOf();
   for (const e of events) counts[scopeOf(e)]++;
   return { events, counts, skipped, unknown: [...unknown], label, owner };
 }
 
+const noneOf = (): Record<Scope, number> => Object.fromEntries(SCOPES.map((s) => [s, 0])) as Record<Scope, number>;
+
 /**
- * Why a backup is refused whole, or null: it holds ops a newer build wrote.
- * Read without those lines it would restore as something it never was.
+ * Why a backup is refused whole, or null: it holds ops this build cannot read.
+ * Read without those lines it would restore as something it never was. An op
+ * retired in 0.10.0 says the backup is older, whatever else it holds; any
+ * other unknown op says a newer build wrote it.
  */
-export function newerBackup(b: ParsedBackup): string | null {
+export function unreadableBackup(b: ParsedBackup): string | null {
   if (b.unknown.length === 0) return null;
+  if (b.unknown.some((op) => RETIRED_OPS.has(op))) {
+    return 'This backup was made before Home Planner 0.10.0, which keeps one budget and sorts receipts into envelopes. '
+      + 'It cannot be restored into this version.';
+  }
   const ops = b.unknown.length === 1 ? b.unknown[0]!
     : `${b.unknown.slice(0, -1).join(', ')} and ${b.unknown.at(-1)!}`;
   return `This backup was made by a newer Home Planner. It holds ${ops}, which this version cannot read.`;
+}
+
+/**
+ * Whether a household's budget has nothing in it yet: no category, envelope,
+ * income source or bill, no location, and no month opened. Only such a budget
+ * takes a backup's in place, since a household has one and two are never merged.
+ */
+export function budgetIsEmpty(s: Pick<State, 'categories' | 'envelopes' | 'incomeSources' | 'bills' | 'location' | 'months'>): boolean {
+  return s.categories.size === 0 && s.envelopes.size === 0 && s.incomeSources.size === 0
+    && s.bills.size === 0 && s.location === null && s.months.size === 0;
+}
+
+/**
+ * The order lines are written in: each Budget line ahead of the receipts and
+ * rules just before it, so a restore writes the budget before the receipts
+ * sorted into it. Only past those: nothing a Budget line reads is written by a
+ * receipt, nor anything a receipt reads by a Budget line, so the household
+ * folds the same. Never past a month, a person, a setting or anything else (a
+ * month opened takes the envelopes there at that moment, and an envelope
+ * removed keeps the months closed at that moment), and an envelope's removal
+ * never past a rule, which it is refused beside. Each band keeps its own order.
+ */
+function budgetFirst(events: readonly Event[]): Event[] {
+  const passes = (line: Event, earlier: Event) => scopeOf(earlier) === 'facts'
+    && !(line.op === 'envelope.remove' && (earlier.op === 'rule.add' || earlier.op === 'rule.remove'));
+  const out: Event[] = [];
+  for (const e of events) {
+    let at = out.length;
+    if (scopeOf(e) === 'budget') while (at > 0 && passes(e, out[at - 1]!)) at--;
+    out.splice(at, 0, e);
+  }
+  return out;
 }
 
 export interface Collision {
   /**
    * `owner`: whose a line is, or who may write it here. `refused`: a line the
    * fold itself would refuse here, in its own words, that none of the checks
-   * above it named first.
+   * above it named first. `budget`: the backup's budget, or its months, into a
+   * household that already has a budget.
    */
-  readonly kind: 'category' | 'transaction' | 'envelope-category' | 'plan' | 'calendar' | 'owner' | 'refused';
+  readonly kind: 'budget' | 'transaction' | 'plan' | 'calendar' | 'owner' | 'refused';
   readonly what: string;
   readonly why: string;
 }
@@ -171,7 +214,7 @@ const DOING: Partial<Record<Event['op'], string>> = {
 };
 /** The fallback: the part of the household the line is about. */
 const ABOUT: Record<Scope, string> = {
-  facts: 'receipts', budgets: 'the budget', months: 'months', people: 'who is a member', thread: 'the conversation',
+  facts: 'receipts', budget: 'the budget', months: 'months', people: 'who is a member', thread: 'the conversation',
   settings: 'settings', plans: 'plans', bookings: 'guests and stays',
 };
 const doing = (e: Event): string => DOING[e.op] ?? `a line about ${ABOUT[scopeOf(e)]}`;
@@ -182,9 +225,10 @@ const FOLDER_OPS: ReadonlySet<Event['op']> = new Set(['documents.folder', 'docum
 /**
  * What would happen, without doing it.
  *
- * The dependency runs one way — facts, then the budget, then months — so
- * asking for envelopes without the categories they feed on is not a collision
- * but a nonsense, and is reported separately.
+ * The dependency runs one way, the budget before receipts and months: asking
+ * for receipts or months without the budget they are sorted and planned in is
+ * not a collision but a nonsense, and is reported separately. `take` is in the
+ * order it is written (`budgetFirst`), and is what the fold is asked about.
  */
 export function planRestore(
   target: State,
@@ -254,6 +298,16 @@ export function planRestore(
       }
       return true;
     });
+  }
+
+  // ── the budget ───────────────────────────────────────────────────────────
+  // One budget per household, never two merged. What is already here was left
+  // out above, so a household's own backup restores over itself; any Budget or
+  // Months line left is a second budget's, and lands only where the budget is
+  // still empty. Said once, whichever of the two bands brought it.
+  const budgetLines = take.some((e) => scopeOf(e) === 'budget' || scopeOf(e) === 'months');
+  if (budgetLines && !budgetIsEmpty(target)) {
+    collisions.push({ kind: 'budget', what: 'the budget', why: 'This household already has a budget. Restore it as a new household instead.' });
   }
 
   // ── facts ────────────────────────────────────────────────────────────────
@@ -497,21 +551,22 @@ export function planRestore(
         : `requests from ${email} need them on the guest list, which is not here and not in the backup`);
     }
   }
-  if (wanted.has('months') && !wanted.has('budgets')) {
-    // A month plans and moves the budget's envelopes: one it names that is not here needs the budget.
-    const inBackup = new Set(backup.events.flatMap((e) => (e.op === 'envelope.define' ? [e.envelope] : [])));
-    const needed = new Set(take.flatMap((e) =>
-      e.op === 'assign' || e.op === 'prediction.record' ? [e.envelope] : e.op === 'move' ? [e.from, e.to] : []));
-    const missing = [...needed].filter((env) => !target.envelopes.has(env));
-    const fromBackup = missing.filter((env) => inBackup.has(env));
-    const nowhere = missing.filter((env) => !inBackup.has(env));
-    if (fromBackup.length) {
-      missingPrerequisites.push(`months need the budget's envelopes (${fromBackup.join(', ')}), which are in the backup but not selected`);
-    }
-    if (nowhere.length) {
-      missingPrerequisites.push(`months need envelopes (${nowhere.join(', ')}) that are not here and not in the backup`);
-    }
+  // Receipts and rules are sorted into envelopes. Into a budget with none, and
+  // without the Budget band, they would all land in To sort: named instead. One
+  // naming an envelope that is not here, where there are envelopes, is legal,
+  // and lands in To sort.
+  if (!wanted.has('budget') && target.envelopes.size === 0
+    && take.some((e) => scopeOf(e) === 'facts' && e.op !== 'account.balance')) {
+    missingPrerequisites.push("Receipts and rules are sorted into envelopes, and this household's budget has none yet: "
+      + 'choose Budget too, or restore it as a new household.');
   }
+  // A month is planned in the budget it was opened in. Into a budget that is
+  // not empty it is the collision above; into an empty one it needs its budget.
+  if (!wanted.has('budget') && budgetIsEmpty(target) && take.some((e) => scopeOf(e) === 'months')) {
+    missingPrerequisites.push('Months need the budget they were planned in: choose Budget too.');
+  }
+  // Written in this order, and asked about in it below.
+  take = budgetFirst(take);
   // The backstop. The checks above name each refusal they know of in words a
   // person can act on; whatever they did not foresee, the fold itself is asked,
   // on a copy of this household, and its own words are the collision. Only
@@ -530,7 +585,7 @@ export function planRestore(
     }
   }
 
-  const counts = { facts: 0, budgets: 0, months: 0, people: 0, thread: 0, settings: 0, plans: 0, bookings: 0 } as Record<Scope, number>;
+  const counts = noneOf();
   for (const e of take) counts[scopeOf(e)]++;
 
   const summary: string[] = [];
@@ -549,11 +604,20 @@ export function planRestore(
   }
   if (counts.facts) {
     const receipts = take.reduce((n, e) => n + (e.op === 'txn.add' ? e.txns.length : 0), 0);
-    summary.push(`${receipts} receipts, plus the categories and rules that sort them`);
+    summary.push(`${receipts} receipts, and the rules that sort them`);
   }
-  if (counts.budgets) {
-    const envelopes = take.filter((e) => e.op === 'envelope.define').length;
-    summary.push(`the budget's ${envelopes} envelope definitions`);
+  if (counts.budget) {
+    // What the budget will hold: the envelopes and categories the lines leave standing.
+    const envelopes = new Set<string>();
+    const categories = new Set<string>();
+    for (const e of take) {
+      if (e.op === 'envelope.define') envelopes.add(e.envelope);
+      else if (e.op === 'envelope.remove') envelopes.delete(e.envelope);
+      else if (e.op === 'category.add') categories.add(e.category);
+      else if (e.op === 'category.remove') categories.delete(e.category);
+    }
+    const n = (k: number, one: string, many: string) => `${k} ${k === 1 ? one : many}`;
+    summary.push(`the budget: ${n(envelopes.size, 'envelope', 'envelopes')} in ${n(categories.size, 'category', 'categories')}`);
   }
   if (counts.months) {
     const opened = take.filter((e) => e.op === 'month.open').length;
@@ -586,7 +650,8 @@ export function planRestore(
 }
 
 /**
- * The events to append, once a plan has come back clean.
+ * The events to append, once a plan has come back clean: the Budget band
+ * before the receipts (`budgetFirst`), as the plan was checked.
  *
  * Refuses on any collision or missing prerequisite. Merging would mean deciding
  * which of two meanings for one id is right, and getting that wrong is silent —

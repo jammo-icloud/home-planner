@@ -35,6 +35,14 @@ async function alicesWithPeople(): Promise<Store> {
 /** A household of alice's own, with nobody else in it. */
 const alicesHere = async (): Promise<Store> => (await new Households(await dir()).create('alice', 'Here')).store;
 
+/** alice's own, with a budget of one envelope, Food, for receipts to be sorted into. */
+async function alicesWithFood(): Promise<Store> {
+  const store = await alicesHere();
+  await store.append('alice', [{ op: 'category.add', category: 'food', label: 'Food' },
+    { op: 'envelope.define', envelope: 'food', label: 'Food', category: 'food', template: parseDollars('600.00'), order: 0 }]);
+  return store;
+}
+
 describe('a restore in place, with the people band', () => {
   test("alice's own backup with a plan comes back clean, and the household keeps its own name and owner", async () => {
     // The scratchpad repro's case B.
@@ -166,7 +174,7 @@ describe('a preview changes nothing', () => {
     const { store: src } = await new Households(await dir()).create('alice', 'Theirs');
     await src.append('alice', [
       { op: 'txn.add', txns: [{ id: 't1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 't1', envelope: 'food' }] }]);
-    const target = await alicesHere();
+    const target = await alicesWithFood();
     await target.adopt(eventsToApply(planRestore(target.state, await backupOf(src), ['facts'], await target.ids())));
     // The backup moves on: the receipt sorted into another envelope.
     await src.append('alice', [{ op: 'txn.sort', txn: 't1', envelope: 'fun' }]);
@@ -223,7 +231,7 @@ describe('a restore in place takes only what is not already here', () => {
     await src.append('alice', { op: 'txn.add', txns: [
       { id: 't1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 't1', envelope: null }] });
     const backup = await backupOf(src);
-    const target = await alicesHere();
+    const target = await alicesWithFood();
     await target.adopt(eventsToApply(planRestore(target.state, backup, ['facts'], await target.ids())));
     const again = planRestore(target.state, backup, ['facts'], await target.ids());
     assert.deepEqual(again.collisions, []);
@@ -285,6 +293,24 @@ describe('the promise holds: a clean plan always applies', () => {
       await store.append('bob', { op: 'thread.note', plan: 'p-note', text: 'the hinge is loose' });
       return store;
     }],
+    ["alice's, with a budget, a closed month, and an envelope removed after its rule", async () => {
+      const { store } = await new Households(await dir()).create('alice', 'Theirs');
+      await store.append('alice', [
+        { op: 'category.add', category: 'food', label: 'Food' }, { op: 'category.add', category: 'fun', label: 'Fun' },
+        { op: 'envelope.define', envelope: 'food', label: 'Groceries', category: 'food', template: parseDollars('600.00'), order: 0 },
+        { op: 'rule.add', rule: 'r-gym', match: 'EXAMPLE GYM', envelope: 'gym' },
+        { op: 'envelope.define', envelope: 'gym', label: 'Gym', category: 'fun', template: parseDollars('40.00'), order: 1 },
+        { op: 'month.open', month: '2026-10', income: parseDollars('5000.00') },
+        { op: 'txn.add', txns: [{ id: 't-gym', date: '2026-10-03', payee: 'EXAMPLE GYM', amount: parseDollars('-40.00'), dedupeKey: 't-gym', envelope: 'gym' },
+          { id: 't-mkt', date: '2026-10-04', payee: 'EXAMPLE MARKET', amount: parseDollars('-30.00'), dedupeKey: 't-mkt', envelope: 'food' }] },
+        { op: 'month.close', month: '2026-10', closed: true, why: 'October is done' },
+        { op: 'month.open', month: '2026-11', income: parseDollars('5000.00') },
+        { op: 'rule.remove', rule: 'r-gym' },
+        { op: 'envelope.remove', envelope: 'gym', why: 'cancelled the membership' },
+        { op: 'envelope.define', envelope: 'gym-2', label: 'Gym', category: 'fun', template: parseDollars('0.00'), order: 2 },
+      ]);
+      return store;
+    }],
   ];
   /** Each target is made for the backup it receives, so one can already hold part of it. */
   const targets: [string, (backup: ParsedBackup) => Promise<Store>][] = [
@@ -304,22 +330,23 @@ describe('the promise holds: a clean plan always applies', () => {
       await store.append('bob', { op: 'member.add', member: 'alice', why: 'she lives here' });
       return store;
     }],
-    ["alice's, holding this backup's people and facts already", async (backup) => {
+    ["alice's, with a budget of her own", alicesWithFood],
+    ["alice's, holding this backup's people, receipts and budget already", async (backup) => {
       const t = await alicesHere();
-      const first = planRestore(t.state, backup, ['people', 'facts'], await t.ids());
+      const first = planRestore(t.state, backup, ['people', 'facts', 'budget'], await t.ids());
       if (!first.collisions.length && !first.missingPrerequisites.length && first.take.length) await t.adopt(eventsToApply(first));
       return t;
     }],
-    ["alice's, holding all of this backup's people and facts but its last line", async (backup) => {
+    ["alice's, holding all of this backup's people, receipts and budget but its last line", async (backup) => {
       const t = await alicesHere();
-      const first = planRestore(t.state, { ...backup, events: backup.events.slice(0, -1) }, ['people', 'facts'], await t.ids());
+      const first = planRestore(t.state, { ...backup, events: backup.events.slice(0, -1) }, ['people', 'facts', 'budget'], await t.ids());
       if (!first.collisions.length && !first.missingPrerequisites.length && first.take.length) await t.adopt(eventsToApply(first));
       return t;
     }],
   ];
   const scopeSets: Scope[][] = [['people'], ['plans'], ['people', 'plans'], ['settings'], ['bookings'],
-    ['people', 'plans', 'thread', 'bookings', 'settings'],
-    ['facts', 'budgets', 'months', 'people', 'thread', 'settings', 'plans', 'bookings']];
+    ['people', 'plans', 'thread', 'bookings', 'settings'], ['facts'], ['budget'], ['months'], ['facts', 'budget', 'months'],
+    ['facts', 'budget', 'months', 'people', 'thread', 'settings', 'plans', 'bookings']];
 
   test('whenever planRestore finds no collision and nothing missing, adopting what it takes succeeds', async () => {
     let clean = 0;

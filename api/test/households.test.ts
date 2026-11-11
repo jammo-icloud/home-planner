@@ -7,7 +7,7 @@ import { join } from 'node:path';
 
 import { Households, adoptSingleLog, isValidId, retireShelves, slugify } from '../src/households.ts';
 import { apply } from '../src/replay.ts';
-import { newerBackup, parseBackup, planRestore, eventsToApply, scopeOf } from '../src/restore.ts';
+import { parseBackup, planRestore, eventsToApply, scopeOf, unreadableBackup } from '../src/restore.ts';
 import { parseDollars } from '../src/money.ts';
 import { Store } from '../src/store.ts';
 import type { Event } from '../src/types.ts';
@@ -138,14 +138,14 @@ describe('a backup is the log', () => {
     assert.equal(b.label, 'Rivera');
     assert.equal(b.owner, 'alice');
     assert.ok(b.counts.facts >= 2);
-    assert.ok(b.counts.budgets >= 2, 'the category and the envelope');
+    assert.ok(b.counts.budget >= 2, 'the category and the envelope');
     assert.ok(b.counts.months >= 2);
     assert.equal(b.counts.people, 1, 'the claim');
   });
 
   test('every event lands in exactly one scope', async () => {
     const b = parseBackup(await backupOf());
-    const total = b.counts.facts + b.counts.budgets + b.counts.months + b.counts.people;
+    const total = b.counts.facts + b.counts.budget + b.counts.months + b.counts.people;
     assert.equal(total, b.events.length);
   });
 
@@ -155,24 +155,27 @@ describe('a backup is the log', () => {
     assert.equal(b.skipped.length, 2);
   });
 
-  test('restoring just the receipts brings no plan with them', async () => {
+  test('restoring just the receipts, into a budget with envelopes, brings no budget or month with them', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
+    await store.append('bob', [{ op: 'category.add', category: 'home', label: 'Home' },
+      { op: 'envelope.define', envelope: 'rent', label: 'Rent', category: 'home', template: parseDollars('1500.00'), order: 0 }]);
     const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts']);
 
-    assert.equal(plan.collisions.length, 0);
-    assert.equal(plan.counts.budgets, 0);
+    assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
+    assert.equal(plan.counts.budget, 0);
     assert.equal(plan.counts.months, 0);
-    assert.match(plan.summary[0]!, /1 receipts/);
+    assert.equal(plan.summary[0], '1 receipts, and the rules that sort them');
     await store.append('bob', eventsToApply(plan) as never);
     assert.equal(store.state.txns.size, 1);
-    assert.equal(store.state.envelopes.size, 0, 'a full ledger and no plan is a sensible place to start');
+    assert.deepEqual([...store.state.envelopes.keys()], ['rent'], 'its own budget, and no other');
+    assert.equal(store.state.months.size, 0);
   });
 
   test('a budget restores with its categories, which are in its own band', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
-    const plan = planRestore(store.state, parseBackup(await backupOf()), ['budgets']);
+    const plan = planRestore(store.state, parseBackup(await backupOf()), ['budget']);
     assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
     await store.adopt(eventsToApply(plan));
     assert.deepEqual([[...store.state.categories.keys()], store.state.envelopes.get('daily')!.category], [['people'], 'people']);
@@ -182,13 +185,14 @@ describe('a backup is the log', () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
     const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'months']);
-    assert.ok(plan.missingPrerequisites.some((m) => m.includes("need the budget's envelopes (daily)")));
+    assert.ok(plan.missingPrerequisites.includes('Months need the budget they were planned in: choose Budget too.'), plan.missingPrerequisites.join(' | '));
+    assert.throws(() => eventsToApply(plan));
   });
 
   test('all three together restore cleanly into an empty household', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
-    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budgets', 'months']);
+    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budget', 'months']);
     assert.deepEqual(plan.collisions, []);
     assert.deepEqual(plan.missingPrerequisites, []);
 
@@ -201,7 +205,7 @@ describe('a backup is the log', () => {
 });
 
 describe('a split survives a restore', () => {
-  test('a backup with a divided receipt restores under facts into an empty household, parts and all', async () => {
+  test('a backup with a divided receipt restores with its budget into an empty household, parts and all', async () => {
     const hh = new Households(await dir());
     const { store: from } = await hh.create('alice', 'Rivera');
     await from.append('alice', [
@@ -215,7 +219,7 @@ describe('a split survives a restore', () => {
     const backup = parseBackup(await readFile(from.path, 'utf8'));
 
     const { store } = await hh.create('bob', 'Fresh');
-    const plan = planRestore(store.state, backup, ['facts']);
+    const plan = planRestore(store.state, backup, ['facts', 'budget']);
     assert.deepEqual(plan.collisions, []);
     await store.adopt(eventsToApply(plan));
     const t = store.state.txns.get('c1')!;
@@ -237,7 +241,7 @@ describe('an envelope with no figure yet survives a restore', () => {
     const backup = parseBackup(await readFile(from.path, 'utf8'));
 
     const { store } = await hh.create('bob', 'Fresh');
-    const plan = planRestore(store.state, backup, ['facts', 'budgets']);
+    const plan = planRestore(store.state, backup, ['facts', 'budget']);
     assert.deepEqual(plan.collisions, []);
     await store.adopt(eventsToApply(plan));
     const env = store.state.envelopes.get('rent')!;
@@ -267,10 +271,10 @@ describe('an edited split survives a restore', () => {
     return parseBackup(await readFile(from.path, 'utf8'));
   };
 
-  test('a second split replaces the first when restored under facts', async () => {
+  test('a second split replaces the first when restored', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
-    const plan = planRestore(store.state, await chainBackup(false), ['facts']);
+    const plan = planRestore(store.state, await chainBackup(false), ['facts', 'budget']);
     assert.deepEqual(plan.collisions, []);
     await store.adopt(eventsToApply(plan));
     assert.deepEqual(store.state.txns.get('c1')!.split, [
@@ -281,7 +285,7 @@ describe('an edited split survives a restore', () => {
   test('a chain that ends in a sort restores to a whole receipt', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
-    const plan = planRestore(store.state, await chainBackup(true), ['facts']);
+    const plan = planRestore(store.state, await chainBackup(true), ['facts', 'budget']);
     await store.adopt(eventsToApply(plan));
     const t = store.state.txns.get('c1')!;
     assert.equal(t.envelope, 'daily');
@@ -313,7 +317,7 @@ describe('a restore carries history rather than re-making it', () => {
   test('a reasonless deletion restores, because a reason cannot be invented later', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
-    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts']);
+    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budget']);
     await store.adopt(eventsToApply(plan));
     assert.equal(store.state.txns.size, 1, 'the deletion took effect');
     assert.ok(!store.state.txns.has('t2'));
@@ -322,7 +326,7 @@ describe('a restore carries history rather than re-making it', () => {
   test('the same events written as new would be refused', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
-    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts']);
+    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budget']);
     const asNew = eventsToApply(plan).map(({ id, at, who, ...rest }) => rest);
     await assert.rejects(() => store.append('bob', asNew as never), /requires a reason/);
   });
@@ -330,7 +334,7 @@ describe('a restore carries history rather than re-making it', () => {
   test('dates and actors survive: the restorer is not who spent the money', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
-    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts']);
+    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budget']);
     await store.adopt(eventsToApply(plan));
 
     const lines = (await readFile(store.path, 'utf8')).trim().split('\n').map((l) => JSON.parse(l) as Event);
@@ -344,7 +348,7 @@ describe('a restore carries history rather than re-making it', () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
     const backup = await backupOf();
-    await store.adopt(eventsToApply(planRestore(store.state, parseBackup(backup), ['facts'])));
+    await store.adopt(eventsToApply(planRestore(store.state, parseBackup(backup), ['facts', 'budget'])));
 
     // The plan itself catches this first; adopt is the last line of defence for
     // a caller that skipped the plan.
@@ -355,7 +359,7 @@ describe('a restore carries history rather than re-making it', () => {
   test('an adopted id cannot be handed out again to a new event', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
-    await store.adopt(eventsToApply(planRestore(store.state, parseBackup(await backupOf()), ['facts'])));
+    await store.adopt(eventsToApply(planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budget'])));
 
     const [made] = await store.append('bob', { op: 'category.add', category: 'fuel', label: 'Fuel' });
     const seen = new Set((await readFile(store.path, 'utf8')).trim().split('\n')
@@ -392,7 +396,7 @@ describe('a collision refuses, and says what it was', () => {
       { id: 't1', date: '2026-08-02', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', envelope: null }] });
     const before = store.state.eventCount;
 
-    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budgets']);
+    const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budget']);
     assert.ok(plan.collisions.length > 0);
     assert.throws(() => eventsToApply(plan));
     assert.equal(store.state.eventCount, before, 'planning never writes');
@@ -511,8 +515,8 @@ describe('the scope of every event is decided, not guessed', () => {
   test('one band each, across the whole vocabulary', () => {
     const samples: [Event['op'], string][] = [
       ['txn.add', 'facts'], ['txn.sort', 'facts'], ['txn.split', 'facts'], ['rule.add', 'facts'],
-      ['household.locate', 'budgets'], ['category.add', 'budgets'], ['category.rename', 'budgets'], ['category.move', 'budgets'],
-      ['category.remove', 'budgets'], ['envelope.define', 'budgets'], ['income.source.define', 'budgets'],
+      ['household.locate', 'budget'], ['category.add', 'budget'], ['category.rename', 'budget'], ['category.move', 'budget'],
+      ['category.remove', 'budget'], ['envelope.define', 'budget'], ['income.source.define', 'budget'],
       ['month.open', 'months'], ['assign', 'months'], ['move', 'months'],
       ['household.claim', 'people'], ['member.add', 'people'], ['briefing.read', 'people'],
       ['areas.set', 'settings'], ['areas.add', 'settings'], ['areas.remove', 'settings'], ['areas.move', 'settings'],
@@ -971,8 +975,8 @@ describe('a backup made by 0.7.0', () => {
       line({ id: 'x4', op: 'chore.remove', budget: 'b' })].join('\n'));
     assert.deepEqual(backup.skipped.slice(0, 2), ['line 2: unknown op chore.set', 'line 3: unknown op chore.set']);
     assert.deepEqual(backup.unknown, ['chore.set', 'chore.remove']);
-    assert.equal(newerBackup(backup), 'This backup was made by a newer Home Planner. It holds chore.set and chore.remove, which this version cannot read.');
-    assert.equal(newerBackup(parseBackup(claim)), null);
+    assert.equal(unreadableBackup(backup), 'This backup was made by a newer Home Planner. It holds chore.set and chore.remove, which this version cannot read.');
+    assert.equal(unreadableBackup(parseBackup(claim)), null);
   });
 });
 

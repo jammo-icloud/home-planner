@@ -195,7 +195,7 @@ import { connectors, lastSavedBy, loadConnectors, recordTest, resolvedEnv, saveC
 import type { Change, MailValue, SavedKey } from './connectors.ts';
 import { connectorsView, needsAdmin, ROW_NAME } from './connectors-view.ts';
 import { teamFolders } from './drive.ts';
-import { newerBackup, parseBackup, planRestore, eventsToApply } from './restore.ts';
+import { eventsToApply, parseBackup, planRestore, SCOPES, unreadableBackup } from './restore.ts';
 import type { Scope } from './restore.ts';
 import {
   AuthError, GuestSessions, OtpRequired, Sessions, checkWithDsm, clearedCookie, clearedGuestCookie, guestCookie,
@@ -633,6 +633,20 @@ const monthParam = (url: URL): string => {
   const all = url.searchParams.getAll('month');
   return all.length === 1 ? all[0]! : '';
 };
+
+/**
+ * The bands a restore asks for, or the receipts, the budget and its months when
+ * none are named. A band this build does not have is refused, not passed over:
+ * a restore that quietly took less than was asked would say yes to something else.
+ */
+function restoreScopes(asked: unknown): Scope[] {
+  if (asked === undefined) return ['facts', 'budget', 'months'];
+  if (!Array.isArray(asked)) throw new ToolError('scopes is a list of bands', 400);
+  for (const s of asked) {
+    if (!SCOPES.includes(s as Scope)) throw new ToolError(`there is no band called ${String(s)} to restore`, 400);
+  }
+  return asked as Scope[];
+}
 
 /** How many people a contact search hands back: enough to choose from, not the whole book. */
 const CONTACTS_LISTED = 50;
@@ -1852,10 +1866,11 @@ export async function start(
       const body = (await readBody(req)) as { content?: string; scopes?: string[] };
       if (!body.content?.trim()) throw new ToolError('that file is empty');
       const backup = parseBackup(body.content);
-      // Refused whole, before anything is worked out: read without its newer lines it would be a different household.
-      const newer = newerBackup(backup);
-      if (newer) throw new ToolError(newer, 400);
-      const scopes = (body.scopes ?? ['facts', 'budgets', 'months']) as Scope[];
+      // Refused whole, before anything is worked out: read without the lines this
+      // build cannot read, older or newer, it would be a different household.
+      const unreadable = unreadableBackup(backup);
+      if (unreadable) throw new ToolError(unreadable, 400);
+      const scopes = restoreScopes(body.scopes);
       const active = await activeStore(session, households, devStore);
       const plan = planRestore(active.state, backup, scopes, await active.ids());
       return json(res, 200, {
@@ -1876,8 +1891,8 @@ export async function start(
         { content?: string; scopes?: string[]; asNewHousehold?: string };
       if (!body.content?.trim()) throw new ToolError('that file is empty');
       const backup = parseBackup(body.content);
-      const newer = newerBackup(backup);
-      if (newer) throw new ToolError(newer, 400);
+      const unreadable = unreadableBackup(backup);
+      if (unreadable) throw new ToolError(unreadable, 400);
 
       // A whole backup becomes a household of its own, owned by whoever holds
       // the file. Nothing is ever written over what is already there.
@@ -1891,7 +1906,7 @@ export async function start(
       }
 
       const active = await activeStore(session, households, devStore);
-      const scopes = (body.scopes ?? ['facts', 'budgets', 'months']) as Scope[];
+      const scopes = restoreScopes(body.scopes);
       const plan = planRestore(active.state, backup, scopes, await active.ids());
       const events = eventsToApply(plan); // throws on any collision — refuse, never merge
       // Adopted, not appended: these events already happened, and the person
