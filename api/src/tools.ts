@@ -1271,7 +1271,7 @@ const restoreTxn: Tool = {
     type: 'object',
     properties: {
       txnId: { type: 'string', description: 'The receipt id, as shown in the activity entry.' },
-      envelope: { type: 'string', description: 'Optional. The envelope id to put it in on the way back, or __transfer / __income.' },
+      envelope: { type: ['string', 'null'], description: 'Optional. The envelope id to put it in on the way back, or __transfer / __income; null puts it back in no envelope (To sort). Left out, it goes back where it was.' },
       why: { type: 'string', description: 'One line. Why it belongs in the ledger after all.' },
     },
     required: ['txnId', 'why'],
@@ -1288,8 +1288,9 @@ const restoreTxn: Tool = {
     const given = typeof args['envelope'] === 'string' && args['envelope'] ? args['envelope'] : null;
     if (given === SPLIT) throw new ToolError('restore it first, then split it');
     if (given !== null && isSpend(given) && !state.envelopes.has(given)) throw new ToolError(`no envelope ${given}`, 404);
-    // Put back whole: the envelope given, else the one it arrived with (To sort holds it if that has gone).
-    const envelope = given ?? (original.envelope === SPLIT ? null : original.envelope);
+    // Put back whole: the envelope given, none when null is given, else the one it arrived with (To sort holds it
+    // if that has gone).
+    const envelope = args['envelope'] === null ? null : given ?? (original.envelope === SPLIT ? null : original.envelope);
 
     // Same id, so putting it back cannot create a second copy of the receipt.
     const { split: _split, ...whole } = original;

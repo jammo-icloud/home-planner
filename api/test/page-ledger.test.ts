@@ -615,6 +615,17 @@ const ADDED_010: readonly Line[] = [
   ['B46', 't.missing', 'budget'], ['B48', 'envelope: l.sel.value', 'budget'],
   ['B49', "approveNow('sort_receipts', { assignments: [entry] })", 'budget'], ['B54', 'r.envelope', 'budget'],
   ['B60', 'envelopeSelect(options, r.envelope ?? null, { allowSplit: false })', 'budget'],
+  // Task 10 fix round 1: a row's unsaved work (a suggestion, a split being typed, a refusal) survives another row's
+  // sort; an overtaken draw draws nothing; a refusal after a redraw is said on the fresh row; a split line whose
+  // envelope has gone is counted again; Edit's focus is asked of one draw; Restore's "no envelope" is null; Import
+  // counts its own file's receipts still to sort.
+  ['B41', 'const queueKept = { turn: -1, rows: new Map() };', 'budget'], ['B41', 'const kept = queueKept.rows.get(t.id);', 'budget'],
+  ['B44', "...(row.tag && row.suggestion ? { suggestion: row.suggestion } : {}),", 'budget'],
+  ['B46', "...(row.editor ? { split: row.editor.parts(), was: row.was } : {}),", 'budget'],
+  ['B41', 'if (turn !== householdTurn || load !== queueLoads) return;', 'budget'], ['B41', 'const fresh = queueRows.get(row.id);', 'budget'],
+  ['B48', "if (sel.closest('.split-line')) sel.dispatchEvent(new Event('change'));", 'budget'],
+  ['B49', 'if (page.focusReceipts === draw) {', 'budget'], ['B60', 'envelope: sel.value || null', 'budget'],
+  ['B57', '${out.added - out.sorted} still need an envelope.', 'budget'],
 ];
 const GONE_010: readonly Line[] = [
   // Task 7: every trace of a second budget, Compare, the outside note and the savings band of its own.

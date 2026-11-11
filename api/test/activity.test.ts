@@ -136,6 +136,24 @@ describe('putting it back', () => {
       /restore it first, then split it/);
   });
 
+  test('a restore given no envelope (null) lands in To sort, not back where it was', async () => {
+    const { store, ctx } = await fixture();
+    await store.append('alice', { op: 'txn.remove', txn: 'r1', why: 'oops' });
+    const p = await toolByName.get('restore_transaction')!.run(
+      { txnId: 'r1', envelope: null, why: 'ours, but not daily life' }, ctx) as { id: string; effects: string[] };
+    assert.match(p.effects[1]!, /no envelope until someone sorts it/);
+    await commit(p.id, ctx);
+    assert.equal(store.state.txns.get('r1')!.envelope, null);
+  });
+
+  test('a restore with the envelope left out goes back where it was', async () => {
+    const { store, ctx } = await fixture();
+    await store.append('alice', { op: 'txn.remove', txn: 'r1', why: 'oops' });
+    const p = await toolByName.get('restore_transaction')!.run({ txnId: 'r1', why: 'a mistake' }, ctx) as { id: string };
+    await commit(p.id, ctx);
+    assert.equal(store.state.txns.get('r1')!.envelope, 'daily');
+  });
+
   test('restoring keeps the same id, so it cannot become a second copy', async () => {
     const { store, ctx } = await fixture();
     const before = store.state.txns.size;

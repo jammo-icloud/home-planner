@@ -6239,22 +6239,51 @@ async function ruleOffer(box, { match, envelope, label, txnId }, onDone = () => 
 let queueAfter = null;
 /** The rule offered for the receipt sorted last, `{ el, turn }`: kept above the list through the reloads until answered. */
 let queueOffer = null;
+/**
+ * Each receipt's unsaved work in To sort, by txnId, kept through the redraws another row's sort asks for: Claude's
+ * suggestion not yet taken `{ choice, rule?, parts? }`, a split being typed (its `parts()`), a refusal said under it,
+ * and what its picker read (`was`). `turn` is the household it belongs to; a switch empties it.
+ */
+const queueKept = { turn: -1, rows: new Map() };
+/** Which draw of the queue is the latest: one overtaken (two sorts' reloads) draws nothing. */
+let queueLoads = 0;
+/** The latest draw's rows by txnId: where a refusal that lands after a redraw is said. */
+let queueRows = new Map();
 
 /**
  * Why a sort was refused, in words: an envelope another member has just removed is named, and taken out of
- * `options` and of every picker under `host` (it can no longer be chosen); anything else is the server's own words.
+ * `options` and of every picker under `host` (it can no longer be chosen; a split line that had it is told it
+ * changed, so its editor counts again); anything else is the server's own words.
  */
 function sortRefusal(ex, options, host) {
   const id = /^no envelope (\S+)$/.exec(ex.message)?.[1];
   const gone = id ? options.find((o) => o.value === id) : null;
   if (!gone) return ex.message;
   options.splice(options.indexOf(gone), 1);
-  for (const o of host.querySelectorAll('option')) if (o.value === id) o.remove();
+  for (const o of [...host.querySelectorAll('option')]) {
+    if (o.value !== id) continue;
+    const sel = o.closest('select');
+    const had = sel.value === id;
+    o.remove();
+    if (!had) continue;
+    sel.value = '';
+    if (sel.closest('.split-line')) sel.dispatchEvent(new Event('change'));
+  }
   return `${gone.label} has just been removed. Choose another envelope.`;
+}
+
+/** A refusal for a receipt the latest draw no longer lists: said at the top of To sort. */
+function sayInQueue(words) {
+  const box = $('unsorted-q');
+  const p = node('p', 'err', words);
+  p.setAttribute('role', 'alert');
+  box.hidden = false;
+  box.insertBefore(p, box.querySelector(':scope > table'));
 }
 
 async function loadUnsorted() {
   const turn = householdTurn;
+  const load = ++queueLoads;
   const box = $('unsorted-q');
   // No receipts named, so this only fetches the picker and the receipts a split
   // rule says to divide; nothing is asked of Claude.
@@ -6262,8 +6291,10 @@ async function loadUnsorted() {
     api('/api/tools/list_transactions', { toSortOnly: true, limit: 50 }),
     api('/api/match', { txnIds: [] }),
   ]);
-  // A household left meanwhile: its receipts are not drawn into the next one's Budget.
-  if (turn !== householdTurn) return;
+  // A household left meanwhile: its receipts are not drawn into the next one's Budget. A newer draw is on its way.
+  if (turn !== householdTurn || load !== queueLoads) return;
+  if (queueKept.turn !== turn) { queueKept.turn = turn; queueKept.rows.clear(); }
+  queueRows = new Map();
   const after = queueAfter?.turn === turn ? queueAfter : null;
   queueAfter = null;
   const offer = queueOffer?.turn === turn ? queueOffer.el : null;
@@ -6279,6 +6310,7 @@ async function loadUnsorted() {
   box.textContent = '';
   box.hidden = !result.matched && !offer && !after;
   if (!result.matched) {
+    queueKept.rows.clear();
     // Sorted to the last one: said here, with focus kept on it, until the screen is read again.
     if (offer) box.appendChild(offer);
     if (inOffer) active.focus({ preventScroll: true });
@@ -6320,26 +6352,34 @@ async function loadUnsorted() {
 
     const sel = envelopeSelect(options, null);
     sel.setAttribute('aria-label', `Envelope for ${t.payee}`);
-    // A refusal is said under the row, in the slot every row has.
+    // A refusal is said under the row, in the slot every row has, and kept with the row's other unsaved work.
     const { err, say } = epErr();
     const cell = tr.insertCell();
     cell.append(sel, err);
     const row = {
-      id: t.id, payee: t.payee, rule: null, amountCents: toCents(t.amount), tr, cell, sel, err, say,
+      id: t.id, payee: t.payee, rule: null, amountCents: toCents(t.amount), tr, cell, sel, err,
+      say: (text) => { say(text); keep(row); },
       // What the picker read before the last pick, to put back when a sort is refused; the split it opens with.
-      was: '', parts: [], editor: null, save: null, tag: null,
+      was: '', parts: [], editor: null, save: null, tag: null, suggestion: null, accepted: null, divide: false,
     };
     sel.addEventListener('change', () => chose(row));
     rows.push(row);
+    queueRows.set(row.id, row);
     // A split with a part in an envelope since removed: shown with its split, that part blank, to be chosen again.
     if (t.parts && t.missing) {
       const parts = t.parts.map((p) => ({ envelope: p.envelope, amountCents: toCents(p.amount) }));
       row.parts = parts.map((p) => (t.missing.includes(p.envelope) ? { ...p, envelope: '' } : p));
-      sel.value = row.was = '__split';
-      openSplit(row, row.parts);
     }
+    // What was left unsaved on this receipt before the redraw comes back as it was.
+    const kept = queueKept.rows.get(t.id);
+    if (kept?.split) { sel.value = row.was = '__split'; openSplit(row, kept.split); }
+    else if (t.parts && t.missing) { sel.value = row.was = '__split'; openSplit(row, row.parts); }
+    else if (kept?.suggestion) suggest(row, kept.suggestion);
+    if (kept?.said) row.say(kept.said);
   }
   box.appendChild(table);
+  // A receipt no longer listed has nothing left to keep.
+  for (const id of [...queueKept.rows.keys()]) if (!queueRows.has(id)) queueKept.rows.delete(id);
 
   /** Whether a refusal may take focus: it was on the control that was pressed, or nowhere, and not moved on since. */
   const unfocused = (pressed) => { const a = document.activeElement; return !a || a === document.body || a === pressed; };
@@ -6347,9 +6387,19 @@ async function loadUnsorted() {
   async function reload() {
     try { await loadBudget(); } catch (ex) { showProblem(ex); }
   }
+  /** The row's unsaved work, written down so the next draw can give it back. */
+  function keep(row) {
+    const k = {
+      ...(row.tag && row.suggestion ? { suggestion: row.suggestion } : {}),
+      ...(row.editor ? { split: row.editor.parts(), was: row.was } : {}),
+      ...(row.err.textContent ? { said: row.err.textContent } : {}),
+    };
+    if (Object.keys(k).length) queueKept.rows.set(row.id, k); else queueKept.rows.delete(row.id);
+  }
   // A split is saved once it balances, by its own button: the editor itself never writes.
   function settle(row) {
     if (row.save) row.save.disabled = !row.editor?.balanced();
+    keep(row);
   }
   function openSplit(row, initialParts) {
     row.editor?.el.remove();
@@ -6363,20 +6413,53 @@ async function loadUnsorted() {
     row.editor?.el.remove();
     row.editor = null;
     row.save?.remove();
+    keep(row);
+  }
+  /** Claude's suggestion, shown on the row and not taken: Accept is a pick, written at once. */
+  function suggest(row, s) {
+    row.suggestion = s;
+    // The model's rule was checked against the ledger; it beats the payee regex.
+    if (s.rule) row.rule = s.rule;
+    row.tag = suggestionTag(row.tr, row.sel, { suggested: s.choice }, () => {
+      row.accepted = s;
+      unsuggest(row);
+      if (s.choice === '__split') {
+        row.was = '__split';
+        row.parts = s.parts ?? [];
+        openSplit(row, row.parts);
+        row.editor.focus();
+      } else void sortInto(row, s.choice, true);
+    });
+    // Shown, not taken: until it is accepted the receipt is still To sort.
+    row.cell.insertBefore(row.tag, row.err);
+    keep(row);
   }
   /** A suggestion not taken goes once the person chooses for themselves. */
   function unsuggest(row) {
     row.tag?.remove();
     row.tag = null;
+    row.suggestion = null;
     row.tr.classList.remove('suggested');
+    keep(row);
   }
   function chose(row) {
     row.say('');
+    row.accepted = null;
     unsuggest(row);
     const value = row.sel.value;
     if (value === '__split') { row.was = value; openSplit(row, row.parts); return; }
     if (!value) { row.was = value; closeSplit(row); return; }
     void sortInto(row, value, false);
+  }
+  /**
+   * Where a refusal goes: this row while it is drawn, else the same receipt's row in the latest draw (which shows
+   * what the server holds), else the top of To sort. Answers the row to put back, or null when it is said elsewhere.
+   */
+  function refusedAt(row, words) {
+    if (row.tr.isConnected) return row;
+    const fresh = queueRows.get(row.id);
+    if (fresh) fresh.say(words); else sayInQueue(words);
+    return null;
   }
 
   /** A pick, written at once; a rule for its payee is offered once it lands, then the list is read again. */
@@ -6389,16 +6472,20 @@ async function loadUnsorted() {
         assignments: [{ txnId: row.id, envelope, ...(kept ? { suggestedBy: 'claude' } : {}) }],
       });
     } catch (ex) {
-      if (turn !== householdTurn || !row.tr.isConnected) return;
-      // Refused: the pick put back, and why said under the row.
+      if (turn !== householdTurn) return;
+      // Refused: the pick put back (an Accept's suggestion shown again), and why said under the row.
+      const words = sortRefusal(ex, options, table);
+      if (!refusedAt(row, words)) return;
       row.sel.disabled = false;
-      row.say(sortRefusal(ex, options, table));
       row.sel.value = row.was;
       settle(row);
+      if (kept && row.accepted && options.some((o) => o.value === row.accepted.choice)) suggest(row, row.accepted);
+      row.say(words);
       if (unfocused(row.sel)) row.sel.focus();
       return;
     }
     if (turn !== householdTurn) return;
+    queueKept.rows.delete(row.id);
     // Drawn again meanwhile (another row's sort): read again, so the list is not left showing this one.
     if (!row.tr.isConnected) { await reload(); return; }
     const el = node('div', 'rule-offer');
@@ -6425,29 +6512,33 @@ async function loadUnsorted() {
         parts: row.editor.parts().map((p) => ({ envelope: p.envelope, amount: p.amountCents })),
       }] });
     } catch (ex) {
-      if (turn !== householdTurn || !row.tr.isConnected) return;
+      if (turn !== householdTurn) return;
+      // A line whose envelope has just gone is blanked and counted again before Save the split is set.
+      const words = sortRefusal(ex, options, table);
+      if (!refusedAt(row, words)) return;
       row.sel.disabled = false;
       settle(row);
-      row.say(sortRefusal(ex, options, table));
+      row.say(words);
       if (unfocused(row.save)) row.err.focus();
       return;
     }
     if (turn !== householdTurn) return;
+    queueKept.rows.delete(row.id);
     queueAfter = { turn, at: rows.indexOf(row), offer: false, said: null };
     await reload();
   }
 
   // A split rule already decided these are to be divided, so no model is asked
-  // and there is nothing to accept — only amounts to type.
+  // and there is nothing to accept — only amounts to type. A split kept from before the redraw is marked too.
   const markToDivide = (ids) => {
     for (const row of rows) {
-      if (!ids.includes(row.id) || row.sel.value) continue;
-      row.sel.value = row.was = '__split';
+      if (!ids.includes(row.id) || row.divide || (row.sel.value && row.sel.value !== '__split')) continue;
+      row.divide = true;
+      if (!row.editor) { row.sel.value = row.was = '__split'; openSplit(row, []); }
       const tag = document.createElement('span');
       tag.className = 'sugg';
       tag.textContent = 'a rule says: divide this';
-      row.cell.insertBefore(tag, row.err);
-      openSplit(row, []);
+      row.cell.insertBefore(tag, row.editor.el);
     }
   };
   markToDivide(toDivide ?? []);
@@ -6470,19 +6561,7 @@ async function loadUnsorted() {
           const s = r.suggestions[row.id];
           if (!s || row.sel.value || row.sel.disabled) continue;
           n++;
-          // The model's rule was checked against the ledger; it beats the payee regex.
-          if (s.rule) row.rule = s.rule;
-          row.tag = suggestionTag(row.tr, row.sel, { suggested: s.choice }, () => {
-            unsuggest(row);
-            if (s.choice === '__split') {
-              row.was = '__split';
-              row.parts = s.parts ?? [];
-              openSplit(row, row.parts);
-              row.editor.focus();
-            } else void sortInto(row, s.choice, true);
-          });
-          // Shown, not taken: until it is accepted the receipt is still To sort.
-          row.cell.insertBefore(row.tag, row.err);
+          suggest(row, { choice: s.choice, ...(s.rule ? { rule: s.rule } : {}), ...(s.parts ? { parts: s.parts } : {}) });
         }
         markToDivide(r.toDivide ?? []);
         ask.textContent = r.suggestError ?? (n ? `${n} suggested` : 'Nothing confident enough to suggest');
@@ -7620,8 +7699,11 @@ $('month-discard').addEventListener('click', () => {
 // The Budget list is how envelopes are set; an envelope's page lists its
 // receipts under the card that states what is left. Only the list is drawn
 // here: the card above already says what was carried in, funded and spent.
+/** How many times receipts have been drawn: a receipt's Edit asks for focus on the next draw by its number. */
+let receiptsDrawn = 0;
 async function showReceipts(body, e) {
   const page = envelopePage;
+  const draw = ++receiptsDrawn;
   const box = document.createElement('div');
   box.textContent = 'Reading receipts…';
   body.appendChild(box);
@@ -7643,9 +7725,9 @@ async function showReceipts(body, e) {
     head.appendChild(node('span', 'count', String(result.transactions.length)));
     const was = body.closest('.ep-sec')?.querySelector(':scope > .ep-sec-h');
     if (was) was.replaceWith(head); else box.appendChild(head);
-    // A receipt's Edit just saved: focus on the list it was saved from, read again.
-    if (page.focusReceipts) {
-      page.focusReceipts = false;
+    // A receipt's Edit just saved: focus on the list it was saved from, read again (this draw, and no later one).
+    if (page.focusReceipts === draw) {
+      page.focusReceipts = 0;
       head.tabIndex = -1;
       head.focus({ preventScroll: true });
     }
@@ -7771,14 +7853,17 @@ function editReceipt(row, t, options, onClose) {
       err.focus();
       return;
     }
-    // Written: the budget is read again even after Back, and with it the receipts (void showReceipts(rcpts, e)).
-    if (envelopePage === page) page.focusReceipts = true;
+    // Written: the budget is read again even after Back, and with it the receipts (void showReceipts(rcpts, e)),
+    // focus on their heading in the draw that follows; a reload that stops before drawing them leaves none asked for.
+    const draw = receiptsDrawn + 1;
+    if (envelopePage === page) page.focusReceipts = draw;
     try {
       await loadBudget();
     } catch (ex) {
-      if (page) page.focusReceipts = false;
       if (envelopePage !== page || !box.isConnected) return;
       say('Saved. The screen could not be read again; go Back to see it.');
+    } finally {
+      if (page && page.focusReceipts === draw && receiptsDrawn < draw) page.focusReceipts = 0;
     }
   });
 
@@ -8180,7 +8265,7 @@ $('imp-commit').addEventListener('click', async () => {
     const balNote = out.balances ? ` Recorded ${out.balances === 1 ? 'a balance' : `${out.balances} balances`}.` : '';
     $('imp-err').textContent = out.added
       ? `Added ${out.added} receipts, ${out.sorted} already sorted${out.divided ? ` (${out.divided} divided)` : ''}. `
-        + `${out.toSort} still need an envelope.${balNote}`
+        + `${out.added - out.sorted} still need an envelope.${balNote}`
       : out.balances ? `No new receipts in it.${balNote}` : out.note;
     if (out.added && kept.length) offerRules(kept, preview.options);
   } catch (ex) {
@@ -8321,7 +8406,8 @@ async function askToRestore(box, r, trigger) {
     refused.textContent = '';
     try {
       const { proposal } = await api('/api/tools/restore_transaction', {
-        txnId: r.txnId, ...(sel.value ? { envelope: sel.value } : {}), why: why.value.trim(),
+        // "— no envelope yet —" is said as null, so it lands in To sort rather than back where it was.
+        txnId: r.txnId, envelope: sel.value || null, why: why.value.trim(),
       });
       const ul = document.createElement('ul');
       ul.className = 'effects';
@@ -14593,6 +14679,9 @@ function forgetHousehold() {
   for (const id of ['ta-v', 'ta-line', 'ta-green', 't-income', 't-funded', 't-spent', 'inc-list', 'inc-projection',
     'unsorted-q', 'bands', 'month-note', 'walk-steps', 'walk-step']) $(id).textContent = '';
   for (const id of ['ta-next', 'unsorted-q', 'month-sec']) $(id).hidden = true;
+  // To sort's unsaved work and its rows belong to the household left.
+  queueKept.rows.clear();
+  queueRows = new Map();
   // A short form left open on the list (an add, a rename) goes with the household it was for; the add rows come back.
   listFormClose?.(false);
   bandMenus.length = 0;
