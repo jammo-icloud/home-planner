@@ -232,7 +232,7 @@ import { budgetNotices, folderSource, setupNotices, setupSteps, zoneSource } fro
 import { matchModel, modelChoices, modelSource, pickerOptions, suggestForRows } from './match.ts';
 import { cents, fmt, fmtExact } from './money.ts';
 import type { Cents } from './money.ts';
-import { lowEnvelopes, snapshot, toSort } from './analytics.ts';
+import { inToSort, lowEnvelopes, snapshot, toSort } from './analytics.ts';
 import { byRule, splitProblem, ReplayError } from './replay.ts';
 import { ensureHousehold, ensureSection, markRead } from './briefing.ts';
 import { ClaudeRefused, claudeConfigured, claudeKey, testClaude } from './claude.ts';
@@ -2618,16 +2618,19 @@ export async function start(
     if (path === '/api/match' && req.method === 'POST') {
       const body = (await readBody(req)) as { txnIds?: string[] };
       const state = active.state;
+      // What To sort holds, a receipt whose envelope was removed in a month not closed among them; never a split,
+      // which To sort shows with its parts and whose missing part is chosen there.
+      const open = (t: Txn) => t.envelope !== SPLIT && inToSort(state, t);
       const rows = (body.txnIds ?? []).flatMap((id) => {
         const t = state.txns.get(id);
-        return t && t.envelope === null
+        return t && open(t)
           ? [{ id: t.id, payee: t.payee, ...(t.memo ? { memo: t.memo } : {}), envelope: null }] : [];
       });
       const { suggested, toDivide, error } = await suggestForRows(state, rows);
       // Every open receipt a split rule covers, named or not: the queue asks with
       // no ids on load, so nothing goes to Claude, and still learns what to divide.
       for (const t of state.txns.values()) {
-        if (t.envelope === null && byRule(state.rules, t) === SPLIT) toDivide.add(t.id);
+        if (open(t) && byRule(state.rules, t) === SPLIT) toDivide.add(t.id);
       }
       return json(res, 200, {
         options: pickerOptions(state),

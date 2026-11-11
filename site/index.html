@@ -355,8 +355,6 @@
   .savings-check .link{margin-left:4px}
   .goal-form{margin-top:13px;padding-top:13px;border-top:1px solid var(--hair);display:grid;gap:8px}
   .goal-form .hint{margin:0}
-  .goal-form .msg{color:var(--problem);font-size:var(--fs-small)}
-  .goal-form .msg:empty{display:none}
   .savings-card h3{color:var(--problem)}
   .imp-bal{margin-top:16px}
   .imp-bal p{margin:0;flex-basis:100%}
@@ -5814,12 +5812,13 @@ function goalForm(slot, e, { onCancel }) {
   kind.addEventListener('change', show);
   show();
 
-  const msg = node('span', 'msg');
+  // The error slot, always there: a refusal is read out, and the server's own is focused (a field it names is not).
+  const { err, say } = epErr();
   const row = node('div', 'row ep-acts');
   const go = node('button', 'btn primary', 'Show what this would do');
   go.type = 'button';
   go.addEventListener('click', async () => {
-    msg.textContent = '';
+    say('');
     try {
       const args = { envelope: e.id, goal: kind.value };
       if (kind.value === 'by') {
@@ -5845,14 +5844,16 @@ function goalForm(slot, e, { onCancel }) {
       showProposal(slot, proposal, go);
     } catch (ex) {
       if (envelopePage !== page || !wrap.isConnected) return;
-      msg.textContent = ex.message;
+      say(ex.message);
+      // The form's own checks focused the field they are about; the server's refusal is read where it is said.
+      if (ex.status !== undefined) err.focus({ preventScroll: true });
     }
   });
   // The secondary first, the primary at the right; Cancel is also what Escape presses.
   const cancel = textBtn('Cancel', 'btn', null, onCancel);
   cancel.dataset.cancel = '';
   row.append(cancel, go);
-  wrap.append(head, every, byLine, row, msg);
+  wrap.append(head, every, byLine, row, err);
   slot.replaceChildren(wrap);
   kind.focus({ preventScroll: true });
 }
@@ -5970,10 +5971,10 @@ function billForm(e, b, { close }) {
     form.appendChild(epField('Name', name));
   }
 
-  // Kind: one pressed at a time.
+  // Due, Auto Pay or Pay by: one pressed at a time.
   let kind = b?.date?.kind ?? 'due';
   const kindField = node('div', 'ep-f');
-  const kindLabel = node('label', '', 'Kind');
+  const kindLabel = node('label', '', 'The date is');
   kindLabel.id = `ep-kind-${++epFieldIds}`;
   const seg = node('div', 'seg');
   seg.setAttribute('role', 'group');
@@ -6121,39 +6122,49 @@ const ruleSuggestion = (payee) =>
 const ruleFor = (row) => row.rule || ruleSuggestion(row.payee);
 
 /**
- * A rule for a receipt just sorted, offered in `box`; To sort and Import share it. `match` is the payee text,
- * `envelope` where it sorts to and `label` its name. add_rule only proposes, so the server is asked first and the
- * offer is drawn only when a rule could be kept: a refused one shows nothing. "Show the rule" asks again and shows
- * what the rule would do; only "Remember it" keeps it. Answers whether the offer was drawn; `onDone` hears
- * 'remembered' or 'dismissed' once it is answered.
+ * A rule for a receipt just sorted, offered in `box`; To sort and Import share it. `match` is the payee text it
+ * starts from, in a field a person may change; `envelope` is where it sorts to and `label` its name. add_rule only
+ * proposes: it is asked once when the offer is drawn, and a refusal (a rule there already, receipts filed elsewhere)
+ * is said under the field, which stays editable. "Show the rule" asks with what is typed and shows what the rule
+ * would do; only "Remember it" keeps it, and changing the text puts the shown rule away. Answers whether the offer
+ * was drawn; `onDone` hears 'remembered' or 'dismissed' once it is answered.
  */
 async function ruleOffer(box, { match, envelope, label, txnId }, onDone = () => {}) {
   const turn = householdTurn;
-  const ask = () => api('/api/tools/add_rule', { match, envelope, ...(txnId ? { txnId } : {}) });
-  try { await ask(); } catch { return false; }
+  const ask = (text) => api('/api/tools/add_rule', { match: text, envelope, ...(txnId ? { txnId } : {}) });
+  let first = null;
+  try { await ask(match); } catch (ex) { first = ex; }
   if (turn !== householdTurn) return false;
   // A household left, or the offer put away, while a press was out: nothing is drawn there.
   const gone = () => turn !== householdTurn || !box.isConnected;
-  const q = node('p', 'quiet', envelope === '__split' ? `Always ask to divide ${match}?` : `Remember ${match} for ${label}?`);
+  const q = node('p', 'quiet', envelope === '__split' ? 'Always ask to divide receipts like this one?' : `Remember this for ${label}?`);
+  const text = node('input', 'hit');
+  text.value = match;
+  text.autocomplete = 'off';
+  text.spellcheck = false;
+  const field = epField('Receipts whose payee contains', text);
   const acts = node('div', 'acts');
   const { err, say } = epErr();
+  let ul = null;
   const finish = (outcome, ...left) => { box.replaceChildren(...left); onDone(outcome); };
   const notNow = textBtn('Not now', 'btn hit', null, () => finish('dismissed'));
   const show = textBtn('Show the rule', 'btn hit', null, async () => {
-    show.disabled = true;
+    const typed = text.value.trim();
     say('');
+    if (!typed) { say('Type the words the payee contains.'); text.focus(); return; }
+    show.disabled = true;
     let proposal;
     try {
-      ({ proposal } = await ask());
+      ({ proposal } = await ask(typed));
     } catch (ex) {
       if (gone()) return;
       show.disabled = false;
       say(ex.message);
-      err.focus();
+      text.focus();
       return;
     }
     if (gone()) return;
-    const ul = node('ul', 'effects');
+    ul = node('ul', 'effects');
     for (const e of proposal.effects) ul.appendChild(node('li', '', e));
     const yes = textBtn('Remember it', 'btn primary hit', null, async () => {
       yes.disabled = true;
@@ -6163,9 +6174,7 @@ async function ruleOffer(box, { match, envelope, label, txnId }, onDone = () => 
       } catch (ex) {
         if (gone()) return;
         // A proposal is used once: shown again, it is asked for afresh.
-        ul.remove();
-        show.disabled = false;
-        acts.replaceChildren(notNow, show);
+        putAway();
         say(ex.message);
         err.focus();
         return;
@@ -6177,11 +6186,22 @@ async function ruleOffer(box, { match, envelope, label, txnId }, onDone = () => 
       if (box.isConnected) done.focus({ preventScroll: true });
     });
     acts.replaceChildren(notNow, yes);
-    box.replaceChildren(q, ul, acts, err);
+    box.replaceChildren(q, field, ul, acts, err);
     yes.focus();
   });
+  /** The shown rule put away: what is typed has changed, or it was refused when kept. */
+  const putAway = () => {
+    ul?.remove();
+    ul = null;
+    show.disabled = false;
+    acts.replaceChildren(notNow, show);
+  };
+  text.addEventListener('input', () => { if (ul) putAway(); say(''); });
+  text.addEventListener('keydown', (ev) => { if (ev.key === 'Enter') { ev.preventDefault(); if (!ul) show.click(); } });
   acts.append(notNow, show);
-  box.replaceChildren(q, acts, err);
+  box.replaceChildren(q, field, acts, err);
+  // Refused as first offered: said under the field, which can be changed to something that can be kept.
+  if (first) say(first.message);
   return true;
 }
 
@@ -8197,7 +8217,7 @@ $('imp-commit').addEventListener('click', async () => {
 /**
  * Suggestions someone accepted, offered as rules so the same payee is sorted by
  * rule next time and Claude is asked less: one offer per payee text, each shown
- * and kept on its own (ruleOffer). An offer the server would refuse is not drawn.
+ * and kept on its own (ruleOffer). One the server refuses as offered says why under its field, which can be changed.
  */
 function offerRules(rows, options) {
   const box = $('imp-rules');
@@ -12418,7 +12438,7 @@ function restoreForm() {
   set.appendChild(node('legend', '', 'What to take'));
   for (const band of BANDS) {
     const available = p.available[band.key] ?? 0;
-    const label = node('label', `pick${pick.chosen.has(band.key) ? ' on' : ''}${available ? '' : ' empty'}`);
+    const label = node('label', `pick${pick.chosen.has(band.key) && available ? ' on' : ''}${available ? '' : ' empty'}`);
     const cb = node('input');
     cb.type = 'checkbox';
     cb.checked = pick.chosen.has(band.key) && available > 0;

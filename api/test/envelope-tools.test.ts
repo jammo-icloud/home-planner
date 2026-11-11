@@ -263,11 +263,12 @@ describe('sorting by a press', () => {
     assert.equal(state().rules.length, 1, 'nothing written until it is approved');
     assert.equal((await call('POST', '/api/commit', { proposalId: p.proposal.id })).status, 200);
     assert.deepEqual(state().rules.at(-1), { id: 'r-example-market', match: 'EXAMPLE MARKET', envelope: 'groceries' });
-    // ruleProblem's refusals pass through.
-    await refusedWith(propose('add_rule', { match: 'EX', envelope: 'groceries' }), 'a rule needs at least 3 characters');
-    await refusedWith(propose('add_rule', { match: 'GYM', envelope: 'groceries', txnId: 'm1' }), 'not in the payee');
-    await refusedWith(propose('add_rule', { match: 'example gym', envelope: 'gym' }), 'already a rule');
-    await refusedWith(propose('add_rule', { match: 'MARKET', envelope: 'dining' }), 'already filed under Groceries');
+    // ruleProblem's refusals, said in a sentence a person reads under the rule's field.
+    await refusedWith(propose('add_rule', { match: 'EX', envelope: 'groceries' }), 'A rule needs at least 3 characters to match.');
+    await refusedWith(propose('add_rule', { match: 'GYM', envelope: 'groceries', txnId: 'm1' }), 'This receipt\'s payee does not contain "GYM".');
+    await refusedWith(propose('add_rule', { match: 'example gym', envelope: 'gym' }), 'There is already a rule for "example gym".');
+    await refusedWith(propose('add_rule', { match: 'MARKET', envelope: 'dining' }),
+      'Receipts matching "MARKET" are already sorted into Groceries, so a rule for Dining would disagree with them.');
     await refusedWith(propose('add_rule', { match: 'CORNER', envelope: 'nowhere' }), 'no envelope nowhere');
     await refusedWith(propose('add_rule', { match: 'CORNER', envelope: 'dining', txnId: 'zz' }), 'no transaction zz');
     // A press never adds a rule without showing it.

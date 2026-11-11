@@ -32,6 +32,26 @@ async function fixture(opts: { spend?: boolean } = {}) {
   return { store, ctx };
 }
 
+describe('a month proposal reads the month by name', () => {
+  test('Open, Close, Reopen and Discard say "August", never "2026-08"', async () => {
+    const { store, ctx } = await fixture();
+    await store.append('alice', { op: 'income.source.define', source: 'pay', label: 'Pay', earner: 'alice',
+      amount: parseDollars('5000.00'), frequency: 'monthly', anchor: '2026-08-01' });
+    const close = await run('close_month', { month: '2026-08', closed: true, why: 'done' }, ctx);
+    assert.equal(close.summary, 'Close August');
+    assert.equal(close.effects[0], 'August takes no more assignments, moves or income changes');
+    await commit(close.id, ctx);
+    const reopen = await run('close_month', { month: '2026-08', closed: false, why: 'a late receipt' }, ctx);
+    assert.deepEqual([reopen.summary, reopen.effects], ['Reopen August', ['August can be changed again']]);
+    const discard = await run('discard_month', { month: '2026-08', why: 'opened too early' }, ctx);
+    assert.equal(discard.summary, "Discard August's plan");
+    assert.equal(discard.effects[0], 'August stops being open, as though it had never been opened');
+    const open = await run('open_month', { month: '2026-09' }, ctx);
+    assert.equal(open.summary, 'Open September');
+    assert.doesNotMatch(JSON.stringify([close, reopen, discard, open].map((x) => [x.summary, x.effects])), /2026-0/);
+  });
+});
+
 describe('closing a month', () => {
   test('a closed month takes no more money decisions', async () => {
     const { store, ctx } = await fixture({ spend: true });

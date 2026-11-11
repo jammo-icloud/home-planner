@@ -15,10 +15,11 @@ import { copyFile, link, mkdir, open, readFile, readdir, rm, stat, writeFile, re
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { replay, replayLeavingOut } from './replay.ts';
+import { replay, replayLeavingOut, ReplayError } from './replay.ts';
+import { ToolError } from './errors.ts';
 import { newEventId, Store } from './store.ts';
 import { scopeOf } from './restore.ts';
-import { CONFIG_OPS, SYSTEM } from './types.ts';
+import { CONFIG_OPS, RETIRED_OPS, SYSTEM } from './types.ts';
 import type { Actor, Event } from './types.ts';
 
 /**
@@ -148,7 +149,13 @@ export class Households {
     if (cached) return cached;
     const generation = this.#removals.get(id) ?? 0;
     const store = new Store({ path: this.path(id) });
-    await store.load();
+    try {
+      await store.load();
+    } catch (err) {
+      // A log from before 0.10.0 is said in one plain sentence, never as the fold's "unknown op".
+      if (savedBefore010(err)) throw new ToolError(SAVED_BEFORE_010, 409);
+      throw err;
+    }
     // Removed while this was loading: caching it would serve, and let a write
     // recreate, a log that is gone. The caller gets it closed, never cached.
     if ((this.#removals.get(id) ?? 0) !== generation) {
@@ -337,6 +344,16 @@ export interface Adoption {
   readonly ownerless: boolean;
 }
 
+/** What a household whose log was written before 0.10.0 says when it is chosen: 0.10.0 cannot replay it. */
+export const SAVED_BEFORE_010 =
+  'This household was saved before Home Planner 0.10.0, which cannot open it, so it has to be made again.';
+
+/** True when a log failed to replay only because it holds an op 0.10.0 retired: it was written before 0.10.0. */
+export function savedBefore010(err: unknown): boolean {
+  const op = err instanceof ReplayError ? /^unknown op: (\S+)$/.exec(err.reason)?.[1] : undefined;
+  return op !== undefined && RETIRED_OPS.has(op);
+}
+
 /**
  * Bring a pre-many-households install forward.
  *
@@ -364,7 +381,17 @@ export async function adoptSingleLog(
   if (!existsSync(resolve(logPath))) return null;
 
   const old = new Store({ path: logPath });
-  await old.load();
+  try {
+    await old.load();
+  } catch (err) {
+    // Left where it is and said, rather than stopping the server from starting: with the households made before
+    // 0.10.0 deleted, an old install's single log is still on the volume (DEPLOY, Upgrading to 0.10.0).
+    if (!(err instanceof ReplayError)) throw err;
+    console.warn(savedBefore010(err)
+      ? `[budget] ${logPath} was written before 0.10.0, which cannot read it, so it is not adopted as a household`
+      : `[budget] ${logPath} could not be read, so it is not adopted as a household (${err.reason})`);
+    return null;
+  }
   if (!old.state.owner) return null;
 
   const id = slugify(old.state.label || 'household');

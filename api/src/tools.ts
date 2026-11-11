@@ -643,6 +643,12 @@ const getActivity: Tool = {
 };
 
 /** One human sentence per event. The Activity screen renders these directly. */
+/** "2026-10" as "October", the page's own word for the month a proposal acts on ("Discard October's plan"). */
+const monthWord = (m: string): string => {
+  const [y, mo] = m.split('-').map(Number);
+  if (!y || !mo) return m;
+  return new Date(Date.UTC(y, mo - 1, 1)).toLocaleDateString('en-US', { month: 'long', timeZone: 'UTC' });
+};
 /** "2026-10" as "October 2026". */
 const monthName = (m: string): string => {
   const [y, mo] = m.split('-').map(Number);
@@ -1255,7 +1261,7 @@ const openMonth: Tool = {
     return ctx.proposals.put({
       tool: 'open_month',
       who: ctx.who,
-      summary: `Open ${month}`,
+      summary: `Open ${monthWord(month)}`,
       effects,
       events: [{ op: 'month.open', month, income, ...(sinking.size ? { plan: Object.fromEntries(sinking) } : {}) }],
     }, new Date(`${ctx.today}T00:00:00Z`).toISOString());
@@ -1540,6 +1546,16 @@ const removeCategory: Tool = {
 /** ruleProblem's words that are about the request itself; the rest are about what is already here. */
 const RULE_INPUT_PROBLEMS: ReadonlySet<string> = new Set(['a rule needs at least 3 characters', 'not in the payee']);
 
+/** ruleProblem's answer as a sentence a person reads under the rule's field: `into` names where the rule would sort. */
+function ruleWords(problem: string, match: string, into: string): string {
+  if (problem === 'a rule needs at least 3 characters') return 'A rule needs at least 3 characters to match.';
+  if (problem === 'not in the payee') return `This receipt's payee does not contain "${match}".`;
+  if (problem === 'already a rule') return `There is already a rule for "${match}".`;
+  const elsewhere = /^already filed under (.+)$/.exec(problem)?.[1];
+  if (elsewhere) return `Receipts matching "${match}" are already sorted into ${elsewhere}, so a rule for ${into} would disagree with them.`;
+  return problem;
+}
+
 const addRule: Tool = {
   name: 'add_rule',
   description:
@@ -1567,7 +1583,7 @@ const addRule: Tool = {
     const t = txnId === null ? null : state.txns.get(txnId);
     if (t === undefined) throw new ToolError(`no transaction ${txnId}`, 404);
     const problem = ruleProblem(state, t?.payee ?? null, match, envelope);
-    if (problem) throw new ToolError(problem, RULE_INPUT_PROBLEMS.has(problem) ? 400 : 409);
+    if (problem) throw new ToolError(ruleWords(problem, match, filedLabel(state, envelope)), RULE_INPUT_PROBLEMS.has(problem) ? 400 : 409);
 
     const base = `r-${match.toLowerCase().replace(/\W+/g, '-')}`;
     let rule = base;
@@ -1777,15 +1793,15 @@ const closeMonth: Tool = {
 
     return ctx.proposals.put({
       tool: 'close_month', who: ctx.who,
-      summary: closed ? `Close ${month}` : `Reopen ${month}`,
+      summary: closed ? `Close ${monthWord(month)}` : `Reopen ${monthWord(month)}`,
       effects: closed
-        ? [`${month} takes no more assignments, moves or income changes`,
+        ? [`${monthWord(month)} takes no more assignments, moves or income changes`,
            view ? `It finishes with ${fmtExact(view.activity)} spent and ${fmtExact(view.toAssign)} unassigned` : '',
            unsorted ? `${unsorted} receipts in it still have no envelope — sort them first if you want them counted`
                     : 'Every receipt in it has an envelope',
            'Whatever is left still carries into next month',
           ].filter(Boolean)
-        : [`${month} can be changed again`],
+        : [`${monthWord(month)} can be changed again`],
       events: [{ op: 'month.close', month, closed, why }],
     }, ctx.today);
   },
@@ -1820,14 +1836,14 @@ const discardMonth: Tool = {
     const later = [...state.months.keys()].filter((m) => m > month).sort();
     if (later.length) {
       // A later month may be carrying a balance out of this one.
-      throw new ToolError(`${later.join(', ')} come after it — discard those first`);
+      throw new ToolError(`${later.map(monthName).join(', ')} come after it — discard those first`);
     }
 
     return ctx.proposals.put({
       tool: 'discard_month', who: ctx.who,
-      summary: `Discard ${month}`,
+      summary: `Discard ${monthWord(month)}'s plan`,
       effects: [
-        `${month} stops being open, as though it had never been opened`,
+        `${monthWord(month)} stops being open, as though it had never been opened`,
         'No money was assigned or moved in it, so no decision is lost',
         'Every receipt stays exactly where it is',
         'The record that it was opened, and discarded, stays in the log',

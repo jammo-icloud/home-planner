@@ -1267,6 +1267,11 @@ function fold(d: Draft, e: Event): void {
       if (!m) return; // discarding a month that is not there is inert, not fatal
       if (m.adjustments.length) throw new ReplayError('that month has been adjusted — close it instead', e);
       d.months.delete(e.month);
+      // Gone, it keeps no removed envelope, as a reopened month keeps none: opening and closing it again does not
+      // bring one back.
+      for (const r of d.removedEnvelopes.values()) {
+        if (r.keptIn.includes(e.month)) d.removedEnvelopes.set(r.id, { ...r, keptIn: r.keptIn.filter((m2) => m2 !== e.month) });
+      }
       return;
     }
 

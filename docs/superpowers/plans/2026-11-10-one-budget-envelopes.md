@@ -257,7 +257,7 @@ Fate: **K** kept, **C** changed, **R** removed, **A** added, **M** moved. Every 
 |---|---|---|---|
 | B40 | To sort (`#unsorted-q`): "N receipts to sort", "…are in no envelope yet, so Spent does not include them. Give each one an envelope.", "Showing the newest N." | C: also lists receipts whose envelope was removed in a month not closed | 10 |
 | B41 | A row: date, payee, amount, the picker "— not sorted —" | C: picking an envelope writes at once; the row leaves on reload | 10 |
-| B42 | "remember" and the payee text the rule matches ("remember: always ask to divide" for a split) | C: once the pick lands, "Remember <match> for <Envelope>?" and "Show the rule", its proposal, "Remember it" or "Not now" | 10 |
+| B42 | "remember" and the payee text the rule matches ("remember: always ask to divide" for a split) | C: once the pick lands, "Remember this for <Envelope>?" with a field "Receipts whose payee contains" filled with the payee's merchant and editable; "Show the rule" proposes with what is typed, its proposal, "Remember it" or "Not now"; a refusal is said under the field, which stays editable (final review) | 10 |
 | B43 | "a rule says: divide this", and the split editor opened | K | 10 |
 | B44 | "Suggest envelopes", "Asking Claude…", "N suggested" or "Nothing confident enough to suggest"; Suggested and Accept on a row | C: Accept writes at once, as a pick does | 10 |
 | B45 | "Show what this would do", the proposal, Approve or Not now | R | 10 |

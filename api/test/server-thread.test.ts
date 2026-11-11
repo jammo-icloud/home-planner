@@ -365,6 +365,27 @@ describe('the thread routes', () => {
     } finally { setClaudeClient(null); }
   });
 
+  test('/api/match asks about a receipt whose envelope was removed in a month not closed, and finds a split rule for it', async () => {
+    assert.equal((await call('POST', '/api/tools/add_envelope?approve=1', { label: 'Snacks', category: 'people' })).status, 200);
+    const csv = 'Date,Payee,Amount\n' + `${month}-05,HILLTOP FOODS #77,-12.00\n` + `${month}-06,BIGBOX WHSE #0777,-30.00\n`;
+    const p = await call('POST', '/api/import/preview', { filename: 's.csv', content: csv });
+    const rows = p.json.rows.map((r: any) => ({ ...r, envelope: 'snacks' }));
+    assert.equal((await call('POST', '/api/import/commit', { source: 's.csv', rows })).status, 200);
+    const hilltop = rows.find((r: any) => /HILLTOP/.test(r.payee)).id;
+    const bigbox = rows.find((r: any) => /BIGBOX/.test(r.payee)).id;
+    const proposed = await call('POST', '/api/tools/remove_envelope', { envelope: 'snacks', why: 'stopped' });
+    assert.equal((await call('POST', '/api/commit', { proposalId: proposed.json.proposal.id })).status, 200);
+
+    const f = fake([said(JSON.stringify({ matches: [
+      { payee: 'HILLTOP FOODS #77', choice: 'food', confidence: 0.95, rule: 'hilltop foods' },
+    ] }))]);
+    try {
+      const r = await call('POST', '/api/match', { txnIds: [hilltop] });
+      assert.deepEqual(r.json.suggestions[hilltop], { choice: 'food', rule: 'hilltop foods' }, 'asked, though it still names the removed envelope');
+      assert.ok(r.json.toDivide.includes(bigbox), 'the split rule covers it too');
+    } finally { setClaudeClient(null); }
+  });
+
   test('/api/match with no ids still lists every open receipt a split rule covers, and asks Claude nothing', async () => {
     const csv = 'Date,Payee,Amount\n' + `${month}-04,BIGBOX WHSE #0999,-55.00\n`;
     const p = await call('POST', '/api/import/preview', { filename: 'n.csv', content: csv });

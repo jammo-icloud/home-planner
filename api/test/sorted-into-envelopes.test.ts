@@ -147,6 +147,16 @@ describe('removing an envelope', () => {
     assert.ok(toSort(again).txnIds.includes('g9'));
     assert.equal(monthView(again, '2026-09')!.envelopes.some((e) => e.envelope.id === 'gym'), false);
   });
+  test('a kept month discarded, opened and closed again keeps its receipts in To sort', () => {
+    const again = apply(removed(), [
+      ev({ op: 'month.discard', month: '2026-09', why: 'opened by mistake' }),
+      ev({ op: 'month.open', month: '2026-09', income: cents(500000) }),
+      ev({ op: 'month.close', month: '2026-09', closed: true, why: 'done again' }),
+    ]);
+    assert.deepEqual(again.removedEnvelopes.get('gym')!.keptIn, []);
+    assert.ok(toSort(again).txnIds.includes('g9'));
+    assert.equal(monthView(again, '2026-09')!.envelopes.some((e) => e.envelope.id === 'gym'), false);
+  });
   test("a closed month's figures for it are the same before and after the removal", () => {
     // Gym rolls over: August's leftover carries into September, both closed when it goes.
     const lived = [

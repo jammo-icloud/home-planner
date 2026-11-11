@@ -393,7 +393,7 @@ describe('a collision refuses, and says what it was', () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
     await store.append('bob', { op: 'txn.add', txns: [
-      { id: 't1', date: '2026-08-02', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', envelope: null }] });
+      { id: 't1', date: '2026-08-02', payee: 'EXAMPLE MARKET', amount: parseDollars('-64.10'), dedupeKey: 't1', envelope: null }] });
     const before = store.state.eventCount;
 
     const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budget']);
@@ -604,6 +604,25 @@ describe('an old single-log install is brought forward, not stranded', () => {
   test('no log at all is not an error — a fresh install just has none', async () => {
     const hh = new Households(await dir());
     assert.equal(await adoptSingleLog(hh, join(tmpdir(), 'pb-nope', 'events.jsonl'), 'alice'), null);
+  });
+
+  test('a single log written before 0.10.0 is not adopted, and nothing is copied', async () => {
+    const hh = new Households(await dir());
+    const path = join(await mkdtemp(join(tmpdir(), 'pb-old-')), 'events.jsonl');
+    await writeFile(path, [
+      { id: 'x0', at: '2026-10-01T00:00:00Z', who: 'dana', op: 'household.claim', label: 'Rivera' },
+      { id: 'x1', at: '2026-10-01T00:00:00Z', who: 'dana', op: 'budget.create', budget: 'home', label: 'Home' },
+    ].map((e) => JSON.stringify(e)).join('\n') + '\n');
+    const warned: string[] = [];
+    const warn = console.warn;
+    console.warn = (...args: unknown[]) => { warned.push(args.join(' ')); };
+    try {
+      assert.equal(await adoptSingleLog(hh, path, 'alice'), null);
+    } finally {
+      console.warn = warn;
+    }
+    assert.deepEqual(await hh.ids(), [], 'no household was made from it');
+    assert.ok(warned.some((w) => /before 0\.10\.0/.test(w) && w.includes(path)), warned.join('|'));
   });
 });
 

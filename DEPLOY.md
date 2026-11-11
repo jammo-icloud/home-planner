@@ -913,17 +913,18 @@ thing to check instead.
 
 What you see once the new image is running:
 
-- **Choose a household** still lists every household, the old ones too. Choosing one written before 0.10.0 comes straight back to that list, with `unknown op: budget.create` in red under its title. A household made by 0.10.0 opens as usual beside it.
-- **The container's log** (Container Manager → Container → `home-planner` → Log) names each one at start, by its folder: `<id>: could not be opened (unknown op: budget.create)`, then `<id>: could not be opened, so its folder is not carried over`, and again with the full error each time someone chooses it.
+- **Choose a household** still lists every household, the old ones too. Choosing one written before 0.10.0 comes straight back to that list, saying in red under its title: "This household was saved before Home Planner 0.10.0, which cannot open it, so it has to be made again." A household made by 0.10.0 opens as usual beside it.
+- **The container's log** (Container Manager → Container → `home-planner` → Log) names each one at start, by its folder: `<id>: could not be opened (This household was saved before Home Planner 0.10.0, …)`, then `<id>: could not be opened, so its folder is not carried over (…)`.
+- **The old single log.** An install from before households existed also has `events.jsonl` directly in `data`. 0.10.0 does not adopt it and starts without it, saying so in the log: `/data/events.jsonl was written before 0.10.0, which cannot read it, so it is not adopted as a household`.
 - **A backup made before 0.10.0**, whether restored as a new household from Choose a household or taken from on the Backup page, is refused whole: "This backup was made before Home Planner 0.10.0, which keeps one budget and sorts receipts into envelopes. It cannot be restored into this version." Keep the file if you want it; this version will not read it.
 
 Such a household cannot be removed from Settings, because it cannot be opened to reach Settings. Remove its folder instead:
 
 1. **Back up, if you want the old file.** Before upgrading, each household's owner downloads its backup from Settings › Backup. After upgrading, copy its folder from File Station before step 3; the log is `events.jsonl` in it.
 2. **Stop the project.** Container Manager → Project → `home-planner` → Action → Stop.
-3. **Delete the folder.** In File Station, open `docker/home-planner/data/households` (the `data` folder from step 2 of the install). Each household is a folder there, named by the id the log printed (for example `the-house`). Delete the folder of each household made before 0.10.0, and nothing else in `data`.
+3. **Delete the folders.** In File Station, open `docker/home-planner/data/households` (the `data` folder from step 2 of the install). Each household is a folder there, named by the id the log printed (for example `the-house`). Delete the folder of each household made before 0.10.0. Then, in `data` itself, delete or move away `events.jsonl` if it is there: it is the old single log, not a household. Leave `sessions.json` and `connectors.json` alone.
 4. **Start the project.** Project → Action → Start. Choose a household no longer lists them, and anyone who had one open lands on that list.
-5. **Make each one again.** Its owner signs in, presses Start a new household, gives it a name, and its Budget walks through where the household is, the income, the envelopes and pricing. Members are added again under Settings › Members.
+5. **Make each one again, all of it.** The whole household goes with its folder, not only its budget: its plans and their cards; its Settings (the areas, the links in the menu, the documents folder it chose, the Household calendar it linked, the time zone); its guests and their stays; and the conversation on Today. None of it can come back from the old backup, because that file is refused. What lives outside the app stays where it is: the files in the Team Folder, and the events on the NAS's calendars. So its owner signs in, presses Start a new household and gives it a name; its Budget walks through where the household is, the income, the envelopes and pricing; and then, in Settings, adds the members again under Members, chooses the documents folder again under Documents, links the Household calendar again under Household calendar, and sets the Time zone, Links in your menu and Guests and booking again as they were wanted; the areas are made again on Plan.
 
 A household made by 0.10.0 is removed the usual way, by its owner under Settings, and needs none of this.
 

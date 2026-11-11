@@ -644,8 +644,18 @@ const ADDED_010: readonly Line[] = [
   ['B73', 'for (const [gi, g] of fr.categories.entries())', 'budget'], ['B73', 'categoryField(fr.categories', 'budget'],
   // Two rows Task 10 carried without a pin, so the completeness test below finds every row: Import's rules offered one by one.
   ['B58', 'void ruleOffer(item, { match, envelope: r.envelope, label, txnId: r.id }', 'budget'],
+  // The final review: the rule's words are a field a person may change, and a refusal is said under it, never nothing.
+  ['B42', "epField('Receipts whose payee contains', text)", 'budget'], ['B42', "({ proposal } = await ask(typed));", 'budget'],
+  ['B42', 'if (first) say(first.message);', 'budget'],
+  // The goal form's refusals in the error slot every form ends with; a bill's date words without "kind".
+  ['B37', 'wrap.append(head, every, byLine, row, err);', 'budget'], ['B32', "node('label', '', 'The date is')", 'budget'],
+  // An empty band is never drawn chosen.
+  ['B66', "pick.chosen.has(band.key) && available ? ' on' : ''", 'page'],
 ];
 const GONE_010: readonly Line[] = [
+  // The final review: the offer no longer draws nothing on a refusal; the goal form's own span; the bill's "Kind".
+  ['B42', 'try { await ask(); } catch { return false; }', 'budget'], ['B37', "const msg = node('span', 'msg');", 'budget'],
+  ['B37', '.goal-form .msg', 'css'], ['B32', "node('label', '', 'Kind')", 'page'],
   // Task 7: every trace of a second budget, Compare, the outside note and the savings band of its own.
   ['B1', 'function markChosenBudget(', 'page'], ['B2', 'budget-switch', 'page'], ['B3', 'budget-pick', 'page'],
   ['B6', 'bud-rename', 'page'], ['B6', 'Rename this budget', 'page'], ['B7', 'bud-new', 'page'], ['B7', 'New budget', 'page'],
