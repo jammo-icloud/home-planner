@@ -10,14 +10,15 @@ import { snapshot } from '../src/analytics.ts';
 import { METHOD_RULES } from '../src/claude.ts';
 import { SYSTEM as SYSTEM_FOR_MATCH } from '../src/match.ts';
 import { TOOLS } from '../src/tools.ts';
-import { facts, plainMonth } from '../src/briefing.ts';
+import { BRIEFING_TASK, HOUSEHOLD_TASK, facts, plainMonth } from '../src/briefing.ts';
+import { ASK_RULES, CARD_RESEARCH, UNREAD } from '../src/conversation.ts';
 import type { Snapshot } from '../src/analytics.ts';
 import type { Event, State } from '../src/types.ts';
 
 const FORBIDDEN = /\bbudgets\b|categori[sz]|uncategor|two layers|interpretation|every budget|other budget|compare_budgets|create_budget|the other place|moved to|moving to|fed by/i;
 
 test('nothing Claude reads names budgets as a choice, categorises a receipt or plans a move', () => {
-  const texts = [METHOD_RULES, SYSTEM_FOR_MATCH, ...TOOLS.flatMap((t) => [t.description, JSON.stringify(t.input)])];
+  const texts = [METHOD_RULES, SYSTEM_FOR_MATCH, BRIEFING_TASK, HOUSEHOLD_TASK, CARD_RESEARCH, ASK_RULES, UNREAD, ...TOOLS.flatMap((t) => [t.description, JSON.stringify(t.input)])];
   assert.deepEqual(texts.filter((t) => FORBIDDEN.test(t)).map((t) => t.slice(0, 80)), []);
   assert.match(METHOD_RULES, /exactly one envelope/);
   assert.match(METHOD_RULES, /CATEGORIES?, which are only headings/);

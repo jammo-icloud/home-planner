@@ -2669,8 +2669,8 @@ export async function start(
       if (allowed.length && !allowed.includes(member)) {
         throw new ToolError(`${member} is not permitted to sign in to this server`, 400);
       }
-      if (active.state.owner !== who) throw new ToolError('only the owner can share this budget', 403);
-      await active.append(who, { op: 'member.add', member, why: body.why?.trim() || 'shared the budget' });
+      if (active.state.owner !== who) throw new ToolError('only the owner can share the household', 403);
+      await active.append(who, { op: 'member.add', member, why: body.why?.trim() || 'shared the household' });
       // Shares the Household calendar with them now, if `who` made it; best effort.
       await reshareHousehold(ctx);
       return json(res, 200, { members: [...active.state.members] });

@@ -70,7 +70,10 @@ describe('the picker speaks in envelopes', () => {
     const f = fake([reply([])]);
     await suggest(state, ['BIGBOX WHSE #0100'], opts);
     const sent = JSON.parse(f.calls[0].messages.at(-1).content);
-    assert.ok(sent.envelopes.some((e: any) => e.id === '__split' && e.group === 'Several envelopes'));
+    assert.ok(sent.envelopes.some((e: any) => e.id === '__split' && e.category === 'Several envelopes'));
+    // Each envelope rides with its category heading's label, under that name.
+    assert.ok(sent.envelopes.some((e: any) => e.category === 'People'));
+    assert.equal(sent.envelopes.some((e: any) => 'group' in e), false);
   });
 });
 

@@ -234,7 +234,7 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
     const card = [...state.thread.offers.values()].find((o) => o.prompt.kind === 'drift' && o.prompt.ref === e.drift);
     appliedBy.set(e.id, card?.id ?? e.id);
   }
-  const changeById = new Map(changes(events.filter((e) => !appliedBy.has(e.id) && quiet(e)), state).map((c) => [c.id, c]));
+  const changeById = new Map(changes(events.filter((e) => !appliedBy.has(e.id) && quiet(e)), state, events).map((c) => [c.id, c]));
   const answers = new Map<EventId, Extract<Event, { op: 'thread.answer' }>>();
   const answerById = new Map<EventId, Extract<Event, { op: 'thread.answer' }>>();
   for (const e of events) if (e.op === 'thread.answer') { answers.set(e.replyTo, e); answerById.set(e.id, e); }

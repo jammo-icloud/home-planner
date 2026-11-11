@@ -132,7 +132,7 @@ export async function suggest(state: State, payees: readonly string[], options: 
   const asked = [...new Set(payees.map((p) => p.trim()).filter(Boolean))];
   if (!asked.length || !claudeConfigured()) return out;
 
-  const envelopes = options.map((o) => ({ id: o.value, name: o.label, group: o.group }));
+  const envelopes = options.map((o) => ({ id: o.value, name: o.label, category: o.group }));
   const reply = await classify<{ matches: { payee: string; choice: string; confidence: number; rule?: string; parts?: string[] }[] }>(
     matchModel(state), SYSTEM, JSON.stringify({ envelopes, payees: asked }), SCHEMA as unknown as Record<string, unknown>);
 

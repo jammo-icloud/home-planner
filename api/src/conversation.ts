@@ -76,7 +76,7 @@ export async function readDayDocs(
   return bodies;
 }
 
-const UNREAD = "Some of today's earlier texts could not be read from the NAS, only their headlines: "
+export const UNREAD = "Some of today's earlier texts could not be read from the NAS, only their headlines: "
   + 'if an answer leans on them, say so rather than guessing.';
 
 /**
@@ -146,12 +146,17 @@ export function planContext(c: CardView): string {
     checklist,
     `Chips: ${c.chips.join(', ') || 'none'}`,
     money,
-    `Its id is "${c.id}" and it is ${c.owner}'s. `
-      + 'This question was asked from its card. Anything concrete you find for it (an item, a due date, '
-      + 'a contact, a change to its notes) goes through the plan tools with that id, as a suggestion for '
-      + 'them to approve. You may read the budget and say what a cost means for an envelope; do not move money.',
+    `Its id is "${c.id}" and it is ${c.owner}'s. ${CARD_RESEARCH}`,
   ].join('\n');
 }
+
+/** What Claude is told about researching from a plan's card; exported so a test can read its words. */
+export const CARD_RESEARCH = 'This question was asked from its card. Anything concrete you find for it (an item, a due date, '
+  + 'a contact, a change to its notes) goes through the plan tools with that id, as a suggestion for '
+  + 'them to approve. You may read the budget and say what a cost means for an envelope; do not move money.';
+
+/** What every question is told after the day and the person; exported so a test can read its words. */
+export const ASK_RULES = 'Call tools for every figure you state. Notes are between the members: read them, never answer them.';
 
 export interface Asked {
   readonly question: EventOf<'thread.ask'>;
@@ -202,7 +207,7 @@ export async function askInThread(ctx: ToolContext, question: string, plan?: Pla
   const day = dayContext(events, ctx.today, await readDayDocs(ctx, events, ctx.today));
   const context = (facing ? `${facing}\n\n` : '')
     + `${nowContext(ctx.today, zoneOf(ctx.store.state))} You are speaking to ${ctx.who}. `
-    + 'Call tools for every figure you state. Notes are between the members: read them, never answer them.'
+    + ASK_RULES
     + (day ? `\n\n${day}` : '');
 
   let result;

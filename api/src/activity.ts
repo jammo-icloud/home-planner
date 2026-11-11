@@ -8,6 +8,7 @@
  */
 
 import { describe } from './tools.ts';
+import type { EnvelopeBefore } from './tools.ts';
 import { fmtExact } from './money.ts';
 import { isSpend } from './types.ts';
 import type { Actor, Event, State, Txn } from './types.ts';
@@ -75,20 +76,46 @@ export interface Change {
 }
 
 /**
+ * For each `envelope.define` in the log, the envelope as it stood just before it: `null` when
+ * it was not there (the define added it), so a line can say whether it was added, renamed,
+ * put under another category, given a figure, or several of these. A goal left out of a
+ * define stays as it was; a removal clears the record.
+ */
+export function envelopeBefores(log: readonly Event[]): Map<string, EnvelopeBefore> {
+  const now = new Map<string, NonNullable<EnvelopeBefore>>();
+  const out = new Map<string, EnvelopeBefore>();
+  for (const e of log) {
+    if (e.op === 'envelope.remove') { now.delete(e.envelope); continue; }
+    if (e.op !== 'envelope.define') continue;
+    const was = now.get(e.envelope) ?? null;
+    out.set(e.id, was);
+    const sinking = e.sinking === undefined ? was?.sinking : e.sinking ?? undefined;
+    now.set(e.envelope, { label: e.label, category: e.category, template: e.template, ...(sinking ? { sinking } : {}) });
+  }
+  return out;
+}
+
+/**
  * Every change anyone made directly, one line per decision, oldest first.
  *
  * A bulk sort writes one event per receipt. Thirty-three lines saying the same
  * thing is not thirty-three decisions, and reads as noise that trains people
  * to skim the one line that mattered.
  */
-export function changes(all: readonly Event[], state: State): Change[] {
+export function changes(
+  all: readonly Event[],
+  state: State,
+  /** The whole log, when `all` is only some of it: where an envelope's earlier record is found. */
+  log: readonly Event[] = all,
+): Change[] {
+  const befores = envelopeBefores(log);
   const meaningful = all.filter(isChange);
   const out: Change[] = [];
   for (let i = 0; i < meaningful.length; i++) {
     const e = meaningful[i]!;
     const group = [e];
     while (i + 1 < meaningful.length && sameAction(e, meaningful[i + 1]!)) group.push(meaningful[++i]!);
-    const d = describe(e, state);
+    const d = describe(e, state, befores.get(e.id));
     const removed = e.op === 'txn.remove' ? findRemoved(meaningful, e.txn, state) : undefined;
     out.push({
       id: e.id, at: e.at, who: e.who,

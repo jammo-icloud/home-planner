@@ -900,7 +900,7 @@ function suggestion(
   return {};
 }
 
-const BRIEFING_TASK = `TODAY'S TASK
+export const BRIEFING_TASK = `TODAY'S TASK
 
 Write the household's daily briefing from the facts below. Every member reads it, every morning; most
 mornings nothing is wrong, and it has to stay worth opening on those mornings too. If members left
@@ -916,7 +916,7 @@ them. Then whatever needs a person today.
 Every dollar figure must be copied character-for-character from the facts. Do not compute, combine or
 round anything.`;
 
-const HOUSEHOLD_TASK = `THE WHOLE HOUSEHOLD
+export const HOUSEHOLD_TASK = `THE WHOLE HOUSEHOLD
 
 This briefing is the whole household's, and the facts come in three blocks: THIS MONTH (the money),
 PLANS (their board of things to do) and HOUSEHOLD CALENDAR (the shared calendar, the coming week).

@@ -19,7 +19,7 @@ import { carriedInto, categoryIdFor, envelopeIdFor, monthView, latestMonth, open
 import { billDateWords, billKey, billLine, billsOf, donors, drift, inToSort, monthClock, pace, snapshot, toSort } from './analytics.ts';
 import { fundedFor, plannedFor, nameKey, splitProblem, guestEmail } from './replay.ts';
 import { filedLabel, ruleProblem } from './match.ts';
-import { removedTxn } from './activity.ts';
+import { envelopeBefores, removedTxn } from './activity.ts';
 import { byMonthly, everyMonthly, everyWords, goalFor, savingsCheck, shortDay, sinkingPlan } from './sinking.ts';
 import { incomeFor, project, sourcesFor } from './income.ts';
 import { lookUp, placeForZip } from './local.ts';
@@ -618,7 +618,8 @@ const getActivity: Tool = {
   async run(args, ctx) {
     const limit = Math.min(args['limit'] ? num(args['limit'], 'limit') : 50, 500);
     const since = (args['sinceEventId'] as string | undefined) ?? null;
-    let events = await ctx.store.since(since);
+    const read = await ctx.store.since(since);
+    let events = read;
     const envelope = args['envelope'] as string | undefined;
     if (envelope) {
       events = events.filter((e) =>
@@ -626,11 +627,13 @@ const getActivity: Tool = {
         (e.op === 'move' && (e.from === envelope || e.to === envelope)));
     }
     const tail = events.slice(-limit);
+    // An envelope's line says what it did, read against the whole log.
+    const befores = envelopeBefores(since === null ? read : await ctx.store.since(null));
     return {
       total: events.length,
       showing: tail.length,
       lastEventId: events.at(-1)?.id ?? null,
-      events: tail.map((e) => describe(e, ctx.store.state)),
+      events: tail.map((e) => describe(e, ctx.store.state, befores.get(e.id))),
     };
   },
 };
@@ -657,10 +660,27 @@ const dayRange = (from: string, to: string): string => {
   return a.ym === b.ym ? `${a.day}–${b.day} ${b.month}` : `${a.day} ${a.month} – ${b.day} ${b.month}`;
 };
 
+/**
+ * An envelope as the log left it just before an `envelope.define`: `null` when there was none
+ * (the define added it). Only a reader holding the whole log knows it (`changes` in activity.ts).
+ */
+export type EnvelopeBefore = {
+  readonly label: string; readonly category: CategoryId; readonly template: Cents; readonly sinking?: SinkingGoal;
+} | null;
+
+/** "a", "a and b", "a, b and c". */
+const joined = (xs: readonly string[]): string =>
+  xs.length < 2 ? xs.join('') : `${xs.slice(0, -1).join(', ')} and ${xs.at(-1)}`;
+
 export function describe(
   e: Event,
   /** When given, envelopes, categories and months read by name rather than by id. */
   state?: State,
+  /**
+   * For an `envelope.define`, the envelope as it was before it. Absent, only part of the log
+   * is at hand, so what the define did is not known and it reads as a change.
+   */
+  before?: EnvelopeBefore,
 ): { id: string; at: string; who: Actor; what: string; why: string | null } {
   const why = (e as { why?: string }).why ?? null;
   // A name that has since gone falls back to the id: something, never nothing.
@@ -693,11 +713,22 @@ export function describe(
     }
     case 'rule.add': what = `added the rule "${e.match}" for ${into(e.envelope)}`; break;
     case 'rule.remove': what = 'removed a rule'; break;
-    case 'envelope.define':
-      what = e.sinking ? `saved ${env(e.envelope)} in Savings`
-        : e.sinking === null ? `stopped saving ${env(e.envelope)} in Savings`
-        : `set up the envelope ${e.label} under ${cat(e.category)}`;
+    case 'envelope.define': {
+      if (before === undefined) { what = `changed the envelope ${e.label}`; break; }
+      if (before === null) { what = `added the envelope ${e.label} under ${cat(e.category)}`; break; }
+      // Each thing the define changed, the envelope named once and "it" after.
+      const done: string[] = [];
+      const it = () => done.length ? 'it' : e.label;
+      if (e.label !== before.label) done.push(`renamed the envelope ${before.label} to ${e.label}`);
+      if (e.category !== before.category) done.push(`put ${it()} under ${cat(e.category)}`);
+      if (e.template !== before.template) done.push(`set ${it()} to ${fmtExact(e.template)} a month`);
+      const goal = e.sinking === undefined ? before.sinking : e.sinking ?? undefined;
+      if (goal && !before.sinking) done.push(`saved ${it()} in Savings`);
+      else if (!goal && before.sinking) done.push(`stopped saving ${it()} in Savings`);
+      else if (goal && JSON.stringify(goal) !== JSON.stringify(before.sinking)) done.push(`changed what ${it()} saves toward`);
+      what = done.length ? joined(done) : `changed the envelope ${e.label}`;
       break;
+    }
     case 'envelope.remove': what = `removed envelope ${env(e.envelope)}`; break;
     case 'bill.set':
       what = e.date ? `set ${e.name} in ${env(e.envelope)} to ${billDateWords(e.date)}`

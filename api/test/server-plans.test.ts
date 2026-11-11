@@ -142,6 +142,11 @@ describe('the plan routes', () => {
     assert.ok(house.plans.some((c: any) => c.id === r.json.plan.id));
   });
 
+  test('a member who is not the owner is refused sharing the household, in words naming the household', async () => {
+    const r = await call('bob', 'POST', '/api/members', { member: 'casey', why: 'moved in' });
+    assert.deepEqual([r.status, r.json.error], [403, 'only the owner can share the household']);
+  });
+
   test("GET /api/plans answers the whole board by who and goal, and refuses an older page's words", async () => {
     assert.equal((await call('alice', 'POST', '/api/members', { member: 'casey', why: 'moved in' })).status, 200);
     const all = await call('alice', 'GET', '/api/plans');

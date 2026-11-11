@@ -11,7 +11,8 @@ import {
 } from '../src/tools.ts';
 import { SEARCH_KINDS } from '../src/search.ts';
 import { NotAllowed, SessionLost, SynologyError } from '../src/synology.ts';
-import type { Proposal, ToolContext } from '../src/tools.ts';
+import type { EnvelopeBefore, Proposal, ToolContext } from '../src/tools.ts';
+import { changes } from '../src/activity.ts';
 import { monthView } from '../src/envelopes.ts';
 import { INCOME, TRANSFER, SPLIT } from '../src/types.ts';
 import * as edits from '../src/plan-edits.ts';
@@ -279,6 +280,14 @@ describe('reads answer questions in one call', () => {
     assert.ok(r['events'].some((e: any) => /imported 5 transactions/.test(e.what)));
   });
 
+  test('get_activity reads an envelope line against the whole log, even from sinceEventId', async () => {
+    const c = await ctx();
+    const mark = c.store.state.lastEventId;
+    await c.store.append('alice', { op: 'envelope.define', envelope: 'daily', label: 'Everyday', category: 'people', template: parseDollars('1525.00') });
+    const r = await call('get_activity', { sinceEventId: mark }, c) as Record<string, any>;
+    assert.deepEqual(r['events'].map((e: any) => e.what), ['renamed the envelope Daily life to Everyday']);
+  });
+
   test('describe covers every op so the log never renders raw', () => {
     const ops = [
       { op: 'assign', month: '2026-08', envelope: 'e', to: parseDollars('10.00'), why: 'w' },
@@ -374,7 +383,44 @@ describe('with the household at hand, a sentence uses names', () => {
     assert.equal(at({ op: 'category.rename', category: 'people', label: 'Food and drink' }), 'renamed a category to Food and drink');
     assert.equal(at({ op: 'category.move', category: 'people', to: 1 }), 'moved the category People to place 2');
     assert.equal(at({ op: 'category.remove', category: 'house' }), 'removed the category House');
-    assert.equal(at({ op: 'envelope.define', envelope: 'gym', label: 'Gym', category: 'people', template: 0 }), 'set up the envelope Gym under People');
+    // Without the envelope as it was before, only part of the log is at hand: a change, nothing more.
+    assert.equal(at({ op: 'envelope.define', envelope: 'gym', label: 'Gym', category: 'people', template: 0 }), 'changed the envelope Gym');
+  });
+
+  test('an envelope.define says what it did, read against the envelope as it was', async () => {
+    const c = await ctx();
+    const def = { op: 'envelope.define', envelope: 'gym', label: 'Gym', category: 'people', template: parseDollars('40.00') };
+    const was = { label: 'Gym', category: 'people', template: parseDollars('40.00') };
+    const at = (o: Record<string, unknown>, before: EnvelopeBefore) =>
+      describeEvent({ id: 'i', at: NOW, who: 'alice', ...def, ...o } as never, c.store.state, before).what;
+    assert.equal(at({}, null), 'added the envelope Gym under People');
+    assert.equal(at({ label: 'Fitness' }, was), 'renamed the envelope Gym to Fitness');
+    assert.equal(at({ category: 'house' }, was), 'put Gym under House');
+    assert.equal(at({ template: parseDollars('55.00') }, was), 'set Gym to $55.00 a month');
+    assert.equal(at({ label: 'Fitness', category: 'house' }, was), 'renamed the envelope Gym to Fitness and put it under House');
+    assert.equal(at({ label: 'Fitness', category: 'house', template: parseDollars('55.00') }, was),
+      'renamed the envelope Gym to Fitness, put it under House and set it to $55.00 a month');
+    const goal = { kind: 'every', estimate: { cost: parseDollars('1200.00'), everyYears: 4 } };
+    assert.equal(at({ sinking: goal }, was), 'saved Gym in Savings');
+    assert.equal(at({ sinking: null }, { ...was, sinking: goal } as EnvelopeBefore), 'stopped saving Gym in Savings');
+    // A rename carries the goal it had: not a new saving.
+    assert.equal(at({ label: 'Fitness', sinking: goal }, { ...was, sinking: goal } as EnvelopeBefore), 'renamed the envelope Gym to Fitness');
+    // A define that changes none of these (a figure's source, say) is still a change.
+    assert.equal(at({ needsFigure: true }, was), 'changed the envelope Gym');
+  });
+
+  test('the activity list finds each envelope\'s earlier record in the log', async () => {
+    const c = await ctx();
+    const g = { envelope: 'gym', category: 'people' };
+    await c.store.append('alice', { op: 'envelope.define', ...g, label: 'Gym', template: parseDollars('0.00') });
+    await c.store.append('bob', { op: 'envelope.define', ...g, label: 'Fitness', template: parseDollars('0.00') });
+    await c.store.append('alice', { op: 'envelope.define', ...g, label: 'Fitness', template: parseDollars('40.00') });
+    const log = await c.store.since(null);
+    const lines = changes(log, c.store.state).filter((r) => r.events.some((e) => e.op === 'envelope.define' && e.envelope === 'gym'));
+    assert.deepEqual(lines.map((r) => r.what),
+      ['added the envelope Gym under People', 'renamed the envelope Gym to Fitness', 'set Fitness to $40.00 a month']);
+    // Given only the latest event, the log's record is still found when the whole log is passed.
+    assert.deepEqual(changes(log.slice(-1), c.store.state, log).map((r) => r.what), ['set Fitness to $40.00 a month']);
   });
 
   test('a removed envelope reads by the name it had', async () => {
