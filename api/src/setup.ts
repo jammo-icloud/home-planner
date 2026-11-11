@@ -17,7 +17,7 @@ import type { SigningStatus } from './sign.ts';
 import { monthView } from './envelopes.ts';
 import { cents, fmt } from './money.ts';
 import { householdDay, monthOf, movesLeft, zoneOf } from './types.ts';
-import type { Actor, BudgetId, Day, EnvelopeId, State } from './types.ts';
+import type { Actor, Day, EnvelopeId, State } from './types.ts';
 
 export type SetupStep = 'folder' | 'zone' | 'calendar' | 'booking' | 'model';
 export const SETUP_ORDER: readonly SetupStep[] = ['folder', 'zone', 'calendar', 'booking', 'model'];
@@ -170,39 +170,33 @@ export function setupNotices(o: {
 export interface BudgetNotice {
   readonly kind: 'figures' | 'short';
   readonly text: string;
-  readonly action: { readonly label: string; readonly open: 'budget'; readonly budget: BudgetId; readonly envelope: EnvelopeId; readonly cover?: true };
+  readonly action: { readonly label: string; readonly open: 'budget'; readonly envelope: EnvelopeId; readonly cover?: true };
 }
 
 /**
- * Per live budget with this month open: one notice while envelopes need a figure, one
- * per short envelope that has one. A flagged envelope is never also called short: the figure
- * comes first. With more than one live budget each notice names its budget.
+ * With this month open: one notice while envelopes need a figure, one per short
+ * envelope that has one. A flagged envelope is never also called short: the figure
+ * comes first.
  */
 export function budgetNotices(state: State, today: Day): BudgetNotice[] {
-  const month = monthOf(today);
-  const live = [...state.budgets.values()].filter((b) => !b.archived).sort((a, b) => a.label.localeCompare(b.label));
-  const named = live.length > 1;
+  const view = monthView(state, monthOf(today));
+  if (!view) return [];
   const notices: BudgetNotice[] = [];
-  for (const budget of live) {
-    const view = monthView(state, budget.id, month);
-    if (!view) continue;
-    const say = (text: string): string => (named ? `${budget.label}: ${text}` : text);
-    const flagged = view.envelopes.filter((e) => e.envelope.needsFigure).sort((a, b) => a.envelope.order - b.envelope.order);
-    if (flagged.length > 0) {
-      notices.push({
-        kind: 'figures',
-        text: say(`${flagged.length} ${flagged.length === 1 ? 'envelope still needs' : 'envelopes still need'} a figure`),
-        action: { label: 'Go to the first one', open: 'budget', budget: budget.id, envelope: flagged[0]!.envelope.id },
-      });
-    }
-    for (const e of view.envelopes) {
-      if (e.envelope.needsFigure || e.available >= 0) continue;
-      notices.push({
-        kind: 'short',
-        text: say(`${e.envelope.label} is short ${fmt(cents(-e.available))}`),
-        action: { label: 'Cover it', open: 'budget', budget: budget.id, envelope: e.envelope.id, cover: true },
-      });
-    }
+  const flagged = view.envelopes.filter((e) => e.envelope.needsFigure).sort((a, b) => a.envelope.order - b.envelope.order);
+  if (flagged.length > 0) {
+    notices.push({
+      kind: 'figures',
+      text: `${flagged.length} ${flagged.length === 1 ? 'envelope still needs' : 'envelopes still need'} a figure`,
+      action: { label: 'Go to the first one', open: 'budget', envelope: flagged[0]!.envelope.id },
+    });
+  }
+  for (const e of view.envelopes) {
+    if (e.envelope.needsFigure || e.available >= 0) continue;
+    notices.push({
+      kind: 'short',
+      text: `${e.envelope.label} is short ${fmt(cents(-e.available))}`,
+      action: { label: 'Cover it', open: 'budget', envelope: e.envelope.id, cover: true },
+    });
   }
   return notices;
 }

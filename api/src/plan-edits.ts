@@ -23,7 +23,7 @@ import { NeedsDsm, requireSid } from './synology.ts';
 import type { NewEvent } from './store.ts';
 import type { ToolContext } from './tools.ts';
 import type {
-  BudgetId, ChecklistItem, ContactLink, Day, EnvelopeId, Event, NewEventShape, Plan, PlanId, PlanState,
+  ChecklistItem, ContactLink, Day, EnvelopeId, Event, NewEventShape, Plan, PlanId, PlanState,
 } from './types.ts';
 
 /** The fields a member edits on a card. Chips and notes are replaced whole. */
@@ -33,7 +33,7 @@ export interface PlanFields {
   chips: readonly string[];
   notes: string;
   estimate: Cents | null;
-  envelope: { budget: BudgetId; envelope: EnvelopeId } | null;
+  envelope: EnvelopeId | null;
 }
 
 /**

@@ -1,5 +1,5 @@
 /**
- * What things cost where a budget is.
+ * What things cost where the household is.
  *
  * Public, measured data — not an opinion about a place. Every figure that comes
  * out of here carries the source it came from, the geography it was measured
@@ -17,7 +17,7 @@ import { parseDollars, cents } from './money.ts';
 import { splitCsvLine } from './parse.ts';
 import { STARTER_CATEGORIES } from './starter.ts';
 import type { Cents } from './money.ts';
-import type { BudgetLocation } from './types.ts';
+import type { Location } from './types.ts';
 
 export interface Estimate {
   /** The category this is evidence about. */
@@ -34,7 +34,7 @@ export interface Estimate {
 }
 
 export interface LookupResult {
-  readonly location: BudgetLocation;
+  readonly location: Location;
   readonly estimates: readonly Estimate[];
   /** Sources that were asked and had nothing for this place. */
   readonly missing: readonly string[];
@@ -219,7 +219,7 @@ const ACS_YEAR = '2024';
 const ACS_COLUMNS = ['NAME', 'B25064_001E', 'B25103_001E'] as const;
 
 export async function censusCounty(
-  loc: BudgetLocation,
+  loc: Location,
   key: string | undefined,
   fetchImpl: Fetch = globalThis.fetch,
 ): Promise<Estimate[]> {
@@ -290,7 +290,7 @@ export async function censusCounty(
  * reaching into an unfamiliar object and returning a number that happens to parse.
  */
 export async function electricityFromEia(
-  loc: BudgetLocation,
+  loc: Location,
   key: string | undefined,
   fetchImpl: Fetch = globalThis.fetch,
 ): Promise<Estimate | null> {
@@ -350,7 +350,7 @@ export async function electricityFromEia(
  * silence being mistaken for a zero.
  */
 export async function lookUp(
-  loc: BudgetLocation,
+  loc: Location,
   opts: { censusKey?: string | undefined; eiaKey?: string | undefined; fetchImpl?: Fetch } = {},
 ): Promise<LookupResult> {
   const fetchImpl = opts.fetchImpl ?? globalThis.fetch;

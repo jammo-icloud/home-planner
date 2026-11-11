@@ -141,7 +141,7 @@ describe("a plan's page in the log", () => {
     const s = await fresh();
     await s.append('alice', [
       { op: 'plan.set', plan: 'gate', notes: 'The latch sticks.', estimate: cents(12_500), chips: ['outside'],
-        envelope: { budget: 'home', envelope: 'repairs' } },
+        envelope: 'repairs' },
       { op: 'plan.due', plan: 'gate', due: '2026-11-05' },
       { op: 'plan.contact.link', plan: 'gate', contact_id: 7, addressbook_id: 1, display: 'Sam the fixer' },
       { op: 'plan.contact.link', plan: 'gate', contact_id: 3, addressbook_id: 1, display: 'Neighbour' },
@@ -173,7 +173,7 @@ async function heater(): Promise<Store> {
     { op: 'plan.state', plan: 'heater', state: 'doing' },
     { op: 'plan.due', plan: 'heater', due: '2026-11-20' },
     { op: 'plan.contact.link', plan: 'heater', contact_id: 4123, addressbook_id: 1, display: 'Sandoval Plumbing' },
-    { op: 'plan.set', plan: 'heater', envelope: { budget: 'home', envelope: 'house-repairs' }, estimate: cents(185_000),
+    { op: 'plan.set', plan: 'heater', envelope: 'house-repairs', estimate: cents(185_000),
       notes: 'Why: the old one is 14 years old and the pan has rust.' },
     { op: 'plan.checklist', plan: 'heater', items: [
       { id: 'i1', text: 'Get two quotes', done: true },
@@ -305,7 +305,7 @@ describe("a plan's page, rendered and read back", () => {
 
   test('not a plan page is null', () => {
     const briefing = renderFrontmatter('briefing', {
-      planner: 1, kind: 'briefing', day: '2026-10-29', source: 'x', budget: 'home', writtenBy: 'claude' }) + 'Morning.\n';
+      planner: 1, kind: 'briefing', day: '2026-10-29', source: 'x', writtenBy: 'claude' }) + 'Morning.\n';
     assert.equal(parsePlanPage(briefing), null);
     assert.equal(parsePlanPage('# Just markdown\n\nno fence here\n'), null);
     assert.equal(parsePlanPage(''), null);

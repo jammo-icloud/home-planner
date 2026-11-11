@@ -22,7 +22,6 @@ async function fresh(seed: NewEvent[] = []): Promise<ToolContext> {
   await store.load();
   await store.append('alex', [
     { op: 'household.claim', label: 'Rivera' },
-    { op: 'budget.create', budget: 'placitas', label: 'Placitas' },
     ...seed,
   ]);
   return { store, who: 'alex', today: '2026-11-04', proposals: new ProposalStore(), sid: null };
@@ -30,9 +29,9 @@ async function fresh(seed: NewEvent[] = []): Promise<ToolContext> {
 
 type Row = { label: string; group: string; category?: string };
 const make = (c: ToolContext, envelopes: Row[]) =>
-  toolByName.get('make_starter_envelopes')!.run({ budget: 'placitas', envelopes }, c) as Proposal;
+  toolByName.get('make_starter_envelopes')!.run({ envelopes }, c) as Proposal;
 const income = (c: ToolContext, args: Record<string, unknown>) =>
-  toolByName.get('set_month_income')!.run({ budget: 'placitas', ...args }, c) as Proposal;
+  toolByName.get('set_month_income')!.run({ ...args }, c) as Proposal;
 
 describe('make_starter_envelopes', () => {
   test('ticked starter rows become envelopes in their groups, with no figure', async () => {
@@ -42,12 +41,12 @@ describe('make_starter_envelopes', () => {
       { label: 'Groceries', group: 'Food', category: 'groceries' },
       { label: 'Health insurance', group: 'Insurance', category: 'healthins' },
     ]);
-    assert.equal(p.summary, 'Make 3 envelopes in Placitas');
+    assert.equal(p.summary, 'Make 3 envelopes');
     assert.ok(p.effects.includes('Every one starts without a figure until it is given one'));
     assert.ok(p.effects.includes('Home: Rent or mortgage'));
     await commit(p.id, c);
 
-    const e = c.store.state.budgets.get('placitas')!.envelopes.get('rent')!;
+    const e = c.store.state.envelopes.get('rent')!;
     assert.equal(e.group, 'Home');
     assert.equal(e.needsFigure, true);
     assert.equal(e.template, 0);
@@ -60,7 +59,7 @@ describe('make_starter_envelopes', () => {
   test('a renamed row keeps its category and the category its starter name', async () => {
     const c = await fresh();
     await commit(make(c, [{ label: 'Mortgage', group: 'Home', category: 'rent' }]).id, c);
-    assert.equal(c.store.state.budgets.get('placitas')!.envelopes.get('rent')!.label, 'Mortgage');
+    assert.equal(c.store.state.envelopes.get('rent')!.label, 'Mortgage');
     assert.equal(c.store.state.categories.get('rent')?.label, 'Rent or mortgage');
   });
 
@@ -69,7 +68,7 @@ describe('make_starter_envelopes', () => {
     await commit(make(c, [{ label: 'Pets', group: 'Everyday' }]).id, c);
     assert.equal(c.store.state.categories.get('pets')?.label, 'Pets');
     assert.equal(c.store.state.categories.get('pets')?.kind, 'People');
-    assert.equal(c.store.state.budgets.get('placitas')!.envelopes.get('pets')!.needsFigure, true);
+    assert.equal(c.store.state.envelopes.get('pets')!.needsFigure, true);
   });
 
   test('a row of your own reuses a category by name', async () => {
@@ -77,7 +76,7 @@ describe('make_starter_envelopes', () => {
     const p = make(c, [{ label: 'pets', group: 'Everyday' }]);
     assert.equal(p.events.some((e) => e.op === 'category.define' && e.category === 'pets'), false);
     await commit(p.id, c);
-    assert.deepEqual(c.store.state.budgets.get('placitas')!.envelopes.get('animals')!.match.categories, ['animals']);
+    assert.deepEqual(c.store.state.envelopes.get('animals')!.match.categories, ['animals']);
   });
 
   test('two rows on one category, or one already fed, are refused with words', async () => {
@@ -91,7 +90,7 @@ describe('make_starter_envelopes', () => {
 
     const d = await fresh([
       { op: 'category.define', category: 'groceries', label: 'Groceries' },
-      { op: 'envelope.define', budget: 'placitas', envelope: 'food', label: 'Food', group: 'Food',
+      { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'Food',
         match: { categories: ['groceries'] }, template: cents(0), order: 0 },
     ]);
     const after = d.store.state.lastEventId;
@@ -111,24 +110,24 @@ describe('make_starter_envelopes', () => {
 describe('set_month_income', () => {
   const open = (): NewEvent[] => [
     { op: 'category.define', category: 'rent', label: 'Rent or mortgage' },
-    { op: 'envelope.define', budget: 'placitas', envelope: 'rent', label: 'Rent', group: 'Home',
+    { op: 'envelope.define', envelope: 'rent', label: 'Rent', group: 'Home',
       match: { categories: ['rent'] }, template: cents(100000), order: 0 },
-    { op: 'month.open', budget: 'placitas', month: '2026-11', income: cents(0) },
+    { op: 'month.open', month: '2026-11', income: cents(0) },
   ];
 
   test("sets the open month's income", async () => {
     const c = await fresh(open());
     await commit(income(c, { amountCents: 640000 }).id, c);
-    const v = monthView(c.store.state, 'placitas', '2026-11')!;
+    const v = monthView(c.store.state, '2026-11')!;
     assert.equal(v.income, 640000);
     assert.equal(v.toAssign, 540000);
   });
 
   test('refuses a month that is not open or is closed', async () => {
     const c = await fresh(open());
-    assert.throws(() => income(c, { month: '2026-12', amountCents: 1 }), /2026-12 is not open for Placitas/);
+    assert.throws(() => income(c, { month: '2026-12', amountCents: 1 }), /2026-12 is not open/);
     assert.throws(() => income(c, { amountCents: -1 }), /not less than nothing/);
-    await c.store.append('alex', [{ op: 'month.close', budget: 'placitas', month: '2026-11', closed: true, why: 'done' }]);
+    await c.store.append('alex', [{ op: 'month.close', month: '2026-11', closed: true, why: 'done' }]);
     assert.throws(() => income(c, { amountCents: 1 }), /closed/);
   });
 });
@@ -136,15 +135,15 @@ describe('set_month_income', () => {
 describe('giving an envelope a figure', () => {
   const flagged = (extra: Record<string, unknown> = {}): NewEvent[] => [
     { op: 'category.define', category: 'groceries', label: 'Groceries' },
-    { op: 'envelope.define', budget: 'placitas', envelope: 'groceries', label: 'Groceries', group: 'Food',
+    { op: 'envelope.define', envelope: 'groceries', label: 'Groceries', group: 'Food',
       match: { categories: ['groceries'] }, template: cents(0), order: 0, needsFigure: true, ...extra } as NewEvent,
-    { op: 'month.open', budget: 'placitas', month: '2026-11', income: cents(640000) },
+    { op: 'month.open', month: '2026-11', income: cents(640000) },
   ];
   const figure = (c: ToolContext, args: Record<string, unknown>) =>
-    toolByName.get('set_envelope_figure')!.run({ budget: 'placitas', envelope: 'groceries', ...args }, c) as Proposal;
-  const groceries = (c: ToolContext) => c.store.state.budgets.get('placitas')!.envelopes.get('groceries')!;
+    toolByName.get('set_envelope_figure')!.run({ envelope: 'groceries', ...args }, c) as Proposal;
+  const groceries = (c: ToolContext) => c.store.state.envelopes.get('groceries')!;
   const funded = (c: ToolContext, month = '2026-11') =>
-    monthView(c.store.state, 'placitas', month)!.envelopes.find((e) => e.envelope.id === 'groceries')!.funded;
+    monthView(c.store.state, month)!.envelopes.find((e) => e.envelope.id === 'groceries')!.funded;
 
   test("a figure writes the template and this month's assignment, and clears the flag", async () => {
     const c = await fresh(flagged());
@@ -182,7 +181,7 @@ describe('giving an envelope a figure', () => {
   test('define_envelope without a template keeps the template, the flag and the source; with one clears them', async () => {
     const c = await fresh(flagged({ source: 'a statement' }));
     const rename = (extra: Record<string, unknown>) => toolByName.get('define_envelope')!.run({
-      budget: 'placitas', envelope: 'groceries', label: 'Food at home', group: 'Food',
+      envelope: 'groceries', label: 'Food at home', group: 'Food',
       categories: ['groceries'], ...extra,
     }, c) as Proposal;
     await commit(rename({}).id, c);
@@ -201,10 +200,10 @@ describe('giving an envelope a figure', () => {
     const c = await fresh(flagged());
     await c.store.append('alex', [{ op: 'category.define', category: 'pets', label: 'Pets' }]);
     const p = toolByName.get('define_envelope')!.run({
-      budget: 'placitas', envelope: 'pets', label: 'Pets', group: 'Everyday', categories: ['pets'],
+      envelope: 'pets', label: 'Pets', group: 'Everyday', categories: ['pets'],
     }, c) as Proposal;
     await commit(p.id, c);
-    const e = c.store.state.budgets.get('placitas')!.envelopes.get('pets')!;
+    const e = c.store.state.envelopes.get('pets')!;
     assert.equal(e.needsFigure, true);
     assert.equal(e.template, 0);
   });
@@ -212,7 +211,7 @@ describe('giving an envelope a figure', () => {
   test("setting this month's assignment by hand clears the flag, and keeps the template and the source", async () => {
     const c = await fresh(flagged({ source: 'a statement' }));
     const p = toolByName.get('set_assignment')!.run({
-      budget: 'placitas', envelope: 'groceries', toCents: 40000, why: 'by hand',
+      envelope: 'groceries', toCents: 40000, why: 'by hand',
     }, c) as Proposal;
     assert.deepEqual(p.events.map((e) => e.op), ['assign', 'envelope.define']);
     await commit(p.id, c);
@@ -223,7 +222,7 @@ describe('giving an envelope a figure', () => {
   });
 
   const assign = (c: ToolContext, args: Record<string, unknown>) =>
-    toolByName.get('set_assignment')!.run({ budget: 'placitas', envelope: 'groceries', why: 'cover', ...args }, c) as Proposal;
+    toolByName.get('set_assignment')!.run({ envelope: 'groceries', why: 'cover', ...args }, c) as Proposal;
   const receipt = (c: ToolContext, amount: number) => c.store.append('alex', [{ op: 'txn.add', txns: [
     { id: 'r1', date: '2026-11-03', payee: 'VALLEY MARKET #101', amount: cents(-amount), dedupeKey: 'r1', category: 'groceries' },
   ] } as NewEvent]);
@@ -254,15 +253,15 @@ describe('giving an envelope a figure', () => {
 describe('a figure kept with its basis', () => {
   const plain = (extra: Record<string, unknown> = {}): NewEvent[] => [
     { op: 'category.define', category: 'carins', label: 'Car insurance' },
-    { op: 'envelope.define', budget: 'placitas', envelope: 'carins', label: 'Car insurance', group: 'Home',
+    { op: 'envelope.define', envelope: 'carins', label: 'Car insurance', group: 'Home',
       match: { categories: ['carins'] }, template: cents(10000), order: 0, ...extra } as NewEvent,
-    { op: 'month.open', budget: 'placitas', month: '2026-11', income: cents(640000) },
+    { op: 'month.open', month: '2026-11', income: cents(640000) },
   ];
-  const carins = (c: ToolContext) => c.store.state.budgets.get('placitas')!.envelopes.get('carins')!;
+  const carins = (c: ToolContext) => c.store.state.envelopes.get('carins')!;
   const figure = (c: ToolContext, args: Record<string, unknown>) =>
-    toolByName.get('set_envelope_figure')!.run({ budget: 'placitas', envelope: 'carins', ...args }, c) as Proposal;
+    toolByName.get('set_envelope_figure')!.run({ envelope: 'carins', ...args }, c) as Proposal;
   const funded = (c: ToolContext) =>
-    monthView(c.store.state, 'placitas', '2026-11')!.envelopes.find((e) => e.envelope.id === 'carins')!.funded;
+    monthView(c.store.state, '2026-11')!.envelopes.find((e) => e.envelope.id === 'carins')!.funded;
   const YEARLY = { amount: cents(120000), per: 'year' as const };
   const basisOf = (e: NewEvent): unknown => (e as { basis?: unknown }).basis;
 
@@ -271,15 +270,15 @@ describe('a figure kept with its basis', () => {
     const env = carins(c);
     assert.deepEqual(env.basis, YEARLY);
     // No figure: everything is carried, the basis among it.
-    assert.deepEqual(basisOf(redefine('placitas', env, { label: 'Car' })), YEARLY);
+    assert.deepEqual(basisOf(redefine(env, { label: 'Car' })), YEARLY);
     // A figure without a basis is a monthly: the old yearly basis goes.
-    assert.equal('basis' in redefine('placitas', env, { figure: { template: cents(9000) } }), false);
+    assert.equal('basis' in redefine(env, { figure: { template: cents(9000) } }), false);
     // A figure with one writes it.
     const quarterly = { amount: cents(30000), per: 'quarter' as const };
-    assert.deepEqual(basisOf(redefine('placitas', env, { figure: { template: cents(10000), basis: quarterly } })), quarterly);
+    assert.deepEqual(basisOf(redefine(env, { figure: { template: cents(10000), basis: quarterly } })), quarterly);
     // An envelope with none, rewritten without a figure, stays with none.
     const { basis: _gone, ...bare } = env;
-    assert.equal('basis' in redefine('placitas', bare, { label: 'Car' }), false);
+    assert.equal('basis' in redefine(bare, { label: 'Car' }), false);
   });
 
   test('set_envelope_figure with a basis writes the monthly it computes and keeps the basis', async () => {
@@ -289,7 +288,7 @@ describe('a figure kept with its basis', () => {
     const define = p.events[0] as { op: string; template: number; basis?: unknown };
     assert.equal(define.template, 10000);
     assert.deepEqual(define.basis, YEARLY);
-    assert.deepEqual(p.events[1], { op: 'assign', budget: 'placitas', month: '2026-11', envelope: 'carins', to: 10000, why: 'gave it a figure' });
+    assert.deepEqual(p.events[1], { op: 'assign', month: '2026-11', envelope: 'carins', to: 10000, why: 'gave it a figure' });
     await commit(p.id, c);
     assert.equal(carins(c).template, 10000);
     assert.deepEqual(carins(c).basis, YEARLY);
@@ -317,7 +316,7 @@ describe('a figure kept with its basis', () => {
   test('define_envelope takes a basis beside templateCents', async () => {
     const c = await fresh(plain());
     const define = (extra: Record<string, unknown>) => toolByName.get('define_envelope')!.run({
-      budget: 'placitas', envelope: 'carins', label: 'Car insurance', categories: ['carins'], ...extra,
+      envelope: 'carins', label: 'Car insurance', categories: ['carins'], ...extra,
     }, c) as Proposal;
     assert.throws(() => define({ templateCents: 100, basis: { amountCents: 1200, per: 'year' } }), /give templateCents or basis, not both/);
     await commit(define({ basis: { amountCents: 25000, per: 'quarter' } }).id, c);
@@ -331,9 +330,9 @@ describe('a figure kept with its basis', () => {
 
     await c.store.append('alex', [{ op: 'category.define', category: 'pets', label: 'Pets' }]);
     await commit((toolByName.get('define_envelope')!.run({
-      budget: 'placitas', envelope: 'pets', label: 'Pets', categories: ['pets'], basis: { amountCents: 1200, per: 'year' },
+      envelope: 'pets', label: 'Pets', categories: ['pets'], basis: { amountCents: 1200, per: 'year' },
     }, c) as Proposal).id, c);
-    const pets = c.store.state.budgets.get('placitas')!.envelopes.get('pets')!;
+    const pets = c.store.state.envelopes.get('pets')!;
     assert.equal(pets.template, 100);
     assert.deepEqual(pets.basis, { amount: 1200, per: 'year' });
     assert.equal('needsFigure' in pets, false);
@@ -342,7 +341,7 @@ describe('a figure kept with its basis', () => {
   test("setting this month's assignment by hand keeps the basis with the template", async () => {
     const c = await fresh(plain({ basis: YEARLY, needsFigure: true }));
     const p = toolByName.get('set_assignment')!.run({
-      budget: 'placitas', envelope: 'carins', toCents: 4000, why: 'by hand',
+      envelope: 'carins', toCents: 4000, why: 'by hand',
     }, c) as Proposal;
     assert.deepEqual(p.events.map((e) => e.op), ['assign', 'envelope.define']);
     await commit(p.id, c);
@@ -365,6 +364,6 @@ describe('a figure kept with its basis', () => {
     // Read back from the log as a fresh load would.
     const again = new Store({ path: c.store.path, now: () => new Date(NOW) });
     await again.load();
-    assert.equal('basis' in again.state.budgets.get('placitas')!.envelopes.get('carins')!, false);
+    assert.equal('basis' in again.state.envelopes.get('carins')!, false);
   });
 });

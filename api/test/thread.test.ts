@@ -23,9 +23,9 @@ async function household(seed: NewEvent[] = []): Promise<Store> {
 
 const anOffer = (over: Partial<Extract<NewEvent, { op: 'proposal.offer' }>> = {}): NewEvent => ({
   op: 'proposal.offer', tool: 'move_money',
-  args: { budget: 'home', from: 'fun', to: 'food', amountCents: 12000, why: 'trip paid' },
+  args: { from: 'fun', to: 'food', amountCents: 12000, why: 'trip paid' },
   summary: 'Move $120 from Fun to Food', effects: ['Food goes to $120'],
-  events: [], budget: 'home', month: '2026-10', envelopes: ['fun', 'food'],
+  events: [], month: '2026-10', envelopes: ['fun', 'food'],
   fingerprint: 'fp', prompt: { kind: 'briefing', ref: null }, ...over,
 });
 
@@ -86,22 +86,21 @@ describe('the thread in the log', () => {
 
   test('claude may only offer, answer and brief', async () => {
     const s = await household([
-      { op: 'budget.create', budget: 'home', label: 'Home' },
     ]);
-    await assert.rejects(s.append('claude', { op: 'budget.rename', budget: 'home', label: 'Mine now' }), /claude cannot/);
-    await assert.rejects(s.append('claude', { op: 'thread.note', text: 'hello', budget: null }), /claude cannot/);
+    await assert.rejects(s.append('claude', { op: 'category.define', category: 'mine', label: 'Mine now' }), /claude cannot/);
+    await assert.rejects(s.append('claude', { op: 'thread.note', text: 'hello' }), /claude cannot/);
     await s.append('claude', { op: 'thread.answer', replyTo: 'q1', text: 'Here is why.', tools: [], model: 'm' });
     await s.append('claude', {
-      op: 'thread.briefing', day: '2026-10-28', source: 'budget', budget: 'home',
+      op: 'thread.briefing', day: '2026-10-28', source: 'budget',
       headline: 'Quiet day', body: '', writtenBy: 'fallback',
     });
   });
 
   test('a question or note must say something, and not too much', async () => {
     const s = await household();
-    await assert.rejects(s.append('alice', { op: 'thread.note', text: '   ', budget: null }), /empty/);
-    await assert.rejects(s.append('alice', { op: 'thread.ask', question: 'x'.repeat(2001), budget: null }), /2,000/);
-    await s.append('alice', { op: 'thread.note', text: 'x'.repeat(2000), budget: null });
+    await assert.rejects(s.append('alice', { op: 'thread.note', text: '   ' }), /empty/);
+    await assert.rejects(s.append('alice', { op: 'thread.ask', question: 'x'.repeat(2001) }), /2,000/);
+    await s.append('alice', { op: 'thread.note', text: 'x'.repeat(2000) });
   });
 
   test('flag.seen is per member', async () => {
@@ -140,12 +139,6 @@ describe('the thread in the log', () => {
     }
   });
 
-  test('an offer for a budget that is not here still folds', async () => {
-    const s = await household();
-    const o = await offered(s, { budget: 'gone' });
-    assert.equal(s.state.thread.offers.get(o.id)?.budget, 'gone');
-  });
-
   test('the thread survives a reload from disk', async () => {
     const s = await household();
     const o = await offered(s);
@@ -157,7 +150,7 @@ describe('the thread in the log', () => {
 
   test('a restore can take the conversation without the money, and says so', async () => {
     const s = await household([{ op: 'category.define', category: 'food', label: 'Food' }]);
-    await s.append('alice', { op: 'thread.note', text: 'trip is paid for', budget: null });
+    await s.append('alice', { op: 'thread.note', text: 'trip is paid for' });
     await offered(s);
     const backup = parseBackup(await readFile(s.path, 'utf8'));
     const plan = planRestore((await household()).state, backup, ['thread']);

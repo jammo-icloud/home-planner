@@ -26,7 +26,7 @@ import { chooseFolderIn } from './folder.ts';
 
 const NOW = '2026-11-02T09:00:00Z';
 const DAY = '2026-11-02';
-const BRIEFING = briefingFile(DAY, 'household', null);
+const BRIEFING = briefingFile(DAY, 'household');
 const MOVE = '/api/SynologyDrive/default/v2/files/move';
 /** File Station's move of a card's file. */
 const NAS_MOVE = 'entry.cgi:SYNO.FileStation.CopyMove.start';
@@ -64,13 +64,13 @@ async function setup(o: { outside?: boolean; cards?: boolean } = {}): Promise<{ 
   for (const dir of ['today', 'answers', 'gate']) await mkdir(join(nas.nas.root, 'Planner/h1', dir), { recursive: true });
 
   const brief = await writeDoc(ctx, ['today', BRIEFING], renderBriefingPage({
-    day: DAY, source: 'household', budget: null, writtenBy: 'fallback', headline: 'Quiet day', body: 'Nothing is due.',
+    day: DAY, source: 'household', writtenBy: 'fallback', headline: 'Quiet day', body: 'Nothing is due.',
   }), nas.via);
   assert.ok(brief, 'the briefing was written');
   briefingLink = brief.link;
-  await s.append(CLAUDE, { op: 'thread.briefing', day: DAY, source: 'household', budget: null, headline: 'Quiet day', doc: brief, writtenBy: 'fallback' });
+  await s.append(CLAUDE, { op: 'thread.briefing', day: DAY, source: 'household', headline: 'Quiet day', doc: brief, writtenBy: 'fallback' });
 
-  const [q] = await s.append('alice', { op: 'thread.ask', question: 'Can we afford it?', budget: null });
+  const [q] = await s.append('alice', { op: 'thread.ask', question: 'Can we afford it?' });
   askId = q!.id;
   const answer = await writeDoc(ctx, ['answers', `${askId}.md`], renderAnswerPage({
     replyTo: askId, plan: null, model: 'm', question: 'Can we afford it?', text: 'Yes.', tools: [],
@@ -92,7 +92,7 @@ async function setup(o: { outside?: boolean; cards?: boolean } = {}): Promise<{ 
     await writeFile(join(nas.nas.root, 'Planner/other/x.md'), 'kept elsewhere');
     const there = toDocRef(await getFile(ctx.sid!, '/team-folders/Planner/other/x.md', nas.via));
     outsideLink = there.link;
-    await s.append(CLAUDE, { op: 'thread.briefing', day: '2026-11-01', source: 'household', budget: null, headline: 'Old', doc: there, writtenBy: 'fallback' });
+    await s.append(CLAUDE, { op: 'thread.briefing', day: '2026-11-01', source: 'household', headline: 'Old', doc: there, writtenBy: 'fallback' });
   }
 
   await chooseFolderIn(s, { team: 'Planner', folder: 'home/h1' });

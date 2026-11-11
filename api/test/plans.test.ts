@@ -48,7 +48,7 @@ const create = (plan: string, extra: Record<string, unknown> = {}): NewEventShap
 /** The card that puts an ask in front of the member asked. */
 const askCard = (plan: string): NewEventShape => ({
   op: 'proposal.offer', tool: 'answer_ask', args: { plan }, summary: `Take ${plan}?`, effects: [],
-  events: [], budget: null, month: null, envelopes: [], fingerprint: '', prompt: { kind: 'member', ref: null },
+  events: [], month: null, envelopes: [], fingerprint: '', prompt: { kind: 'member', ref: null },
 });
 
 test('a plan is created in planning, owned by its creator, in a known area', async () => {
@@ -225,9 +225,9 @@ test('checklist replaces whole; attachments, contacts, blocks accumulate by key'
   assert.equal(plan().due, null);
 
   await s.append('alice', { op: 'plan.set', plan: 'p1', notes: 'north side', estimate: cents(25000),
-    envelope: { budget: 'harbor', envelope: 'house' } });
+    envelope: 'house' });
   assert.deepEqual([plan().notes, plan().estimate, plan().envelope],
-    ['north side', 25000, { budget: 'harbor', envelope: 'house' }]);
+    ['north side', 25000, 'house']);
   await s.append('alice', { op: 'plan.set', plan: 'p1', estimate: null, envelope: null });
   assert.deepEqual([plan().notes, plan().estimate, plan().envelope], ['north side', null, null]);
   await assert.rejects(s.append('alice', { op: 'plan.set', plan: 'p1', area: 'Garage' }), refused(/areas/));
@@ -358,8 +358,8 @@ describe('the fold owns the plan rules', () => {
     const notMember = refused(/mallory is not a member of this household/);
     await assert.rejects(s.append('mallory', create('p2')), notMember);
     await assert.rejects(s.append('mallory', { op: 'plan.state', plan: 'p1', state: 'doing' }), notMember);
-    await assert.rejects(s.append('mallory', { op: 'thread.note', text: 'hello', budget: null, plan: 'p1' }), notMember);
-    await assert.rejects(s.append('mallory', { op: 'thread.ask', question: 'how much?', budget: null, plan: 'p1' }),
+    await assert.rejects(s.append('mallory', { op: 'thread.note', text: 'hello', plan: 'p1' }), notMember);
+    await assert.rejects(s.append('mallory', { op: 'thread.ask', question: 'how much?', plan: 'p1' }),
       notMember);
     assert.ok(!s.state.plans.has('p2'));
     // A member who has left is not one any more.
@@ -378,7 +378,7 @@ describe('the fold owns the plan rules', () => {
     await s.append('alice', [create('p1'), create('p2')]);
     const card = (plan: string, events: NewEventShape[], extra: Record<string, unknown> = {}): NewEventShape => ({
       op: 'proposal.offer', tool: 'set_plan_due', args: { plan }, summary: 'x', effects: [], events,
-      budget: null, month: null, envelopes: [], fingerprint: '', prompt: { kind: 'research', ref: null }, ...extra,
+      month: null, envelopes: [], fingerprint: '', prompt: { kind: 'research', ref: null }, ...extra,
     }) as NewEventShape;
     const [due] = await s.append('claude', card('p1', [{ op: 'plan.due', plan: 'p1', due: '2026-12-01' }], { plan: 'p1' }));
     const [item] = await s.append('claude', { ...card('p1', [create('p1-a', { parent: 'p1' })]), tool: 'create_plan',
@@ -443,10 +443,9 @@ describe('board and card', () => {
     const t = await store();
     await t.s.append('alice', [
       { op: 'category.define', category: 'repairs', label: 'Repairs' },
-      { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-      { op: 'envelope.define', budget: 'harbor', envelope: 'house', label: 'House upkeep', group: 'House',
+      { op: 'envelope.define', envelope: 'house', label: 'House upkeep', group: 'House',
         match: { categories: ['repairs'] }, template: parseDollars('100.00'), rollover: false, order: 0 },
-      { op: 'month.open', budget: 'harbor', month: '2026-10', income: parseDollars('1000.00') },
+      { op: 'month.open', month: '2026-10', income: parseDollars('1000.00') },
       { op: 'txn.add', txns: [
         { id: 'x1', date: '2026-10-05', payee: 'HARDWARE', amount: parseDollars('-35.50'), dedupeKey: 'x1', category: 'repairs' },
       ] },
@@ -567,7 +566,7 @@ describe('board and card', () => {
     await s.append('alice', create('p1', { title: 'Fix the gate' }));
     await s.append('alice', [
       { op: 'plan.set', plan: 'p1', chips: ['waiting on quote'], estimate: parseDollars('250.00'),
-        envelope: { budget: 'harbor', envelope: 'house' } },
+        envelope: 'house' },
       { op: 'plan.due', plan: 'p1', due: '2026-11-15' },
       { op: 'plan.block', plan: 'p1', block: 'k1', start: '2026-11-14T09:00:00.000Z', end: '2026-11-14T11:00:00.000Z' },
       { op: 'plan.ask', plan: 'p1', to: 'bob', why: 'you know the gate' },
@@ -578,7 +577,7 @@ describe('board and card', () => {
       asked: { to: 'bob', at: NOW, why: 'you know the gate' },
       chips: ['waiting on quote'], due: '2026-11-15',
       blocks: [{ id: 'k1', start: '2026-11-14T09:00:00.000Z', end: '2026-11-14T11:00:00.000Z' }],
-      envelope: { budget: 'harbor', envelope: 'house', label: 'House upkeep', left: '$65' },
+      envelope: { envelope: 'house', label: 'House upkeep', left: '$65' },
       daysInState: null, hasResearch: false,
       // Its due date has no event: set here with no NAS behind it.
       notOnCalendar: true, doneAt: null,
@@ -588,7 +587,7 @@ describe('board and card', () => {
   test('a card has an envelope only when the figures are there to show', async () => {
     const { s } = await withBudget();
     await s.append('alice', create('p1'));
-    await s.append('alice', { op: 'plan.set', plan: 'p1', envelope: { budget: 'harbor', envelope: 'house' } });
+    await s.append('alice', { op: 'plan.set', plan: 'p1', envelope: 'house' });
     const left = (today: string) => row(s, 'House', { today }).plans[0]!.envelope;
     assert.equal(left('2026-10-29')?.left, '$65');
     assert.equal(left('2026-11-02'), null, 'November is not open, so nothing is made up for it');
@@ -599,7 +598,7 @@ describe('board and card', () => {
   test('hasResearch is true once an answer was given for the plan', async () => {
     const { s } = await store();
     await s.append('alice', [create('p1'), create('p2')]);
-    const [q] = await s.append('alice', { op: 'thread.ask', question: 'What would a gate hinge cost?', budget: null, plan: 'p1' });
+    const [q] = await s.append('alice', { op: 'thread.ask', question: 'What would a gate hinge cost?', plan: 'p1' });
     const has = () => Object.fromEntries(row(s, 'House').plans.map((c) => [c.id, c.hasResearch]));
     assert.deepEqual(has(), { p1: false, p2: false }, 'a question is not research until it is answered');
     await s.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'About $40.', tools: [], model: 'm', plan: 'p1' });
@@ -609,7 +608,7 @@ describe('board and card', () => {
   test("research on a card points to its page", async () => {
     const { s } = await store();
     await s.append('alice', create('p1'));
-    const [q] = await s.append('alice', { op: 'thread.ask', question: 'What would a gate hinge cost?', budget: null, plan: 'p1' });
+    const [q] = await s.append('alice', { op: 'thread.ask', question: 'What would a gate hinge cost?', plan: 'p1' });
     const doc = { link: 'f3c1', file_id: '881', hash: 'abc', version_id: '1', path: '/team-folders/Planner/h1/answers/a-gate-hinge.md' };
     await s.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'About $40.', tools: [], model: 'm', plan: 'p1', doc });
     await s.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'A strap hinge.', tools: [], model: 'm', plan: 'p1' });
@@ -637,7 +636,7 @@ describe('board and card', () => {
     let v = card(s.state, eventsOf(s), 'p1', { who: 'alice', today: TODAY });
     assert.equal(v.money, null, 'no envelope, no money');
     await s.append('alice', { op: 'plan.set', plan: 'p1', estimate: parseDollars('250.00'),
-      envelope: { budget: 'harbor', envelope: 'house' } });
+      envelope: 'house' });
     v = card(s.state, eventsOf(s), 'p1', { who: 'alice', today: TODAY });
     assert.deepEqual(v.money, { label: 'House upkeep', left: '$65', estimate: '$250', monthsAtFunding: 3 });
     assert.equal(v.estimate, parseDollars('250.00'), 'the plan itself comes through whole');
@@ -653,15 +652,15 @@ describe('board and card', () => {
     const { s, at } = await store();
     await s.append('alice', [create('p1', { title: 'Fix the gate' }), create('p2')]);
     at('2026-10-29T10:00:00.000Z');
-    const [q] = await s.append('alice', { op: 'thread.ask', question: 'What hinge?', budget: null, plan: 'p1' });
+    const [q] = await s.append('alice', { op: 'thread.ask', question: 'What hinge?', plan: 'p1' });
     const [a1] = await s.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'A strap hinge.', tools: [], model: 'm', plan: 'p1' });
     const [a2] = await s.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'About $40.', tools: [], model: 'm' });
     const [o1] = await s.append('claude', ({ ...askCard('p1'), summary: 'Add hinge to the list', prompt: { kind: 'answer', ref: a1!.id } } as NewEventShape));
     await s.append('claude', ({ ...askCard('p1'), summary: 'Elsewhere', prompt: { kind: 'answer', ref: a2!.id } } as NewEventShape));
     at('2026-10-29T11:00:00.000Z');
-    await s.append('bob', { op: 'thread.note', text: 'I can pick one up Saturday', budget: null, plan: 'p1' });
-    await s.append('bob', { op: 'thread.note', text: 'About something else', budget: null, plan: 'p2' });
-    await s.append('bob', { op: 'thread.note', text: 'No plan at all', budget: null });
+    await s.append('bob', { op: 'thread.note', text: 'I can pick one up Saturday', plan: 'p1' });
+    await s.append('bob', { op: 'thread.note', text: 'About something else', plan: 'p2' });
+    await s.append('bob', { op: 'thread.note', text: 'No plan at all' });
     await s.append('alice', { op: 'plan.state', plan: 'p1', state: 'doing' });
     await s.append('alice', { op: 'plan.state', plan: 'p2', state: 'doing' });
 

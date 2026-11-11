@@ -25,12 +25,11 @@ const base = (): Event[] => [
   ev({ op: 'category.define', category: 'tyres', label: 'Tyres', sinking: { cost: cents(120000), everyYears: 4 } }),
   ev({ op: 'category.define', category: 'service', label: 'Car service', sinking: { cost: cents(60000), everyYears: 1 } }),
   ev({ op: 'category.define', category: 'trips', label: 'Trips' }),
-  ev({ op: 'budget.create', budget: 'h', label: 'Harbor' }),
-  ev({ op: 'envelope.define', budget: 'h', envelope: 'food', label: 'Groceries', group: 'People',
+  ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries', group: 'People',
        match: { categories: ['groceries'] }, template: cents(100000) }),
-  ev({ op: 'envelope.define', budget: 'h', envelope: 'auto', label: 'Auto maintenance', group: 'Future',
+  ev({ op: 'envelope.define', envelope: 'auto', label: 'Auto maintenance', group: 'Future',
        match: { categories: ['tyres', 'service'] }, template: cents(0), rollover: false, sinking: { kind: 'every' } }),
-  ev({ op: 'envelope.define', budget: 'h', envelope: 'bahamas', label: 'Bahamas', group: 'Future',
+  ev({ op: 'envelope.define', envelope: 'bahamas', label: 'Bahamas', group: 'Future',
        match: { categories: ['trips'] }, template: cents(0), sinking: { kind: 'by', target: cents(400000), by: '2027-03' } }),
 ];
 
@@ -71,31 +70,31 @@ describe('the monthly figure', () => {
 
   test('a goal by a date is worked out again each month from what was saved', () => {
     const s = replay([...base(),
-      ev({ op: 'month.open', budget: 'h', month: '2026-11', income: cents(500000) }),
+      ev({ op: 'month.open', month: '2026-11', income: cents(500000) }),
       // Funded less than the goal asked for: December asks a little more.
-      ev({ op: 'assign', budget: 'h', month: '2026-11', envelope: 'bahamas', to: cents(50000), why: 'a lean month' }),
+      ev({ op: 'assign', month: '2026-11', envelope: 'bahamas', to: cents(50000), why: 'a lean month' }),
     ]);
-    const bahamas = s.budgets.get('h')!.envelopes.get('bahamas')!;
-    assert.equal(goalFor(s, 'h', bahamas, '2026-11')!.monthly, 80000);
-    assert.equal(goalFor(s, 'h', bahamas, '2026-12')!.monthly, 87500, '$3,500 left over 4 months');
+    const bahamas = s.envelopes.get('bahamas')!;
+    assert.equal(goalFor(s, bahamas, '2026-11')!.monthly, 80000);
+    assert.equal(goalFor(s, bahamas, '2026-12')!.monthly, 87500, '$3,500 left over 4 months');
   });
 
   test("every so often comes from its categories' estimates, and fills toward their costs together", () => {
     const s = replay(base());
-    const g = goalFor(s, 'h', s.budgets.get('h')!.envelopes.get('auto')!, '2026-11')!;
+    const g = goalFor(s, s.envelopes.get('auto')!, '2026-11')!;
     assert.equal(g.monthly, 7500);
     assert.equal(g.target, 180000);
     assert.deepEqual(g.estimates.map((e) => [e.category, e.cost, e.everyYears, e.monthly]),
       [['tyres', 120000, 4, 2500], ['service', 60000, 1, 5000]]);
-    assert.equal(goalFor(s, 'h', s.budgets.get('h')!.envelopes.get('food')!, '2026-11'), null, 'an ordinary envelope has none');
+    assert.equal(goalFor(s, s.envelopes.get('food')!, '2026-11'), null, 'an ordinary envelope has none');
   });
 
   test('a month opened with a plan for its sinking envelopes keeps it', () => {
     const s = replay([...base(),
-      ev({ op: 'month.open', budget: 'h', month: '2026-11', income: cents(500000),
-           plan: Object.fromEntries(sinkingPlan(replay(base()), 'h', '2026-11')) }),
+      ev({ op: 'month.open', month: '2026-11', income: cents(500000),
+           plan: Object.fromEntries(sinkingPlan(replay(base()), '2026-11')) }),
     ]);
-    const v = monthView(s, 'h', '2026-11')!;
+    const v = monthView(s, '2026-11')!;
     assert.deepEqual(v.envelopes.map((e) => [e.envelope.id, e.planned]), [['food', 100000], ['auto', 7500], ['bahamas', 80000]]);
   });
 });
@@ -103,10 +102,10 @@ describe('the monthly figure', () => {
 describe('the log', () => {
   test('a sinking envelope always rolls over, and keeps its goal when redefined without one', () => {
     const s = replay([...base(),
-      ev({ op: 'envelope.define', budget: 'h', envelope: 'auto', label: 'Car', group: 'Future',
+      ev({ op: 'envelope.define', envelope: 'auto', label: 'Car', group: 'Future',
            match: { categories: ['tyres', 'service'] }, template: cents(0), rollover: false }),
     ]);
-    const auto = s.budgets.get('h')!.envelopes.get('auto')!;
+    const auto = s.envelopes.get('auto')!;
     assert.equal(auto.rollover, true, 'asked not to, and rolls over all the same');
     assert.deepEqual(auto.sinking, { kind: 'every' });
     assert.equal(auto.label, 'Car');
@@ -114,10 +113,10 @@ describe('the log', () => {
 
   test('null makes it an ordinary envelope again', () => {
     const s = replay([...base(),
-      ev({ op: 'envelope.define', budget: 'h', envelope: 'auto', label: 'Auto', group: 'Future',
+      ev({ op: 'envelope.define', envelope: 'auto', label: 'Auto', group: 'Future',
            match: { categories: ['tyres', 'service'] }, template: cents(0), sinking: null }),
     ]);
-    assert.equal('sinking' in s.budgets.get('h')!.envelopes.get('auto')!, false);
+    assert.equal('sinking' in s.envelopes.get('auto')!, false);
   });
 
   test("an estimate is set and cleared on its own, leaving the category's name and archive alone", () => {
@@ -135,11 +134,11 @@ describe('the log', () => {
     refused({ op: 'category.sinking', category: 'nope', sinking: null });
     refused({ op: 'category.sinking', category: 'tyres', sinking: { cost: cents(0), everyYears: 2 } });
     refused({ op: 'category.sinking', category: 'tyres', sinking: { cost: cents(100), everyYears: 0 } });
-    refused({ op: 'envelope.define', budget: 'h', envelope: 'x', label: 'X', group: 'F', match: { categories: ['trips'] },
+    refused({ op: 'envelope.define', envelope: 'x', label: 'X', group: 'F', match: { categories: ['trips'] },
               template: cents(0), sinking: { kind: 'by', target: cents(100), by: '2027-13' } });
-    refused({ op: 'envelope.define', budget: 'h', envelope: 'x', label: 'X', group: 'F', match: { categories: ['trips'] },
+    refused({ op: 'envelope.define', envelope: 'x', label: 'X', group: 'F', match: { categories: ['trips'] },
               template: cents(0), sinking: { kind: 'someday' } as never });
-    refused({ op: 'month.open', budget: 'h', month: '2026-11', income: cents(0), plan: { auto: -1 as never } });
+    refused({ op: 'month.open', month: '2026-11', income: cents(0), plan: { auto: -1 as never } });
     refused({ op: 'account.balance', account: '7', cents: cents(100), asOf: '2026-02-30', source: 'statement' });
     refused({ op: 'account.balance', account: '7', cents: 1.5 as never, asOf: '2026-02-03', source: 'typed' });
     refused({ op: 'savings.account', account: '  ' });
@@ -158,9 +157,9 @@ describe('the log', () => {
 
 describe('balances as of a day', () => {
   const lived = (): Event[] => [...base(),
-    ev({ op: 'month.open', budget: 'h', month: '2026-10', income: cents(500000),
+    ev({ op: 'month.open', month: '2026-10', income: cents(500000),
          plan: { auto: cents(7500), bahamas: cents(80000) } }),
-    ev({ op: 'month.open', budget: 'h', month: '2026-11', income: cents(500000),
+    ev({ op: 'month.open', month: '2026-11', income: cents(500000),
          plan: { auto: cents(7500), bahamas: cents(80000) } }),
     ev({ op: 'txn.add', txns: [
       txn('t1', '2026-10-10', -2000, 'service'),
@@ -171,16 +170,16 @@ describe('balances as of a day', () => {
 
   test('spending after the day is not counted, funding that month is', () => {
     const s = replay(lived());
-    assert.equal(balanceAsOf(s, 'h', 'auto', '2026-10-15'), 7500 - 2000);
-    assert.equal(balanceAsOf(s, 'h', 'auto', '2026-10-31'), 7500 - 5000);
-    assert.equal(balanceAsOf(s, 'h', 'auto', '2026-11-04'), 2500 + 7500, 'carried in, and November funded');
-    assert.equal(balanceAsOf(s, 'h', 'auto', '2026-11-30'), 2500 + 7500 - 1000);
+    assert.equal(balanceAsOf(s, 'auto', '2026-10-15'), 7500 - 2000);
+    assert.equal(balanceAsOf(s, 'auto', '2026-10-31'), 7500 - 5000);
+    assert.equal(balanceAsOf(s, 'auto', '2026-11-04'), 2500 + 7500, 'carried in, and November funded');
+    assert.equal(balanceAsOf(s, 'auto', '2026-11-30'), 2500 + 7500 - 1000);
   });
 
   test('a day past the last open month reads its end, and one before any month reads nothing', () => {
     const s = replay(lived());
-    assert.equal(balanceAsOf(s, 'h', 'auto', '2027-01-10'), 9000);
-    assert.equal(balanceAsOf(s, 'h', 'auto', '2026-09-30'), 0);
+    assert.equal(balanceAsOf(s, 'auto', '2027-01-10'), 9000);
+    assert.equal(balanceAsOf(s, 'auto', '2026-09-30'), 0);
   });
 });
 
@@ -188,9 +187,9 @@ describe('the check against Savings', () => {
   // Funds held $825 on Oct 31: Auto $75 less $50 spent, plus Bahamas $800.
   // November puts nothing more in, and spends $100 on the 2nd.
   const world = (extra: EvInput[] = []) => replay([...base(),
-    ev({ op: 'month.open', budget: 'h', month: '2026-10', income: cents(500000),
+    ev({ op: 'month.open', month: '2026-10', income: cents(500000),
          plan: { auto: cents(7500), bahamas: cents(80000) } }),
-    ev({ op: 'month.open', budget: 'h', month: '2026-11', income: cents(500000),
+    ev({ op: 'month.open', month: '2026-11', income: cents(500000),
          plan: { auto: cents(0), bahamas: cents(0) } }),
     ev({ op: 'txn.add', txns: [txn('t1', '2026-10-10', -5000, 'service'), txn('t2', '2026-11-02', -10000, 'service')] }),
     ev({ op: 'savings.account', account: '7' }),
@@ -200,7 +199,7 @@ describe('the check against Savings', () => {
     ({ op: 'account.balance', account: '7', cents: cents(c), asOf, source: 'statement' });
 
   test('at: every dollar in Savings is in a fund', () => {
-    const c = savingsCheck(world([balance(82500)]), 'h', '2026-11-03')!;
+    const c = savingsCheck(world([balance(82500)]), '2026-11-03')!;
     assert.equal(c.status, 'even');
     assert.equal(c.held, 82500);
     assert.equal(c.words.held, 'Sinking funds held $825 on Oct 31.');
@@ -208,45 +207,45 @@ describe('the check against Savings', () => {
   });
 
   test("over: the rest of Savings isn't in any fund", () => {
-    const c = savingsCheck(world([balance(127500)]), 'h', '2026-11-03')!;
+    const c = savingsCheck(world([balance(127500)]), '2026-11-03')!;
     assert.deepEqual([c.status, c.difference], ['over', 45000]);
     assert.equal(c.words.verdict, "$450 in Savings isn't in any fund.");
   });
 
   test('under: Savings is short of the sinking funds', () => {
-    const c = savingsCheck(world([balance(52500)]), 'h', '2026-11-03')!;
+    const c = savingsCheck(world([balance(52500)]), '2026-11-03')!;
     assert.deepEqual([c.status, c.difference], ['short', -30000]);
     assert.equal(c.words.verdict, 'Savings is $300 short of the sinking funds.');
   });
 
   test("compared as of the balance's day: spending since is not held against it", () => {
     // The $100 spent on Nov 2 came after the statement, so it plays no part.
-    assert.equal(savingsCheck(world([balance(82500)]), 'h', '2026-11-03')!.status, 'even');
+    assert.equal(savingsCheck(world([balance(82500)]), '2026-11-03')!.status, 'even');
     // A balance typed today meets today's funds, $100 lower.
-    const today = savingsCheck(world([balance(72500, '2026-11-03')]), 'h', '2026-11-03')!;
+    const today = savingsCheck(world([balance(72500, '2026-11-03')]), '2026-11-03')!;
     assert.equal(today.status, 'even');
     assert.equal(today.words.held, 'Sinking funds hold $725.');
   });
 
   test('a difference under a dollar is said to the cent', () => {
-    assert.equal(savingsCheck(world([balance(82460)]), 'h', '2026-11-03')!.words.verdict,
+    assert.equal(savingsCheck(world([balance(82460)]), '2026-11-03')!.words.verdict,
       'Savings is $0.40 short of the sinking funds.');
   });
 
   test(`a balance older than ${STALE_AFTER_DAYS} days is said to be old, not compared`, () => {
-    const fresh = savingsCheck(world([balance(52500)]), 'h', '2026-12-05')!;
+    const fresh = savingsCheck(world([balance(52500)]), '2026-12-05')!;
     assert.equal(fresh.status, 'short', '35 days on, still compared');
-    const old = savingsCheck(world([balance(52500)]), 'h', '2026-12-06')!;
+    const old = savingsCheck(world([balance(52500)]), '2026-12-06')!;
     assert.equal(old.status, 'stale');
     assert.equal(old.daysOld, 36);
     assert.match(old.words.verdict, /36 days ago, too long ago to compare/);
   });
 
   test('without an account or a balance it says what is missing, and without sinking envelopes there is no check', () => {
-    assert.equal(savingsCheck(replay([...base(), ev({ op: 'month.open', budget: 'h', month: '2026-10', income: cents(0) })]),
-      'h', '2026-10-10')!.status, 'no-account');
-    assert.equal(savingsCheck(world(), 'h', '2026-11-03')!.status, 'no-balance');
+    assert.equal(savingsCheck(replay([...base(), ev({ op: 'month.open', month: '2026-10', income: cents(0) })]),
+      '2026-10-10')!.status, 'no-account');
+    assert.equal(savingsCheck(world(), '2026-11-03')!.status, 'no-balance');
     const plain = replay(base().filter((e) => !(e.op === 'envelope.define' && e.sinking)));
-    assert.equal(savingsCheck(plain, 'h', '2026-11-03'), null);
+    assert.equal(savingsCheck(plain, '2026-11-03'), null);
   });
 });

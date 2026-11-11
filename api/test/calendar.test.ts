@@ -1492,7 +1492,7 @@ describe('due dates and blocks become events', () => {
 
   test("another member's card for their own calendar is not in bob's thread, tray, plan card or week", async () => {
     const c = await setup();
-    await c.store.append('alice', { op: 'thread.ask', question: 'Schedule my dentist at 10 on Thursday', budget: null });
+    await c.store.append('alice', { op: 'thread.ask', question: 'Schedule my dentist at 10 on Thursday' });
     const asked = c.store.state.lastEventId!;
     await c.store.append('claude', { op: 'thread.answer', replyTo: asked, text: 'Here it is.', tools: [], model: 'm' });
     const answer = c.store.state.lastEventId!;
@@ -1695,7 +1695,7 @@ describe('due dates and blocks become events', () => {
     const [cancel] = await c.store.append('alice', { op: 'booking.cancel', stay, why: 'cannot come' });
     const [card] = await c.store.append('alice', {
       op: 'proposal.offer', tool: 'release_stay', args: { stay }, summary: 'Nguyen family cancelled Nov 2–3', effects: [], events: [],
-      budget: null, month: null, envelopes: [], fingerprint: '', prompt: { kind: 'booking', ref: cancel!.id },
+      month: null, envelopes: [], fingerprint: '', prompt: { kind: 'booking', ref: cancel!.id },
     });
     const drawn = async () => (await weekEvents(c, { start: '2026-11-02', end: '2026-11-09' })).events.filter((e) => /staying/.test(e.summary));
     // Waiting on its card: not drawn.
@@ -1785,7 +1785,7 @@ describe('due dates and blocks become events', () => {
       const rowOf = async () => (await weekEvents(c, { start: '2026-10-26', end: '2026-11-02' })).thread.find((t) => t.day === '2026-10-29')!;
       // setup already wrote the gate plan on this day: the note is one more entry among them.
       const before = (await rowOf()).entries;
-      await c.store.append('alice', { op: 'thread.note', text: 'The gate is done', budget: null });
+      await c.store.append('alice', { op: 'thread.note', text: 'The gate is done' });
       const row = await rowOf();
       assert.deepEqual([row.entries, row.waiting, row.by.map((b) => b.who)], [before + 1, 0, ['alice']]);
       assert.deepEqual((await weekEvents(c, { start: '2026-11-02', end: '2026-11-09' })).thread, []);
@@ -1793,7 +1793,7 @@ describe('due dates and blocks become events', () => {
 
     test('the record row is there without the NAS, and an open proposal for the household is waiting', async () => {
       const c = await setup();
-      await c.store.append('alice', { op: 'thread.note', text: 'The gate is done', budget: null });
+      await c.store.append('alice', { op: 'thread.note', text: 'The gate is done' });
       await card(c, 'propose_event', dentist({ on: 'household', start: THU('15:00'), end: THU('16:00') }));
       const week = await weekEvents({ ...c, sid: null }, { start: '2026-10-26', end: '2026-11-02' });
       const row = week.thread.find((t) => t.day === '2026-10-29')!;

@@ -480,7 +480,7 @@ describe('which nights are open, over HTTP', () => {
     await home.append('guest:nights2@example.com', {
       op: 'proposal.offer', tool: 'approve_booking',
       args: { email: 'nights2@example.com', name: 'Second family', arrive: day(20), depart: day(22), headcount: 2, note: 'private note' },
-      summary: 'Second family would like to come', effects: [], events: [], budget: null, month: null, envelopes: [],
+      summary: 'Second family would like to come', effects: [], events: [], month: null, envelopes: [],
       fingerprint: '', prompt: { kind: 'booking', ref: null },
     } as never);
     mine = await guestIn('nights@example.com', '10.2.8.1');

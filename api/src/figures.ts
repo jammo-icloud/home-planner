@@ -11,7 +11,7 @@ import type { Cents } from './money.ts';
 import { incomeFor, sourcesFor } from './income.ts';
 import { PRICED } from './starter.ts';
 import { INCOME, PER_YEAR, isSpend, monthOf, partsOf, prevMonth } from './types.ts';
-import type { Basis, Budget, BudgetId, CategoryId, Day, Envelope, EnvelopeId, Month, Per, State } from './types.ts';
+import type { Basis, CategoryId, Day, Envelope, EnvelopeId, Month, Per, State } from './types.ts';
 import type { MonthView } from './envelopes.ts';
 import { donors, monthClock } from './analytics.ts';
 
@@ -38,7 +38,7 @@ export interface Hint {
   readonly text: string;
   /** A figure the household can take as it stands. */
   readonly use?: { readonly cents: Cents; readonly label: string };
-  /** Public data for the budget's place can price this envelope. */
+  /** Public data for the household's place can price this envelope. */
   readonly price?: true;
   /** What its receipts averaged over the last 1, 3 and 6 months, in whole dollars; only the windows that had any. */
   readonly averages?: readonly { readonly months: 1 | 3 | 6; readonly cents: Cents }[];
@@ -111,7 +111,7 @@ const FIXED: Readonly<Record<string, string>> = {
  * which a starter envelope shares with its category. An envelope with receipts is
  * offered their averages; a sinking one never is, its spending being lumpy by design.
  */
-export function hintFor(state: State, budget: Budget, env: Envelope, month: Month): Hint | null {
+export function hintFor(state: State, env: Envelope, month: Month): Hint | null {
   const categories = env.match.categories;
   if (!env.sinking && categories.length > 0) {
     const nets = monthsBefore(state, categories, month, 6);
@@ -134,14 +134,14 @@ export function hintFor(state: State, budget: Budget, env: Envelope, month: Mont
         label: `Use ${fmt(pick.cents)} (${pick.months === 1 ? 'last month' : `${pick.months}-month average`})`,
       };
       // Averages add to pricing, never take it away.
-      const price = PRICED.has(env.id) && budget.location ? { price: true as const } : {};
+      const price = PRICED.has(env.id) && state.location ? { price: true as const } : {};
       return { text, use, ...price, averages };
     }
   }
   const fixed = FIXED[env.id];
   if (fixed) return { text: fixed };
-  if (PRICED.has(env.id) && budget.location) {
-    return { text: `Public data for ${budget.location.label} can price this.`, price: true };
+  if (PRICED.has(env.id) && state.location) {
+    return { text: `Public data for ${state.location.label} can price this.`, price: true };
   }
   return null;
 }
@@ -152,8 +152,8 @@ export interface IncomeSuggestion { readonly cents: Cents; readonly from: 'sourc
  * What to offer as the month's income: the paydays the sources say fall in it,
  * else what arrived last month. Counted, never a twelfth of a year.
  */
-export function incomeSuggestion(state: State, budget: BudgetId, month: Month): IncomeSuggestion | null {
-  const planned = incomeFor(sourcesFor(state, budget), month).total;
+export function incomeSuggestion(state: State, month: Month): IncomeSuggestion | null {
+  const planned = incomeFor(sourcesFor(state), month).total;
   if (planned > 0) return { cents: planned, from: 'source' };
   const last = prevMonth(month);
   let arrived = ZERO;

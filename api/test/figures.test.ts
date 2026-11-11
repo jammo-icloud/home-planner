@@ -22,23 +22,22 @@ async function fresh(seed: NewEvent[] = []): Promise<Store> {
   await store.load();
   await store.append('alex', [
     { op: 'household.claim', label: 'Rivera' },
-    { op: 'budget.create', budget: 'placitas', label: 'Placitas' },
     ...seed,
   ]);
   return store;
 }
 
-const env = (store: Store, id: string): Envelope => store.state.budgets.get('placitas')!.envelopes.get(id)!;
+const env = (store: Store, id: string): Envelope => store.state.envelopes.get(id)!;
 const withEnv = (id: string, label = id): NewEvent[] => [
   { op: 'category.define', category: id, label },
-  { op: 'envelope.define', budget: 'placitas', envelope: id, label, group: 'Home',
+  { op: 'envelope.define', envelope: id, label, group: 'Home',
     match: { categories: [id] }, template: cents(0), rollover: true, order: 0, needsFigure: true },
 ];
 const txn = (id: string, date: string, amount: number, category: string): NewEvent => ({
   op: 'txn.add',
   txns: [{ id, date, payee: 'VALLEY MARKET', amount: cents(amount), dedupeKey: id, category }],
 });
-const hint = (s: Store, id: string) => hintFor(s.state, s.state.budgets.get('placitas')!, env(s, id), '2026-11');
+const hint = (s: Store, id: string) => hintFor(s.state, env(s, id), '2026-11');
 
 describe('hints', () => {
   test("groceries, dining and transport say last month's imports, and offer the 3-month average", async () => {
@@ -85,7 +84,7 @@ describe('hints', () => {
   test('rent, tax and elec offer pricing while the budget has a location', async () => {
     const s = await fresh([...withEnv('rent'), ...withEnv('tax'), ...withEnv('elec')]);
     for (const id of ['rent', 'tax', 'elec']) assert.equal(hint(s, id), null);
-    await s.append('alex', [{ op: 'budget.locate', budget: 'placitas', why: 'setup', location: { label: 'Placitas, NM' } }]);
+    await s.append('alex', [{ op: 'household.locate', why: 'setup', location: { label: 'Placitas, NM' } }]);
     for (const id of ['rent', 'tax', 'elec']) {
       assert.deepEqual(hint(s, id), { text: 'Public data for Placitas, NM can price this.', price: true });
     }
@@ -153,7 +152,7 @@ describe('averages of receipts', () => {
 
   test('a priced envelope with receipts keeps its pricing beside the averages', async () => {
     const s = await fresh([...withEnv('rent'), txn('r1', '2026-10-01', -150000, 'rent')]);
-    await s.append('alex', [{ op: 'budget.locate', budget: 'placitas', why: 'setup', location: { label: 'Placitas, NM' } }]);
+    await s.append('alex', [{ op: 'household.locate', why: 'setup', location: { label: 'Placitas, NM' } }]);
     const h = hint(s, 'rent')!;
     assert.equal(h.price, true);
     assert.deepEqual(h.averages, [{ months: 1, cents: 150000 }, { months: 3, cents: 150000 }, { months: 6, cents: 150000 }]);
@@ -169,7 +168,7 @@ describe('averages of receipts', () => {
   test('a sinking envelope gets no averages', async () => {
     const s = await fresh([
       ...withEnv('travel'),
-      { op: 'envelope.define', budget: 'placitas', envelope: 'travel', label: 'travel', group: 'Future',
+      { op: 'envelope.define', envelope: 'travel', label: 'travel', group: 'Future',
         match: { categories: ['travel'] }, template: cents(0), order: 0, needsFigure: true,
         sinking: { kind: 'by', target: cents(120000), by: '2027-06' } },
       txn('t1', '2026-10-01', -50000, 'travel'),
@@ -181,20 +180,20 @@ describe('averages of receipts', () => {
 describe('the income suggestion', () => {
   test("is a source's paydays this month, else last month's imports", async () => {
     const s = await fresh();
-    assert.equal(incomeSuggestion(s.state, 'placitas', '2026-11'), null);
+    assert.equal(incomeSuggestion(s.state, '2026-11'), null);
 
     await s.append('alex', [txn('i1', '2026-10-01', 320000, INCOME), txn('i2', '2026-10-15', 320000, INCOME)]);
-    assert.deepEqual(incomeSuggestion(s.state, 'placitas', '2026-11'), { cents: 640000, from: 'imports' });
+    assert.deepEqual(incomeSuggestion(s.state, '2026-11'), { cents: 640000, from: 'imports' });
 
-    await s.append('alex', [{ op: 'income.source.define', source: 'pay', budget: 'placitas', label: 'Pay', earner: 'alex',
+    await s.append('alex', [{ op: 'income.source.define', source: 'pay', label: 'Pay', earner: 'alex',
       amount: cents(640000), frequency: 'monthly', anchor: '2026-10-01' }]);
-    assert.deepEqual(incomeSuggestion(s.state, 'placitas', '2026-11'), { cents: 640000, from: 'source' });
+    assert.deepEqual(incomeSuggestion(s.state, '2026-11'), { cents: 640000, from: 'source' });
   });
 
   test('a biweekly source counts its three paydays, not a twelfth of a year', async () => {
-    const s = await fresh([{ op: 'income.source.define', source: 'pay', budget: 'placitas', label: 'Pay', earner: 'alex',
+    const s = await fresh([{ op: 'income.source.define', source: 'pay', label: 'Pay', earner: 'alex',
       amount: cents(200000), frequency: 'biweekly', anchor: '2026-11-02' }]);
-    assert.deepEqual(incomeSuggestion(s.state, 'placitas', '2026-11'), { cents: 600000, from: 'source' });
+    assert.deepEqual(incomeSuggestion(s.state, '2026-11'), { cents: 600000, from: 'source' });
   });
 });
 
@@ -270,12 +269,12 @@ describe('the cover for a short envelope', () => {
   // An envelope with a figure, funded by its template when the month opens.
   const funded = (id: string, amount: number, label = id): NewEvent[] => [
     { op: 'category.define', category: id, label },
-    { op: 'envelope.define', budget: 'placitas', envelope: id, label, group: 'Home',
+    { op: 'envelope.define', envelope: id, label, group: 'Home',
       match: { categories: [id] }, template: cents(amount), rollover: true, order: 0 },
   ];
-  const open = (income: number): NewEvent => ({ op: 'month.open', budget: 'placitas', month: '2026-11', income: cents(income) });
+  const open = (income: number): NewEvent => ({ op: 'month.open', month: '2026-11', income: cents(income) });
   const coverOf = (s: Store, id = 'groceries') => {
-    const v = monthView(s.state, 'placitas', '2026-11')!;
+    const v = monthView(s.state, '2026-11')!;
     return coverFor(s.state, v, id, TODAY);
   };
 

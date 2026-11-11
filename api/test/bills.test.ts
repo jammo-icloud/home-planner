@@ -29,7 +29,7 @@ export const pay = (id: string, date: string, payee: string, dollars: string, ca
   ({ id, date, payee, amount: parseDollars(dollars), dedupeKey: id, category });
 
 const envelope = (envelope: string, label: string, categories: string[], template: string, order: number, extra: object = {}) =>
-  ev({ op: 'envelope.define', budget: 'harbor', envelope, label, group: 'House', match: { categories },
+  ev({ op: 'envelope.define', envelope, label, group: 'House', match: { categories },
     template: parseDollars(template), rollover: false, order, ...extra } as never);
 
 /** Claimed by alice. Harbor: `util` "Utilities" {elec, water}, `daily` "Daily life" {groceries}, `heat` "Heating" {gas, template 0}, `roof` "Roof" {roofing, sinking: { kind: 'every' }}. October and November open. */
@@ -37,20 +37,19 @@ export const houseEvents = (txns: readonly Txn[] = [], more: readonly Event[] = 
   ev({ op: 'household.claim', label: 'Home' }),
   ...(['elec:Electricity', 'water:Water', 'groceries:Groceries', 'gas:Gas', 'roofing:Roofing'] as const).map((c) =>
     ev({ op: 'category.define', category: c.split(':')[0]!, label: c.split(':')[1]! })),
-  ev({ op: 'budget.create', budget: 'harbor', label: 'Harbor' }),
   envelope('util', 'Utilities', ['elec', 'water'], '300.00', 0),
   envelope('daily', 'Daily life', ['groceries'], '600.00', 1),
   envelope('heat', 'Heating', ['gas'], '0.00', 2),
   envelope('roof', 'Roof', ['roofing'], '0.00', 3, { sinking: { kind: 'every' } }),
-  ev({ op: 'month.open', budget: 'harbor', month: '2026-10', income: parseDollars('9600.00') }),
-  ev({ op: 'month.open', budget: 'harbor', month: '2026-11', income: parseDollars('9600.00') }),
+  ev({ op: 'month.open', month: '2026-10', income: parseDollars('9600.00') }),
+  ev({ op: 'month.open', month: '2026-11', income: parseDollars('9600.00') }),
   ...(txns.length ? [ev({ op: 'txn.add', txns })] : []),
   ...more,
 ];
 export const house = (txns: readonly Txn[] = [], more: readonly Event[] = []): State => replay(houseEvents(txns, more));
 export const POWER = ['2026-08-14', '2026-09-14', '2026-10-14'].map((d) => pay(`p${d}`, d, 'EXAMPLE POWER BILLP', '-146.00', 'elec'));
-export const SET = { op: 'bill.set', budget: 'harbor', envelope: 'util', bill: 'example power billp', name: 'Example Power', date: { kind: 'due', per: 'month', day: 16 } } as const;
-const bills = (s: State) => [...s.budgets.get('harbor')!.bills.values()];
+export const SET = { op: 'bill.set', envelope: 'util', bill: 'example power billp', name: 'Example Power', date: { kind: 'due', per: 'month', day: 16 } } as const;
+const bills = (s: State) => [...s.bills.values()];
 
 describe('a bill in the log', () => {
   test('bill.set keeps the bill on its budget, with the household day it was given', () => {
@@ -82,7 +81,6 @@ describe('a bill in the log', () => {
   });
   test('the fold refuses', () => {
     const bad = (e: object, re: RegExp) => assert.throws(() => apply(house(), [ev(e as never)]), re);
-    bad({ ...SET, budget: 'nope' }, /no such budget/);
     bad({ ...SET, envelope: 'nope' }, /no such envelope/);
     bad({ ...SET, bill: ' ' }, /a bill has a key/);
     bad({ ...SET, name: '' }, /a bill has a name/);
@@ -94,13 +92,13 @@ describe('a bill in the log', () => {
   });
   test('bill.remove takes only a bill named by hand', () => {
     const hand = { ...SET, bill: 'example water', name: 'Example Water', byHand: true } as const;
-    const gone = { op: 'bill.remove', budget: 'harbor', envelope: 'util', bill: 'example water', name: 'Example Water' } as const;
+    const gone = { op: 'bill.remove', envelope: 'util', bill: 'example water', name: 'Example Water' } as const;
     assert.deepEqual(bills(house([], [ev(hand), ev(gone)])), []);
     assert.throws(() => house([], [ev(SET), ev({ ...gone, bill: SET.bill })]), /named by hand/);
     assert.throws(() => house([], [ev(gone)]), /no such bill/);
   });
   test('envelope.remove leaves its bills in the state', () => {
-    const s = house([], [ev(SET), ev({ op: 'envelope.remove', budget: 'harbor', envelope: 'util', why: 'moved' })]);
+    const s = house([], [ev(SET), ev({ op: 'envelope.remove', envelope: 'util', why: 'moved' })]);
     assert.equal(bills(s).length, 1);
   });
 });
@@ -123,7 +121,7 @@ describe('what the log says about a bill', () => {
     const s = house();
     assert.equal(said(SET, s), 'set Example Power in Utilities to due on the 16th, every month');
     assert.equal(said({ ...SET, date: null }, s), 'cleared the date on Example Power in Utilities');
-    assert.equal(said({ op: 'bill.remove', budget: 'harbor', envelope: 'util', bill: 'example water', name: 'Example Water' }, s), 'removed the bill Example Water from Utilities');
+    assert.equal(said({ op: 'bill.remove', envelope: 'util', bill: 'example water', name: 'Example Water' }, s), 'removed the bill Example Water from Utilities');
   });
   test('scope is budgets', () => {
     assert.equal(scopeOf({ op: 'bill.set' } as Event), 'budgets');
@@ -138,7 +136,7 @@ describe('a backup holding bills', () => {
     const [, ...rest] = houseEvents([], [
       ev(SET),
       ev({ ...SET, bill: 'example water', name: 'Example Water', byHand: true }),
-      ev({ op: 'bill.remove', budget: 'harbor', envelope: 'util', bill: 'example water', name: 'Example Water' }),
+      ev({ op: 'bill.remove', envelope: 'util', bill: 'example water', name: 'Example Water' }),
       ev({ ...SET, date: { kind: 'autopay', per: 'month', day: 3 } }),
     ]);
     await store.append('alice', rest.map(({ id, at, who, ...body }) => body) as never);
@@ -149,7 +147,7 @@ describe('a backup holding bills', () => {
     assert.deepEqual([plan.collisions, plan.missingPrerequisites], [[], []]);
     await fresh.adopt(eventsToApply(plan));
     assert.equal(bills(store.state).length, 1);
-    assert.deepEqual([...fresh.state.budgets.get('harbor')!.bills.values()], [...store.state.budgets.get('harbor')!.bills.values()]);
+    assert.deepEqual([...fresh.state.bills.values()], [...store.state.bills.values()]);
   });
 });
 
@@ -169,7 +167,7 @@ describe('billKey is frozen', () => {
   });
 });
 
-const list = (s: State, envelope: string, opts?: Parameters<typeof billsOf>[2]) => billsOf(s, 'harbor', opts).get(envelope) ?? [];
+const list = (s: State, envelope: string, opts?: Parameters<typeof billsOf>[1]) => billsOf(s, opts).get(envelope) ?? [];
 
 describe("an envelope's bills", () => {
   test('a fixed charge that landed here is a bill', () => {
@@ -182,10 +180,9 @@ describe("an envelope's bills", () => {
   test('every live envelope has an entry, one with nothing funded listing its bills', () => {
     const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'gas'));
     const s = house(gas);
-    assert.deepEqual([...billsOf(s, 'harbor').keys()].sort(), ['daily', 'heat', 'roof', 'util']);
+    assert.deepEqual([...billsOf(s).keys()].sort(), ['daily', 'heat', 'roof', 'util']);
     assert.equal(list(s, 'heat')[0]!.about, 5000);
   });
-  test('an unknown budget gives an empty map', () => assert.equal(billsOf(house(POWER), 'nope').size, 0));
   test('dated first, then by name', () => {
     const s = house(POWER, [
       ev({ ...SET, bill: 'zed', name: 'Zed', byHand: true }),
@@ -231,17 +228,6 @@ describe("an envelope's bills", () => {
     const s = house(['2026-09-04', '2026-10-04'].map((d) => pay(`n${d}`, d, '1234', '-30.00', 'water')));
     assert.deepEqual(list(s, 'util'), []);
   });
-  test('the same receipts are listed under each live budget, each with its own date', () => {
-    const second = [
-      ev({ op: 'budget.create', budget: 'other', label: 'Other' }),
-      ev({ op: 'envelope.define', budget: 'other', envelope: 'power', label: 'Power', group: 'House', match: { categories: ['elec'] }, template: parseDollars('100.00'), rollover: false, order: 0 } as never),
-      ev({ op: 'month.open', budget: 'other', month: '2026-11', income: parseDollars('1000.00') }),
-    ];
-    const s = house(POWER, [...second, ev(SET)]);
-    const mine = list(s, 'util')[0]!;
-    const theirs = billsOf(s, 'other').get('power')![0]!;
-    assert.deepEqual([mine.key, theirs.key, mine.date, theirs.date, theirs.receipts.length], ['example power billp', 'example power billp', SET.date, null, 3]);
-  });
 });
 
 describe('a date a member set is never orphaned', () => {
@@ -268,9 +254,9 @@ describe('a date a member set is never orphaned', () => {
     assert.deepEqual(list(house(POWER, dated()), 'util', { fixed: [] }).map((b) => [b.key, b.date, b.receipts.length]), [['example power billp', SET.date, 3]]);
   });
   test('an envelope removed takes its bill off the list; defined again, it is back', () => {
-    const gone = ev({ op: 'envelope.remove', budget: 'harbor', envelope: 'util', why: 'moved' });
+    const gone = ev({ op: 'envelope.remove', envelope: 'util', why: 'moved' });
     assert.deepEqual(list(house(POWER, [...dated(), gone]), 'util'), []);
-    const again = ev({ op: 'envelope.define', budget: 'harbor', envelope: 'util', label: 'Utilities', group: 'House', match: { categories: ['elec', 'water'] }, template: parseDollars('300.00'), rollover: false, order: 0 } as never);
+    const again = ev({ op: 'envelope.define', envelope: 'util', label: 'Utilities', group: 'House', match: { categories: ['elec', 'water'] }, template: parseDollars('300.00'), rollover: false, order: 0 } as never);
     assert.deepEqual(date(house(POWER, [...dated(), gone, again]), 'util'), SET.date);
   });
 });
@@ -366,7 +352,7 @@ async function ctx(txns: readonly Txn[] = POWER, more: readonly Event[] = []): P
   return { store, who: 'alice', today: '2026-11-12', proposals: new ProposalStore(), sid: null };
 }
 const run = (args: Record<string, unknown>, c: ToolContext) =>
-  toolByName.get('set_bill')!.run({ budget: 'harbor', envelope: 'util', ...args }, c);
+  toolByName.get('set_bill')!.run({ envelope: 'util', ...args }, c);
 
 describe('the line a bill reads', () => {
   const b = (over: Partial<Bill>): Bill => ({ envelope: 'util', home: null, key: 'k', name: 'N', byHand: false, date: null, since: null, about: null, charges: [], receipts: [], lastPaid: null, ...over });
@@ -390,11 +376,11 @@ describe('set_bill', () => {
     assert.equal(p.tool, 'set_bill');
     assert.equal(p.summary, 'EXAMPLE POWER BILLP: due on the 16th, every month');
     assert.deepEqual(p.effects, ["Shows due on the 16th, every month on Utilities's page", 'No money moves']);
-    assert.deepEqual(p.events, [{ op: 'bill.set', budget: 'harbor', envelope: 'util', bill: 'example power billp', name: 'EXAMPLE POWER BILLP', date: d16 }]);
+    assert.deepEqual(p.events, [{ op: 'bill.set', envelope: 'util', bill: 'example power billp', name: 'EXAMPLE POWER BILLP', date: d16 }]);
     assert.equal(APPROVE_IN_ONE.has('set_bill'), true);
-    assert.equal(c.store.state.budgets.get('harbor')!.bills.size, 0, 'a proposal writes nothing');
+    assert.equal(c.store.state.bills.size, 0, 'a proposal writes nothing');
     await commit(p.id, c);
-    assert.equal(c.store.state.budgets.get('harbor')!.bills.size, 1);
+    assert.equal(c.store.state.bills.size, 1);
   });
   test('a change row reads rightly where the household reads it', async () => {
     const c = await ctx();
@@ -411,14 +397,14 @@ describe('set_bill', () => {
   });
   test('a new name makes a bill by hand', async () => {
     const p = run({ name: 'Example Water ', kind: 'payby', per: 'month', day: 3 }, await ctx()) as Proposal;
-    assert.deepEqual(p.events, [{ op: 'bill.set', budget: 'harbor', envelope: 'util', bill: 'example water', name: 'Example Water', byHand: true, date: { kind: 'payby', per: 'month', day: 3 } }]);
+    assert.deepEqual(p.events, [{ op: 'bill.set', envelope: 'util', bill: 'example water', name: 'Example Water', byHand: true, date: { kind: 'payby', per: 'month', day: 3 } }]);
   });
   test('a name finds the bill it means', async () => {
     const p = run({ name: 'power', ...d16 }, await ctx()) as Proposal;
     assert.equal((p.events[0] as { bill: string }).bill, 'example power billp');
   });
   test('an exact key beats a looser match', async () => {
-    const hand = ev({ op: 'bill.set', budget: 'harbor', envelope: 'util', bill: 'example power billp gas', name: 'Example Power Billp Gas', byHand: true, date: null });
+    const hand = ev({ op: 'bill.set', envelope: 'util', bill: 'example power billp gas', name: 'Example Power Billp Gas', byHand: true, date: null });
     const p = run({ name: 'EXAMPLE POWER BILLP', ...d16 }, await ctx(POWER, [hand])) as Proposal;
     assert.equal((p.events[0] as { bill: string }).bill, 'example power billp');
   });
@@ -430,7 +416,7 @@ describe('set_bill', () => {
     await commit((run({ name: 'Example Water', kind: 'due', per: 'month', day: 3 }, c) as Proposal).id, c);
     const gone = run({ bill: 'example water', remove: true }, c) as Proposal;
     assert.deepEqual([gone.summary, gone.effects, gone.events], ['Remove the bill Example Water', ["It leaves Utilities's page", 'No money moves'],
-      [{ op: 'bill.remove', budget: 'harbor', envelope: 'util', bill: 'example water', name: 'Example Water' }]]);
+      [{ op: 'bill.remove', envelope: 'util', bill: 'example water', name: 'Example Water' }]]);
   });
   test('a followed bill is written to its own record, never a second one', async () => {
     const move = POWER.map((t) => ev({ op: 'txn.categorize', txn: t.id, category: 'groceries' }));
@@ -438,14 +424,14 @@ describe('set_bill', () => {
     const off = run({ envelope: 'daily', bill: 'example power billp', clear: true }, c) as Proposal;
     assert.equal((off.events[0] as { envelope: string }).envelope, 'util');
     await commit(off.id, c);
-    const after = billsOf(c.store.state, 'harbor');
+    const after = billsOf(c.store.state);
     assert.deepEqual(after.get('util')!.map((x) => x.key), [], 'nothing left behind at home');
     assert.deepEqual(after.get('daily')!.map((x) => [x.key, x.date]), [['example power billp', null]]);
     const set = run({ envelope: 'daily', bill: 'example power billp', kind: 'due', per: 'month', day: 20 }, c) as Proposal;
     await commit(set.id, c);
-    const again = billsOf(c.store.state, 'harbor');
+    const again = billsOf(c.store.state);
     assert.deepEqual([again.get('util')!.length, again.get('daily')![0]!.date], [0, { kind: 'due', per: 'month', day: 20 }]);
-    assert.equal(c.store.state.budgets.get('harbor')!.bills.size, 1);
+    assert.equal(c.store.state.bills.size, 1);
   });
   test('a new name that another envelope\'s receipts hold is refused, not lost', async () => {
     const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'gas'));
@@ -480,14 +466,14 @@ describe('set_bill', () => {
   });
   test('a hand-named bill the receipts have since found is not removed', async () => {
     const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'elec'));
-    const hand = ev({ op: 'bill.set', budget: 'harbor', envelope: 'util', bill: 'example gas', name: 'Example Gas', byHand: true, date: null });
+    const hand = ev({ op: 'bill.set', envelope: 'util', bill: 'example gas', name: 'Example Gas', byHand: true, date: null });
     const c = await ctx([...POWER, ...gas], [hand]);
     assert.throws(() => run({ bill: 'example gas', remove: true }, c), /that bill comes from the receipts: clear its date instead/);
   });
 });
 
 describe("get_month's bills", () => {
-  const gm = async (c: ToolContext, month = '2026-11') => toolByName.get('get_month')!.run({ budget: 'harbor', month }, c) as any;
+  const gm = async (c: ToolContext, month = '2026-11') => toolByName.get('get_month')!.run({ month }, c) as any;
   test('each envelope lists its bills in the words of the page', async () => {
     const out = await gm(await ctx());
     const util = out.envelopes.find((e: any) => e.id === 'util');
@@ -501,21 +487,21 @@ describe("get_month's bills", () => {
     assert.equal(out.pace.some((p: any) => p.envelope === 'heat'), false);
   });
   test('a bill with no receipts sends no about or lastPaid', async () => {
-    const hand = ev({ op: 'bill.set', budget: 'harbor', envelope: 'util', bill: 'example water', name: 'Example Water', byHand: true, date: { kind: 'due', per: 'month', day: 3 } });
+    const hand = ev({ op: 'bill.set', envelope: 'util', bill: 'example water', name: 'Example Water', byHand: true, date: { kind: 'due', per: 'month', day: 3 } });
     const out = await gm(await ctx([], [hand]));
     const [b] = out.envelopes.find((e: any) => e.id === 'util').bills;
     assert.deepEqual(Object.keys(b).sort(), ['byHand', 'date', 'key', 'line', 'name']);
     assert.equal(b.line, 'no receipts yet · Due on the 3rd, every month');
   });
   test('a closed month lists them too', async () => {
-    const out = await gm(await ctx(POWER, [ev({ op: 'month.close', budget: 'harbor', month: '2026-10', closed: true, why: 'done' })]), '2026-10');
+    const out = await gm(await ctx(POWER, [ev({ op: 'month.close', month: '2026-10', closed: true, why: 'done' })]), '2026-10');
     assert.equal(out.closed, true);
     assert.equal(out.envelopes.find((e: any) => e.id === 'util').bills.length, 1);
   });
 });
 
 describe('a bill on the calendar', () => {
-  const rows = (s: State, from: string, to: string, today = '2026-11-02') => calendarMoney(s, 'harbor', { from, to, today });
+  const rows = (s: State, from: string, to: string, today = '2026-11-02') => calendarMoney(s, { from, to, today });
   const NOV = ['2026-11-01', '2026-11-30'] as const;
   test('an undated bill sits on the day of its last receipt, in later months too, never in a month gone by unpaid', () => {
     const [r, ...rest] = rows(house(POWER), ...NOV);
@@ -545,7 +531,7 @@ describe('a bill on the calendar', () => {
     assert.deepEqual(rows(house(roofing), ...NOV), []);
   });
   describe('less left than its bills', () => {
-    const room = (s: State) => monthView(s, 'harbor', '2026-11')!.envelopes.find((e) => e.envelope.id === 'util')!.available;
+    const room = (s: State) => monthView(s, '2026-11')!.envelopes.find((e) => e.envelope.id === 'util')!.available;
     const leaving = (cents: number) => house([...POWER, pay('w', '2026-11-01', 'EXAMPLE WATER ONE OFF', `-${((room(house(POWER)) - cents) / 100).toFixed(2)}`, 'water')]);
     test('util is funded for these tests', () => assert.ok(room(house(POWER)) >= 14600));
     test('a short row on today, first, and on the bill it is about', () => {
@@ -567,7 +553,7 @@ describe('a bill on the calendar', () => {
       const gas = ['2026-09-09', '2026-10-09'].map((d) => pay(`g${d}`, d, 'EXAMPLE GAS CO', '-50.00', 'gas'));
       // houseEvents defines heat with no needsFigure; defined again here with it, so no other test's figures move.
       const noFigure = house(gas, [envelope('heat', 'Heating', ['gas'], '0.00', 2, { needsFigure: true })]);
-      assert.equal(monthView(noFigure, 'harbor', '2026-11')!.envelopes.find((e) => e.envelope.id === 'heat')!.envelope.needsFigure, true, 'heat has no figure yet');
+      assert.equal(monthView(noFigure, '2026-11')!.envelopes.find((e) => e.envelope.id === 'heat')!.envelope.needsFigure, true, 'heat has no figure yet');
       assert.equal(anyShort(rows(noFigure, ...NOV)), false);
     });
   });

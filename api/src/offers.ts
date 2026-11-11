@@ -26,18 +26,17 @@ import {
   ProposalStore, ToolError, appendAfterEffect, inOrder, oneEffectAtATime, recordedArgs, runEffect, toolByName, touches,
 } from './tools.ts';
 import type { Proposal, Tool, ToolContext } from './tools.ts';
-import { CLAUDE, monthKey, visibleTo } from './types.ts';
-import type { Actor, BudgetId, EnvelopeId, Event, EventId, Month, NewEventShape, Offer, OfferPrompt, PlanId, State } from './types.ts';
+import { CLAUDE, visibleTo } from './types.ts';
+import type { Actor, EnvelopeId, Event, EventId, Month, NewEventShape, Offer, OfferPrompt, PlanId, State } from './types.ts';
 
 /**
  * The figures a card was based on: what is left to assign, and where each
  * envelope it names stands. Any change to these and the card's amounts may no
  * longer be right.
  */
-export function fingerprint(state: State, budget: BudgetId | null, month: Month | null,
-                            envelopes: readonly EnvelopeId[]): string {
-  if (!budget || !month) return '';
-  const view = monthView(state, budget, month);
+export function fingerprint(state: State, month: Month | null, envelopes: readonly EnvelopeId[]): string {
+  if (!month) return '';
+  const view = monthView(state, month);
   if (!view) return '';
   const rows = [...envelopes].sort().map((id) => {
     const e = view.envelopes.find((x) => x.envelope.id === id);
@@ -63,17 +62,17 @@ export async function offer(ctx: ToolContext, o: {
   const state = ctx.store.state;
   const t = touches(p.events);
 
-  const replaces = o.replaces ?? (t.budget && t.month && t.envelopes.length
+  const replaces = o.replaces ?? (t.month && t.envelopes.length
     ? [...state.thread.offers.values()].find((x) =>
         (x.status === 'open' || x.status === 'snoozed')
-        && x.budget === t.budget && x.month === t.month
+        && x.month === t.month
         && x.envelopes.some((env) => t.envelopes.includes(env)))?.id
     : undefined);
 
   const [e] = await ctx.store.append(o.by ?? CLAUDE, {
     op: 'proposal.offer', tool: o.tool, args, summary: p.summary, effects: p.effects,
-    events: p.events as NewEventShape[], budget: t.budget, month: t.month, envelopes: t.envelopes,
-    fingerprint: fingerprint(state, t.budget, t.month, t.envelopes), prompt: o.prompt,
+    events: p.events as NewEventShape[], month: t.month, envelopes: t.envelopes,
+    fingerprint: fingerprint(state, t.month, t.envelopes), prompt: o.prompt,
     ...(replaces ? { replaces } : {}),
     ...(o.plan ? { plan: o.plan } : {}),
   });
@@ -84,16 +83,16 @@ export async function offer(ctx: ToolContext, o: {
  * A balance just recorded for the savings account that comes up short of the
  * sinking envelopes is a card on Today, from whoever recorded it: one per
  * balance, since the fold retires the last balance's card when a newer one is
- * recorded. Read against `budget`, the one in view; none, and nothing is raised.
+ * recorded.
  */
-export async function raiseSavingsCard(ctx: ToolContext, budget: BudgetId | null, written: readonly Event[]): Promise<Offer | null> {
+export async function raiseSavingsCard(ctx: ToolContext, written: readonly Event[]): Promise<Offer | null> {
   const state = ctx.store.state;
   const account = state.savings.account;
   const latest = account ? state.savings.balances.get(account) : undefined;
-  if (!budget || !latest || !written.some((e) => e.id === latest.event)) return null;
-  if (savingsCheck(state, budget, ctx.today)?.status !== 'short') return null;
+  if (!latest || !written.some((e) => e.id === latest.event)) return null;
+  if (savingsCheck(state, ctx.today)?.status !== 'short') return null;
   if ([...state.thread.offers.values()].some((o) => o.prompt.kind === 'savings' && o.prompt.ref === latest.event)) return null;
-  return offer(ctx, { tool: 'savings_short', args: { budget, account }, prompt: { kind: 'savings', ref: latest.event }, by: latest.who });
+  return offer(ctx, { tool: 'savings_short', args: { account }, prompt: { kind: 'savings', ref: latest.event }, by: latest.who });
 }
 
 /**
@@ -124,11 +123,11 @@ const live = (state: State, id: EventId): Offer => {
 
 /** True once any figure the card was based on has changed. */
 export const moved = (state: State, o: Offer): boolean =>
-  fingerprint(state, o.budget, o.month, o.envelopes) !== o.fingerprint;
+  fingerprint(state, o.month, o.envelopes) !== o.fingerprint;
 
 /** True once a put-off card's figures differ from when it was put off. */
 export const stirred = (state: State, o: Offer): boolean =>
-  fingerprint(state, o.budget, o.month, o.envelopes) !== (o.snoozedAt ?? o.fingerprint);
+  fingerprint(state, o.month, o.envelopes) !== (o.snoozedAt ?? o.fingerprint);
 
 /**
  * The card's arguments with what the member chose as they approved it. Only
@@ -176,7 +175,7 @@ export async function decide(ctx: ToolContext, offerId: EventId,
   }
   const choice = {
     op: 'proposal.decide' as const, proposal: o.id, decision, ...(reason ? { why: reason } : {}),
-    ...(decision === 'snoozed' ? { fingerprint: fingerprint(state, o.budget, o.month, o.envelopes) } : {}),
+    ...(decision === 'snoozed' ? { fingerprint: fingerprint(state, o.month, o.envelopes) } : {}),
   };
   // An ask to take a plan is answered, by the member asked: declining it
   // declines the ask, with the reason the asker reads. Anyone else's decision
@@ -202,10 +201,6 @@ export async function decide(ctx: ToolContext, offerId: EventId,
   if (decision !== 'declined') open(o);
   if (decision !== 'approved') return refusedAs409(ctx.store.append(ctx.who, choice));
 
-  const b = o.budget ? state.budgets.get(o.budget) : null;
-  if (o.budget && (!b || b.archived)) {
-    throw new ToolError(`${o.budget} is no longer in use, so this can only be declined`, 409);
-  }
   if (moved(state, o)) throw new ToolError('the numbers have moved since this was suggested', 409);
 
   const events = o.events.map((e) => (reason && 'why' in e ? { ...e, why: reason } : e)) as NewEventShape[];
@@ -318,7 +313,7 @@ export function waiting(state: State, who: Actor, events: readonly Event[]): Wai
     if (!visibleTo(o, who)) continue;
     // An ask waits on the member asked, and on nobody else: the asker is waiting on them.
     if (o.prompt.kind === 'ask' && state.plans.get(String(o.args['plan']))?.asked?.to !== who) continue;
-    if (o.budget && o.month && state.months.get(monthKey(o.budget, o.month))?.closed) continue;
+    if (o.month && state.months.get(o.month)?.closed) continue;
     const m = moved(state, o);
     // Put off: it waits again once the figures differ from when it was put off.
     if (o.status === 'snoozed' && !stirred(state, o)) continue;

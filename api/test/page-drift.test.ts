@@ -61,7 +61,7 @@ const pageDrift = (plan = 'gate', changes: readonly PageChange[] = CHANGES) =>
 const driftCard = (drift: EventId) => ({
   op: 'proposal.offer', tool: 'resolve_drift', args: { drift, plan: 'gate', choice: 'plan' },
   summary: 'The page for Fix the gate was changed in Drive', effects: [], events: [],
-  budget: null, month: null, envelopes: [], fingerprint: '', prompt: { kind: 'drift', ref: drift },
+  month: null, envelopes: [], fingerprint: '', prompt: { kind: 'drift', ref: drift },
 }) as const;
 
 /** A write the log must refuse as a ReplayError (never a TypeError), leaving nothing behind. */

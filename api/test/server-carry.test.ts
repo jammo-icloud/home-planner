@@ -48,7 +48,7 @@ async function seed(id: string, events: object[]): Promise<void> {
 }
 
 const briefingWith = (doc: object) =>
-  ({ op: 'thread.briefing', day: '2026-10-30', source: 'household', budget: null, headline: 'Quiet', writtenBy: 'fallback', doc });
+  ({ op: 'thread.briefing', day: '2026-10-30', source: 'household', headline: 'Quiet', writtenBy: 'fallback', doc });
 const attachment = (folder: string) =>
   [{ op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' },
     { op: 'plan.attach', plan: 'gate', path: `/Shared/${folder}/gate/quote.pdf`, name: 'quote.pdf', size: 9 }];

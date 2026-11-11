@@ -21,7 +21,7 @@ export function laneOf(e: Event | NewEventShape, state: Pick<State, 'pageDrifts'
     case 'assign': case 'move': case 'income.set': case 'month.open': case 'month.close': case 'month.discard':
     case 'txn.add': case 'txn.categorize': case 'txn.split': case 'txn.remove': case 'rule.add': case 'rule.remove':
     case 'envelope.define': case 'envelope.remove': case 'envelopes.model': case 'bill.set': case 'bill.remove':
-    case 'budget.create': case 'budget.rename': case 'budget.locate': case 'budget.archive':
+    case 'household.locate':
     case 'category.define': case 'category.archive': case 'category.sinking':
     case 'income.source.define': case 'income.source.remove':
     case 'account.balance': case 'savings.account':
@@ -62,8 +62,8 @@ export const TOOL_LANES: Readonly<Record<string, Lane>> = {
   propose_event: 'calendar', approve_booking: 'calendar', release_stay: 'calendar', resolve_drift: 'calendar',
   move_money: 'budget', set_assignment: 'budget', set_envelope_figure: 'budget', set_month_income: 'budget',
   set_sinking_goal: 'budget', categorize_transactions: 'budget', restore_transaction: 'budget',
-  open_month: 'budget', close_month: 'budget', discard_month: 'budget', create_budget: 'budget',
-  rename_budget: 'budget', archive_budget: 'budget', set_budget_location: 'budget', seed_from_location: 'budget',
+  open_month: 'budget', close_month: 'budget', discard_month: 'budget',
+  set_location: 'budget', seed_from_location: 'budget',
   define_envelope: 'budget', remove_envelope: 'budget', add_starter_set: 'budget', make_starter_envelopes: 'budget',
   define_category: 'budget', archive_category: 'budget', define_income_source: 'budget',
   remove_income_source: 'budget', savings_short: 'budget', set_bill: 'budget',

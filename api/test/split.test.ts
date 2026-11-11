@@ -28,10 +28,9 @@ function world(extra: Event[] = []) {
     ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
     ev({ op: 'category.define', category: 'dining', label: 'Dining out' }),
     ev({ op: 'category.define', category: 'household', label: 'Household' }),
-    ev({ op: 'budget.create', budget: 'harbor', label: 'Harbor' }),
-    ev({ op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'Groceries',
+    ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries',
          group: 'People', match: { categories: ['groceries'] }, template: parseDollars('1125.00'), order: 0 }),
-    ev({ op: 'month.open', budget: 'harbor', month: '2026-03', income: parseDollars('9600.00') }),
+    ev({ op: 'month.open', month: '2026-03', income: parseDollars('9600.00') }),
     ...extra,
   ]);
 }
@@ -158,13 +157,12 @@ describe('a split rolls up by part', () => {
     ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
     ev({ op: 'category.define', category: 'dining', label: 'Dining out' }),
     ev({ op: 'category.define', category: 'electricity', label: 'Electricity' }),
-    ev({ op: 'budget.create', budget: 'harbor', label: 'Harbor' }),
-    ev({ op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'Groceries', group: 'People',
+    ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries', group: 'People',
          match: { categories: ['groceries'] }, template: parseDollars('1125.00'), rollover: true, order: 0 }),
-    ev({ op: 'envelope.define', budget: 'harbor', envelope: 'dine', label: 'Dining out', group: 'People',
+    ev({ op: 'envelope.define', envelope: 'dine', label: 'Dining out', group: 'People',
          match: { categories: ['dining'] }, template: parseDollars('325.00'), rollover: false, order: 1 }),
-    ev({ op: 'month.open', budget: 'harbor', month: '2026-03', income: parseDollars('9600.00') }),
-    ev({ op: 'month.open', budget: 'harbor', month: '2026-04', income: parseDollars('9600.00') }),
+    ev({ op: 'month.open', month: '2026-03', income: parseDollars('9600.00') }),
+    ev({ op: 'month.open', month: '2026-04', income: parseDollars('9600.00') }),
     ...extra,
   ]);
   const bigbox = [
@@ -175,7 +173,7 @@ describe('a split rolls up by part', () => {
   ];
 
   test('each part lands in its envelope; a part with no envelope here is outside', () => {
-    const v = monthView(roll(bigbox), 'harbor', '2026-03')!;
+    const v = monthView(roll(bigbox), '2026-03')!;
     const food = v.envelopes.find((e) => e.envelope.id === 'food')!;
     assert.equal(food.activity, parseDollars('120.00'));
     assert.deepEqual(food.lines, [{ txnId: 'c', category: 'groceries', amount: parseDollars('120.00'), split: true }]);
@@ -188,7 +186,7 @@ describe('a split rolls up by part', () => {
 
   test('a plain receipt is one line, not marked split', () => {
     const s = roll([ev({ op: 'txn.add', txns: [txn({ id: 'p', date: '2026-03-03', amount: -4200, category: 'groceries' })] })]);
-    const food = monthView(s, 'harbor', '2026-03')!.envelopes.find((e) => e.envelope.id === 'food')!;
+    const food = monthView(s, '2026-03')!.envelopes.find((e) => e.envelope.id === 'food')!;
     assert.equal(food.lines.length, 1);
     assert.deepEqual(food.lines[0], { txnId: 'p', category: 'groceries', amount: parseDollars('42.00'), split: false });
     assert.equal(food.activity, parseDollars('42.00'));
@@ -202,22 +200,21 @@ describe('a split rolls up by part', () => {
         { category: 'groceries', amount: cents(-6000) }, { category: 'dining', amount: cents(-2000) },
         { category: 'electricity', amount: cents(-1000) }, { category: 'household', amount: cents(-1000) }] }),
     ]);
-    const v = monthView(s, 'harbor', '2026-03')!;
+    const v = monthView(s, '2026-03')!;
     assert.equal(v.outside.total, parseDollars('20.00'));
     assert.deepEqual(v.outside.txnIds, ['d']);
     // one envelope that takes both food parts
     const both = replay([
       ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
       ev({ op: 'category.define', category: 'dining', label: 'Dining out' }),
-      ev({ op: 'budget.create', budget: 'b', label: 'B' }),
-      ev({ op: 'envelope.define', budget: 'b', envelope: 'daily', label: 'Daily', group: 'People',
+      ev({ op: 'envelope.define', envelope: 'daily', label: 'Daily', group: 'People',
            match: { categories: ['groceries', 'dining'] }, template: parseDollars('500.00') }),
-      ev({ op: 'month.open', budget: 'b', month: '2026-03', income: parseDollars('1000.00') }),
+      ev({ op: 'month.open', month: '2026-03', income: parseDollars('1000.00') }),
       ev({ op: 'txn.add', txns: [txn({ id: 'd', date: '2026-03-04', amount: -1015 })] }),
       ev({ op: 'txn.split', txn: 'd', parts: [
         { category: 'groceries', amount: cents(-615) }, { category: 'dining', amount: cents(-400) }] }),
     ]);
-    const daily = monthView(both, 'b', '2026-03')!.envelopes[0]!;
+    const daily = monthView(both, '2026-03')!.envelopes[0]!;
     assert.equal(daily.activity, parseDollars('10.15'));
     assert.deepEqual(daily.lines.map((l) => [l.txnId, l.category, l.amount]),
       [['d', 'groceries', parseDollars('6.15')], ['d', 'dining', parseDollars('4.00')]]);
@@ -225,19 +222,19 @@ describe('a split rolls up by part', () => {
   });
 
   test('a split part carries over like any spending', () => {
-    const apr = monthView(roll(bigbox), 'harbor', '2026-04')!.envelopes.find((e) => e.envelope.id === 'food')!;
+    const apr = monthView(roll(bigbox), '2026-04')!.envelopes.find((e) => e.envelope.id === 'food')!;
     assert.equal(apr.carried, parseDollars('1005.00')); // 1125 funded - 120 spent, not 165
   });
 
   test('a split is not spending in a month it does not belong to', () => {
-    const v = monthView(roll(bigbox), 'harbor', '2026-04')!;
+    const v = monthView(roll(bigbox), '2026-04')!;
     assert.equal(v.activity, ZERO);
     assert.equal(v.outside.total, ZERO);
   });
 
   test('pace counts the part, not the whole receipt', () => {
     const s = roll(bigbox);
-    const v = monthView(s, 'harbor', '2026-03')!;
+    const v = monthView(s, '2026-03')!;
     const food = pace(v, monthClock('2026-03', '2026-03-10'), s).find((p) => p.envelope === 'food')!;
     assert.equal(food.spent, parseDollars('120.00'));
     // 120.00 discretionary spread over 10 of 31 days, not 165.00 and not 150.00

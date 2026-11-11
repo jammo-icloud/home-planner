@@ -31,7 +31,6 @@ import {
   MODES,
   areaIndex,
   areaMoved,
-  monthKey,
   moveKey,
   PAGE_FIELDS,
   PERS,
@@ -46,7 +45,7 @@ import {
   THREAD_TEXT_MAX,
 } from './types.ts';
 import type {
-  AccountBalance, Actor, BillRecord, Adjustment, Appearance, Appointment, Assignment, Budget, BudgetLocation, CalendarLink, CalendarRef, Category,
+  AccountBalance, Actor, BillRecord, Adjustment, Appearance, Appointment, Assignment, CalendarLink, Location, Month, CalendarRef, Category,
   DocRef, DocumentsFolder, DocumentsState, Drift, Envelope, Event, EventOf, EnvelopeId, EventId, Guest, Hand, MonthPlan, MoveFile, Offer, PageDrift,
   Per, Plan, PlanId, Prediction, Rule, State, Stay, SplitPart, StayBlock, Settings, Txn,
 } from './types.ts';
@@ -75,12 +74,14 @@ export class ReplayError extends Error {
 // Mutable mirrors of the readonly public shapes, used only inside the fold.
 interface Draft {
   categories: Map<string, Category>;
-  budgets: Map<string, { id: string; label: string; archived?: boolean; location?: BudgetLocation; envelopes: Map<EnvelopeId, Envelope>; bills: Map<string, BillRecord> }>;
+  envelopes: Map<EnvelopeId, Envelope>;
+  bills: Map<string, BillRecord>;
+  location: Location | null;
   /** Receipts are replaced whole on every change, never edited in place, so a thaw shares them. */
   txns: Map<string, Txn>;
   rules: Rule[];
-  months: Map<string, {
-    budget: string; month: string; openedAt: string; closed?: boolean;
+  months: Map<Month, {
+    month: Month; openedAt: string; closed?: boolean;
     plan: Map<EnvelopeId, Cents>; adjustments: Adjustment[]; income: Cents;
   }>;
   owner: string | null;
@@ -128,7 +129,7 @@ interface Draft {
 }
 
 const emptyDraft = (): Draft => ({
-  categories: new Map(), budgets: new Map(), txns: new Map(),
+  categories: new Map(), envelopes: new Map(), bills: new Map(), location: null, txns: new Map(),
   rules: [], months: new Map(), owner: null, members: new Set(), label: 'Household',
   incomeSources: new Map(), readCursor: new Map(), predictions: [],
   offers: new Map(), seen: new Map(),
@@ -145,12 +146,11 @@ const emptyDraft = (): Draft => ({
 export const emptyState = (): State => freeze(emptyDraft());
 
 function freeze(d: Draft): State {
-  const budgets = new Map<string, Budget>();
-  for (const [id, b] of d.budgets) budgets.set(id, { id: b.id, label: b.label, ...(b.archived ? { archived: true } : {}), ...(b.location ? { location: b.location } : {}), envelopes: b.envelopes, bills: b.bills });
-  const months = new Map<string, MonthPlan>();
+  const months = new Map<Month, MonthPlan>();
   for (const [k, m] of d.months) months.set(k, { ...m });
   return {
-    categories: d.categories, budgets, txns: d.txns, rules: d.rules, months,
+    categories: d.categories, envelopes: d.envelopes, bills: d.bills, location: d.location,
+    txns: d.txns, rules: d.rules, months,
     owner: d.owner, members: d.members, label: d.label, zone: d.zone,
     incomeSources: d.incomeSources, readCursor: d.readCursor, predictions: d.predictions,
     thread: { offers: d.offers, seen: d.seen },
@@ -209,12 +209,10 @@ export function replayLeavingOut(events: Iterable<Event>, leaveOut: (e: Event, e
 }
 
 function thaw(s: State): Draft {
-  const budgets = new Map<string, { id: string; label: string; envelopes: Map<EnvelopeId, Envelope>; bills: Map<string, BillRecord> }>();
-  for (const [id, b] of s.budgets) budgets.set(id, { id: b.id, label: b.label, ...(b.archived ? { archived: true } : {}), ...(b.location ? { location: b.location } : {}), envelopes: new Map(b.envelopes), bills: new Map(b.bills) });
-  const months = new Map<string, Draft['months'] extends Map<string, infer V> ? V : never>();
+  const months = new Map<Month, Draft['months'] extends Map<Month, infer V> ? V : never>();
   for (const [k, m] of s.months) {
     months.set(k, {
-      budget: m.budget, month: m.month, openedAt: m.openedAt,
+      month: m.month, openedAt: m.openedAt,
       // Spread the rest too. Listing the fields by hand dropped `closed` on
       // every incremental apply, so a closed month reopened itself the moment
       // anything else was written.
@@ -223,7 +221,9 @@ function thaw(s: State): Draft {
     });
   }
   return {
-    categories: new Map(s.categories), budgets, txns: new Map(s.txns),
+    categories: new Map(s.categories), envelopes: new Map(s.envelopes), bills: new Map(s.bills),
+    // Replaced whole, never edited in place, so a thaw shares it.
+    location: s.location, txns: new Map(s.txns),
     rules: [...s.rules], months, owner: s.owner, members: new Set(s.members), label: s.label,
     incomeSources: new Map(s.incomeSources), readCursor: new Map(s.readCursor),
     predictions: [...s.predictions],
@@ -329,9 +329,6 @@ export function validate(e: Event): void {
   }
   if (e.op === 'thread.briefing' && e.source !== undefined && !BRIEFING_SOURCES.includes(e.source)) {
     throw new ReplayError(`a briefing's source is one of ${BRIEFING_SOURCES.join(', ')}`, e);
-  }
-  if (e.op === 'thread.briefing' && e.source === 'household' && e.budget !== null) {
-    throw new ReplayError('the household\'s briefing is no one budget\'s: its budget is null', e);
   }
   if (e.op === 'thread.briefing' && (typeof e.body === 'string') === (e.doc !== undefined)) {
     throw new ReplayError('a briefing has its body in the log or a doc in Drive, one or the other', e);
@@ -511,7 +508,6 @@ function refuseGuestCard(e: EventOf<'proposal.offer'>): void {
   // No money in it: nothing for a newer card to replace it by, nor figures
   // whose moving would stop it being approved.
   const x = e as unknown as Record<string, unknown>;
-  if (x['budget'] != null) throw refuse("a guest's card is in no budget (budget)");
   if (x['month'] != null) throw refuse("a guest's card is in no month (month)");
   const envelopes = x['envelopes'];
   if (envelopes !== undefined && !(Array.isArray(envelopes) && envelopes.length === 0)) {
@@ -732,10 +728,7 @@ function validatePlan(e: Event): void {
       if (e.estimate !== undefined && e.estimate !== null) whole(e.estimate, 'an estimate, in cents,');
       const env: unknown = e.envelope;
       if (env !== undefined && env !== null) {
-        const r = env as { budget?: unknown; envelope?: unknown };
-        if (typeof env !== 'object' || !named(r.budget) || !named(r.envelope)) {
-          throw refuse('an envelope is named by its budget and envelope');
-        }
+        if (!named(env)) throw refuse('an envelope is named by its id');
       }
       return;
     }
@@ -1031,8 +1024,8 @@ function validateBooking(e: Event): void {
  */
 function refuseIfClosed(d: Draft, e: Event): void {
   if (e.op !== 'assign' && e.op !== 'move' && e.op !== 'income.set') return;
-  const m = d.months.get(monthKey(e.budget, e.month));
-  if (m?.closed) throw new ReplayError(`${e.month} is closed for ${e.budget}`, e);
+  const m = d.months.get(e.month);
+  if (m?.closed) throw new ReplayError(`${e.month} is closed`, e);
 }
 
 /**
@@ -1188,15 +1181,8 @@ function fold(d: Draft, e: Event): void {
       return;
     }
 
-    case 'budget.create': {
-      if (!d.budgets.has(e.budget)) d.budgets.set(e.budget, { id: e.budget, label: e.label, envelopes: new Map(), bills: new Map() });
-      else d.budgets.set(e.budget, { ...d.budgets.get(e.budget)!, label: e.label });
-      return;
-    }
-
     case 'envelope.define': {
-      const b = budgetOrThrow(d, e.budget, e);
-      const prev = b.envelopes.get(e.envelope);
+      const prev = d.envelopes.get(e.envelope);
       const env: Envelope = {
         id: e.envelope,
         label: e.label,
@@ -1204,7 +1190,7 @@ function fold(d: Draft, e: Event): void {
         match: e.match,
         rollover: e.rollover ?? prev?.rollover ?? true,
         template: e.template,
-        order: e.order ?? prev?.order ?? b.envelopes.size,
+        order: e.order ?? prev?.order ?? d.envelopes.size,
         // From this event only: a define that leaves them out is how a figure clears them.
         ...(e.needsFigure ? { needsFigure: true as const } : {}),
         ...(e.source !== undefined ? { source: e.source } : {}),
@@ -1214,7 +1200,7 @@ function fold(d: Draft, e: Event): void {
       // envelope always rolls over: money kept for later that vanished at the
       // end of a month would never add up to anything.
       const sinking = e.sinking === undefined ? prev?.sinking : e.sinking ?? undefined;
-      b.envelopes.set(e.envelope, sinking ? { ...env, rollover: true, sinking } : env);
+      d.envelopes.set(e.envelope, sinking ? { ...env, rollover: true, sinking } : env);
       return;
     }
 
@@ -1224,11 +1210,6 @@ function fold(d: Draft, e: Event): void {
       d.categories.set(e.category, e.sinking
         ? { ...c, sinking: { cost: e.sinking.cost, everyYears: e.sinking.everyYears } }
         : (() => { const { sinking, ...rest } = c; return rest; })());
-      return;
-    }
-
-    case 'budget.rename': {
-      budgetOrThrow(d, e.budget, e).label = e.label;
       return;
     }
 
@@ -1242,8 +1223,8 @@ function fold(d: Draft, e: Event): void {
     }
 
     case 'month.close': {
-      const m = d.months.get(monthKey(e.budget, e.month));
-      if (!m) throw new ReplayError(`${e.month} is not open for ${e.budget}`, e);
+      const m = d.months.get(e.month);
+      if (!m) throw new ReplayError(`month ${e.month} is not open`, e);
       if (e.closed) m.closed = true; else delete m.closed;
       return;
     }
@@ -1251,40 +1232,29 @@ function fold(d: Draft, e: Event): void {
     case 'month.discard': {
       // Guarded in the tool, checked again here: a month with adjustments has
       // been lived in, and losing that is not something a reason can justify.
-      const key = monthKey(e.budget, e.month);
-      const m = d.months.get(key);
+      const m = d.months.get(e.month);
       if (!m) return; // discarding a month that is not there is inert, not fatal
       if (m.adjustments.length) throw new ReplayError('that month has been adjusted — close it instead', e);
-      d.months.delete(key);
+      d.months.delete(e.month);
       return;
     }
 
-    case 'budget.locate': {
-      const b = budgetOrThrow(d, e.budget, e);
-      if (e.location) b.location = e.location; else delete b.location;
-      return;
-    }
-
-    case 'budget.archive': {
-      // Absent means live. Bringing one back removes the flag rather than
-      // leaving a false behind, so "archived" only ever appears when it is true.
-      const b = budgetOrThrow(d, e.budget, e);
-      if (e.archived) b.archived = true; else delete b.archived;
+    case 'household.locate': {
+      d.location = e.location;
       return;
     }
 
     case 'envelope.remove': {
-      budgetOrThrow(d, e.budget, e).envelopes.delete(e.envelope);
+      d.envelopes.delete(e.envelope);
       return;
     }
 
     case 'bill.set': {
-      const b = budgetOrThrow(d, e.budget, e);
-      if (!b.envelopes.has(e.envelope)) throw new ReplayError(`no such envelope: ${e.envelope}`, e);
+      if (!d.envelopes.has(e.envelope)) throw new ReplayError(`no such envelope: ${e.envelope}`, e);
       const slot = billSlot(e.envelope, e.bill);
-      const prev = b.bills.get(slot);
+      const prev = d.bills.get(slot);
       const same = prev?.date && e.date && JSON.stringify(prev.date) === JSON.stringify(e.date);
-      b.bills.set(slot, {
+      d.bills.set(slot, {
         envelope: e.envelope, key: e.bill, name: e.name, byHand: e.byHand === true || prev?.byHand === true, date: e.date,
         since: e.date === null ? null : same ? prev.since : householdDay(d.zone, e.at),
       });
@@ -1292,32 +1262,29 @@ function fold(d: Draft, e: Event): void {
     }
 
     case 'bill.remove': {
-      const b = budgetOrThrow(d, e.budget, e);
       const slot = billSlot(e.envelope, e.bill);
-      const record = b.bills.get(slot);
+      const record = d.bills.get(slot);
       if (!record) throw new ReplayError(`no such bill: ${e.bill}`, e);
       if (!record.byHand) throw new ReplayError('only a bill named by hand is removed', e);
-      b.bills.delete(slot);
+      d.bills.delete(slot);
       return;
     }
 
     case 'month.open': {
-      const b = budgetOrThrow(d, e.budget, e);
-      const key = monthKey(e.budget, e.month);
-      if (d.months.has(key)) return; // opening twice is a no-op, never a re-plan
+      if (d.months.has(e.month)) return; // opening twice is a no-op, never a re-plan
       const plan = new Map<EnvelopeId, Cents>();
       // The plan of record: a snapshot of the templates at the moment it opened,
       // or of what the opener planned an envelope at instead (a sinking goal's).
-      for (const env of b.envelopes.values()) plan.set(env.id, e.plan?.[env.id] ?? env.template);
-      d.months.set(key, {
-        budget: e.budget, month: e.month, openedAt: e.at,
+      for (const env of d.envelopes.values()) plan.set(env.id, e.plan?.[env.id] ?? env.template);
+      d.months.set(e.month, {
+        month: e.month, openedAt: e.at,
         plan, adjustments: [], income: e.income,
       });
       return;
     }
 
     case 'assign': {
-      const m = monthOrThrow(d, e.budget, e.month, e);
+      const m = monthOrThrow(d, e.month, e);
       const current = fundedFor(m, e.envelope);
       const delta = sub(e.to, current);
       if (delta === 0) return;
@@ -1329,7 +1296,7 @@ function fold(d: Draft, e: Event): void {
     }
 
     case 'move': {
-      const m = monthOrThrow(d, e.budget, e.month, e);
+      const m = monthOrThrow(d, e.month, e);
       const base = { eventId: e.id, at: e.at, who: e.who, why: e.why, kind: 'move' as const };
       // Two entries so a per-envelope filter shows both sides of the transfer.
       m.adjustments.push({ ...base, envelope: e.from, delta: cents(-e.amount), counterpart: e.to });
@@ -1338,7 +1305,7 @@ function fold(d: Draft, e: Event): void {
     }
 
     case 'income.set': {
-      monthOrThrow(d, e.budget, e.month, e).income = e.amount;
+      monthOrThrow(d, e.month, e).income = e.amount;
       return;
     }
 
@@ -1457,7 +1424,7 @@ function fold(d: Draft, e: Event): void {
 
     case 'income.source.define': {
       d.incomeSources.set(e.source, {
-        id: e.source, budget: e.budget, label: e.label, who: e.earner,
+        id: e.source, label: e.label, who: e.earner,
         amount: e.amount, frequency: e.frequency, anchor: e.anchor,
         ...(e.until ? { until: e.until } : {}),
       });
@@ -1476,7 +1443,7 @@ function fold(d: Draft, e: Event): void {
 
     case 'prediction.record': {
       d.predictions.push({
-        id: e.prediction, at: e.at, who: e.who, budget: e.budget, month: e.month,
+        id: e.prediction, at: e.at, who: e.who, month: e.month,
         envelope: e.envelope, expected: e.expected, why: e.why,
       });
       return;
@@ -1504,7 +1471,7 @@ function fold(d: Draft, e: Event): void {
       d.offers.set(e.id, {
         id: e.id, at: e.at, who: e.who, tool: e.tool, args: e.args, summary: e.summary,
         // A guest's card may leave its events and money out; the card has none either way.
-        effects: e.effects, events: e.events ?? [], budget: e.budget ?? null, month: e.month ?? null,
+        effects: e.effects, events: e.events ?? [], month: e.month ?? null,
         envelopes: e.envelopes ?? [], fingerprint: e.fingerprint ?? '', prompt: e.prompt, status: 'open',
         ...(e.plan ? { plan: e.plan } : {}),
       });
@@ -1760,7 +1727,7 @@ function fold(d: Draft, e: Event): void {
         ...(e.chips !== undefined ? { chips: [...e.chips] } : {}),
         ...(e.notes !== undefined ? { notes: e.notes } : {}),
         ...(e.estimate !== undefined ? { estimate: e.estimate } : {}),
-        ...(e.envelope !== undefined ? { envelope: e.envelope && { budget: e.envelope.budget, envelope: e.envelope.envelope } } : {}),
+        ...(e.envelope !== undefined ? { envelope: e.envelope } : {}),
       });
       // A shelf moves with everything on it, so no item is left in a row its shelf has left.
       if (e.area !== undefined) {
@@ -2175,12 +2142,6 @@ function mustBeOwner(d: Draft, e: Event): void {
   if (e.who !== d.owner && e.who !== SYSTEM) throw new ReplayError(`only the owner, ${d.owner}, can choose this`, e);
 }
 
-function budgetOrThrow(d: Draft, id: string, e: Event) {
-  const b = d.budgets.get(id);
-  if (!b) throw new ReplayError(`no such budget: ${id}`, e);
-  return b;
-}
-
 /** A plan that exists and has not been removed. A removed plan is history, not a draft. */
 function livePlan(d: Draft, id: PlanId, e: Event): Plan {
   const p = d.plans.get(id);
@@ -2248,9 +2209,9 @@ function upsert<T>(list: readonly T[], item: T, same: (x: T) => boolean): T[] {
   return list.some(same) ? list.map((x) => same(x) ? item : x) : [...list, item];
 }
 
-function monthOrThrow(d: Draft, budget: string, month: string, e: Event) {
-  const m = d.months.get(monthKey(budget, month));
-  if (!m) throw new ReplayError(`month ${month} is not open for budget ${budget}`, e);
+function monthOrThrow(d: Draft, month: Month, e: Event) {
+  const m = d.months.get(month);
+  if (!m) throw new ReplayError(`month ${month} is not open`, e);
   return m;
 }
 

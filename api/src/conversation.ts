@@ -19,7 +19,7 @@ import type { CardView } from './plans.ts';
 import { researchMay, ToolError } from './tools.ts';
 import type { Tool, ToolContext } from './tools.ts';
 import { CLAUDE, THREAD_TEXT_MAX, zoneOf } from './types.ts';
-import type { BudgetId, Day, Event, EventId, EventOf, Offer, PlanId } from './types.ts';
+import type { Day, Event, EventId, EventOf, Offer, PlanId } from './types.ts';
 
 const checked = (text: string): string => {
   const t = text.trim();
@@ -29,13 +29,13 @@ const checked = (text: string): string => {
 };
 
 /** A note for the household. Left on a plan's card, it carries the plan, and the plan must be there. */
-export async function note(ctx: ToolContext, text: string, budget: BudgetId | null, plan?: PlanId): Promise<Event> {
+export async function note(ctx: ToolContext, text: string, plan?: PlanId): Promise<Event> {
   const t = checked(text);
   if (plan !== undefined) {
     const p = ctx.store.state.plans.get(plan);
     if (!p || p.removed) throw new ToolError(`no such plan: ${plan}`, 404);
   }
-  const [e] = await ctx.store.append(ctx.who, { op: 'thread.note', text: t, budget, ...(plan !== undefined ? { plan } : {}) });
+  const [e] = await ctx.store.append(ctx.who, { op: 'thread.note', text: t, ...(plan !== undefined ? { plan } : {}) });
   return e!;
 }
 
@@ -44,16 +44,14 @@ export async function note(ctx: ToolContext, text: string, budget: BudgetId | nu
  * events dayContext lists. A briefing another one took the place of is left
  * out, so the same section is not read twice.
  */
-export function dayEvents(events: readonly Event[], budget: BudgetId | null, today: Day): Event[] {
-  const mine = (b: BudgetId | null) => b === null || budget === null || b === budget;
-  const start = events.findIndex((e) => e.op === 'thread.briefing' && e.day === today && mine(e.budget));
+export function dayEvents(events: readonly Event[], today: Day): Event[] {
+  const start = events.findIndex((e) => e.op === 'thread.briefing' && e.day === today);
   const from = start < 0 ? events.findIndex((e) => e.at.slice(0, 10) >= today) : start;
   if (from < 0) return [];
   const replaced = new Set(events.flatMap((e) => (e.op === 'thread.briefing' && e.replaces ? [e.replaces] : [])));
   return events.slice(from).filter((e) =>
-    e.op === 'thread.briefing' ? e.day === today && mine(e.budget) && !replaced.has(e.id)
-      : e.op === 'thread.note' || e.op === 'thread.ask' ? mine(e.budget)
-      : e.op === 'thread.answer');
+    e.op === 'thread.briefing' ? e.day === today && !replaced.has(e.id)
+      : e.op === 'thread.note' || e.op === 'thread.ask' || e.op === 'thread.answer');
 }
 
 /**
@@ -62,11 +60,11 @@ export function dayEvents(events: readonly Event[], budget: BudgetId | null, tod
  * so, rather than this throwing.
  */
 export async function readDayDocs(
-  a: DocAccess, events: readonly Event[], budget: BudgetId | null, today: Day, f?: DsmFetch,
+  a: DocAccess, events: readonly Event[], today: Day, f?: DsmFetch,
 ): Promise<Map<EventId, string>> {
   const bodies = new Map<EventId, string>();
   if (!a.sid) return bodies;
-  await Promise.all(dayEvents(events, budget, today).map(async (e) => {
+  await Promise.all(dayEvents(events, today).map(async (e) => {
     if ((e.op !== 'thread.briefing' && e.op !== 'thread.answer') || !e.doc) return;
     try {
       const page = await readDoc(a, currentDoc(a.store.state, e.doc), f);
@@ -88,11 +86,11 @@ const UNREAD = "Some of today's earlier texts could not be read from the NAS, on
  * not read gives its headline, and the last line says so.
  */
 export function dayContext(
-  events: readonly Event[], budget: BudgetId | null, today: Day, bodies: ReadonlyMap<EventId, string> = new Map(),
+  events: readonly Event[], today: Day, bodies: ReadonlyMap<EventId, string> = new Map(),
 ): string {
   let missed = false;
   const lines: string[] = [];
-  for (const e of dayEvents(events, budget, today)) {
+  for (const e of dayEvents(events, today)) {
     const when = e.at.slice(11, 16);
     if (e.op === 'thread.briefing') {
       const body = e.doc ? bodies.get(e.id) : e.body;
@@ -137,7 +135,7 @@ export function planContext(c: CardView): string {
     money = `Money: the ${m.label} envelope, ${m.left} left this month; `
       + (m.estimate === null ? 'no estimate yet' : `estimated at ${m.estimate}${months}`);
   } else if (c.envelope) {
-    money = `Money: linked to ${c.envelope.envelope} in ${c.envelope.budget}, which has no open month to read`
+    money = `Money: linked to ${c.envelope}, which has no open month to read`
       + (c.estimate === null ? '' : `; estimated at ${fmt(c.estimate)}`);
   } else {
     money = c.estimate === null ? 'Money: no envelope and no estimate' : `Money: estimated at ${fmt(c.estimate)}; no envelope linked`;
@@ -190,7 +188,7 @@ export function nowContext(today: Day, tz: string, now = new Date()): string {
  * first, and the question, the answer and every card the answer raises carry
  * the plan, so the plan's card can show what came back.
  */
-export async function askInThread(ctx: ToolContext, question: string, budget: BudgetId | null, plan?: PlanId): Promise<Asked> {
+export async function askInThread(ctx: ToolContext, question: string, plan?: PlanId): Promise<Asked> {
   const q = checked(question);
   if (!claudeConfigured()) throw new ToolError('Claude is not set up on this server', 503);
   // Read before anything is written, so a plan that is not there leaves no question behind.
@@ -199,12 +197,11 @@ export async function askInThread(ctx: ToolContext, question: string, budget: Bu
     : '';
   const onPlan = plan ? { plan } : {};
 
-  const [asked] = await ctx.store.append(ctx.who, { op: 'thread.ask', question: q, budget, ...onPlan });
+  const [asked] = await ctx.store.append(ctx.who, { op: 'thread.ask', question: q, ...onPlan });
   const events = await ctx.store.since(null);
-  const day = dayContext(events, budget, ctx.today, await readDayDocs(ctx, events, budget, ctx.today));
+  const day = dayContext(events, ctx.today, await readDayDocs(ctx, events, ctx.today));
   const context = (facing ? `${facing}\n\n` : '')
     + `${nowContext(ctx.today, zoneOf(ctx.store.state))} You are speaking to ${ctx.who}. `
-    + (budget ? `The budget in view is ${budget}. ` : '')
     + 'Call tools for every figure you state. Notes are between the members: read them, never answer them.'
     + (day ? `\n\n${day}` : '');
 

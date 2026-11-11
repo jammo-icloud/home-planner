@@ -14,7 +14,7 @@ import { ToolError } from './errors.ts';
 import { cents } from './money.ts';
 import type { Cents } from './money.ts';
 import { slug } from './types.ts';
-import type { BudgetId, ChecklistItem, ContactLink, Day, EnvelopeId, PageView, Plan, PlanState, State } from './types.ts';
+import type { ChecklistItem, ContactLink, Day, EnvelopeId, PageView, Plan, PlanState, State } from './types.ts';
 
 export const PLAN_STATES: readonly PlanState[] = ['planning', 'doing', 'done'];
 export const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
@@ -152,7 +152,7 @@ export function pageView(p: Plan): PageView {
   return {
     id: p.id, title: p.title, area: p.area, state: p.removed ? 'removed' : p.state,
     parent: p.parent, due: p.due, people: p.contacts.map((c) => `contacts:${c.contact_id}`),
-    envelope: p.envelope?.envelope ?? null, estimate: p.estimate, notes: p.notes,
+    envelope: p.envelope, estimate: p.estimate, notes: p.notes,
     checklist: p.checklist.map((i) => ({ text: i.text, done: i.done })),
     files: p.attachments.map((a) => a.name),
   };
@@ -217,15 +217,11 @@ export function planEstimate(v: unknown): Cents | null {
 }
 
 /** The envelope a plan is paid from, which must exist; null unlinks it. */
-export function envelopeRef(state: State, v: unknown): { budget: BudgetId; envelope: EnvelopeId } | null {
+export function envelopeRef(state: State, v: unknown): EnvelopeId | null {
   if (v === null) return null;
-  const o = (typeof v === 'object' && v ? v : {}) as Record<string, unknown>;
-  const budget = required(o['budget'], 'envelope.budget');
-  const envelope = required(o['envelope'], 'envelope.envelope');
-  const b = state.budgets.get(budget);
-  if (!b) throw new ToolError(`no budget ${budget}`, 404);
-  if (!b.envelopes.has(envelope)) throw new ToolError(`no envelope ${envelope} in ${b.label}`, 404);
-  return { budget, envelope };
+  const envelope = required(v, 'envelope');
+  if (!state.envelopes.has(envelope)) throw new ToolError(`no envelope ${envelope}`, 404);
+  return envelope;
 }
 
 export function planState(v: unknown): PlanState {

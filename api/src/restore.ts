@@ -7,8 +7,8 @@
  * log in the first place.
  *
  * What makes a *partial* restore possible is that every event is scoped by
- * exactly one thing: the household, a budget, a budget and month, or a person.
- * So "just the receipts" or "just this budget" is a filter, not a translation.
+ * exactly one thing: the household, its budget, a month, or a person.
+ * So "just the receipts" or "just the budget" is a filter, not a translation.
  *
  * Nothing here writes. It reports what would land and what would collide, and
  * a collision refuses rather than merging: a wrong merge is silent, and a
@@ -30,7 +30,7 @@ export function scopeOf(e: Event): Scope {
     case 'txn.add': case 'txn.categorize': case 'txn.split': case 'txn.remove': case 'account.balance':
     case 'rule.add': case 'rule.remove':
       return 'facts';
-    case 'budget.create': case 'budget.rename': case 'budget.locate': case 'budget.archive':
+    case 'household.locate':
     case 'envelope.define': case 'envelope.remove': case 'bill.set': case 'bill.remove':
     case 'income.source.define': case 'income.source.remove':
       return 'budgets';
@@ -133,7 +133,7 @@ export interface Collision {
    * fold itself would refuse here, in its own words, that none of the checks
    * above it named first.
    */
-  readonly kind: 'category' | 'budget' | 'transaction' | 'envelope-category' | 'plan' | 'calendar' | 'owner' | 'refused';
+  readonly kind: 'category' | 'transaction' | 'envelope-category' | 'plan' | 'calendar' | 'owner' | 'refused';
   readonly what: string;
   readonly why: string;
 }
@@ -170,7 +170,7 @@ const DOING: Partial<Record<Event['op'], string>> = {
 };
 /** The fallback: the part of the household the line is about. */
 const ABOUT: Record<Scope, string> = {
-  facts: 'receipts', budgets: 'budgets', months: 'months', people: 'who is a member', thread: 'the conversation',
+  facts: 'receipts', budgets: 'the budget', months: 'months', people: 'who is a member', thread: 'the conversation',
   settings: 'settings', plans: 'plans', bookings: 'guests and stays',
 };
 const doing = (e: Event): string => DOING[e.op] ?? `a line about ${ABOUT[scopeOf(e)]}`;
@@ -181,9 +181,9 @@ const FOLDER_OPS: ReadonlySet<Event['op']> = new Set(['documents.folder', 'docum
 /**
  * What would happen, without doing it.
  *
- * The dependency runs one way — facts, then budgets, then months — so asking
- * for months without the budget they belong to is not a collision but a
- * nonsense, and is reported separately.
+ * The dependency runs one way — facts, then the budget, then months — so
+ * asking for envelopes without the categories they feed on is not a collision
+ * but a nonsense, and is reported separately.
  */
 export function planRestore(
   target: State,
@@ -283,27 +283,18 @@ export function planRestore(
   // ── budgets ──────────────────────────────────────────────────────────────
   if (wanted.has('budgets')) {
     for (const e of take) {
-      if (e.op === 'budget.create' && target.budgets.has(e.budget)) {
-        collisions.push({
-          kind: 'budget', what: e.label,
-          why: `a budget called "${e.budget}" already exists here`,
-        });
-      }
       // An envelope arriving from a backup may claim a category that something
       // here already feeds on — the same guard that stops two envelopes sharing
       // a category, which would make a receipt land in whichever was defined last.
       if (e.op === 'envelope.define') {
-        for (const b of target.budgets.values()) {
-          if (b.id !== e.budget) continue;
-          for (const env of b.envelopes.values()) {
-            if (env.id === e.envelope) continue;
-            const clash = e.match.categories.find((c) => env.match.categories.includes(c));
-            if (clash) {
-              collisions.push({
-                kind: 'envelope-category', what: `${e.label} → ${clash}`,
-                why: `${clash} already feeds ${env.label} in ${b.label}`,
-              });
-            }
+        for (const env of target.envelopes.values()) {
+          if (env.id === e.envelope) continue;
+          const clash = e.match.categories.find((c) => env.match.categories.includes(c));
+          if (clash) {
+            collisions.push({
+              kind: 'envelope-category', what: `${e.label} → ${clash}`,
+              why: `${clash} already feeds ${env.label}`,
+            });
           }
         }
       }
@@ -536,16 +527,18 @@ export function planRestore(
     }
   }
   if (wanted.has('months') && !wanted.has('budgets')) {
-    const budgetsInBackup = new Set(
-      backup.events.filter((e) => e.op === 'budget.create').map((e) => (e as { budget: string }).budget));
-    const needed = new Set(take.filter((e) => 'budget' in e).map((e) => (e as { budget: string }).budget));
-    for (const b of needed) {
-      if (!target.budgets.has(b) && budgetsInBackup.has(b)) {
-        missingPrerequisites.push(
-          `months for "${b}" need that budget, which is in the backup but not selected`);
-      } else if (!target.budgets.has(b)) {
-        missingPrerequisites.push(`months for "${b}" need a budget that is not here and not in the backup`);
-      }
+    // A month plans and moves the budget's envelopes: one it names that is not here needs the budget.
+    const inBackup = new Set(backup.events.flatMap((e) => (e.op === 'envelope.define' ? [e.envelope] : [])));
+    const needed = new Set(take.flatMap((e) =>
+      e.op === 'assign' || e.op === 'prediction.record' ? [e.envelope] : e.op === 'move' ? [e.from, e.to] : []));
+    const missing = [...needed].filter((env) => !target.envelopes.has(env));
+    const fromBackup = missing.filter((env) => inBackup.has(env));
+    const nowhere = missing.filter((env) => !inBackup.has(env));
+    if (fromBackup.length) {
+      missingPrerequisites.push(`months need the budget's envelopes (${fromBackup.join(', ')}), which are in the backup but not selected`);
+    }
+    if (nowhere.length) {
+      missingPrerequisites.push(`months need envelopes (${nowhere.join(', ')}) that are not here and not in the backup`);
     }
   }
   if (wanted.has('budgets') && !wanted.has('facts')) {
@@ -602,9 +595,8 @@ export function planRestore(
     summary.push(`${receipts} receipts, plus the categories and rules that sort them`);
   }
   if (counts.budgets) {
-    const budgets = take.filter((e) => e.op === 'budget.create').length;
     const envelopes = take.filter((e) => e.op === 'envelope.define').length;
-    summary.push(`${budgets} budget${budgets === 1 ? '' : 's'} and ${envelopes} envelope definitions`);
+    summary.push(`the budget's ${envelopes} envelope definitions`);
   }
   if (counts.months) {
     const opened = take.filter((e) => e.op === 'month.open').length;

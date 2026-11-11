@@ -2,9 +2,9 @@
  * Sorting receipts in the language of envelopes, with Haiku suggesting.
  *
  * A person thinks "that goes in Food", not "that is category groceries". So the
- * picker lists the envelopes of the budget in view, and choosing one records
- * the category that feeds it — a category feeds at most one envelope in a
- * budget, so the choice is never ambiguous. Payee-narrowed envelopes are
+ * picker lists the household's envelopes, and choosing one records the
+ * category that feeds it — a category feeds at most one envelope, so the
+ * choice is never ambiguous. Payee-narrowed envelopes are
  * labelled per receipt, so the label always says where this receipt will land.
  *
  * Rules run first: free and exact. Whatever they leave is offered to Haiku as
@@ -17,7 +17,7 @@ import type { Source } from './connectors.ts';
 import { envelopeFor } from './envelopes.ts';
 import { categorize } from './replay.ts';
 import { INCOME, SPLIT, TRANSFER } from './types.ts';
-import type { Assignment, BudgetId, State, Txn } from './types.ts';
+import type { Assignment, State, Txn } from './types.ts';
 
 export interface PickerOption { readonly value: string; readonly label: string; readonly group: string }
 export interface Suggestion {
@@ -65,21 +65,19 @@ const NOT_SPENDING = 'Not spending';
 export const SPLIT_OPTION: PickerOption = { value: SPLIT, label: 'Split across envelopes…', group: 'Several envelopes' };
 
 /**
- * What a receipt can be sorted into, labelled by envelope for this budget.
+ * What a receipt can be sorted into, labelled by envelope.
  *
- * Envelopes in their order, then categories this budget has no envelope for
+ * Envelopes in their order, then categories no envelope matches
  * (still choosable — a receipt must never be impossible to sort), then the two
  * kinds of money that are not spending.
  */
-export function pickerOptions(state: State, budget: BudgetId | null,
-                              t: Pick<Txn, 'payee' | 'memo'> | null): PickerOption[] {
-  const b = budget ? state.budgets.get(budget) : undefined;
+export function pickerOptions(state: State, t: Pick<Txn, 'payee' | 'memo'> | null): PickerOption[] {
   const placed: (PickerOption & { order: number })[] = [];
   const elsewhere: PickerOption[] = [];
   for (const c of state.categories.values()) {
     if (c.archived) continue;
     const probe = { payee: t?.payee ?? '', ...(t?.memo ? { memo: t.memo } : {}), category: c.id } as Txn;
-    const env = b ? envelopeFor(b, probe) : null;
+    const env = envelopeFor(state, probe);
     if (!env) { elsewhere.push({ value: c.id, label: c.label, group: ELSEWHERE }); continue; }
     placed.push({
       value: c.id, group: env.group, order: env.order,
@@ -181,7 +179,7 @@ export async function suggest(state: State, payees: readonly string[], options: 
  * Never throws for Claude being unavailable: an import without suggestions is
  * still an import, so the reason comes back beside an empty answer.
  */
-export async function suggestForRows(state: State, budget: BudgetId | null,
+export async function suggestForRows(state: State,
   rows: readonly { id: string; payee: string; memo?: string; category: Assignment | string | null }[]):
   Promise<{ suggested: Map<string, Suggestion>; toDivide: Set<string>; error?: string }> {
   const suggested = new Map<string, Suggestion>();
@@ -193,7 +191,7 @@ export async function suggestForRows(state: State, budget: BudgetId | null,
   }
   if (!open.length) return { suggested, toDivide };
   try {
-    const byPayee = await suggest(state, open.map((r) => r.payee), pickerOptions(state, budget, null));
+    const byPayee = await suggest(state, open.map((r) => r.payee), pickerOptions(state, null));
     for (const r of open) {
       const s = byPayee.get(r.payee.trim());
       if (s) suggested.set(r.id, s);

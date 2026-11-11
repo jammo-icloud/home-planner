@@ -19,7 +19,7 @@ import { guestEmail } from './replay.ts';
 import { cardLane, laneOf } from './lanes.ts';
 import type { Lane } from './lanes.ts';
 import { householdDay, isGuest, planShaped, sameCalendar, visibleTo, zoneOf } from './types.ts';
-import type { Actor, BriefingSource, BudgetId, Day, DriftChoice, EnvelopeId, Event, EventId, Offer, PlanId, State } from './types.ts';
+import type { Actor, BriefingSource, Day, DriftChoice, EnvelopeId, Event, EventId, Offer, PlanId, State } from './types.ts';
 
 /** What stamps every entry: its lane, the household's day it falls on, and what it asks of the viewer. */
 export interface Stamp {
@@ -35,14 +35,14 @@ export interface Stamp {
 export interface Raised { how: 'briefing' | 'answer' | 'research' | 'member'; entry: EventId; day: Day; at: string; by: Actor }
 
 /** Where a row opens: a live plan's card, an envelope, or a day on the Calendar. */
-export type Open = { plan: PlanId } | { budget: BudgetId; envelope: EnvelopeId } | { calendar: Day; key?: number };
+export type Open = { plan: PlanId } | { envelope: EnvelopeId } | { calendar: Day; key?: number };
 
 type Body =
-  | { kind: 'briefing'; id: EventId; at: string; source: BriefingSource; budget: BudgetId | null; day: Day;
+  | { kind: 'briefing'; id: EventId; at: string; source: BriefingSource; day: Day;
       headline: string; body: string | null; writtenBy: 'claude' | 'fallback';
       /** Kept in Drive: where, and nothing else of it; the words are read back by `GET /api/docs/:event`. */
       doc?: { path: string } }
-  | { kind: 'ask' | 'note'; id: EventId; at: string; who: Actor; text: string; budget: BudgetId | null;
+  | { kind: 'ask' | 'note'; id: EventId; at: string; who: Actor; text: string;
       answer?: { id: EventId; at: string; text: string; tools: string[];
                  /** With its whole text in Drive: `text` is the headline, and this is where the rest is. */
                  doc?: { path: string } };
@@ -71,7 +71,7 @@ type Body =
   | { kind: 'decision'; id: EventId; at: string; who: Actor; decision: 'approved' | 'declined'; why?: string;
       offer: { id: EventId; summary: string; day: Day } }
   | { kind: 'change'; id: EventId; at: string; who: Actor; what: string; why: string | null;
-      count: number; budget: BudgetId | null;
+      count: number;
       /** On a plan handed on: which plan, from whom and to whom, from the hand itself. */
       hand?: { plan: PlanRef; from: Actor; to: Actor };
       /** A guest's name, from the list, to say in place of `guest:<their address>`. */
@@ -146,12 +146,6 @@ export interface ThreadOptions {
   readonly person?: Actor | 'everyone';
 }
 
-/** Which budget an event belongs to; null for the household's own facts. */
-export function budgetOf(e: Event): BudgetId | null {
-  const b = (e as { budget?: unknown }).budget;
-  return typeof b === 'string' ? b : null;
-}
-
 /**
  * The plan changes a member would want to see in the day's thread. The rest
  * (checklist, chips, notes, estimate, the envelope, contact links) are too
@@ -203,7 +197,7 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
   // A section that was replaced later that day hands its cards to its replacement.
   const replacedBy = new Map<EventId, EventId>();
   for (const e of events) if (e.op === 'thread.briefing' && e.replaces) replacedBy.set(e.replaces, e.id);
-  // A day with the household's briefing shows that one alone: a budget's own
+  // A day with the household's briefing shows that one alone: a source's own
   // section that day (written before the household's, or while it could not
   // be) stands aside, and hands it its cards.
   const householdOn = new Map<Day, EventId>();
@@ -290,8 +284,8 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
   /** Where a row opens, for the ops that name something to open. */
   const openOf = (e: Event, lane: Lane): Open | undefined => {
     switch (e.op) {
-      case 'assign': case 'envelope.define': case 'bill.set': case 'bill.remove': return { budget: e.budget, envelope: e.envelope };
-      case 'move': return { budget: e.budget, envelope: e.to };
+      case 'assign': case 'envelope.define': case 'bill.set': case 'bill.remove': return { envelope: e.envelope };
+      case 'move': return { envelope: e.to };
       case 'calendar.appointment': case 'calendar.appointment.change':
         // An all-day start is a bare date; read as an instant it lands a day early west of UTC.
         return { calendar: e.allDay && /^\d{4}-\d\d-\d\d$/.test(e.start) ? e.start.slice(0, 10) : householdDay(tz, e.start), key: e.evt_id };
@@ -331,7 +325,7 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
     switch (e.op) {
       case 'thread.briefing':
         if (replacedBy.has(e.id) || standsAside.has(e.id)) break;
-        add({ kind: 'briefing', id: e.id, at: e.at, source: e.source ?? 'budget', budget: e.budget, day: e.day,
+        add({ kind: 'briefing', id: e.id, at: e.at, source: e.source ?? 'budget', day: e.day,
           headline: e.headline, body: e.body ?? null, writtenBy: e.writtenBy,
           ...(e.doc ? { doc: { path: currentDoc(state, e.doc).path } } : {}) }, 'claude', e.day);
         break;
@@ -340,7 +334,7 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
         const a = e.op === 'thread.ask' ? answers.get(e.id) : undefined;
         add({
           kind: e.op === 'thread.ask' ? 'ask' : 'note', id: e.id, at: e.at, who: e.who,
-          text: e.op === 'thread.ask' ? e.question : e.text, budget: e.budget,
+          text: e.op === 'thread.ask' ? e.question : e.text,
           ...(e.plan ? planRef(e.plan) : {}),
           ...(a ? { answer: { id: a.id, at: a.at, text: a.text, tools: a.tools.map((t) => t.name),
                              ...(a.doc ? { doc: { path: currentDoc(state, a.doc).path } } : {}) } } : {}),
@@ -399,7 +393,7 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
         const named = planOfOp(e);
         add({
           kind: 'change', id: c.id, at: c.at, who: c.who, what: c.what, why: c.why,
-          count: c.count, budget: budgetOf(e),
+          count: c.count,
           ...(e.op === 'plan.hand' ? handOf(e.id) : {}),
           ...(named ? planRef(named) : {}),
           ...(open ? { open } : {}),

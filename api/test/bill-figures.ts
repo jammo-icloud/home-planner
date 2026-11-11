@@ -7,7 +7,7 @@ import type { Event, State } from '../src/types.ts';
 /** Every figure the budget gives, in plain rows, so a field added to a type later does not alter them. */
 export type Figures = { fixed: readonly unknown[]; months: Record<string, any> };
 
-export function readLog(name: 'old-log' | 'bills-old-log'): Event[] {
+export function readLog(name: 'bills-old-log'): Event[] {
   const text = readFileSync(new URL(`./fixtures/${name}.jsonl`, import.meta.url), 'utf8');
   return text.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as Event);
 }
@@ -25,20 +25,18 @@ const lastDay = (month: string): string => {
 
 export function figuresOf(state: State): Figures {
   const months: Record<string, any> = {};
-  for (const budget of state.budgets.keys()) {
-    for (const month of openMonths(state, budget)) {
-      for (const today of [`${month}-01`, `${month}-12`, lastDay(month), nextFirst(month)]) {
-        const snap = snapshot(state, budget, month, today);
-        if (!snap) continue;
-        const view = monthView(state, budget, month)!;
-        const clock = monthClock(month, today);
-        const first = view.envelopes[0]?.envelope.id ?? '';
-        months[`${budget}/${month}/${today}`] = {
-          pace: snap.pace.map((p) => [p.envelope, p.funded, p.spent, p.available, p.committed, p.stillExpected, p.discretionary, p.projected, p.projectedOver, p.status]),
-          low: lowEnvelopes(snap.pace, 8).map((l) => [l.envelope, l.status, l.left, l.over]),
-          donors: donors(view, clock, first, state).map((d) => [d.envelope, d.available, d.spare]),
-        };
-      }
+  for (const month of openMonths(state)) {
+    for (const today of [`${month}-01`, `${month}-12`, lastDay(month), nextFirst(month)]) {
+      const snap = snapshot(state, month, today);
+      if (!snap) continue;
+      const view = monthView(state, month)!;
+      const clock = monthClock(month, today);
+      const first = view.envelopes[0]?.envelope.id ?? '';
+      months[`${month}/${today}`] = {
+        pace: snap.pace.map((p) => [p.envelope, p.funded, p.spent, p.available, p.committed, p.stillExpected, p.discretionary, p.projected, p.projectedOver, p.status]),
+        low: lowEnvelopes(snap.pace, 8).map((l) => [l.envelope, l.status, l.left, l.over]),
+        donors: donors(view, clock, first, state).map((d) => [d.envelope, d.available, d.spare]),
+      };
     }
   }
   return { fixed: fixedCharges(state).map((f) => [f.key, f.payee, f.category, f.typical, f.months]), months };

@@ -28,17 +28,11 @@ async function ctx(): Promise<ToolContext> {
     { op: 'category.define', category: 'groceries', label: 'Groceries' },
     { op: 'category.define', category: 'dining', label: 'Dining out' },
     { op: 'category.define', category: 'electricity', label: 'Electricity' },
-    { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-    { op: 'budget.create', budget: 'ridge', label: 'Ridge' },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'daily', label: 'Daily life', group: 'People',
+    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
       match: { categories: ['groceries', 'dining'] }, template: parseDollars('1525.00'), rollover: false, order: 0 },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'util', label: 'Utilities', group: 'House',
+    { op: 'envelope.define', envelope: 'util', label: 'Utilities', group: 'House',
       match: { categories: ['electricity'] }, template: parseDollars('300.00'), rollover: false, order: 1 },
-    { op: 'envelope.define', budget: 'ridge', envelope: 'daily', label: 'Daily life', group: 'People',
-      match: { categories: ['groceries', 'dining'] }, template: parseDollars('1910.00'), order: 0 },
-    { op: 'envelope.define', budget: 'ridge', envelope: 'util', label: 'Utilities', group: 'House',
-      match: { categories: ['electricity'] }, template: parseDollars('615.00'), order: 1 },
-    { op: 'month.open', budget: 'harbor', month: '2026-08', income: parseDollars('9600.00') },
+    { op: 'month.open', month: '2026-08', income: parseDollars('9600.00') },
     { op: 'txn.add', txns: [
       { id: 'x1', date: '2026-08-03', payee: 'VALLEY MARKET #101', amount: parseDollars('-84.21'), dedupeKey: 'x1', category: 'groceries' },
       { id: 'x2', date: '2026-08-06', payee: 'CORNER BISTRO', amount: parseDollars('-1300.00'), dedupeKey: 'x2', category: 'dining' },
@@ -92,13 +86,13 @@ describe('reads answer questions in one call', () => {
     await c.store.append('system', [
       { op: 'category.define', category: 'upkeep', label: 'Repairs & upkeep' },
       { op: 'category.define', category: 'rent', label: 'Rent or mortgage' },
-      { op: 'envelope.define', budget: 'harbor', envelope: 'upkeep', label: 'Repairs', group: 'Food',
+      { op: 'envelope.define', envelope: 'upkeep', label: 'Repairs', group: 'Food',
         match: { categories: ['upkeep'] }, template: parseDollars('0.00'), rollover: true, order: 2, needsFigure: true },
-      { op: 'envelope.define', budget: 'harbor', envelope: 'rent', label: 'Rent', group: 'Home',
+      { op: 'envelope.define', envelope: 'rent', label: 'Rent', group: 'Home',
         match: { categories: ['rent'] }, template: parseDollars('900.00'), rollover: true, order: 3,
         source: 'Public data for Harbor' },
     ]);
-    const r = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;
+    const r = call('get_month', {}, c) as Record<string, any>;
     const by = (id: string) => r.envelopes.find((e: any) => e.id === id);
     assert.equal(by('upkeep').needsFigure, true);
     assert.equal(by('upkeep').source, null);
@@ -115,14 +109,14 @@ describe('reads answer questions in one call', () => {
   test('get_month answers basis as exact dollars and hint for every envelope with categories', async () => {
     const c = await ctx();
     await c.store.append('system', [
-      { op: 'envelope.define', budget: 'harbor', envelope: 'util', label: 'Utilities', group: 'House',
+      { op: 'envelope.define', envelope: 'util', label: 'Utilities', group: 'House',
         match: { categories: ['electricity'] }, template: parseDollars('100.00'), rollover: false, order: 1,
         basis: { amount: parseDollars('1200.00'), per: 'year' } },
       { op: 'txn.add', txns: [
         { id: 'j1', date: '2026-07-05', payee: 'VALLEY MARKET #101', amount: parseDollars('-600.00'), dedupeKey: 'j1', category: 'groceries' },
       ] },
     ]);
-    const r = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;
+    const r = call('get_month', {}, c) as Record<string, any>;
     const by = (id: string) => r.envelopes.find((e: any) => e.id === id);
     assert.deepEqual(by('util').basis, { amount: '1,200.00', per: 'year' });
     assert.equal(by('util').templateExact, '$100.00');
@@ -141,7 +135,7 @@ describe('reads answer questions in one call', () => {
 
   test('get_month covers "how are we doing"', async () => {
     const c = await ctx();
-    const r = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;
+    const r = call('get_month', {}, c) as Record<string, any>;
     assert.equal(r['month'], '2026-08');
     assert.equal(r['dayOfMonth'], 13);
     assert.equal(r['income'], '$9,600');
@@ -158,7 +152,7 @@ describe('reads answer questions in one call', () => {
 
   test('explain_envelope has everything needed to answer "why is it empty?"', async () => {
     const c = await ctx();
-    const r = call('explain_envelope', { budget: 'harbor', envelope: 'daily' }, c) as Record<string, any>;
+    const r = call('explain_envelope', { envelope: 'daily' }, c) as Record<string, any>;
     assert.equal(r['planned'], '$1,525');
     assert.equal(r['spent'], '$1,384');
     assert.equal(r['left'], '$141');
@@ -205,7 +199,7 @@ describe('reads answer questions in one call', () => {
   test('explain_envelope shows the share and the whole', async () => {
     const c = await ctx();
     await splitX4(c);
-    const r = call('explain_envelope', { budget: 'harbor', envelope: 'daily' }, c) as Record<string, any>;
+    const r = call('explain_envelope', { envelope: 'daily' }, c) as Record<string, any>;
     const quik = r['transactions'].filter((t: any) => t.payee === 'QUIKSTOP 10001');
     assert.equal(quik.length, 2);
     assert.deepEqual(quik.map((t: any) => [t.category, t.amount, t.of]),
@@ -219,7 +213,7 @@ describe('reads answer questions in one call', () => {
   test('explain_envelope entries carry the receipt id, its whole amount and its parts', async () => {
     const c = await ctx();
     await splitX4(c);
-    const r = call('explain_envelope', { budget: 'harbor', envelope: 'daily' }, c) as Record<string, any>;
+    const r = call('explain_envelope', { envelope: 'daily' }, c) as Record<string, any>;
     const quik = r['transactions'].filter((t: any) => t.payee === 'QUIKSTOP 10001');
     for (const e of quik) {
       assert.equal(e.txn, 'x4');
@@ -235,7 +229,7 @@ describe('reads answer questions in one call', () => {
   test('removing an envelope and archiving a category count a split part as held', async () => {
     const c = await ctx();
     await splitX4(c);
-    const rm = call('remove_envelope', { budget: 'harbor', envelope: 'daily', why: 'test' }, c) as Record<string, any>;
+    const rm = call('remove_envelope', { envelope: 'daily', why: 'test' }, c) as Record<string, any>;
     // x1, x2 and x4 (once, though both its parts are in daily)
     assert.ok(rm['effects'].some((e: string) => e.startsWith('3 receipts totalling $1,394.36')), rm['effects'].join('|'));
     const ar = call('archive_category', { category: 'dining', archived: true, why: 'test' }, c) as Record<string, any>;
@@ -244,7 +238,7 @@ describe('reads answer questions in one call', () => {
 
   test('find_donors will not offer an envelope that still needs its money', async () => {
     const c = await ctx();
-    const r = call('find_donors', { budget: 'harbor', forEnvelope: 'daily' }, c) as Record<string, any>;
+    const r = call('find_donors', { forEnvelope: 'daily' }, c) as Record<string, any>;
     // utilities: $300 funded, $120 spent by day 13 -> projects to ~$286, so barely spare
     const util = r['donors'].find((d: any) => d.envelope === 'util');
     assert.ok(!util || util.couldSpare !== undefined);
@@ -275,41 +269,6 @@ describe('reads answer questions in one call', () => {
     assert.equal(byPayee['matched'], 1);
   });
 
-  test('compare_budgets flags an envelope that exists in only one of them', async () => {
-    // A cost that appears or disappears entirely is a bigger finding than one
-    // whose number moved, and reads differently on the page.
-    const c = await ctx();
-    await c.store.append('alice', {
-      op: 'envelope.define', budget: 'ridge', envelope: 'pool', label: 'Pool & spa',
-      group: 'House', match: { categories: ['electricity'] }, template: parseDollars('215.00'), order: 5,
-    });
-    const r = call('compare_budgets', { a: 'harbor', b: 'ridge' }, c) as Record<string, any>;
-    assert.equal(r['byEnvelope'].find((x: any) => x.envelope === 'pool').onlyIn, 'ridge');
-    assert.equal(r['byEnvelope'].find((x: any) => x.envelope === 'daily').onlyIn, null);
-  });
-
-  test('compare_budgets measures affordability against the leanest month', async () => {
-    // A plan that only works in a three-paycheque month does not work.
-    const c = await ctx();
-    await c.store.append('alice', {
-      op: 'income.source.define', source: 'i1', budget: 'harbor', label: 'Salary',
-      earner: 'alice', amount: parseDollars('1000.00'), frequency: 'biweekly', anchor: '2026-01-02',
-    });
-    const r = call('compare_budgets', { a: 'harbor', b: 'ridge' }, c) as Record<string, any>;
-    assert.equal(r['affordability']['harbor'].income, '$2,000',
-      'two paydays, never the three-payday month');
-    assert.equal(r['affordability']['ridge'].income, null, 'no income recorded for the other');
-  });
-
-  test('compare_budgets prices the move', async () => {
-    const c = await ctx();
-    const r = call('compare_budgets', { a: 'harbor', b: 'ridge' }, c) as Record<string, any>;
-    assert.equal(r['monthlyDifference'], '$700');   // (1910-1525) + (615-300)
-    assert.equal(r['annualDifference'], '$8,400');
-    const util = r['byEnvelope'].find((x: any) => x.envelope === 'util');
-    assert.equal(util.difference, '$315');
-  });
-
   test('get_activity reads as sentences, not as records', async () => {
     const c = await ctx();
     const r = await call('get_activity', {}, c) as Record<string, any>;
@@ -323,9 +282,9 @@ describe('reads answer questions in one call', () => {
 
   test('describe covers every op so the log never renders raw', () => {
     const ops = [
-      { op: 'assign', budget: 'b', month: '2026-08', envelope: 'e', to: parseDollars('10.00'), why: 'w' },
-      { op: 'move', budget: 'b', month: '2026-08', from: 'a', to: 'z', amount: parseDollars('5.00'), why: 'w' },
-      { op: 'month.open', budget: 'b', month: '2026-08', income: parseDollars('1.00') },
+      { op: 'assign', month: '2026-08', envelope: 'e', to: parseDollars('10.00'), why: 'w' },
+      { op: 'move', month: '2026-08', from: 'a', to: 'z', amount: parseDollars('5.00'), why: 'w' },
+      { op: 'month.open', month: '2026-08', income: parseDollars('1.00') },
       { op: 'rule.add', rule: 'r', match: 'X', category: 'c' },
     ];
     for (const o of ops) {
@@ -341,20 +300,18 @@ describe('every op reads as a sentence', () => {
   // switch in describe() is now exhaustive, so a new op without a sentence
   // fails to typecheck; this checks the sentences themselves.
   const ops = [
-    { op: 'budget.rename', budget: 'b', label: 'Cabin', why: 'w' },
-    { op: 'budget.locate', budget: 'b', location: { label: 'Springfield, IL' }, why: 'w' },
-    { op: 'budget.locate', budget: 'b', location: null, why: 'w' },
-    { op: 'budget.archive', budget: 'b', archived: true, why: 'w' },
+    { op: 'household.locate', location: { label: 'Springfield, IL' }, why: 'w' },
+    { op: 'household.locate', location: null, why: 'w' },
     { op: 'category.archive', category: 'c', archived: false, why: 'w' },
-    { op: 'month.close', budget: 'b', month: '2026-08', closed: true, why: 'w' },
-    { op: 'month.discard', budget: 'b', month: '2026-08', why: 'w' },
-    { op: 'income.source.define', source: 's', budget: 'b', label: 'Salary', amount: parseDollars('1.00') },
+    { op: 'month.close', month: '2026-08', closed: true, why: 'w' },
+    { op: 'month.discard', month: '2026-08', why: 'w' },
+    { op: 'income.source.define', source: 's', label: 'Salary', amount: parseDollars('1.00') },
     { op: 'income.source.remove', source: 's', why: 'w' },
     { op: 'household.claim', label: 'Home' },
     { op: 'member.add', member: 'bob', why: 'w' },
     { op: 'member.remove', member: 'bob', why: 'w' },
     { op: 'briefing.read', upTo: 'e1' },
-    { op: 'prediction.record', prediction: 'p', budget: 'b', month: '2026-08', envelope: 'e', expected: parseDollars('1.00'), why: 'w' },
+    { op: 'prediction.record', prediction: 'p', month: '2026-08', envelope: 'e', expected: parseDollars('1.00'), why: 'w' },
     { op: 'areas.set', areas: ['House'] },
     { op: 'calendar.household', cal_id: '/a/h/', original_cal_id: '/a/h/', name: 'Household' },
     { op: 'links.set', links: [] },
@@ -364,7 +321,7 @@ describe('every op reads as a sentence', () => {
     { op: 'plan.create', plan: 'p1', title: 'Fix the gate', area: 'House' },
     { op: 'plan.create', plan: 'p2', title: 'Hinge', area: 'House', parent: 'p1' },
     { op: 'plan.set', plan: 'p1', title: 'Mend the gate', area: 'Yard', chips: ['quote'], notes: 'n', estimate: parseDollars('25.00'),
-      envelope: { budget: 'b', envelope: 'e' } },
+      envelope: 'e' },
     { op: 'plan.set', plan: 'p1', estimate: null, envelope: null },
     { op: 'plan.set', plan: 'p1' },
     { op: 'plan.state', plan: 'p1', state: 'doing' },
@@ -394,14 +351,14 @@ describe('every op reads as a sentence', () => {
 describe('with the household at hand, a sentence uses names', () => {
   // The activity list read "opened 2026-10 for harbor": an id and a month
   // key. Given the state, describe() says what a person would.
-  test('budgets, envelopes, categories and months by name', async () => {
+  test('envelopes, categories and months by name', async () => {
     const c = await ctx();
     const at = (o: Record<string, unknown>) =>
       describeEvent({ id: 'i', at: NOW, who: 'alice', ...o } as never, c.store.state).what;
-    assert.equal(at({ op: 'month.open', budget: 'harbor', month: '2026-08', income: parseDollars('1.00') }), 'opened August 2026 for Harbor');
-    assert.equal(at({ op: 'move', budget: 'harbor', month: '2026-08', from: 'util', to: 'daily', amount: parseDollars('5.00'), why: 'w' }),
+    assert.equal(at({ op: 'month.open', month: '2026-08', income: parseDollars('1.00') }), 'opened August 2026');
+    assert.equal(at({ op: 'move', month: '2026-08', from: 'util', to: 'daily', amount: parseDollars('5.00'), why: 'w' }),
       'moved $5 from Utilities to Daily life');
-    assert.equal(at({ op: 'assign', budget: 'harbor', month: '2026-08', envelope: 'daily', to: parseDollars('10.00'), why: 'w' }),
+    assert.equal(at({ op: 'assign', month: '2026-08', envelope: 'daily', to: parseDollars('10.00'), why: 'w' }),
       'set Daily life to $10');
     assert.equal(at({ op: 'txn.categorize', txn: 'x4', category: 'groceries' }), 'categorized a transaction as Groceries');
     assert.equal(at({ op: 'txn.categorize', txn: 'x4', category: TRANSFER }), 'categorized a transaction as a transfer');
@@ -411,11 +368,11 @@ describe('with the household at hand, a sentence uses names', () => {
     const c = await ctx();
     await c.store.append('system', [
       { op: 'category.define', category: 'upkeep', label: 'Repairs & upkeep' },
-      { op: 'envelope.define', budget: 'harbor', envelope: 'upkeep', label: 'Repairs', group: 'House',
+      { op: 'envelope.define', envelope: 'upkeep', label: 'Repairs', group: 'House',
         match: { categories: ['upkeep'] }, template: parseDollars('0.00'), rollover: true, order: 2, needsFigure: true },
       { op: 'txn.add', txns: [{ id: 'x8', date: '2026-08-12', payee: 'VALLEY MARKET #101', amount: parseDollars('-50.00'), dedupeKey: 'x8', category: 'upkeep' }] },
     ]);
-    const r = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;
+    const r = call('get_month', {}, c) as Record<string, any>;
     const upkeep = r.envelopes.find((e: any) => e.id === 'upkeep');
     assert.equal(upkeep.left, '-$50');
     assert.equal(upkeep.short, null);
@@ -423,20 +380,20 @@ describe('with the household at hand, a sentence uses names', () => {
     await c.store.append('system', [
       { op: 'txn.add', txns: [{ id: 'x7', date: '2026-08-12', payee: 'EXAMPLE POWER', amount: parseDollars('-250.00'), dedupeKey: 'x7', category: 'electricity' }] },
     ]);
-    const again = call('get_month', { budget: 'harbor' }, c) as Record<string, any>;
+    const again = call('get_month', {}, c) as Record<string, any>;
     const util = again.envelopes.find((e: any) => e.id === 'util');
     assert.equal(util.short.amount, parseDollars('70.00'));
     assert.equal(util.short.amountExact, '$70.00');
   });
 
   test('without it, ids as before, so nothing that cannot reach the state breaks', () => {
-    const line = describeEvent({ id: 'i', at: NOW, who: 'alice', op: 'month.open', budget: 'harbor', month: '2026-08', income: 100 } as never);
-    assert.equal(line.what, 'opened 2026-08 for harbor');
+    const line = describeEvent({ id: 'i', at: NOW, who: 'alice', op: 'month.open', month: '2026-08', income: 100 } as never);
+    assert.equal(line.what, 'opened 2026-08');
   });
 
   test('a name since removed falls back to the id rather than to nothing', async () => {
     const c = await ctx();
-    const line = describeEvent({ id: 'i', at: NOW, who: 'alice', op: 'envelope.remove', budget: 'gone', envelope: 'old', why: 'w' } as never, c.store.state);
+    const line = describeEvent({ id: 'i', at: NOW, who: 'alice', op: 'envelope.remove', envelope: 'old', why: 'w' } as never, c.store.state);
     assert.equal(line.what, 'removed envelope old');
   });
 });
@@ -448,7 +405,7 @@ describe('writes propose, they never execute', () => {
     const beforeFile = await readFile(c.store.path, 'utf8');
 
     const p = call('move_money', {
-      budget: 'harbor', from: 'util', to: 'daily',
+      from: 'util', to: 'daily',
       amountCents: 9600, why: 'covering the Nguyen dinner',
     }, c) as Proposal;
 
@@ -459,7 +416,7 @@ describe('writes propose, they never execute', () => {
 
     const done = await commit(p.id, c);
     assert.equal(done.committed.length, 1);
-    const v = monthView(c.store.state, 'harbor', '2026-08')!;
+    const v = monthView(c.store.state, '2026-08')!;
     const daily = v.envelopes.find((e) => e.envelope.id === 'daily')!;
     assert.equal(daily.planned, parseDollars('1525.00'), 'plan of record still untouched');
     assert.equal(daily.funded, parseDollars('1621.00'));
@@ -471,9 +428,9 @@ describe('writes propose, they never execute', () => {
     await c.store.append('system', [
       { op: 'txn.add', txns: [{ id: 'x9', date: '2026-08-11', payee: 'EXAMPLE POWER', amount: parseDollars('-200.00'), dedupeKey: 'x9', category: 'electricity' }] },
     ]);
-    const short = monthView(c.store.state, 'harbor', '2026-08')!.envelopes.find((e) => e.envelope.id === 'util')!;
+    const short = monthView(c.store.state, '2026-08')!.envelopes.find((e) => e.envelope.id === 'util')!;
     assert.equal(short.available, parseDollars('-20.00'));
-    const cover = { budget: 'harbor', from: 'daily', to: 'util', amountCents: 2000, why: 'cover', onlyWhileShort: true };
+    const cover = { from: 'daily', to: 'util', amountCents: 2000, why: 'cover', onlyWhileShort: true };
     const p = call('move_money', cover, c) as Proposal;
     await commit(p.id, c);
     assert.throws(() => call('move_money', cover, c), (e: unknown) =>
@@ -485,7 +442,7 @@ describe('writes propose, they never execute', () => {
   test('a proposal can only be approved once', async () => {
     const c = await ctx();
     const p = call('move_money', {
-      budget: 'harbor', from: 'util', to: 'daily', amountCents: 1000, why: 'x',
+      from: 'util', to: 'daily', amountCents: 1000, why: 'x',
     }, c) as Proposal;
     await commit(p.id, c);
     await assert.rejects(commit(p.id, c), /expired or was already approved/);
@@ -494,7 +451,7 @@ describe('writes propose, they never execute', () => {
   test('the committed event carries who approved it', async () => {
     const c = await ctx();
     const p = call('move_money', {
-      budget: 'harbor', from: 'util', to: 'daily', amountCents: 1000, why: 'groceries ran long',
+      from: 'util', to: 'daily', amountCents: 1000, why: 'groceries ran long',
     }, { ...c, who: 'claude' }) as Proposal;
     const done = await commit(p.id, { ...c, who: 'bob' });
     assert.equal(done.committed[0]!.who, 'bob', 'the approver owns the event, not the proposer');
@@ -504,14 +461,14 @@ describe('writes propose, they never execute', () => {
   test('a move with no reason is refused at the tool boundary', async () => {
     const c = await ctx();
     assert.throws(() => call('move_money', {
-      budget: 'harbor', from: 'util', to: 'daily', amountCents: 1000,
+      from: 'util', to: 'daily', amountCents: 1000,
     }, c), /why is required/);
   });
 
   test('set_assignment warns when it would stop the month balancing', async () => {
     const c = await ctx();
     const p = call('set_assignment', {
-      budget: 'harbor', envelope: 'daily', toCents: 500000, why: 'testing',
+      envelope: 'daily', toCents: 500000, why: 'testing',
     }, c) as Proposal;
     assert.ok(p.effects.some((e) => /stop balancing|more than the income/.test(e)));
     assert.ok(p.effects.some((e) => /Planned stays \$1,525/.test(e)));
@@ -683,28 +640,28 @@ describe('writes propose, they never execute', () => {
   test('open_month previews the plan before writing it', async () => {
     const c = await ctx();
     const p = call('open_month', {
-      budget: 'ridge', month: '2026-09', incomeCents: 960000,
+      month: '2026-09', incomeCents: 960000,
     }, c) as Proposal;
     assert.ok(p.effects.some((e) => /2 envelopes seeded/.test(e)));
-    assert.ok(p.effects.some((e) => /Planned \$2,525/.test(e)));
-    assert.ok(p.effects.some((e) => /To assign would be \$7,075/.test(e)));
+    assert.ok(p.effects.some((e) => /Planned \$1,825/.test(e)));
+    assert.ok(p.effects.some((e) => /To assign would be \$7,775/.test(e)));
 
     await commit(p.id, c);
-    const v = monthView(c.store.state, 'ridge', '2026-09')!;
-    assert.equal(v.planned, parseDollars('2525.00'));
+    const v = monthView(c.store.state, '2026-09')!;
+    assert.equal(v.planned, parseDollars('1825.00'));
   });
 
   test('opening a month twice is refused rather than silently re-planning', async () => {
     const c = await ctx();
     assert.throws(() => call('open_month', {
-      budget: 'harbor', month: '2026-08', incomeCents: 100,
+      month: '2026-08', incomeCents: 100,
     }, c), /already open/);
   });
 
   test('a bad envelope is a 404, not a zero', async () => {
     const c = await ctx();
     try {
-      call('explain_envelope', { budget: 'harbor', envelope: 'nope' }, c);
+      call('explain_envelope', { envelope: 'nope' }, c);
       assert.fail('should have thrown');
     } catch (err) {
       assert.ok(err instanceof ToolError);
@@ -833,9 +790,9 @@ describe('plan tools', () => {
     const events = (name: string, args: Record<string, unknown>) => (call(name, args, c) as Proposal).events;
     const cases: [string, Record<string, unknown>, unknown[]][] = [
       ['update_plan', { plan: 'p3', title: 'Tankless heater', chips: ['researching'], notes: 'quotes', estimateCents: 180000,
-        envelope: { budget: 'harbor', envelope: 'util' } },
+        envelope: 'util' },
        [{ op: 'plan.set', plan: 'p3', title: 'Tankless heater', chips: ['researching'], notes: 'quotes', estimate: 180000,
-          envelope: { budget: 'harbor', envelope: 'util' } }]],
+          envelope: 'util' }]],
       ['update_plan', { plan: 'p3', estimateCents: null, envelope: null },
        [{ op: 'plan.set', plan: 'p3', estimate: null, envelope: null }]],
       ['set_plan_state', { plan: 'p3', state: 'doing' }, [{ op: 'plan.state', plan: 'p3', state: 'doing' }]],
@@ -850,7 +807,7 @@ describe('plan tools', () => {
     for (const [name, args, expected] of cases) {
       const got = events(name, args);
       assert.deepEqual(got, expected, name);
-      assert.deepEqual(touches(got), { budget: null, month: null, envelopes: [] }, `${name} touches no money`);
+      assert.deepEqual(touches(got), { month: null, envelopes: [] }, `${name} touches no money`);
     }
 
     const checklist = events('set_checklist', { plan: 'p3', items: [{ text: 'Measure the closet', done: true }, { id: 'keep', text: 'Two quotes' }] });
@@ -874,7 +831,7 @@ describe('plan tools', () => {
     assert.throws(() => call('answer_ask', { plan: 'p3', answer: 'accept' }, c), /nobody has been asked/);
     assert.throws(() => call('set_plan_due', { plan: 'p3', due: 'next week' }, c), /YYYY-MM-DD/);
     assert.throws(() => call('block_plan_time', { plan: 'p3', start: '2026-08-20T12:00:00Z', end: '2026-08-20T09:00:00Z' }, c), /end after it starts/);
-    assert.throws(() => call('update_plan', { plan: 'p3', envelope: { budget: 'harbor', envelope: 'nope' } }, c), /no envelope/);
+    assert.throws(() => call('update_plan', { plan: 'p3', envelope: 'nope' }, c), /no envelope/);
     assert.throws(() => call('update_plan', { plan: 'p3' }, c), /nothing to change/);
     await assert.rejects(async () => call('get_plan', { plan: 'nope' }, c), (e: unknown) => e instanceof ToolError && e.status === 404);
     await c.store.append('alice', { op: 'plan.ask', plan: 'p3', to: 'bob', why: 'please' });
@@ -892,9 +849,9 @@ describe('plan tools', () => {
     assert.throws(() => call('create_plan', { title: 'Gate', area: 'House', parent: '' }, c), noShelf);
     await assert.rejects(edits.createPlan(c, { title: 'Gate', area: 'House', parent: '' }), noShelf);
     // An envelope that is not there is a 404 from both.
-    const missing = (e: unknown) => e instanceof ToolError && e.status === 404 && /no budget nope/.test(e.message);
-    assert.throws(() => call('update_plan', { plan: 'p3', envelope: { budget: 'nope', envelope: 'x' } }, c), missing);
-    await assert.rejects(edits.updatePlan(c, 'p3', { envelope: { budget: 'nope', envelope: 'x' } }), missing);
+    const missing = (e: unknown) => e instanceof ToolError && e.status === 404 && /no envelope x/.test(e.message);
+    assert.throws(() => call('update_plan', { plan: 'p3', envelope: 'x' }, c), missing);
+    await assert.rejects(edits.updatePlan(c, 'p3', { envelope: 'x' }), missing);
     // An estimate sent as text is refused by both, never read as a number.
     const notCents = (e: unknown) => e instanceof ToolError && e.status === 400 && /whole number/.test(e.message);
     assert.throws(() => call('update_plan', { plan: 'p3', estimateCents: '180000' }, c), notCents);

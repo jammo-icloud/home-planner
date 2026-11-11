@@ -1,5 +1,5 @@
 /**
- * What a budget's bills put on the Calendar: a row for each bill on the day it
+ * What the budget's bills put on the Calendar: a row for each bill on the day it
  * falls or was paid, and one "short" row on today for an envelope with less
  * left than its bills still expect. It reads the log and writes nothing.
  */
@@ -9,11 +9,11 @@ import { billOccurrences, billsExpected, billsOf } from './analytics.ts';
 import type { Bill, BillOccurrence } from './analytics.ts';
 import { monthView } from './envelopes.ts';
 import { monthOf } from './types.ts';
-import type { BudgetId, Day, EnvelopeId, State } from './types.ts';
+import type { Day, EnvelopeId, State } from './types.ts';
 
 export interface MoneyRow {
   readonly day: Day; readonly kind: 'due' | 'autopay' | 'payby' | 'bill' | 'paid' | 'short';
-  readonly budget: BudgetId; readonly envelope: EnvelopeId;
+  readonly envelope: EnvelopeId;
   /** The envelope's name. */
   readonly label: string;
   /** The bill's key and name; a short row's are its first bill's. */
@@ -32,27 +32,25 @@ const byDayThenName = (a: MoneyRow, b: MoneyRow): number =>
   a.day < b.day ? -1 : a.day > b.day ? 1 : a.name < b.name ? -1 : a.name > b.name ? 1 : 0;
 
 /** `to` is inclusive. */
-export function calendarMoney(state: State, budget: BudgetId, w: { from: Day; to: Day; today: Day }): MoneyRow[] {
-  const book = state.budgets.get(budget);
-  if (!book) return [];
+export function calendarMoney(state: State, w: { from: Day; to: Day; today: Day }): MoneyRow[] {
   const month = monthOf(w.today);
   const first = `${month}-01`;
   const last = new Date(Date.UTC(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0)).toISOString().slice(0, 10);
   const inWindow = (d: Day): boolean => d >= w.from && d <= w.to;
-  const allBills = billsOf(state, budget);
-  const view = monthView(state, budget, month);
+  const allBills = billsOf(state);
+  const view = monthView(state, month);
   const available = new Map<EnvelopeId, Cents>((view?.envelopes ?? []).map((e) => [e.envelope.id, e.available]));
 
   const shorts: MoneyRow[] = [];
   const rest: MoneyRow[] = [];
-  for (const envelope of [...book.envelopes.values()].sort((a, b) => a.order - b.order)) {
+  for (const envelope of [...state.envelopes.values()].sort((a, b) => a.order - b.order)) {
     if (envelope.sinking) continue;
     const bills: readonly Bill[] = allBills.get(envelope.id) ?? [];
     const left = available.get(envelope.id);
     const short: Cents | null = left !== undefined && !envelope.needsFigure ? billsExpected(bills, month) : null;
     const isShort = left !== undefined && short !== null && short > 0 && left < short;
     const figures = !isShort || left === undefined ? {} : left >= 0 ? { left: fmt(left) } : { over: fmt(-left as Cents) };
-    const base = { budget, envelope: envelope.id, label: envelope.label };
+    const base = { envelope: envelope.id, label: envelope.label };
 
     const unpaid: MoneyRow[] = [];
     const paid: MoneyRow[] = [];

@@ -84,8 +84,9 @@ describe("the household's choices", () => {
 
   test("a seed's facts written as system still replay", () => {
     const seeded = replay([line('system', { op: 'category.define', category: 'groceries', label: 'Groceries' }, 'e1'),
-      line('system', { op: 'budget.create', budget: 'home', label: 'Home' }, 'e2')]);
-    assert.equal(seeded.budgets.size, 1);
+      line('system', { op: 'envelope.define', envelope: 'groceries', label: 'Groceries', group: 'Food',
+        match: { categories: ['groceries'] }, template: 0 }, 'e2')]);
+    assert.equal(seeded.envelopes.size, 1);
   });
 
   test('a zone with a space, or empty, is refused by name', async () => {
@@ -136,7 +137,7 @@ describe('where documents live', () => {
   const EARLIER = { link: 'e0e0', file_id: '883', hash: 'ghi', version_id: '1', path: '/team-folders/Planner/h1/gate/plan.md' };
   const PAGE = { link: 'p7d4', file_id: '884', hash: 'jkl', version_id: '2', path: '/team-folders/Planner/h1/gate/plan.md' };
   const briefing = {
-    op: 'thread.briefing', day: '2026-11-02', source: 'household', budget: null, headline: 'Today', doc: DOC, writtenBy: 'fallback',
+    op: 'thread.briefing', day: '2026-11-02', source: 'household', headline: 'Today', doc: DOC, writtenBy: 'fallback',
   } as const;
 
   /** The first folder, then every kind of file the log can name in it. */
@@ -145,7 +146,7 @@ describe('where documents live', () => {
     const [first] = await s.append('claude', briefing);
     // Written again the same day, with the same link: one file, not two.
     await s.append('claude', { ...briefing, writtenBy: 'claude', replaces: first!.id });
-    const [ask] = await s.append('bob', { op: 'thread.ask', question: 'How is food?', budget: null });
+    const [ask] = await s.append('bob', { op: 'thread.ask', question: 'How is food?' });
     await s.append('claude', { op: 'thread.answer', replyTo: ask!.id, text: 'Fine.', tools: [], model: 'm', doc: ANSWER });
     const [made] = await s.append('alice', [
       { op: 'plan.create', plan: 'gate', title: 'Fix the gate', area: 'House' },
@@ -196,7 +197,7 @@ describe('where documents live', () => {
       ['card:gate/quote.pdf', `link:${ANSWER.link}`, `link:${DOC.link}`, `link:${PAGE.link}`].sort());
     assert.deepEqual(s.state.documents.waiting.get('card:gate/quote.pdf'), { kind: 'card', plan: 'gate', name: 'quote.pdf' });
     // A document written after the choice is in the new folder already: it does not wait.
-    const [ask] = await s.append('bob', { op: 'thread.ask', question: 'And power?', budget: null });
+    const [ask] = await s.append('bob', { op: 'thread.ask', question: 'And power?' });
     const LATER = { ...ANSWER, link: 'l8t3', path: '/team-folders/Planner/home/h1/answers/2026-11-02-power.md' };
     await s.append('claude', { op: 'thread.answer', replyTo: ask!.id, text: 'Fine.', tools: [], model: 'm', doc: LATER });
     assert.ok(s.state.documents.docs.has('link:l8t3'));

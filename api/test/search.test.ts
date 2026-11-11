@@ -111,8 +111,8 @@ describe('search across the household', () => {
 
   test('without a session a plan is still found by its title, and says documents were not searched', async () => {
     const s = await fresh();
-    const [noted] = await s.append('bob', { op: 'thread.note', text: 'The gate squeaks again, by the way.', budget: null });
-    const [asked] = await s.append('alice', { op: 'thread.ask', question: 'What would a new gate latch cost?', budget: null });
+    const [noted] = await s.append('bob', { op: 'thread.note', text: 'The gate squeaks again, by the way.' });
+    const [asked] = await s.append('alice', { op: 'thread.ask', question: 'What would a new gate latch cost?' });
     const card = await offer(member(s, { sid: null }), {
       tool: 'create_plan', args: { title: 'Oil the gate hinge', area: 'House' }, prompt: { kind: 'member', ref: null },
     });
@@ -144,17 +144,17 @@ describe('search across the household', () => {
   test('briefings and answers are found, with where to open them', async () => {
     const s = await fresh();
     const ctx = member(s);
-    const briefing = await writeDoc(ctx, ['today', briefingFile(DAY, 'household', null)], renderBriefingPage({
-      day: DAY, source: 'household', budget: null, writtenBy: 'claude', headline: 'Cold this week',
+    const briefing = await writeDoc(ctx, ['today', briefingFile(DAY, 'household')], renderBriefingPage({
+      day: DAY, source: 'household', writtenBy: 'claude', headline: 'Cold this week',
       body: 'Bleed the radiators before Thursday.',
     }), nas.via);
     assert.ok(briefing);
     const [b] = await s.append('claude', {
-      op: 'thread.briefing', day: DAY, source: 'household', budget: null, headline: 'Cold this week', doc: briefing, writtenBy: 'claude',
+      op: 'thread.briefing', day: DAY, source: 'household', headline: 'Cold this week', doc: briefing, writtenBy: 'claude',
     });
 
     const question = 'When does the sweep come?';
-    const [asked] = await s.append('alice', { op: 'thread.ask', question, budget: null });
+    const [asked] = await s.append('alice', { op: 'thread.ask', question });
     const answer = await writeDoc(ctx, ['answers', `${asked!.id}.md`], renderAnswerPage({
       replyTo: asked!.id, plan: null, model: 'claude-test', question,
       text: 'The chimney sweep comes on Friday morning.', tools: ['list_plans'],
@@ -182,15 +182,15 @@ describe('search across the household', () => {
   test('briefings and answers kept in the log are found there, without a session', async () => {
     const s = await fresh();
     const [old] = await s.append('claude', {
-      op: 'thread.briefing', day: DAY, source: 'household', budget: null, headline: 'A quiet week',
+      op: 'thread.briefing', day: DAY, source: 'household', headline: 'A quiet week',
       body: 'Nothing on the calendar; the radiators were bled last week.', writtenBy: 'fallback',
     });
     const [b] = await s.append('claude', {
-      op: 'thread.briefing', day: DAY, source: 'household', budget: null, headline: 'Cold this week',
+      op: 'thread.briefing', day: DAY, source: 'household', headline: 'Cold this week',
       body: 'Bleed the radiators before Thursday, and check the boiler pressure.', writtenBy: 'claude', replaces: old!.id,
     });
     const question = 'When does the sweep come?';
-    const [asked] = await s.append('alice', { op: 'thread.ask', question, budget: null });
+    const [asked] = await s.append('alice', { op: 'thread.ask', question });
     const [a] = await s.append('claude', {
       op: 'thread.answer', replyTo: asked!.id, text: 'The chimney sweep comes on Friday morning.',
       tools: [], model: 'claude-test',
@@ -290,7 +290,7 @@ describe('search across the household', () => {
     await followOn(ctx, nas.via);
     await uploadFile(sid, { folder: '/Planner/h1/p0', name: 'gutter-quote.txt', bytes: new TextEncoder().encode('Gutter guards, $90') }, nas.via);
     await s.append('alice', { op: 'plan.attach', plan: 'p0', path: '/Planner/h1/p0/gutter-quote.txt', name: 'gutter-quote.txt', size: 18 });
-    const [noted] = await s.append('bob', { op: 'thread.note', text: 'The gutter is full of leaves.', budget: null });
+    const [noted] = await s.append('bob', { op: 'thread.note', text: 'The gutter is full of leaves.' });
 
     const all = await searchHousehold(ctx, 'gutter', undefined, nas.via);
     assert.deepEqual(all.hits.map((h) => [h.kind, h.open.plan ?? h.open.file?.plan ?? h.open.event]), [
@@ -327,7 +327,7 @@ describe('search across the household', () => {
   const ids = (r: { entries: { id: string }[] }): string[] => r.entries.map((e) => e.id);
   const raw = async (s: Store, by: string, args: Record<string, unknown>, over: Record<string, unknown> = {}) => {
     const [o] = await s.append(by, { op: 'proposal.offer', tool: 'move_money', args, summary: 'Dinner', effects: [], events: [],
-      budget: null, month: null, envelopes: [], fingerprint: '', prompt: { kind: 'member', ref: null }, ...over } as never);
+      month: null, envelopes: [], fingerprint: '', prompt: { kind: 'member', ref: null }, ...over } as never);
     return o!;
   };
 
@@ -335,13 +335,12 @@ describe('search across the household', () => {
     const s = await fresh({ folder: false });
     await s.append('alice', [
       { op: 'category.define', category: 'groceries', label: 'Groceries' },
-      { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
       { op: 'txn.add', txns: [{ id: 't1', date: DAY, payee: 'Quokka Market', amount: parseDollars('-1.00'), dedupeKey: 't1', category: null }] },
     ]);
-    const [note] = await s.append('bob', { op: 'thread.note', text: 'Wombat is on the list.', budget: null });
-    const [ask] = await s.append('alice', { op: 'thread.ask', question: 'Is the numbat fed?', budget: null });
+    const [note] = await s.append('bob', { op: 'thread.note', text: 'Wombat is on the list.' });
+    const [ask] = await s.append('alice', { op: 'thread.ask', question: 'Is the numbat fed?' });
     await s.append('claude', { op: 'thread.answer', replyTo: ask!.id, text: 'Yes, the numbat ate.', tools: [], model: 'm' });
-    const [brief] = await s.append('claude', { op: 'thread.briefing', day: DAY, source: 'household', budget: null,
+    const [brief] = await s.append('claude', { op: 'thread.briefing', day: DAY, source: 'household',
       headline: 'Bilby week', body: 'Quiet.', writtenBy: 'claude' });
     const [change] = await s.append('alice', { op: 'plan.create', plan: 'wallaby', title: 'Wallaby fence', area: 'House' });
     await s.append('bob', { op: 'txn.remove', txn: 't1', why: 'dupe' });
@@ -359,9 +358,9 @@ describe('search across the household', () => {
 
   test('a day of three entries, two matching, says so', async () => {
     const s = await fresh({ folder: false });
-    await s.append('alice', { op: 'thread.note', text: 'Platypus one', budget: null });
-    await s.append('bob', { op: 'thread.note', text: 'Platypus two', budget: null });
-    await s.append('bob', { op: 'thread.note', text: 'Something else', budget: null });
+    await s.append('alice', { op: 'thread.note', text: 'Platypus one' });
+    await s.append('bob', { op: 'thread.note', text: 'Platypus two' });
+    await s.append('bob', { op: 'thread.note', text: 'Something else' });
     const r = await searchRecord(recordMember(s, { sid: null }), 'platypus', {}, nas.via);
     assert.equal(r.days.length, 1);
     assert.equal(r.days[0]!.count, 2);
@@ -375,7 +374,7 @@ describe('search across the household', () => {
 
   test('a question found in its answer shows the match; found in the question, the answer opens', async () => {
     const s = await fresh({ folder: false });
-    const [ask] = await s.append('alice', { op: 'thread.ask', question: 'When does the sweep come?', budget: null });
+    const [ask] = await s.append('alice', { op: 'thread.ask', question: 'When does the sweep come?' });
     await s.append('claude', { op: 'thread.answer', replyTo: ask!.id, text: 'The chimney sweep comes on Friday morning, early.', tools: [], model: 'm' });
     const ctx = recordMember(s, { sid: null });
     const inAnswer = await searchRecord(ctx, 'friday', {}, nas.via);
@@ -387,16 +386,16 @@ describe('search across the household', () => {
   test('a briefing and an answer kept only in Drive are joined, with its passage; a replaced briefing is dropped', async () => {
     const s = await fresh();
     const ctx = recordMember(s);
-    const old = await writeDoc(ctx, ['today', briefingFile(DAY, 'household', null)], renderBriefingPage({
-      day: DAY, source: 'household', budget: null, writtenBy: 'claude', headline: 'Old week', body: 'Bleed the radiators.',
+    const old = await writeDoc(ctx, ['today', briefingFile(DAY, 'household')], renderBriefingPage({
+      day: DAY, source: 'household', writtenBy: 'claude', headline: 'Old week', body: 'Bleed the radiators.',
     }), nas.via);
-    const [o] = await s.append('claude', { op: 'thread.briefing', day: DAY, source: 'household', budget: null, headline: 'Old week', doc: old!, writtenBy: 'claude' });
-    const doc = await writeDoc(ctx, ['today', briefingFile(DAY, 'budget', 'harbor')], renderBriefingPage({
-      day: DAY, source: 'budget', budget: 'harbor', writtenBy: 'claude', headline: 'Cold week', body: 'Bleed the radiators before Thursday.',
+    const [o] = await s.append('claude', { op: 'thread.briefing', day: DAY, source: 'household', headline: 'Old week', doc: old!, writtenBy: 'claude' });
+    const doc = await writeDoc(ctx, ['today', briefingFile(DAY, 'budget')], renderBriefingPage({
+      day: DAY, source: 'budget', writtenBy: 'claude', headline: 'Cold week', body: 'Bleed the radiators before Thursday.',
     }), nas.via);
-    const [b] = await s.append('claude', { op: 'thread.briefing', day: DAY, source: 'budget', budget: null, headline: 'Cold week', doc: doc!, writtenBy: 'claude', replaces: o!.id });
+    const [b] = await s.append('claude', { op: 'thread.briefing', day: DAY, source: 'budget', headline: 'Cold week', doc: doc!, writtenBy: 'claude', replaces: o!.id });
     const question = 'When does the sweep come?';
-    const [asked] = await s.append('alice', { op: 'thread.ask', question, budget: null });
+    const [asked] = await s.append('alice', { op: 'thread.ask', question });
     const answer = await writeDoc(ctx, ['answers', `${asked!.id}.md`], renderAnswerPage({
       replyTo: asked!.id, plan: null, model: 'm', question, text: 'The chimney sweep comes on Friday morning.', tools: [],
     }), nas.via);
@@ -413,7 +412,7 @@ describe('search across the household', () => {
 
   test('a hundred and one notes cap at a hundred; Drive filling its answer caps too', async () => {
     const s = await fresh({ folder: false });
-    await s.append('alice', Array.from({ length: 101 }, (_, i) => ({ op: 'thread.note' as const, text: `Zebra ${i}`, budget: null })));
+    await s.append('alice', Array.from({ length: 101 }, (_, i) => ({ op: 'thread.note' as const, text: `Zebra ${i}` })));
     const r = await searchRecord(recordMember(s, { sid: null }), 'zebra', {}, nas.via);
     assert.equal(RECORD_MAX, 100);
     assert.equal(r.entries.length, 100);
@@ -432,7 +431,7 @@ describe('search across the household', () => {
       body.data.items = Array.from({ length: 50 }, () => one);
       return Response.json(body);
     }) as DsmFetch;
-    await s2.append('alice', { op: 'thread.note', text: 'Zebra', budget: null });
+    await s2.append('alice', { op: 'thread.note', text: 'Zebra' });
     assert.equal((await searchRecord(recordMember(s2), 'zebra', {}, full)).capped, true);
     assert.equal((await searchRecord(recordMember(s2), 'zebra', {}, nas.via)).capped, false);
   });
@@ -454,8 +453,8 @@ describe('search across the household', () => {
 
   test('a kind narrows; elsewhere goes under Budget and stays under Plans; a person keeps their rows', async () => {
     const s = await fresh({ folder: false });
-    await s.append('alice', { op: 'thread.note', text: 'Gate note from alice', budget: null });
-    const [bob] = await s.append('bob', { op: 'thread.note', text: 'Gate note from bob', budget: null });
+    await s.append('alice', { op: 'thread.note', text: 'Gate note from alice' });
+    const [bob] = await s.append('bob', { op: 'thread.note', text: 'Gate note from bob' });
     const ctx = recordMember(s, { sid: null });
     assert.equal((await searchRecord(ctx, 'gate', {}, nas.via)).elsewhere.length, 1);
     const budget = await searchRecord(ctx, 'gate', { lane: 'budget' }, nas.via);

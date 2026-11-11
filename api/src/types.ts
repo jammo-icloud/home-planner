@@ -1,14 +1,15 @@
 /**
  * The domain, and the event vocabulary that produces it.
  *
- * Two layers, deliberately separated:
+ * A household has one budget. Two layers, deliberately separated:
  *
  *   FACTS         transactions, categories, rules, merchants.
- *                 One household reality. Never forked, never budget-scoped.
+ *                 One household reality.
  *
- *   INTERPRETATIONS   budgets, envelopes, plans, assignments.
- *                     Each budget decides how facts roll up. Freely restructured
- *                     without touching a single categorized transaction.
+ *   INTERPRETATIONS   the budget's envelopes, months, plans, assignments.
+ *                     How the facts roll up, freely restructured without
+ *                     touching a single receipt. Receipts are still sorted
+ *                     into categories, which the envelopes match.
  *
  * Everything is derived by replaying an append-only log. Nothing is updated in
  * place, so "who changed this and why" is always answerable and two people
@@ -22,9 +23,8 @@ import type { DistributiveOmit } from './util-types.ts';
 
 /** A permanent fact: the kind of spending. `groceries`, `electricity`, `septic`. */
 export type CategoryId = string;
-/** A per-budget bucket. `daily_life`, `util_old`. Scoped to its budget. */
+/** A bucket of the household's budget. `daily_life`, `util_old`. */
 export type EnvelopeId = string;
-export type BudgetId = string;
 /** `YYYY-MM`. Budget months are calendar months; nothing tries to be clever. */
 export type Month = string;
 /** `YYYY-MM-DD`. */
@@ -57,12 +57,12 @@ export interface Category {
   readonly archived?: boolean;
   readonly id: CategoryId;
   readonly label: string;
-  /** Free-text grouping hint for pickers. Budgets do the real grouping. */
+  /** Free-text grouping hint for pickers. Envelopes do the real grouping. */
   readonly kind?: string;
   /**
    * Irregular costs are planned as "$9,000 every 10 years" and the monthly
-   * set-aside is derived. The estimate belongs to the world, not to a budget,
-   * so it lives on the category and every budget can derive from it.
+   * set-aside is derived. The estimate belongs to the world, not to an
+   * envelope, so it lives on the category and the envelope derives from it.
    */
   readonly sinking?: SinkingEstimate;
 }
@@ -96,7 +96,7 @@ export type PageKind = 'plan' | 'briefing' | 'answer';
 /** The frontmatter keys of each page kind, in the order they are written. Nothing outside the set is written. */
 export const PAGE_KEYS: Readonly<Record<PageKind, readonly string[]>> = {
   plan: ['planner', 'kind', 'id', 'title', 'area', 'state', 'parent', 'due', 'people', 'envelope', 'estimate', 'event'],
-  briefing: ['planner', 'kind', 'day', 'source', 'budget', 'writtenBy'],
+  briefing: ['planner', 'kind', 'day', 'source', 'writtenBy'],
   answer: ['planner', 'kind', 'replyTo', 'plan', 'model'],
 };
 /** What a frontmatter key holds: text, a whole number, nothing, or a list of text. */
@@ -123,7 +123,7 @@ export interface Rule {
 // ─── interpretations ──────────────────────────────────────────────────────────
 
 /**
- * How a budget decides which transactions land in an envelope.
+ * How the budget decides which transactions land in an envelope.
  *
  * Usually just categories. The `payee` predicate exists for the overlap month,
  * where the old house's power bill and the new one's are both `electricity`
@@ -174,8 +174,8 @@ export interface Basis { readonly amount: Cents; readonly per: Per }
 
 /**
  * What a sinking envelope saves toward. `every`: its categories' estimates
- * ("$1,200 every 4 years"), so the goal is the world's and every budget derives
- * the same monthly figure from it. `by`: a target by a month ("$4,000 by March
+ * ("$1,200 every 4 years"), so the goal is the world's and the monthly figure
+ * is derived from it. `by`: a target by a month ("$4,000 by March
  * 2027"), the monthly figure being what is left over the months left.
  */
 export type SinkingGoal =
@@ -185,8 +185,8 @@ export type SinkingGoal =
 /** An irregular cost, as a category carries it: what it costs and how often it comes round. */
 export interface SinkingEstimate { readonly cost: Cents; readonly everyYears: number }
 
-/** Enough to find a place in public data, and to say it back to a person. */
-export interface BudgetLocation {
+/** Where the household is: enough to find a place in public data, and to say it back to a person. */
+export interface Location {
   /** How it reads on screen, e.g. "Springfield, IL". */
   readonly label: string;
   /** Two-letter state, for state-level series like electricity prices. */
@@ -198,18 +198,6 @@ export interface BudgetLocation {
   readonly countyFips?: string;
   /** The county's name, e.g. "Lake County" — so the place can be checked by eye. */
   readonly county?: string;
-}
-
-export interface Budget {
-  /** Null for a budget that is a period rather than a place. */
-  readonly location?: BudgetLocation;
-  /** Archived budgets stay answerable but drop out of the switcher. */
-  readonly archived?: boolean;
-  readonly id: BudgetId;
-  readonly label: string;
-  readonly envelopes: ReadonlyMap<EnvelopeId, Envelope>;
-  /** A date a member gave a bill, by `billSlot`. Kept when its envelope goes. */
-  readonly bills: ReadonlyMap<string, BillRecord>;
 }
 
 export type BillKind = 'due' | 'autopay' | 'payby';
@@ -235,7 +223,7 @@ export interface Adjustment {
 }
 
 /**
- * A month of a budget.
+ * A month of the budget.
  *
  * `plan` is written once when the month opens and is never edited — that's what
  * makes "planned $325, funded $421, three months running" sayable. Everything
@@ -244,7 +232,6 @@ export interface Adjustment {
 export interface MonthPlan {
   /** A closed month is history: nothing in it can be reassigned or moved. */
   readonly closed?: boolean;
-  readonly budget: BudgetId;
   readonly month: Month;
   readonly openedAt: string;
   readonly plan: ReadonlyMap<EnvelopeId, Cents>;
@@ -271,29 +258,11 @@ export type Event = Meta &
         kind?: string;
         sinking?: { cost: Cents; everyYears: number };
       }
-    | { op: 'budget.create'; budget: BudgetId; label: string }
-    | { op: 'budget.rename'; budget: BudgetId; label: string }
     /**
-     * Where a budget is for.
-     *
-     * A budget differs from another budget because it is somewhere else — that
-     * is the whole reason electricity, tax and insurance are priced separately
-     * while groceries are not. Recording the place makes that explicit, and
-     * makes local cost data addressable.
-     *
-     * Optional, because not every budget is a place: a moving-between budget is
-     * a period, and saying so is more honest than giving it a false address.
+     * Where the household is, which makes local cost data addressable:
+     * electricity, tax and insurance are priced by place. Null clears it.
      */
-    | { op: 'budget.locate'; budget: BudgetId; location: BudgetLocation | null; why: string }
-    /**
-     * Put a budget away without destroying it.
-     *
-     * Its months, plans and moves are already in the log; deleting the budget
-     * would leave events referring to something that no longer exists, and
-     * history that cannot be replayed is not history. Archiving takes it out of
-     * the way and keeps every answer it could give.
-     */
-    | { op: 'budget.archive'; budget: BudgetId; archived: boolean; why: string }
+    | { op: 'household.locate'; location: Location | null; why: string }
     /**
      * Put a category out of use without unmaking it.
      *
@@ -307,16 +276,16 @@ export type Event = Meta &
      * assigning, moving or changing the income. Carry-over still flows from it,
      * because closing a month does not undo what it left behind.
      */
-    | { op: 'month.close'; budget: BudgetId; month: Month; closed: boolean; why: string }
+    | { op: 'month.close'; month: Month; closed: boolean; why: string }
     /**
      * Undo opening a month that should not have been opened.
      *
      * Only ever for an untouched month — one with no receipts against it and no
      * adjustments made. A month that has been lived in is closed, not discarded.
      */
-    | { op: 'month.discard'; budget: BudgetId; month: Month; why: string }
+    | { op: 'month.discard'; month: Month; why: string }
     /**
-     * A recurring income, as part of a budget's plan.
+     * A recurring income, as part of the budget's plan.
      *
      * Records what arrives each time and how often, never a monthly equivalent —
      * paid fortnightly is 26 payments a year, and dividing by twelve loses the
@@ -325,7 +294,6 @@ export type Event = Meta &
     | {
         op: 'income.source.define';
         source: string;
-        budget: BudgetId;
         label: string;
         /** Whose income it is. */
         earner: Actor;
@@ -338,7 +306,6 @@ export type Event = Meta &
     | { op: 'income.source.remove'; source: string; why: string }
     | {
         op: 'envelope.define';
-        budget: BudgetId;
         envelope: EnvelopeId;
         label: string;
         group: string;
@@ -369,30 +336,29 @@ export type Event = Meta &
      * every envelope and stop being accounted for anywhere, which is why this
      * needs a reason like any other decision that hides money.
      */
-    | { op: 'envelope.remove'; budget: BudgetId; envelope: EnvelopeId; why: string }
+    | { op: 'envelope.remove'; envelope: EnvelopeId; why: string }
     /** A bill's date, or none (null). `bill` is the frozen key; `byHand` names a bill no receipt gives. */
-    | { op: 'bill.set'; budget: BudgetId; envelope: EnvelopeId; bill: string; name: string; byHand?: true; date: BillDate | null }
-    | { op: 'bill.remove'; budget: BudgetId; envelope: EnvelopeId; bill: string; name: string }
+    | { op: 'bill.set'; envelope: EnvelopeId; bill: string; name: string; byHand?: true; date: BillDate | null }
+    | { op: 'bill.remove'; envelope: EnvelopeId; bill: string; name: string }
     /**
-     * Opens a month by snapshotting the budget's templates. The plan of record.
+     * Opens a month by snapshotting the envelopes' templates. The plan of record.
      * `plan` names an envelope planned at something other than its template:
      * a sinking envelope at what its goal needs that month, worked out when the
      * month was opened and kept, so a later estimate cannot rewrite it.
      */
-    | { op: 'month.open'; budget: BudgetId; month: Month; income: Cents; plan?: Readonly<Record<EnvelopeId, Cents>> }
+    | { op: 'month.open'; month: Month; income: Cents; plan?: Readonly<Record<EnvelopeId, Cents>> }
     /** Changes an envelope's funding, and therefore the month's total. */
-    | { op: 'assign'; budget: BudgetId; month: Month; envelope: EnvelopeId; to: Cents; why: string }
+    | { op: 'assign'; month: Month; envelope: EnvelopeId; to: Cents; why: string }
     /** Zero-sum between two envelopes. Never changes the month's total. */
     | {
         op: 'move';
-        budget: BudgetId;
         month: Month;
         from: EnvelopeId;
         to: EnvelopeId;
         amount: Cents;
         why: string;
       }
-    | { op: 'income.set'; budget: BudgetId; month: Month; amount: Cents; why: string }
+    | { op: 'income.set'; month: Month; amount: Cents; why: string }
     | { op: 'txn.add'; txns: readonly Txn[]; source?: string }
     | { op: 'txn.categorize'; txn: TxnId; category: Assignment | null; manual?: boolean; suggestedBy?: 'claude' }
     | { op: 'txn.split'; txn: TxnId; parts: readonly SplitPart[]; why?: string }
@@ -446,7 +412,6 @@ export type Event = Meta &
     | {
         op: 'prediction.record';
         prediction: string;
-        budget: BudgetId;
         month: Month;
         envelope: EnvelopeId;
         /** What it said would be spent by month end. */
@@ -460,14 +425,13 @@ export type Event = Meta &
     // so any household source can post into the same thread.
     /**
      * A section of the day's briefing, as it was shown. Written once per source
-     * per day; a `household` one is the whole household's, `budget: null`, and
-     * stands in for the others that day.
+     * per day; a `household` one is the whole household's, and stands in for
+     * the others that day.
      */
     | {
         op: 'thread.briefing';
         day: Day;
         source: BriefingSource;
-        budget: BudgetId | null;
         headline: string;
         /** Exactly one of `body` and `doc`: the words in the log, or the document in Drive. */
         body?: string;
@@ -485,9 +449,9 @@ export type Event = Meta &
          */
         calendarUnread?: true;
       }
-    | { op: 'thread.ask'; question: string; budget: BudgetId | null; plan?: PlanId }
+    | { op: 'thread.ask'; question: string; plan?: PlanId }
     /** A member writing to the household. Claude reads these, and never answers them. */
-    | { op: 'thread.note'; text: string; budget: BudgetId | null; plan?: PlanId }
+    | { op: 'thread.note'; text: string; plan?: PlanId }
     | {
         op: 'thread.answer';
         replyTo: EventId;
@@ -513,7 +477,6 @@ export type Event = Meta &
         summary: string;
         effects: readonly string[];
         events: readonly NewEventShape[];
-        budget: BudgetId | null;
         month: Month | null;
         envelopes: readonly EnvelopeId[];
         fingerprint: string;
@@ -598,7 +561,7 @@ export type Event = Meta &
         chips?: readonly string[];
         notes?: string;
         estimate?: Cents | null;
-        envelope?: { budget: BudgetId; envelope: EnvelopeId } | null;
+        envelope?: EnvelopeId | null;
       }
     | { op: 'plan.state'; plan: PlanId; state: PlanState }
     /**
@@ -828,7 +791,6 @@ export interface Offer {
   readonly summary: string;
   readonly effects: readonly string[];
   readonly events: readonly NewEventShape[];
-  readonly budget: BudgetId | null;
   readonly month: Month | null;
   readonly envelopes: readonly EnvelopeId[];
   readonly fingerprint: string;
@@ -1038,7 +1000,7 @@ export interface Plan {
   readonly asked: { readonly to: Actor; readonly at: string; readonly why: string } | null;
   /** Free text. Never moves it between columns. */
   readonly chips: readonly string[]; readonly notes: string;
-  readonly estimate: Cents | null; readonly envelope: { readonly budget: BudgetId; readonly envelope: EnvelopeId } | null;
+  readonly estimate: Cents | null; readonly envelope: EnvelopeId | null;
   readonly checklist: readonly ChecklistItem[]; readonly attachments: readonly Attachment[];
   readonly contacts: readonly ContactLink[]; readonly due: Day | null; readonly blocks: readonly Block[];
   /** Its events on the calendar: one per kind, one per block. */
@@ -1076,8 +1038,8 @@ export interface PageView {
 /** Ops that require a reason. Enforced at append time, not left to the caller. */
 export const REQUIRES_WHY: ReadonlySet<Op> = new Set<Op>(
   ['assign', 'move', 'income.set', 'member.add', 'member.remove', 'txn.remove',
-   'envelope.remove', 'budget.archive', 'category.archive', 'month.close', 'month.discard',
-   'income.source.remove', 'budget.locate',
+   'envelope.remove', 'category.archive', 'month.close', 'month.discard',
+   'income.source.remove', 'household.locate',
    'plan.remove', 'plan.ask', 'plan.ask.decline', 'plan.detach', 'plan.unblock',
    'guest.allow', 'guest.revoke', 'booking.block', 'booking.unblock', 'booking.cancel', 'booking.suggest']);
 
@@ -1135,7 +1097,6 @@ export interface Prediction {
   readonly id: string;
   readonly at: string;
   readonly who: Actor;
-  readonly budget: BudgetId;
   readonly month: Month;
   readonly envelope: EnvelopeId;
   readonly expected: Cents;
@@ -1194,11 +1155,16 @@ export interface State {
   /** The household's IANA zone, as its owner chose it; null until then. */
   readonly zone: string | null;
   readonly categories: ReadonlyMap<CategoryId, Category>;
-  readonly budgets: ReadonlyMap<BudgetId, Budget>;
+  /** The budget's envelopes. */
+  readonly envelopes: ReadonlyMap<EnvelopeId, Envelope>;
+  /** A date a member gave a bill, by `billSlot`. Kept when its envelope goes. */
+  readonly bills: ReadonlyMap<string, BillRecord>;
+  /** Where the household is; null until someone says. */
+  readonly location: Location | null;
   readonly txns: ReadonlyMap<TxnId, Txn>;
   readonly rules: readonly Rule[];
-  /** Keyed `${budget}:${month}`. */
-  readonly months: ReadonlyMap<string, MonthPlan>;
+  /** The budget's months, by month. */
+  readonly months: ReadonlyMap<Month, MonthPlan>;
   /** Per-person read cursor, keyed by actor. */
   readonly readCursor: ReadonlyMap<Actor, EventId>;
   readonly incomeSources: ReadonlyMap<string, import('./income.ts').IncomeSource>;
@@ -1231,7 +1197,6 @@ export interface State {
 /** How many files are still to move into the household's folder. */
 export const movesLeft = (s: Pick<State, 'documents'>): number => s.documents.waiting.size;
 
-export const monthKey = (budget: BudgetId, month: Month): string => `${budget}:${month}`;
 export const monthOf = (date: Day): Month => date.slice(0, 7);
 
 /**

@@ -197,14 +197,12 @@ unclear is not.`;
 export function householdContext(state: {
   label: string;
   members: ReadonlySet<string>;
-  budgets: ReadonlyMap<string, { label: string; location?: { label: string } | undefined }>;
+  location: { label: string } | null;
 }): string {
   const people = [...state.members].sort();
-  const budgets = [...state.budgets.values()].map((b) =>
-    b.location ? `${b.label} (${b.location.label})` : b.label);
   return `THIS HOUSEHOLD\n\n`
     + `${state.label}. The people who use it: ${people.join(' and ') || 'nobody yet'}.\n`
-    + `Budgets: ${budgets.join(', ') || 'none yet'}.\n`
+    + (state.location ? `Where it is: ${state.location.label}.\n` : '')
     + `Anything else you need about them is in the tools — ask rather than assume.`;
 }
 

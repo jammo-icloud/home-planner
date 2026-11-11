@@ -3,7 +3,7 @@
  *
  * A household shares one budget and its members rarely sit at it together, so each day opens
  * with one briefing for every member: what changed since the last one, and what
- * needs a person today. It is written once per budget per day and kept in the
+ * needs a person today. It is written once a day and kept in the
  * log as the first message of the day's thread. Whatever happens later that day
  * appears in the thread itself, so the briefing never rewrites itself.
  *
@@ -21,6 +21,7 @@ import { monthView } from './envelopes.ts';
 import { houseRules, structured, claudeConfigured, ClaudeRefused, unavailableReason } from './claude.ts';
 import { describe, ProposalStore, ToolError } from './tools.ts';
 import { isChange } from './activity.ts';
+import { cardLane } from './lanes.ts';
 import { offer, stirred } from './offers.ts';
 import { board } from './plans.ts';
 import type { BoardCard } from './plans.ts';
@@ -30,9 +31,9 @@ import { briefingFile, renderBriefingPage, writeDoc } from './docs.ts';
 import type { DocAccess } from './docs.ts';
 import { moveFirst } from './moves.ts';
 import { addDays, capital, listingFor, midnight } from './calendar.ts';
-import { CLAUDE, householdDay, householdZone, monthKey, monthOf } from './types.ts';
+import { CLAUDE, householdDay, householdZone, monthOf } from './types.ts';
 import type {
-  Actor, BriefingSource, BudgetId, CalendarRef, Day, Event, EventId, Month, Offer, Prediction, State,
+  Actor, BriefingSource, CalendarRef, Day, Event, EventId, Month, Offer, Prediction, State,
 } from './types.ts';
 import type { Store } from './store.ts';
 
@@ -51,8 +52,6 @@ export interface Decision {
 }
 
 export interface Briefing {
-  /** Null for the household's briefing, which is no one budget's. */
-  readonly budget: BudgetId | null;
   readonly month: Month;
   readonly day: Day;
   readonly headline: string;
@@ -76,15 +75,14 @@ export interface Briefing {
 
 type ThreadBriefing = Extract<Event, { op: 'thread.briefing' }>;
 
-/** Which sections: the household's own, or one budget's. */
-type Of = { readonly source: 'household' } | { readonly source: 'budget'; readonly budget: BudgetId };
+/** Which sections: the household's own, or the budget's. */
+type Of = { readonly source: 'household' | 'budget' };
 const HOUSEHOLD: Of = { source: 'household' };
-const ofBudget = (budget: BudgetId): Of => ({ source: 'budget', budget });
+const BUDGET: Of = { source: 'budget' };
 
-/** A line written before there was a choice of source is a budget's. */
+/** A line written before there was a choice of source is the budget's. */
 const sourceOf = (e: ThreadBriefing): BriefingSource => e.source ?? 'budget';
-const isOf = (e: ThreadBriefing, of: Of): boolean =>
-  sourceOf(e) === of.source && (of.source !== 'budget' || e.budget === of.budget);
+const isOf = (e: ThreadBriefing, of: Of): boolean => sourceOf(e) === of.source;
 
 /** Sections from any of these sources, oldest first, leaving out any that were replaced. */
 function sections(events: readonly Event[], ...of: Of[]): ThreadBriefing[] {
@@ -95,11 +93,11 @@ function sections(events: readonly Event[], ...of: Of[]): ThreadBriefing[] {
 
 /**
  * Where the previous day's section sits in the log, or -1 when there has never
- * been one. A budget's news runs from the last briefing that covered it: its
+ * been one. The budget's news runs from the last briefing that covered it: its
  * own section, or the household's, whichever came later.
  */
-function previousSection(events: readonly Event[], budget: BudgetId, today: Day): number {
-  const before = sections(events, ofBudget(budget), HOUSEHOLD).filter((e) => e.day < today).at(-1);
+function previousSection(events: readonly Event[], today: Day): number {
+  const before = sections(events, BUDGET, HOUSEHOLD).filter((e) => e.day < today).at(-1);
   return before ? events.indexOf(before) : -1;
 }
 
@@ -111,9 +109,9 @@ function previousSection(events: readonly Event[], budget: BudgetId, today: Day)
  * events and read as the whole is how a briefing comes to count seventeen
  * categories where there are twenty-two.
  */
-export async function changesSinceSection(store: Store, budget: BudgetId, today: Day):
+export async function changesSinceSection(store: Store, today: Day):
   Promise<{ shown: Event[]; total: number }> {
-  return changesSince(await store.since(null), budget, today);
+  return changesSince(await store.since(null), today);
 }
 
 /**
@@ -125,17 +123,16 @@ export async function changesSinceSection(store: Store, budget: BudgetId, today:
 const isMoneyChange = (e: Event): boolean =>
   isChange(e) && !e.op.startsWith('guest.') && !e.op.startsWith('booking.') && e.op !== 'guests.arrival';
 
-function changesSince(events: readonly Event[], budget: BudgetId, today: Day): { shown: Event[]; total: number } {
-  const from = previousSection(events, budget, today);
+function changesSince(events: readonly Event[], today: Day): { shown: Event[]; total: number } {
+  const from = previousSection(events, today);
   const news = events.slice(from + 1).filter(isMoneyChange);
   return { shown: from < 0 ? news.slice(-FIRST_RUN_EVENTS) : news, total: news.length };
 }
 
 /** Notes and questions left since the previous section, so the briefing can take them into account. */
-function notesSince(events: readonly Event[], budget: BudgetId, today: Day): { who: Actor; text: string }[] {
-  const from = previousSection(events, budget, today);
-  return events.slice(from + 1).flatMap((e) =>
-    (e.op === 'thread.note' && (e.budget === null || e.budget === budget) ? [{ who: e.who, text: e.text }] : []));
+function notesSince(events: readonly Event[], today: Day): { who: Actor; text: string }[] {
+  const from = previousSection(events, today);
+  return events.slice(from + 1).flatMap((e) => (e.op === 'thread.note' ? [{ who: e.who, text: e.text }] : []));
 }
 
 /** Move this person's cursor to the position the briefing was written from. */
@@ -167,7 +164,7 @@ export function scorePredictions(state: State, today: Day): ScoredPrediction[] {
   const out: ScoredPrediction[] = [];
   for (const p of state.predictions) {
     if (p.month >= now) continue; // still running
-    const view = monthView(state, p.budget, p.month);
+    const view = monthView(state, p.month);
     const env = view?.envelopes.find((e) => e.envelope.id === p.envelope);
     if (!env) continue;
     const off = Math.abs(env.activity - p.expected) as Cents;
@@ -207,7 +204,7 @@ export function facts(
   const parts: string[] = [];
 
   parts.push(`TODAY IS ${today}.`);
-  parts.push(`BUDGET: ${state.budgets.get(snap.budget)?.label ?? snap.budget} — ${snap.month}`);
+  parts.push(`BUDGET: ${snap.month}`);
   parts.push(`Day ${clock.dayOfMonth} of ${clock.daysInMonth}; ${clock.daysLeft} days left.`);
   parts.push('');
   parts.push('THIS MONTH');
@@ -386,14 +383,12 @@ export interface BriefingOptions {
   readonly who: Actor;
   /** How long a fallback section waits before Claude is tried again. */
   readonly retryEvery?: number;
-  readonly budget: string;
   readonly today: Day;
   readonly month?: Month;
 }
 
-/** A budget's month as the briefing reads it: the facts, and what they were made from. */
+/** The budget's month as the briefing reads it: the facts, and what they were made from. */
 interface MonthPart {
-  readonly budget: BudgetId;
   readonly month: Month;
   readonly snap: Snapshot;
   readonly text: string;
@@ -402,19 +397,19 @@ interface MonthPart {
   readonly scored: ScoredPrediction[];
 }
 
-/** The facts for one budget's month, or null when that month is not open. */
-async function monthPart(store: Store, budget: BudgetId, today: Day, month: Month): Promise<MonthPart | null> {
+/** The facts for the budget's month, or null when that month is not open. */
+async function monthPart(store: Store, today: Day, month: Month): Promise<MonthPart | null> {
   const state = store.state;
-  const snap = snapshot(state, budget, month, today);
+  const snap = snapshot(state, month, today);
   if (!snap) return null;
   const events = await store.since(null);
-  const { shown: changes, total: changesTotal } = changesSince(events, budget, today);
+  const { shown: changes, total: changesTotal } = changesSince(events, today);
   const scored = scorePredictions(state, today);
   const putOff = [...state.thread.offers.values()]
-    .filter((o) => o.status === 'snoozed' && o.budget === budget && stirred(state, o));
+    .filter((o) => o.status === 'snoozed' && cardLane(o, state) === 'budget' && stirred(state, o));
   const text = facts(snap, state, changes, scored, today, changesTotal,
-    { notes: notesSince(events, budget, today), putOff });
-  return { budget, month, snap, text, changes, changesTotal, scored };
+    { notes: notesSince(events, today), putOff });
+  return { month, snap, text, changes, changesTotal, scored };
 }
 
 /**
@@ -450,8 +445,8 @@ async function forecast(store: Store, drafted: Drafted, m: MonthPart): Promise<B
   const prediction = { envelope: p.envelope, expected: p.projected, why: drafted.predictWhy ?? 'projected at the current rate' };
   await store.append(CLAUDE, {
     op: 'prediction.record',
-    prediction: `${m.budget}:${m.month}:${p.envelope}`,
-    budget: m.budget, month: m.month, envelope: p.envelope,
+    prediction: `${m.month}:${p.envelope}`,
+    month: m.month, envelope: p.envelope,
     expected: p.projected, why: prediction.why,
   });
   return prediction;
@@ -463,7 +458,7 @@ function decisionsOf(drafted: Drafted, state: State, m: MonthPart | null): Decis
     title: d.title,
     detail: d.detail,
     ...(d.envelope ? { envelope: d.envelope } : {}),
-    ...(m ? suggestion(d, m.snap, state, m.budget, m.month) : {}),
+    ...(m ? suggestion(d, m.snap, state, m.month) : {}),
   }));
 }
 
@@ -474,13 +469,13 @@ function decisionsOf(drafted: Drafted, state: State, m: MonthPart | null): Decis
 export async function brief(store: Store, opts: BriefingOptions): Promise<Briefing> {
   const state = store.state;
   const month = opts.month ?? monthOf(opts.today);
-  const m = await monthPart(store, opts.budget, opts.today, month);
-  if (!m) throw new ToolError(`${opts.budget} has no open month for ${month}`, 409);
+  const m = await monthPart(store, opts.today, month);
+  if (!m) throw new ToolError(`${month} is not open`, 409);
 
   const { drafted, writtenBy } = await compose(state, BRIEFING_TASK, m.text, SCHEMA,
     (why) => fallback(m.snap, m.changesTotal, why));
   return {
-    budget: opts.budget, month, day: opts.today,
+    month, day: opts.today,
     headline: drafted.headline,
     body: drafted.body,
     decisions: decisionsOf(drafted, state, m),
@@ -522,16 +517,6 @@ interface Gathered {
   readonly plans: Block & { readonly overdue: readonly string[] };
   /** `unread` is why it was not read, for the log; `noSession` that a look with a session would read it. */
   readonly calendar: Block & { readonly unread: string | null; readonly noSession: boolean };
-}
-
-/**
- * The budget the household's briefing reads: the first with this month open,
- * as the screens choose by default. Null when none has.
- */
-function openBudget(state: State, today: Day): BudgetId | null {
-  const month = monthOf(today);
-  const budgets = [...state.budgets.values()].filter((b) => state.months.has(monthKey(b.id, month)));
-  return (budgets.find((b) => !b.archived) ?? budgets[0])?.id ?? null;
 }
 
 /** "Mon 17 Aug", for a day; the weekday saves the reader counting. */
@@ -666,8 +651,7 @@ async function gather(store: Store, o: HouseholdOptions): Promise<Gathered> {
   const state = store.state;
   const tz = householdZone(o.tz);
   const events = await store.since(null);
-  const budget = openBudget(state, o.today);
-  const month = budget ? await monthPart(store, budget, o.today, monthOf(o.today)) : null;
+  const month = await monthPart(store, o.today, monthOf(o.today));
   const plans = plansBlock(state, events, o.today, tz);
   const calendar = await calendarBlock(state, o, tz);
 
@@ -686,8 +670,8 @@ async function gather(store: Store, o: HouseholdOptions): Promise<Gathered> {
 }
 
 /**
- * The household's facts in three blocks: THIS MONTH (the open budget's own
- * facts, or that none is open), PLANS, and HOUSEHOLD CALENDAR. `sources` is
+ * The household's facts in three blocks: THIS MONTH (the budget's own facts
+ * for it, or that it is not open), PLANS, and HOUSEHOLD CALENDAR. `sources` is
  * the blocks that had something to say; `missing` what could not be read.
  */
 export async function householdFacts(store: Store, o: HouseholdOptions):
@@ -720,7 +704,7 @@ export async function briefHousehold(store: Store, o: HouseholdOptions): Promise
   // engine's words, unless Claude already said it.
   const unread = writtenBy === 'claude' && g.calendar.unread && !saysUnread(drafted.body) ? `\n\n${CALENDAR_UNREAD}` : '';
   return {
-    budget: null, month: monthOf(o.today), day: o.today,
+    month: monthOf(o.today), day: o.today,
     headline: drafted.headline,
     body: drafted.body + unread,
     decisions: decisionsOf(drafted, state, g.month),
@@ -736,13 +720,11 @@ export async function briefHousehold(store: Store, o: HouseholdOptions): Promise
 
 export interface Section {
   readonly event: EventId;
-  /** Null for the household's. */
-  readonly budget: BudgetId | null;
   readonly day: Day;
   readonly writtenBy: 'claude' | 'fallback';
 }
 
-/** One draft at a time per budget and day, so two members opening at once write one section. */
+/** One draft at a time a day, so two members opening at once write one section. */
 const inFlight = new Map<string, Promise<Section>>();
 /**
  * When Claude was last tried for a day that has only the fallback. The thread
@@ -750,13 +732,13 @@ const inFlight = new Map<string, Promise<Section>>();
  * not wait on Claude again.
  */
 const lastTried = new Map<string, number>();
-/** The same two for the household's briefing, kept apart so a budget's id can never be mistaken for it. */
+/** The same two for the household's briefing, kept apart from the budget's. */
 const householdInFlight = new Map<string, Promise<Section>>();
 const householdTried = new Map<string, number>();
 const RETRY_EVERY = 10 * 60 * 1000;
 
 /**
- * The day's section for this budget: returned if it is recorded, written and
+ * The day's section for the budget: returned if it is recorded, written and
  * recorded if not.
  *
  * A section the fallback wrote because Claude was unreachable is retried on
@@ -764,9 +746,9 @@ const RETRY_EVERY = 10 * 60 * 1000;
  * Each runnable suggestion becomes a card raised by the section.
  */
 export function ensureSection(store: Store, o: BriefingOptions): Promise<Section> {
-  const key = `${store.path}|${o.budget}|${o.today}`;
+  const key = `${store.path}|budget|${o.today}`;
   return once(inFlight, key, () => record(store, {
-    key, tried: lastTried, of: ofBudget(o.budget), budget: o.budget, who: o.who, today: o.today,
+    key, tried: lastTried, of: BUDGET, who: o.who, today: o.today,
     ...(o.retryEvery !== undefined ? { retryEvery: o.retryEvery } : {}),
     draft: () => brief(store, o),
   }));
@@ -775,12 +757,12 @@ export function ensureSection(store: Store, o: BriefingOptions): Promise<Section
 /**
  * The household's briefing for the day, one for every member whichever of
  * them looks first: returned if it is recorded, written and recorded if not,
- * under the same rules as a budget's section.
+ * under the same rules as the budget's section.
  */
 export function ensureHousehold(store: Store, o: HouseholdOptions): Promise<Section> {
   const key = `${store.path}|household|${o.today}`;
   return once(householdInFlight, key, () => record(store, {
-    key, tried: householdTried, of: HOUSEHOLD, budget: null, who: o.who, today: o.today, canReadCalendar: !!o.sid,
+    key, tried: householdTried, of: HOUSEHOLD, who: o.who, today: o.today, canReadCalendar: !!o.sid,
     access: { sid: o.sid, store, ...(o.household !== undefined ? { household: o.household } : {}) },
     ...(o.f ? { f: o.f } : {}),
     ...(o.retryEvery !== undefined ? { retryEvery: o.retryEvery } : {}),
@@ -800,7 +782,6 @@ interface Recording {
   readonly key: string;
   readonly tried: Map<string, number>;
   readonly of: Of;
-  readonly budget: BudgetId | null;
   readonly who: Actor;
   readonly today: Day;
   readonly retryEvery?: number;
@@ -816,7 +797,7 @@ interface Recording {
 async function record(store: Store, r: Recording): Promise<Section> {
   const today = sections(await store.since(null), r.of).filter((e) => e.day === r.today).at(-1);
   const as = (e: ThreadBriefing): Section =>
-    ({ event: e.id, budget: e.budget, day: e.day, writtenBy: e.writtenBy });
+    ({ event: e.id, day: e.day, writtenBy: e.writtenBy });
   // Written without the calendar, and this look can read it: written again, once.
   const withoutCalendar = today?.calendarUnread === true && r.canReadCalendar === true;
   if (today && !withoutCalendar && (today.writtenBy === 'claude' || !claudeConfigured())) return as(today);
@@ -833,12 +814,12 @@ async function record(store: Store, r: Recording): Promise<Section> {
   // log, and nobody is told. A replaced briefing's event keeps the version it
   // described: this write is a new version of the same file.
   // A briefing written again mid-move: its file moves first, so this is a new version of it in the new folder.
-  const rel = ['today', briefingFile(r.today, r.of.source, r.budget)] as const;
+  const rel = ['today', briefingFile(r.today, r.of.source)] as const;
   if (r.access) await moveFirst({ ...r.access, store, who: r.who }, rel, r.f);
   const doc = r.access ? await writeDoc(r.access, rel,
-    renderBriefingPage({ day: r.today, source: r.of.source, budget: r.budget, writtenBy: b.writtenBy, headline: b.headline, body: b.body }), r.f) : null;
+    renderBriefingPage({ day: r.today, source: r.of.source, writtenBy: b.writtenBy, headline: b.headline, body: b.body }), r.f) : null;
   const [e] = await store.append(CLAUDE, {
-    op: 'thread.briefing', day: r.today, source: r.of.source, budget: r.budget,
+    op: 'thread.briefing', day: r.today, source: r.of.source,
     headline: b.headline, ...(doc ? { doc } : { body: b.body }), writtenBy: b.writtenBy,
     ...(today ? { replaces: today.id } : {}),
     ...(b.calendarUnread ? { calendarUnread: true as const } : {}),
@@ -872,10 +853,9 @@ function suggestion(
   d: { title: string; tool?: string; envelope?: string },
   snap: Snapshot,
   state: State,
-  budget: string,
   month: Month,
 ): Record<string, never> | { suggests: NonNullable<Decision['suggests']> } {
-  const common = { budget, month };
+  const common = { month };
 
   if (d.tool === 'open_month' || d.tool === 'categorize_transactions') {
     return { suggests: { tool: d.tool, args: common } };

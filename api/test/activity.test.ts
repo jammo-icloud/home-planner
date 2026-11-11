@@ -24,10 +24,9 @@ async function fixture() {
   await store.append('system', [
     { op: 'category.define', category: 'food', label: 'Groceries' },
     { op: 'category.define', category: 'dine', label: 'Dining out' },
-    { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'daily', label: 'Daily life', group: 'People',
+    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
       match: { categories: ['food', 'dine'] }, template: parseDollars('1000.00'), order: 0 },
-    { op: 'month.open', budget: 'harbor', month: '2026-08', income: parseDollars('5000.00') },
+    { op: 'month.open', month: '2026-08', income: parseDollars('5000.00') },
     { op: 'txn.add', txns: [
       receipt('r1', 'SAFEWAY', '-64.10', 'food'),
       receipt('r2', 'A MYSTERY CHARGE', '-31.00'),
@@ -202,7 +201,7 @@ describe('reading it without drowning', () => {
 
   test('"waiting" holds the decisions that took money out, for the one who did not make them', async () => {
     const { store } = await fixture();
-    await store.append('alice', { op: 'thread.note', text: 'the thread has started', budget: null });
+    await store.append('alice', { op: 'thread.note', text: 'the thread has started' });
     await store.append('alice', { op: 'txn.remove', txn: 'r1', why: 'gone' });
     const forBob = await activity(store, { who: 'bob' });
     const waits = forBob.entries.filter((e) => e.waits);

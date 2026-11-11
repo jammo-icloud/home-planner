@@ -50,10 +50,9 @@ before(async () => {
   await seed.append('tester', [
     { op: 'household.claim', label: 'Sandbox' },
     { op: 'category.define', category: 'service', label: 'Car service', sinking: { cost: cents(90000), everyYears: 1 } },
-    { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'auto', label: 'Auto', group: 'Future',
+    { op: 'envelope.define', envelope: 'auto', label: 'Auto', group: 'Future',
       match: { categories: ['service'] }, template: cents(7500), order: 0, sinking: { kind: 'every' } },
-    { op: 'month.open', budget: 'harbor', month, income: cents(100000) },
+    { op: 'month.open', month, income: cents(100000) },
   ]);
   const { start } = await import('../src/server.ts');
   const server = await start();
@@ -78,15 +77,15 @@ describe('sinking funds through the routes', () => {
   });
 
   test("an OFX preview reads the statement's balance, and the commit records it with the receipts", async () => {
-    const p = await call('POST', '/api/import/preview', { filename: 'savings.qfx', content: QFX, budget: 'harbor' });
+    const p = await call('POST', '/api/import/preview', { filename: 'savings.qfx', content: QFX });
     assert.equal(p.status, 200);
     assert.deepEqual(p.json.balances, [{ account: '5550001', cents: 5000, exact: '$50.00', asOf: today }]);
     assert.equal(p.json.askSavings, false);
-    const c = await call('POST', '/api/import/commit', { source: 'savings.qfx', budget: 'harbor', rows: p.json.rows, balances: p.json.balances });
+    const c = await call('POST', '/api/import/commit', { source: 'savings.qfx', rows: p.json.rows, balances: p.json.balances });
     assert.equal(c.status, 200);
     assert.deepEqual([c.json.added, c.json.balances], [1, 1]);
     // The same file again: nothing new, said once.
-    const again = await call('POST', '/api/import/commit', { source: 'savings.qfx', budget: 'harbor', rows: [], balances: p.json.balances });
+    const again = await call('POST', '/api/import/commit', { source: 'savings.qfx', rows: [], balances: p.json.balances });
     assert.equal(again.status, 400);
   });
 
@@ -96,29 +95,29 @@ describe('sinking funds through the routes', () => {
     assert.equal(st.json.savings.account, '5550001');
     assert.deepEqual(st.json.savings.balance, { exact: '$50.00', asOf: today, source: 'statement', who: 'tester' });
     assert.deepEqual(st.json.savings.accounts.map((a: any) => [a.account, a.receipts]), [['5550001', 1]]);
-    const m = await call('POST', '/api/tools/get_month', { budget: 'harbor' });
+    const m = await call('POST', '/api/tools/get_month', {});
     assert.equal(m.json.result.savings.status, 'short');
     assert.equal(m.json.result.savings.words.verdict, 'Savings is $25 short of the sinking funds.');
     assert.equal(m.json.result.envelopes[0].sinking.monthlyExact, '$75.00');
   });
 
   test('a typed balance that is short raises one card on Today, which needs no Claude', async () => {
-    const st = await call('POST', '/api/settings/savings/balance', { cents: 6000, budget: 'harbor' });
+    const st = await call('POST', '/api/settings/savings/balance', { cents: 6000 });
     assert.equal(st.status, 200);
     assert.deepEqual([st.json.savings.balance.exact, st.json.savings.balance.source], ['$60.00', 'typed']);
-    const page = await call('GET', '/api/thread?budget=harbor');
+    const page = await call('GET', '/api/thread');
     const cards = page.json.entries.filter((e: any) => e.kind === 'card' && e.offer.tool === 'savings_short');
     assert.equal(cards.length, 1);
     assert.equal(cards[0].offer.summary, 'Savings is $15 short of the sinking funds');
     assert.ok(page.json.waiting.some((w: any) => w.kind === 'offer' && w.offer.id === cards[0].offer.id));
-    assert.equal((await call('POST', '/api/tools/savings_short', { budget: 'harbor', account: '5550001' })).status, 400, 'raised only by the app');
+    assert.equal((await call('POST', '/api/tools/savings_short', { account: '5550001' })).status, 400, 'raised only by the app');
   });
 
   test('a CSV asks what Savings shows today, and the answer is recorded as typed', async () => {
     const csv = 'Date,Payee,Amount\n' + `${today},GARAGE,-10.00\n`;
-    const p = await call('POST', '/api/import/preview', { filename: 'checking.csv', content: csv, budget: 'harbor' });
+    const p = await call('POST', '/api/import/preview', { filename: 'checking.csv', content: csv });
     assert.deepEqual([p.json.askSavings, p.json.balances], [true, []]);
-    const c = await call('POST', '/api/import/commit', { source: 'checking.csv', budget: 'harbor', rows: p.json.rows, savingsToday: 7500 });
+    const c = await call('POST', '/api/import/commit', { source: 'checking.csv', rows: p.json.rows, savingsToday: 7500 });
     assert.deepEqual([c.json.added, c.json.balances], [1, 1]);
     const st = await call('GET', '/api/settings');
     assert.deepEqual([st.json.savings.balance.exact, st.json.savings.balance.source], ['$75.00', 'typed']);

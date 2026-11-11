@@ -26,15 +26,11 @@ async function household(): Promise<Store> {
     { op: 'category.define', category: 'electricity', label: 'Electricity' },
     { op: 'category.define', category: 'gas', label: 'Gas & heating' },
     { op: 'category.define', category: 'vet', label: 'Vet' },
-    { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'Food', group: 'People',
+    { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'People',
       match: { categories: ['groceries'] }, template: parseDollars('600.00'), order: 0 },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'util', label: 'Utilities', group: 'House',
+    { op: 'envelope.define', envelope: 'util', label: 'Utilities', group: 'House',
       match: { categories: ['electricity', 'gas'] }, template: parseDollars('300.00'), order: 1 },
-    { op: 'budget.create', budget: 'moving', label: 'Moving between' },
-    { op: 'envelope.define', budget: 'moving', envelope: 'util', label: 'Utilities', group: 'House',
-      match: { categories: ['electricity'] }, template: parseDollars('300.00'), order: 0 },
-    { op: 'envelope.define', budget: 'moving', envelope: 'util-old', label: 'Utilities — old house', group: 'House',
+    { op: 'envelope.define', envelope: 'util-old', label: 'Utilities — old house', group: 'House',
       match: { categories: ['electricity'], payee: 'EXAMPLE POWER' }, template: parseDollars('150.00'), order: 1 },
   ]);
   return store;
@@ -47,37 +43,37 @@ afterEach(() => { setClaudeClient(null); });
 
 describe('the picker speaks in envelopes', () => {
   test('an envelope fed by one category is labelled with the envelope', async () => {
-    const o = pickerOptions((await household()).state, 'harbor', null).find((x) => x.value === 'groceries')!;
+    const o = pickerOptions((await household()).state, null).find((x) => x.value === 'groceries')!;
     assert.deepEqual(o, { value: 'groceries', label: 'Food', group: 'People' });
   });
 
   test('an envelope fed by several is labelled envelope · category', async () => {
-    const opts = pickerOptions((await household()).state, 'harbor', null);
+    const opts = pickerOptions((await household()).state, null);
     assert.equal(opts.find((x) => x.value === 'electricity')!.label, 'Utilities · Electricity');
     assert.equal(opts.find((x) => x.value === 'gas')!.label, 'Utilities · Gas & heating');
   });
 
   test('a payee-narrowed envelope labels the receipt where it will land', async () => {
     const state = (await household()).state;
-    assert.equal(pickerOptions(state, 'moving', { payee: 'EXAMPLE POWER BILLPAY' }).find((x) => x.value === 'electricity')!.label,
+    assert.equal(pickerOptions(state, { payee: 'EXAMPLE POWER BILLPAY' }).find((x) => x.value === 'electricity')!.label,
       'Utilities — old house');
-    assert.equal(pickerOptions(state, 'moving', { payee: 'EXAMPLE ELECTRIC' }).find((x) => x.value === 'electricity')!.label,
-      'Utilities');
+    assert.equal(pickerOptions(state, { payee: 'EXAMPLE ELECTRIC' }).find((x) => x.value === 'electricity')!.label,
+      'Utilities · Electricity');
   });
 
   test('a category with no envelope here is offered under "Not in this budget"', async () => {
-    const o = pickerOptions((await household()).state, 'harbor', null).find((x) => x.value === 'vet')!;
+    const o = pickerOptions((await household()).state, null).find((x) => x.value === 'vet')!;
     assert.deepEqual(o, { value: 'vet', label: 'Vet', group: 'Not in this budget' });
   });
 
   test('transfer and income are always offered', async () => {
-    const values = pickerOptions((await household()).state, 'harbor', null).map((x) => x.value);
+    const values = pickerOptions((await household()).state, null).map((x) => x.value);
     assert.ok(values.includes('__transfer') && values.includes('__income'));
   });
 
   test('the picker ends with the split option, and the model is offered it', async () => {
     const state = (await household()).state;
-    const opts = pickerOptions(state, 'harbor', null);
+    const opts = pickerOptions(state, null);
     assert.deepEqual(opts.at(-1), SPLIT_OPTION);
     assert.deepEqual(SPLIT_OPTION, { value: '__split', label: 'Split across envelopes…', group: 'Several envelopes' });
     const f = fake([reply([])]);
@@ -90,7 +86,7 @@ describe('the picker speaks in envelopes', () => {
 describe("the household's model", () => {
   test("the household's model is the one asked, else the deployment's, else the default", async () => {
     const store = await household();
-    const options = pickerOptions(store.state, 'harbor', null);
+    const options = pickerOptions(store.state, null);
     const f = fake([reply([]), reply([])]);
     await suggest(store.state, ['ACME'], options);
     assert.equal(f.calls[0].model, 'claude-haiku-5-5');
@@ -105,7 +101,7 @@ describe("the household's model", () => {
     process.env['CLAUDE_MATCH_MODEL'] = 'claude-opus-5-5';
     try {
       const f = fake([reply([]), reply([])]);
-      const options = pickerOptions(store.state, 'harbor', null);
+      const options = pickerOptions(store.state, null);
       await suggest(store.state, ['ACME'], options);
       assert.equal(f.calls[0].model, 'claude-opus-5-5');
       await store.append('alice', { op: 'envelopes.model', model: 'claude-sonnet-5-5' });
@@ -152,7 +148,7 @@ describe('Haiku suggests', () => {
   test('it is sent only payees and labels, once each', async () => {
     const state = (await household()).state;
     const f = fake([reply([])]);
-    await suggest(state, ['HILLTOP FOODS #12', 'HILLTOP FOODS #12', 'EXAMPLE ENERGY'], pickerOptions(state, 'harbor', null));
+    await suggest(state, ['HILLTOP FOODS #12', 'HILLTOP FOODS #12', 'EXAMPLE ENERGY'], pickerOptions(state, null));
     assert.equal(f.calls.length, 1);
     const text = sentText(f.calls[0]);
     assert.equal(text.match(/HILLTOP FOODS #12/g)?.length, 1);
@@ -171,7 +167,7 @@ describe('Haiku suggests', () => {
       { payee: 'MYSTERY', choice: 'nope', confidence: 0.99 },
       { payee: 'NOT SENT', choice: 'groceries', confidence: 0.99 },
     ])]);
-    const got = await suggest(state, ['HILLTOP FOODS', 'EXAMPLE ENERGY', 'MYSTERY'], pickerOptions(state, 'harbor', null));
+    const got = await suggest(state, ['HILLTOP FOODS', 'EXAMPLE ENERGY', 'MYSTERY'], pickerOptions(state, null));
     assert.deepEqual([...got.entries()], [['HILLTOP FOODS', { value: 'groceries', confidence: 0.95 }]]);
   });
 
@@ -181,7 +177,7 @@ describe('Haiku suggests', () => {
     delete process.env['ANTHROPIC_API_KEY'];
     try {
       const state = (await household()).state;
-      const got = await suggest(state, ['HILLTOP FOODS'], pickerOptions(state, 'harbor', null));
+      const got = await suggest(state, ['HILLTOP FOODS'], pickerOptions(state, null));
       assert.equal(got.size, 0);
     } finally { if (saved !== undefined) process.env['ANTHROPIC_API_KEY'] = saved; }
   });
@@ -196,7 +192,7 @@ describe('suggesting for an import', () => {
   test('rows a rule sorted are never sent', async () => {
     const state = (await household()).state;
     const f = fake([reply([{ payee: 'HILLTOP FOODS', choice: 'groceries', confidence: 0.9 }])]);
-    const out = await suggestForRows(state, 'harbor', rows);
+    const out = await suggestForRows(state, rows);
     assert.doesNotMatch(sentText(f.calls[0]), /PAYROLL/);
     assert.deepEqual([...out.suggested.entries()], [['a', { value: 'groceries', confidence: 0.9 }]]);
   });
@@ -204,7 +200,7 @@ describe('suggesting for an import', () => {
   test('when Haiku fails, there are no suggestions and it says why', async () => {
     const state = (await household()).state;
     fake([Object.assign(new Error('529 overloaded'), { status: 529 })]);
-    const out = await suggestForRows(state, 'harbor', rows);
+    const out = await suggestForRows(state, rows);
     assert.equal(out.suggested.size, 0);
     assert.match(out.error ?? '', /overloaded/);
   });
@@ -212,7 +208,7 @@ describe('suggesting for an import', () => {
   test('nothing unsorted means no call at all', async () => {
     const state = (await household()).state;
     const f = fake([]);
-    await suggestForRows(state, 'harbor', [rows[1]!]);
+    await suggestForRows(state, [rows[1]!]);
     assert.equal(f.calls.length, 0);
   });
 });
@@ -235,7 +231,7 @@ describe('Haiku may answer split, and writes the rule', () => {
     const state = await ledger();
     fake([reply([{ payee: 'BIGBOX WHSE #0999', choice: '__split', confidence: 0.9, rule: 'bigbox',
       parts: ['groceries', 'nope', '__split', 'groceries'] }])]);
-    const got = await suggest(state, ['BIGBOX WHSE #0999'], pickerOptions(state, 'harbor', null));
+    const got = await suggest(state, ['BIGBOX WHSE #0999'], pickerOptions(state, null));
     assert.deepEqual(got.get('BIGBOX WHSE #0999'), { value: '__split', confidence: 0.9, rule: 'bigbox', parts: ['groceries'] });
   });
 
@@ -245,7 +241,7 @@ describe('Haiku may answer split, and writes the rule', () => {
       { payee: 'QUIKSTOP', choice: 'groceries', confidence: 0.9, rule: 'quik', parts: ['groceries', 'vet'] },
       { payee: 'TARGET', choice: '__split', confidence: 0.9, rule: 'target', parts: ['nope', '__split'] },
     ])]);
-    const got = await suggest(state, ['QUIKSTOP', 'TARGET'], pickerOptions(state, 'harbor', null));
+    const got = await suggest(state, ['QUIKSTOP', 'TARGET'], pickerOptions(state, null));
     assert.deepEqual(got.get('QUIKSTOP'), { value: 'groceries', confidence: 0.9, rule: 'quik' });
     assert.deepEqual(got.get('TARGET'), { value: '__split', confidence: 0.9, rule: 'target' });
   });
@@ -264,7 +260,7 @@ describe('Haiku may answer split, and writes the rule', () => {
   test('a good rule rides along with the suggestion', async () => {
     const state = await ledger();
     fake([reply([{ payee: 'QUIKSTOP #5', choice: 'groceries', confidence: 0.9, rule: 'quik' }])]);
-    const got = await suggest(state, ['QUIKSTOP #5'], pickerOptions(state, 'harbor', null));
+    const got = await suggest(state, ['QUIKSTOP #5'], pickerOptions(state, null));
     assert.deepEqual(got.get('QUIKSTOP #5'), { value: 'groceries', confidence: 0.9, rule: 'quik' });
   });
 
@@ -276,7 +272,7 @@ describe('Haiku may answer split, and writes the rule', () => {
       { payee: 'BIGBOX GAS', choice: 'groceries', confidence: 0.9, rule: 'bigbox' },
       { payee: 'EXAMPLE POWER BILLPAY', choice: 'electricity', confidence: 0.9, rule: 'example power' },
     ])]);
-    const got = await suggest(state, ['QUIKSTOP #5', 'SHELL OIL', 'BIGBOX GAS', 'EXAMPLE POWER BILLPAY'], pickerOptions(state, 'harbor', null));
+    const got = await suggest(state, ['QUIKSTOP #5', 'SHELL OIL', 'BIGBOX GAS', 'EXAMPLE POWER BILLPAY'], pickerOptions(state, null));
     assert.equal(got.size, 4);
     for (const [payee, value] of [['QUIKSTOP #5', 'groceries'], ['SHELL OIL', 'groceries'], ['BIGBOX GAS', 'groceries'], ['EXAMPLE POWER BILLPAY', 'electricity']] as const) {
       assert.deepEqual(got.get(payee), { value, confidence: 0.9 }, payee);
@@ -287,7 +283,7 @@ describe('Haiku may answer split, and writes the rule', () => {
     const state = await ledger();
     // The import screen: the rule already marked the row split.
     const f = fake([]);
-    const imported = await suggestForRows(state, 'harbor', [{ id: 'i', payee: 'BIGBOX WHSE', category: '__split' }]);
+    const imported = await suggestForRows(state, [{ id: 'i', payee: 'BIGBOX WHSE', category: '__split' }]);
     assert.equal(f.calls.length, 0);
     assert.equal(imported.suggested.size, 0);
     assert.equal(imported.toDivide.size, 0, 'a row already marked split is skipped, not counted as unsorted');
@@ -296,7 +292,7 @@ describe('Haiku may answer split, and writes the rule', () => {
     const store = await household();
     await store.append('alice', { op: 'rule.add', rule: 'r-c', match: 'BIGBOX', category: '__split' });
     const g = fake([reply([{ payee: 'HILLTOP FOODS', choice: 'groceries', confidence: 0.9, rule: 'hilltop foods' }])]);
-    const queue = await suggestForRows(store.state, 'harbor', [
+    const queue = await suggestForRows(store.state, [
       { id: 'q', payee: 'BIGBOX WHSE', category: null },
       { id: 'm', payee: 'WAREHOUSE', memo: 'bigbox run', category: null },
       { id: 'k', payee: 'HILLTOP FOODS', category: null },
@@ -311,7 +307,7 @@ describe('Haiku may answer split, and writes the rule', () => {
     const store = await household();
     await store.append('alice', { op: 'rule.add', rule: 'r-c', match: 'BIGBOX', category: '__split' });
     const f = fake([]);
-    const out = await suggestForRows(store.state, 'harbor', [{ id: 'q', payee: 'BIGBOX WHSE', category: null }]);
+    const out = await suggestForRows(store.state, [{ id: 'q', payee: 'BIGBOX WHSE', category: null }]);
     assert.equal(f.calls.length, 0);
     assert.deepEqual([...out.toDivide], ['q']);
     assert.equal(out.suggested.size, 0);

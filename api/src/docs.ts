@@ -28,11 +28,10 @@ import { renderFrontmatter, parseFrontmatter } from './frontmatter.ts';
 import { SessionLost, SynologyError, createFolder, requireSid } from './synology.ts';
 import type { DsmFetch } from './synology.ts';
 import { PAGE_FORMAT } from './types.ts';
-import type { BriefingSource, BudgetId, Day, DocRef, DocumentsFolder, EventId, PlanId, State } from './types.ts';
+import type { BriefingSource, Day, DocRef, DocumentsFolder, EventId, PlanId, State } from './types.ts';
 
-/** The file a briefing is kept in: its day, its source, and its budget when it has one. */
-export const briefingFile = (day: Day, source: BriefingSource, budget: BudgetId | null): string =>
-  `${day}-${source}${budget ? `-${budget}` : ''}.md`;
+/** The file a briefing is kept in: its day and its source. */
+export const briefingFile = (day: Day, source: BriefingSource): string => `${day}-${source}.md`;
 
 /** A heading is one line: whatever line breaks the words had are spaces. */
 const oneLine = (s: string): string => s.replace(/\s+/g, ' ').trim();
@@ -47,10 +46,10 @@ function underHeading(page: string): string {
 
 /** The page for one briefing: its headline as the heading, its body under it. */
 export function renderBriefingPage(b: {
-  day: Day; source: BriefingSource; budget: BudgetId | null; writtenBy: 'claude' | 'fallback'; headline: string; body: string;
+  day: Day; source: BriefingSource; writtenBy: 'claude' | 'fallback'; headline: string; body: string;
 }): string {
   const front = renderFrontmatter('briefing', {
-    planner: PAGE_FORMAT, kind: 'briefing', day: b.day, source: b.source, budget: b.budget, writtenBy: b.writtenBy,
+    planner: PAGE_FORMAT, kind: 'briefing', day: b.day, source: b.source, writtenBy: b.writtenBy,
   });
   return `${front}# ${oneLine(b.headline)}\n\n${b.body}\n`;
 }

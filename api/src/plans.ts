@@ -14,13 +14,13 @@ import { describe } from './tools.ts';
 import { goalSpelling, notOnCalendar, sameGoal } from './plan-rules.ts';
 import { householdDay, householdZone, monthOf, visibleTo } from './types.ts';
 import type {
-  Actor, BudgetId, Block, Day, EnvelopeId, Event, EventId, Offer, Plan, PlanId, PlanState, State,
+  Actor, Block, Day, EnvelopeId, Event, EventId, Offer, Plan, PlanId, PlanState, State,
 } from './types.ts';
 
 export interface BoardCard {
   id: PlanId; title: string; area: string; goal: string | null; state: PlanState; owner: Actor; asked: Plan['asked'];
   chips: readonly string[]; due: Day | null; blocks: readonly Block[];
-  envelope: { budget: BudgetId; envelope: EnvelopeId; label: string; left: string } | null;
+  envelope: { envelope: EnvelopeId; label: string; left: string } | null;
   /** Whole days in Doing. Null in Planning and once done: the clock only runs in Doing. */
   daysInState: number | null;
   /** A `thread.answer` for this plan exists. */
@@ -102,8 +102,8 @@ const doingFor = (p: Plan, today: Day, tz: string): number | null =>
  */
 function envelopeFigures(state: State, p: Plan, today: Day) {
   if (!p.envelope) return null;
-  const view = monthView(state, p.envelope.budget, monthOf(today));
-  const row = view?.envelopes.find((e) => e.envelope.id === p.envelope!.envelope);
+  const view = monthView(state, monthOf(today));
+  const row = view?.envelopes.find((e) => e.envelope.id === p.envelope);
   return row ? { label: row.envelope.label, left: fmt(row.available), planned: row.planned } : null;
 }
 
@@ -118,7 +118,7 @@ function cardOf(state: State, p: Plan, today: Day, tz: string, researched: Reado
   return {
     id: p.id, title: p.title, area: p.area, goal: p.goal, state: p.state, owner: p.owner, asked: p.asked,
     chips: p.chips, due: p.due, blocks: p.blocks,
-    envelope: p.envelope && money ? { budget: p.envelope.budget, envelope: p.envelope.envelope, label: money.label, left: money.left } : null,
+    envelope: p.envelope && money ? { envelope: p.envelope, label: money.label, left: money.left } : null,
     daysInState: doingFor(p, today, tz),
     hasResearch: researched.has(p.id),
     notOnCalendar: (({ due, blocks }) => due || blocks.length > 0)(notOnCalendar(p)),

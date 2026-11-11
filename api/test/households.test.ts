@@ -31,11 +31,10 @@ async function furnished(store: Awaited<ReturnType<Households['open']>>) {
     { op: 'txn.add', txns: [
       { id: 't1', date: '2026-08-02', payee: 'SAFEWAY', amount: parseDollars('-64.10'), dedupeKey: 't1', category: 'food' },
     ] },
-    { op: 'budget.create', budget: 'home', label: 'Home' },
-    { op: 'envelope.define', budget: 'home', envelope: 'daily', label: 'Daily life', group: 'People',
+    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
       match: { categories: ['food'] }, template: parseDollars('1000.00'), order: 0 },
-    { op: 'month.open', budget: 'home', month: '2026-08', income: parseDollars('5000.00') },
-    { op: 'assign', budget: 'home', month: '2026-08', envelope: 'daily',
+    { op: 'month.open', month: '2026-08', income: parseDollars('5000.00') },
+    { op: 'assign', month: '2026-08', envelope: 'daily',
       to: parseDollars('1100.00'), why: 'topping up' },
   ]);
 }
@@ -141,7 +140,7 @@ describe('a backup is the log', () => {
     assert.equal(b.label, 'Rivera');
     assert.equal(b.owner, 'alice');
     assert.ok(b.counts.facts >= 4);
-    assert.ok(b.counts.budgets >= 2);
+    assert.ok(b.counts.budgets >= 1);
     assert.ok(b.counts.months >= 2);
     assert.equal(b.counts.people, 1, 'the claim');
   });
@@ -169,7 +168,7 @@ describe('a backup is the log', () => {
     assert.match(plan.summary[0]!, /1 receipts/);
     await store.append('bob', eventsToApply(plan) as never);
     assert.equal(store.state.txns.size, 1);
-    assert.equal(store.state.budgets.size, 0, 'a full ledger and no plan is a sensible place to start');
+    assert.equal(store.state.envelopes.size, 0, 'a full ledger and no plan is a sensible place to start');
   });
 
   test('restoring a budget without its categories is refused as nonsense, not attempted', async () => {
@@ -186,7 +185,7 @@ describe('a backup is the log', () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
     const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'months']);
-    assert.ok(plan.missingPrerequisites.some((m) => /need that budget/.test(m)));
+    assert.ok(plan.missingPrerequisites.some((m) => m.includes("need the budget's envelopes (daily)")));
   });
 
   test('all three together restore cleanly into an empty household', async () => {
@@ -198,8 +197,8 @@ describe('a backup is the log', () => {
 
     await store.adopt(eventsToApply(plan));
     assert.equal(store.state.txns.size, 1);
-    assert.equal(store.state.budgets.get('home')!.envelopes.size, 1);
-    assert.ok(store.state.months.has('home:2026-08'));
+    assert.equal(store.state.envelopes.size, 1);
+    assert.ok(store.state.months.has('2026-08'));
     assert.equal(store.state.owner, 'bob', 'the restorer still owns it');
   });
 });
@@ -235,8 +234,7 @@ describe('an envelope with no figure yet survives a restore', () => {
     const { store: from } = await hh.create('alice', 'Rivera');
     await from.append('alice', [
       { op: 'category.define', category: 'rent', label: 'Rent' },
-      { op: 'budget.create', budget: 'home', label: 'Home' },
-      { op: 'envelope.define', budget: 'home', envelope: 'rent', label: 'Rent', group: 'House',
+      { op: 'envelope.define', envelope: 'rent', label: 'Rent', group: 'House',
         match: { categories: ['rent'] }, template: parseDollars('1500.00'), order: 0,
         needsFigure: true, source: 'Rent index, Placitas, 2026-06' },
     ]);
@@ -246,7 +244,7 @@ describe('an envelope with no figure yet survives a restore', () => {
     const plan = planRestore(store.state, backup, ['facts', 'budgets']);
     assert.deepEqual(plan.collisions, []);
     await store.adopt(eventsToApply(plan));
-    const env = store.state.budgets.get('home')!.envelopes.get('rent')!;
+    const env = store.state.envelopes.get('rent')!;
     assert.equal(env.needsFigure, true);
     assert.equal(env.source, 'Rent index, Placitas, 2026-06');
   });
@@ -421,8 +419,7 @@ describe('a collision refuses, and says what it was', () => {
     const { store } = await hh.create('bob', 'Fresh');
     await store.append('bob', [
       { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
-      { op: 'budget.create', budget: 'home', label: 'Home' },
-      { op: 'envelope.define', budget: 'home', envelope: 'other', label: 'Something else',
+      { op: 'envelope.define', envelope: 'other', label: 'Something else',
         group: 'People', match: { categories: ['food'] }, template: parseDollars('50.00'), order: 0 },
     ]);
     const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budgets']);
@@ -434,7 +431,11 @@ describe('a collision refuses, and says what it was', () => {
   test('nothing is written when a plan is refused', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('bob', 'Fresh');
-    await store.append('bob', { op: 'budget.create', budget: 'home', label: 'Home' });
+    await store.append('bob', [
+      { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
+      { op: 'envelope.define', envelope: 'other', label: 'Something else',
+        group: 'People', match: { categories: ['food'] }, template: parseDollars('50.00'), order: 0 },
+    ]);
     const before = store.state.eventCount;
 
     const plan = planRestore(store.state, parseBackup(await backupOf()), ['facts', 'budgets']);
@@ -556,7 +557,7 @@ describe('the scope of every event is decided, not guessed', () => {
   test('one band each, across the whole vocabulary', () => {
     const samples: [Event['op'], string][] = [
       ['txn.add', 'facts'], ['category.define', 'facts'], ['rule.add', 'facts'],
-      ['budget.create', 'budgets'], ['envelope.define', 'budgets'], ['income.source.define', 'budgets'],
+      ['household.locate', 'budgets'], ['envelope.define', 'budgets'], ['income.source.define', 'budgets'],
       ['month.open', 'months'], ['assign', 'months'], ['move', 'months'],
       ['household.claim', 'people'], ['member.add', 'people'], ['briefing.read', 'people'],
       ['areas.set', 'settings'], ['areas.add', 'settings'], ['areas.remove', 'settings'], ['areas.move', 'settings'],
@@ -1054,14 +1055,14 @@ describe('removing a household', () => {
   test('a household made again under the same name starts empty', async () => {
     const hh = new Households(await dir());
     const { store } = await hh.create('alex', 'Wren');
-    await store.append('alex', { op: 'budget.create', budget: 'home', label: 'Home' });
-    assert.equal(store.state.budgets.size, 1);
+    await store.append('alex', { op: 'category.define', category: 'food', label: 'Food' });
+    assert.equal(store.state.categories.size, 1);
     await hh.remove('wren');
     const made = await hh.create('alex', 'Wren');
     assert.equal(made.id, 'wren');
-    assert.equal(made.store.state.budgets.size, 0);
+    assert.equal(made.store.state.categories.size, 0);
     assert.equal(made.store.state.owner, 'alex');
-    assert.equal((await hh.open('wren')).state.budgets.size, 0);
+    assert.equal((await hh.open('wren')).state.categories.size, 0);
   });
 
   test('an id that is not a directory name is refused before anything is touched', async () => {
@@ -1079,12 +1080,12 @@ describe('removing a household', () => {
     const { store } = await hh.create('alex', 'Wren');
     await hh.remove('wren');
     await assert.rejects(
-      store.append('alex', { op: 'budget.create', budget: 'home', label: 'Home' }),
+      store.append('alex', { op: 'category.define', category: 'food', label: 'Food' }),
       (err: Error & { status?: number }) => err.message === 'this household was removed' && err.status === 409,
     );
     assert.equal(existsSync(join(hh.dir, 'wren')), false);
     const made = await hh.create('alex', 'Wren');
-    assert.equal(made.store.state.budgets.size, 0);
+    assert.equal(made.store.state.categories.size, 0);
     assert.equal(made.store.state.owner, 'alex');
   });
 
@@ -1097,7 +1098,7 @@ describe('removing a household', () => {
     await hh.remove('wren');           // counted before that load finishes
     const late = await loading;
     assert.equal(late.closed, true);
-    await assert.rejects(late.append('alex', { op: 'budget.create', budget: 'home', label: 'Home' }));
+    await assert.rejects(late.append('alex', { op: 'category.define', category: 'food', label: 'Food' }));
     assert.equal(existsSync(join(d, 'wren')), false);
     const fresh = await hh.open('wren');
     assert.notEqual(fresh, late, 'the late load was never cached');

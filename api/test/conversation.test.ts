@@ -34,12 +34,11 @@ async function ctx(): Promise<ToolContext> {
     { op: 'member.add', member: 'bob', why: 'my partner' },
     { op: 'category.define', category: 'groceries', label: 'Groceries' },
     { op: 'category.define', category: 'travel', label: 'Travel' },
-    { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'Food', group: 'People',
+    { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'People',
       match: { categories: ['groceries'] }, template: parseDollars('600.00'), order: 0 },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'trip', label: 'Travel', group: 'Future',
+    { op: 'envelope.define', envelope: 'trip', label: 'Travel', group: 'Future',
       match: { categories: ['travel'] }, template: parseDollars('400.00'), order: 1 },
-    { op: 'month.open', budget: 'harbor', month: '2026-08', income: parseDollars('1000.00') },
+    { op: 'month.open', month: '2026-08', income: parseDollars('1000.00') },
   ]);
   return { store, who: 'bob', today: TODAY, proposals: new ProposalStore(), sid: null };
 }
@@ -61,7 +60,7 @@ describe('notes', () => {
   test('a note is recorded and costs no call', async () => {
     const c = await ctx();
     const f = fake([]);
-    const e = await note(c, 'the trip is already paid for', 'harbor');
+    const e = await note(c, 'the trip is already paid for');
     assert.equal(e.op, 'thread.note');
     assert.equal(e.who, 'bob');
     assert.equal(f.calls.length, 0);
@@ -70,15 +69,15 @@ describe('notes', () => {
   test('a note works with no key configured', async () => {
     await withoutKey(async () => {
       const c = await ctx();
-      await note(c, 'hello', null);
+      await note(c, 'hello');
     });
   });
 
   test('text over 2,000 characters is refused before anything is written', async () => {
     const c = await ctx();
     const before = c.store.state.eventCount;
-    await assert.rejects(note(c, 'x'.repeat(2001), null), (e: ToolError) => e instanceof ToolError && e.status === 400);
-    await assert.rejects(askInThread(c, 'x'.repeat(2001), null), (e: ToolError) => e instanceof ToolError && e.status === 400);
+    await assert.rejects(note(c, 'x'.repeat(2001)), (e: ToolError) => e instanceof ToolError && e.status === 400);
+    await assert.rejects(askInThread(c, 'x'.repeat(2001)), (e: ToolError) => e instanceof ToolError && e.status === 400);
     assert.equal(c.store.state.eventCount, before);
   });
 });
@@ -86,8 +85,8 @@ describe('notes', () => {
 describe('asking Claude', () => {
   test('a question and its answer are both recorded; the answer is by claude and lists its tools', async () => {
     const c = await ctx();
-    fake([called('get_month', { budget: 'harbor' }), said('Food has $600.00 left.')]);
-    const r = await askInThread(c, 'How is food?', 'harbor');
+    fake([called('get_month', {}), said('Food has $600.00 left.')]);
+    const r = await askInThread(c, 'How is food?');
     assert.equal(r.question.op, 'thread.ask');
     assert.equal(r.question.who, 'bob');
     assert.ok(r.answer && r.answer.op === 'thread.answer');
@@ -99,13 +98,13 @@ describe('asking Claude', () => {
 
   test('Claude sees today\'s briefing, notes and earlier questions', async () => {
     const c = await ctx();
-    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget', budget: 'harbor',
+    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget',
       headline: 'Food is running ahead of plan', body: 'Longer.', writtenBy: 'claude' });
-    await c.store.append('alice', { op: 'thread.note', text: 'the trip is already paid for', budget: 'harbor' });
-    const [q] = await c.store.append('alice', { op: 'thread.ask', question: 'Can travel spare anything?', budget: 'harbor' });
+    await c.store.append('alice', { op: 'thread.note', text: 'the trip is already paid for' });
+    const [q] = await c.store.append('alice', { op: 'thread.ask', question: 'Can travel spare anything?' });
     await c.store.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'It can spare $120.00.', tools: [], model: 'm' });
     const f = fake([said('Yes.')]);
-    await askInThread(c, 'Then should we move it?', 'harbor');
+    await askInThread(c, 'Then should we move it?');
     const text = sentText(f.calls[0]);
     assert.match(text, /Food is running ahead of plan/);
     assert.match(text, /alice.*the trip is already paid for/);
@@ -126,10 +125,10 @@ describe('asking Claude', () => {
   test('a write Claude proposes becomes a card raised by the answer', async () => {
     const c = await ctx();
     fake([
-      called('move_money', { budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amountCents: 12000, why: 'trip is paid for' }),
+      called('move_money', { month: '2026-08', from: 'trip', to: 'food', amountCents: 12000, why: 'trip is paid for' }),
       said('I have suggested moving $120.00 from Travel to Food.'),
     ]);
-    const r = await askInThread(c, 'Move what we can to food', 'harbor');
+    const r = await askInThread(c, 'Move what we can to food');
     assert.equal(r.offers.length, 1);
     assert.deepEqual(r.offers[0]!.prompt, { kind: 'answer', ref: r.answer!.id });
     assert.equal(r.offers[0]!.who, 'claude');
@@ -140,7 +139,7 @@ describe('asking Claude', () => {
   test('when Claude fails, the question stays and no answer is written', async () => {
     const c = await ctx();
     fake([Object.assign(new Error('529 overloaded'), { status: 529 })]);
-    const r = await askInThread(c, 'How is food?', 'harbor');
+    const r = await askInThread(c, 'How is food?');
     assert.equal(r.answer, null);
     assert.ok(r.error);
     const ops = (await c.store.since(null)).map((e) => e.op);
@@ -151,7 +150,7 @@ describe('asking Claude', () => {
   test('a refusal is recorded as asked, then surfaces as a refusal', async () => {
     const c = await ctx();
     fake([{ model: 'm', stop_reason: 'refusal', stop_details: { category: 'x', explanation: 'no' }, content: [], usage: { input_tokens: 1, output_tokens: 1 } }]);
-    await assert.rejects(askInThread(c, 'Something odd', 'harbor'), ClaudeRefused);
+    await assert.rejects(askInThread(c, 'Something odd'), ClaudeRefused);
     assert.ok((await c.store.since(null)).some((e) => e.op === 'thread.ask'));
   });
 
@@ -159,7 +158,7 @@ describe('asking Claude', () => {
     await withoutKey(async () => {
       const c = await ctx();
       const before = c.store.state.eventCount;
-      await assert.rejects(askInThread(c, 'How is food?', 'harbor'), (e: ToolError) => e.status === 503);
+      await assert.rejects(askInThread(c, 'How is food?'), (e: ToolError) => e.status === 503);
       assert.equal(c.store.state.eventCount, before);
     });
   });
@@ -172,7 +171,7 @@ describe('asking from a plan', () => {
     await c.store.append('alice', [
       { op: 'plan.create', plan: 'heater', title: 'Tankless water heater', area: 'House' },
       { op: 'plan.set', plan: 'heater', notes: 'The old tank is 14 years old.', chips: ['researching', 'someday'],
-        estimate: parseDollars('1800.00'), envelope: { budget: 'harbor', envelope: 'food' } },
+        estimate: parseDollars('1800.00'), envelope: 'food' },
       { op: 'plan.checklist', plan: 'heater', items: [
         { id: 'a', text: 'Measure the closet', done: true }, { id: 'b', text: 'Get two quotes', done: false }] },
     ]);
@@ -182,7 +181,7 @@ describe('asking from a plan', () => {
   test('Claude is handed the card first: title, area, state, notes, checklist, chips and money', async () => {
     const c = await withPlan();
     const f = fake([said('Two installers nearby do tankless.')]);
-    await askInThread(c, 'Who installs these nearby?', null, 'heater');
+    await askInThread(c, 'Who installs these nearby?', 'heater');
     const context = f.calls[0].messages[0].content[0].text as string;
     assert.ok(context.startsWith('PLAN: Tankless water heater (House, planning)'), context);
     assert.match(context, /The old tank is 14 years old\./);
@@ -198,12 +197,12 @@ describe('asking from a plan', () => {
   test('the question and its answer carry the plan', async () => {
     const c = await withPlan();
     fake([said('Two installers nearby do tankless.')]);
-    const r = await askInThread(c, 'Who installs these nearby?', null, 'heater');
+    const r = await askInThread(c, 'Who installs these nearby?', 'heater');
     assert.equal(r.question.plan, 'heater');
     assert.equal(r.answer!.plan, 'heater');
     // And without a plan, neither does.
     fake([said('Fine.')]);
-    const plain = await askInThread(c, 'How is food?', 'harbor');
+    const plain = await askInThread(c, 'How is food?');
     assert.ok(!('plan' in plain.question) && !('plan' in plain.answer!));
   });
 
@@ -211,7 +210,7 @@ describe('asking from a plan', () => {
     const c = await withPlan();
     const f = fake([]);
     const before = c.store.state.eventCount;
-    await assert.rejects(askInThread(c, 'Anything?', null, 'nope'), (e: ToolError) => e instanceof ToolError && e.status === 404);
+    await assert.rejects(askInThread(c, 'Anything?', 'nope'), (e: ToolError) => e instanceof ToolError && e.status === 404);
     assert.equal(c.store.state.eventCount, before);
     assert.equal(f.calls.length, 0);
   });
@@ -219,12 +218,12 @@ describe('asking from a plan', () => {
   test('research is never handed a tool that moves money, and one it reaches for anyway is refused', async () => {
     const c = await withPlan();
     const f = fake([
-      called('move_money', { budget: 'harbor', month: '2026-08', from: 'trip', to: 'food', amountCents: 50000, why: 'heater' }),
+      called('move_money', { month: '2026-08', from: 'trip', to: 'food', amountCents: 50000, why: 'heater' }),
       said('I cannot move money from here; that is for the budget.'),
     ]);
-    const r = await askInThread(c, 'Can we fund this from travel?', null, 'heater');
+    const r = await askInThread(c, 'Can we fund this from travel?', 'heater');
     const offered = (f.calls[0].tools as { name: string }[]).map((t) => t.name);
-    for (const name of ['move_money', 'set_assignment', 'open_month', 'create_budget', 'define_envelope']) {
+    for (const name of ['move_money', 'set_assignment', 'open_month', 'set_location', 'define_envelope']) {
       assert.ok(!offered.includes(name), `${name} is not offered to research`);
     }
     for (const name of ['get_month', 'get_plan', 'list_plans', 'set_plan_due', 'create_plan', 'update_plan']) {
@@ -237,7 +236,7 @@ describe('asking from a plan', () => {
     assert.ok(!(await c.store.since(null)).some((e) => e.op === 'proposal.offer' || e.op === 'move'));
     // Asked without a plan, the whole surface is there as before.
     const g = fake([said('Fine.')]);
-    await askInThread(c, 'How is food?', 'harbor');
+    await askInThread(c, 'How is food?');
     assert.ok((g.calls[0].tools as { name: string }[]).some((t) => t.name === 'move_money'));
   });
 
@@ -247,7 +246,7 @@ describe('asking from a plan', () => {
       called('create_contact', { full_name: 'Sandoval Plumbing', phones: ['505-555-0142'], plan: 'heater' }),
       said('Sandoval Plumbing installs tankless heaters; I suggested adding them.'),
     ]);
-    const r = await askInThread(c, 'Who installs these nearby?', null, 'heater');
+    const r = await askInThread(c, 'Who installs these nearby?', 'heater');
     assert.ok((f.calls[0].tools as { name: string }[]).some((t) => t.name === 'create_contact'), 'offered to research');
     assert.equal(r.offers.length, 1);
     const o = r.offers[0]!;
@@ -265,7 +264,7 @@ describe('asking from a plan', () => {
     await c.store.append('alice', { op: 'plan.create', plan: 'fence', title: 'Fence', area: 'House' });
     const ask = async (calls: unknown[], plan?: string) => {
       fake([...calls, said('Done.')]);
-      return askInThread(c, 'Who should we call?', null, plan);
+      return askInThread(c, 'Who should we call?', plan);
     };
     const contact = { full_name: 'Sandoval Plumbing', phones: ['505-555-0142'] };
 
@@ -304,7 +303,7 @@ describe('asking from a plan', () => {
       called('set_plan_due', { plan: 'heater', due: '2026-09-15', why: 'before the cold' }),
       said('I suggested a due date before the cold sets in.'),
     ]);
-    const r = await askInThread(c, 'When should this be done by?', null, 'heater');
+    const r = await askInThread(c, 'When should this be done by?', 'heater');
     assert.equal(r.offers.length, 1);
     const o = r.offers[0]!;
     assert.deepEqual(o.prompt, { kind: 'research', ref: r.answer!.id });
@@ -339,7 +338,7 @@ describe('answers in Drive', () => {
   after(async () => { setDsmFetch(null); await nas.close(); });
 
   const asking = async (sid: string | null) => {
-    fake([called('get_month', { budget: 'harbor' }), said(FULL)]);
+    fake([called('get_month', {}), said(FULL)]);
     const c = await ctx();
     await chooseFolderIn(c.store);
     return { ...c, sid, household: 'h1' };
@@ -347,7 +346,7 @@ describe('answers in Drive', () => {
 
   test("an answer is a page named for its question; the log keeps its headline", async () => {
     const c = await asking(await nas.signIn('alice'));
-    const r = await askInThread(c, 'Can we afford it?', null);
+    const r = await askInThread(c, 'Can we afford it?');
     assert.equal(r.answer!.text, answerHeadline(FULL));
     assert.notEqual(r.answer!.text, FULL);
     assert.equal(r.answer!.doc!.path, `/team-folders/Planner/h1/answers/${r.question.id}.md`);
@@ -360,7 +359,7 @@ describe('answers in Drive', () => {
   test('without a session the whole answer is in the log', async () => {
     const c = await asking(null);
     const before = nas.calls.length;
-    const r = await askInThread(c, 'Can we afford it?', null);
+    const r = await askInThread(c, 'Can we afford it?');
     assert.equal(r.answer!.text, FULL);
     assert.equal(r.answer!.doc, undefined);
     assert.equal(nas.calls.length, before, 'nothing was sent to Drive');
@@ -370,7 +369,7 @@ describe('answers in Drive', () => {
     const warn = mock.method(console, 'warn', () => {});
     nas.fail((m, p) => m === 'PUT' && p.endsWith('/files/upload'), 1000);
     try {
-      const r = await askInThread(c, 'Can we afford it?', null);
+      const r = await askInThread(c, 'Can we afford it?');
       assert.equal(r.answer!.text, FULL);
       assert.equal(r.answer!.doc, undefined);
       assert.ok(!warn.mock.calls.some((w) => String(w.arguments[0]).includes(c.sid!)), 'the sid is not logged');
@@ -393,9 +392,9 @@ describe("Claude reads the day's documents", () => {
 
   /** A day with a briefing, a question and an answer, the briefing and answer kept as documents. */
   const dayWithDocs = async (c: ToolContext, docs: { briefing: DocRef; answer: DocRef }) => {
-    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget', budget: null,
+    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget',
       headline: 'Quiet day', doc: docs.briefing, writtenBy: 'claude' });
-    const [q] = await c.store.append('alice', { op: 'thread.ask', question: 'Can we afford it?', budget: null });
+    const [q] = await c.store.append('alice', { op: 'thread.ask', question: 'Can we afford it?' });
     await c.store.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'Food has $600.00 left.', doc: docs.answer, tools: [], model: 'm' });
     return c.store.since(null);
   };
@@ -405,7 +404,7 @@ describe("Claude reads the day's documents", () => {
     const events = await dayWithDocs(c, { briefing: STUB, answer: STUB });
     const briefing = events.find((e) => e.op === 'thread.briefing')!;
     const answer = events.find((e) => e.op === 'thread.answer')!;
-    const text = dayContext(events, null, TODAY, new Map([[briefing.id, BODY], [answer.id, FULL]]));
+    const text = dayContext(events, TODAY, new Map([[briefing.id, BODY], [answer.id, FULL]]));
     assert.match(text, /The full body\.\n\nWith a second paragraph\./);
     assert.match(text, /Nothing else is due before the 20th\./);
     assert.doesNotMatch(text, /could not be read/);
@@ -415,7 +414,7 @@ describe("Claude reads the day's documents", () => {
   test('without them, the headlines and one line saying the texts were not read', async () => {
     const c = await ctx();
     const events = await dayWithDocs(c, { briefing: STUB, answer: STUB });
-    const text = dayContext(events, null, TODAY);
+    const text = dayContext(events, TODAY);
     assert.match(text, /\[briefing\] Quiet day \(only the headline was read\)/);
     assert.match(text, /you answered \(only its headline was read\): "Food has \$600\.00 left\."/);
     assert.ok(text.endsWith("Some of today's earlier texts could not be read from the NAS, only their headlines: "
@@ -425,20 +424,20 @@ describe("Claude reads the day's documents", () => {
 
   test('a thread with no documents never mentions unread ones', async () => {
     const c = await ctx();
-    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget', budget: null,
+    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget',
       headline: 'Quiet day', body: 'All in the log.', writtenBy: 'claude' });
-    const text = dayContext(await c.store.since(null), null, TODAY);
+    const text = dayContext(await c.store.since(null), TODAY);
     assert.match(text, /All in the log\./);
     assert.doesNotMatch(text, /could not be read/);
   });
 
   test('a briefing another took the place of is not read twice', async () => {
     const c = await ctx();
-    const [first] = await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'household', budget: null,
+    const [first] = await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'household',
       headline: 'Quiet day', body: 'Written without the calendar.', writtenBy: 'fallback', calendarUnread: true });
-    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'household', budget: null,
+    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'household',
       headline: 'Quiet day', body: 'The bins go out tonight.', writtenBy: 'claude', replaces: first!.id });
-    const text = dayContext(await c.store.since(null), null, TODAY);
+    const text = dayContext(await c.store.since(null), TODAY);
     assert.match(text, /The bins go out tonight\./);
     assert.doesNotMatch(text, /Written without the calendar/);
     assert.equal(text.match(/\[briefing\]/g)!.length, 1);
@@ -449,18 +448,18 @@ describe("Claude reads the day's documents", () => {
     const c = { ...(await ctx()), sid, household: HOUSEHOLD };
     await chooseFolderIn(c.store, { team: 'Planner', folder: HOUSEHOLD });
     const briefing = await writeDoc(c, ['today', `${TODAY}-budget.md`], renderBriefingPage({
-      day: TODAY, source: 'budget', budget: null, writtenBy: 'claude', headline: 'Quiet day', body: BODY }));
+      day: TODAY, source: 'budget', writtenBy: 'claude', headline: 'Quiet day', body: BODY }));
     const answer = await writeDoc(c, ['answers', 'e-1.md'], renderAnswerPage({
       replyTo: 'e-1' as EventId, plan: null, model: 'm', question: 'Can we afford it?', text: FULL, tools: ['get_month'] }));
     const events = await dayWithDocs(c, { briefing: briefing!, answer: answer! });
 
-    const bodies = await readDayDocs(c, events, null, TODAY);
+    const bodies = await readDayDocs(c, events, TODAY);
     assert.equal(bodies.size, 2);
     assert.equal(bodies.get(events.find((e) => e.op === 'thread.briefing')!.id), BODY);
     assert.equal(bodies.get(events.find((e) => e.op === 'thread.answer')!.id), FULL);
 
     const calls = nas.calls.length;
-    const none = await readDayDocs({ ...c, sid: null }, events, null, TODAY);
+    const none = await readDayDocs({ ...c, sid: null }, events, TODAY);
     assert.equal(none.size, 0);
     assert.equal(nas.calls.length, calls, 'nothing was sent to Drive');
   });
@@ -472,7 +471,7 @@ describe("Claude reads the day's documents", () => {
     const events = await dayWithDocs(c, { briefing: STUB, answer: STUB });
     nas.fail(() => true, 1000);
     try {
-      const bodies = await readDayDocs(c, events, null, TODAY);
+      const bodies = await readDayDocs(c, events, TODAY);
       assert.equal(bodies.size, 0);
     } finally { nas.ok(); }
   });
@@ -482,12 +481,12 @@ describe("Claude reads the day's documents", () => {
     const c = { ...(await ctx()), sid, household: HOUSEHOLD };
     await chooseFolderIn(c.store, { team: 'Planner', folder: HOUSEHOLD });
     const doc = await writeDoc(c, ['today', `${TODAY}-ask.md`], renderBriefingPage({
-      day: TODAY, source: 'budget', budget: null, writtenBy: 'claude', headline: 'Quiet day', body: BODY }));
+      day: TODAY, source: 'budget', writtenBy: 'claude', headline: 'Quiet day', body: BODY }));
     assert.ok(doc, 'the briefing is in Drive');
-    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget', budget: null,
+    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget',
       headline: 'Quiet day', doc: doc!, writtenBy: 'claude' });
     const f = fake([said('Yes.')]);
-    await askInThread(c, 'Anything due?', null);
+    await askInThread(c, 'Anything due?');
     const text = sentText(f.calls[0]);
     assert.match(text, /Quiet day\nThe full body\.\n\nWith a second paragraph\./);
     assert.doesNotMatch(text, /could not be read/);

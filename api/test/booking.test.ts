@@ -80,7 +80,7 @@ const ARGS = { email: 'guests@example.com', name: 'Nguyen family', arrive: '2026
 const request = (extra: Record<string, unknown> = {}): NewEventShape => ({
   op: 'proposal.offer', tool: 'approve_booking',
   args: ARGS,
-  summary: 'Nguyen family would like to come', effects: [], events: [], budget: null, month: null, envelopes: [],
+  summary: 'Nguyen family would like to come', effects: [], events: [], month: null, envelopes: [],
   fingerprint: '', prompt: { kind: 'booking', ref: null }, ...extra,
 }) as NewEventShape;
 
@@ -498,8 +498,7 @@ describe('a guest may ask, cancel and change, and nothing else', () => {
     await field({ plan: 'p1' }, /\(plan\)/);
     await field({ prompt: { kind: 'booking', ref: 'e1' } }, /prompt\.ref/);
     await field({ prompt: { kind: 'member', ref: null } }, /prompt\.kind/);
-    // Nothing for decide or a newer card to act on: no budget, month, envelopes or figures.
-    await field({ budget: 'home' }, /\(budget\)/);
+    // Nothing for decide or a newer card to act on: no month, envelopes or figures.
     await field({ month: '2026-12' }, /\(month\)/);
     await field({ envelopes: ['food'] }, /\(envelopes\)/);
     await field({ envelopes: 'food' }, /\(envelopes\)/);
@@ -551,8 +550,8 @@ describe('a guest may ask, cancel and change, and nothing else', () => {
     const s = await withGuest();
     const lines: NewEventShape[] = [
       { op: 'plan.create', plan: 'p1', title: 'x', area: 'House' },
-      { op: 'thread.note', text: 'hello', budget: null },
-      { op: 'thread.ask', question: 'who else is coming?', budget: null },
+      { op: 'thread.note', text: 'hello' },
+      { op: 'thread.ask', question: 'who else is coming?' },
       { op: 'flag.seen', event: 'x' },
       { op: 'briefing.read', upTo: 'x' },
       allow('friend@example.com'),
@@ -1249,13 +1248,12 @@ describe('a request is a card', () => {
     assert.ok(!o.summary.includes('Mallory'));
   });
 
-  test('the stored card carries no events, budget, month, envelopes or figures', async () => {
+  test('the stored card carries no events, month, envelopes or figures', async () => {
     const s = await house();
     const o = await asGuest(s, DEC);
     const line = (await s.since(null)).find((e) => e.id === o.id) as unknown as Record<string, unknown>;
     assert.equal(line['op'], 'proposal.offer');
     assert.deepEqual(line['events'], []);
-    assert.equal(line['budget'], null);
     assert.equal(line['month'], null);
     assert.deepEqual(line['envelopes'], []);
     assert.equal(line['fingerprint'], '');

@@ -5,7 +5,8 @@
  *   POST /api/tools/:name           run a tool — reads return data, writes return a proposal
  *   POST /api/commit                approve a proposal; the only path that writes
  *   GET  /api/thread                the household's days, a month at a time (?through=, ?day=): each day's entries
- *                                   (briefing, conversation, cards, direct changes), counts, and what waits on you
+ *                                   (briefing, conversation, cards, direct changes), counts, and what waits on you;
+ *                                   notStarted while the budget has no location and no envelope
  *   GET  /api/docs/:event           the whole text of a briefing or an answer kept in Drive, read with your session
  *                                   (404 if the event is not one; 409 without a session; 404 if Drive has lost it)
  *   GET  /api/today                 yours, under the briefing: your calendars today and tomorrow,
@@ -51,7 +52,8 @@
  *   POST /api/auth/logout           drop the session
  *   GET  /api/auth/check            am I signed in, and to whose household
  *   POST /api/members               owner shares the budget with someone
- *   GET  /api/budgets               the switcher's list
+ *   GET  /api/budget                the budget at a glance: this month, the last income, where it is, how many envelopes, the open months, whether it is started
+ *   GET  /api/budget/first-run      where the budget's walkthrough is: the step still to take
  *   GET  /api/households            the households you are in
  *   POST /api/households            make one, and open it
  *   POST /api/households/select     open a different one
@@ -101,7 +103,7 @@
  *   POST /api/calendars/household/name  rename the Household calendar, on the NAS and in the log
  *   POST /api/calendars/target      the calendar plans go on; the owner's
  *   POST /api/calendars/conflicts   your calendars that plans are checked against
- *   GET  /api/calendar?start&end&budget  the Calendar screen: 1 to 42 days of events, plans' dates, held nights, the record's numbers and one budget's money
+ *   GET  /api/calendar?start&end  the Calendar screen: 1 to 42 days of events, plans' dates, held nights, the record's numbers and the budget's money
  *   POST /api/calendar/check        look for plans' events changed on the calendar now (Today looks every ten minutes)
  *   POST /api/calendar/conflicts    { start, end, allDay, on, except? }: what clashes with the New event form's times on the
  *                                   calendars it is checked against, and up to three free times; only looks
@@ -202,9 +204,10 @@ import {
 import { APPROVE_IN_ONE, CARD_ONLY, ToolError, touches, commit, runTool, toolByName, toolSchemas, ProposalStore } from './tools.ts';
 import type { Proposal, ToolContext } from './tools.ts';
 import { firstRun } from './first-run.ts';
+import { openMonths } from './envelopes.ts';
 import { missingStarter } from './starter.ts';
 import {
-  areaIndex, ARRIVAL_MAX, DEFAULT_AREAS, GUEST_PREFIX, householdDay, isDay, isEmail, MODES, SCHEMES, SPLIT, SYSTEM, isSpend, monthKey, monthOf, movesLeft, sameCalendar, zoneOf,
+  areaIndex, ARRIVAL_MAX, DEFAULT_AREAS, GUEST_PREFIX, householdDay, isDay, isEmail, MODES, SCHEMES, SPLIT, SYSTEM, isSpend, monthOf, movesLeft, sameCalendar, zoneOf,
 } from './types.ts';
 import type { Actor, Assignment, Day, Event, Mode, NewEventShape, Scheme, SplitPart, State, Txn } from './types.ts';
 import { parse, dedupeKey } from './parse.ts';
@@ -896,35 +899,6 @@ async function activeStore(
   return households.open(session.household);
 }
 
-/**
- * The budget to show someone who has not picked one.
- *
- * Prefers one with the current month actually open, because "first in the log"
- * picked a budget for a house nobody had moved into yet, with no open month,
- * and the Today screen simply failed. The one you are living in is the one that
- * has months.
- */
-const defaultBudget = (ctx: ToolContext): string => {
-  const state = ctx.store.state;
-  if (!state.budgets.size) {
-    // Not "seed the log first" — there is nothing to seed from on a fresh
-    // install, and the app can build a budget from nothing. Say what to do.
-    throw new ToolError('This household has no budgets yet. Create the first one to begin.', 409);
-  }
-  const month = ctx.today.slice(0, 7);
-  for (const id of state.budgets.keys()) {
-    if (state.months.has(monthKey(id, month))) return id;
-  }
-  const first = [...state.budgets.keys()][0];
-  if (!first) throw new ToolError('no budgets exist yet — seed the log first', 409);
-  return first;
-};
-
-/** The budget a request names, when it is one; else the default one; none in a household with no budgets. */
-const budgetInView = (ctx: ToolContext, asked: unknown): string | null =>
-  typeof asked === 'string' && ctx.store.state.budgets.has(asked) ? asked
-    : ctx.store.state.budgets.size ? defaultBudget(ctx) : null;
-
 /** How far ahead the plans rail looks for a due date, in days. */
 const PLANS_AHEAD_DAYS = 7;
 /** How many envelopes the money rail names. */
@@ -944,18 +918,14 @@ function plansRail(ctx: ToolContext, events: Parameters<typeof board>[1], tz: st
 }
 
 /**
- * The money rail: what is left to assign this month in the budget asked for
- * (or the default one), and the envelopes that are short, read from the pace
- * the briefing is written from (`lowEnvelopes`), as text the engine wrote.
- * Null with no budget, or no month open.
+ * The money rail: what is left to assign this month, and the envelopes that
+ * are short, read from the pace the briefing is written from (`lowEnvelopes`),
+ * as text the engine wrote. Null while this month is not open.
  */
-function moneyRail(ctx: ToolContext, asked: string | null) {
-  const state = ctx.store.state;
-  if (!state.budgets.size) return null;
-  const budget = asked && state.budgets.has(asked) ? asked : defaultBudget(ctx);
-  const snap = snapshot(state, budget, monthOf(ctx.today), ctx.today);
+function moneyRail(ctx: ToolContext) {
+  const snap = snapshot(ctx.store.state, monthOf(ctx.today), ctx.today);
   if (!snap) return null;
-  return { budget, month: snap.month, toAssign: fmt(snap.view.toAssign), low: lowEnvelopes(snap.pace, LOW_ENVELOPES) };
+  return { month: snap.month, toAssign: fmt(snap.view.toAssign), low: lowEnvelopes(snap.pace, LOW_ENVELOPES) };
 }
 
 /**
@@ -1069,12 +1039,12 @@ function savingsSettings(state: State) {
 
 /**
  * After a balance is written: if Savings now comes up short of the sinking
- * envelopes of the budget in view, a card says so on Today. Never the reason
- * the balance is not recorded; it already is.
+ * envelopes, a card says so on Today. Never the reason the balance is not
+ * recorded; it already is.
  */
-async function raiseSavingsCardFor(ctx: ToolContext, budget: string | null, written: readonly Event[]): Promise<void> {
+async function raiseSavingsCardFor(ctx: ToolContext, written: readonly Event[]): Promise<void> {
   try {
-    await raiseSavingsCard(ctx, budget, written);
+    await raiseSavingsCard(ctx, written);
   } catch (err) {
     console.warn(`[savings] the card for a short balance was not raised: ${(err as Error).message}`);
   }
@@ -2402,7 +2372,7 @@ export async function start(
 
     // What Savings shows, typed off the bank's page: today, unless a day gone by is given.
     if (path === '/api/settings/savings/balance' && req.method === 'POST') {
-      const body = (await readBody(req)) as { cents?: unknown; asOf?: unknown; budget?: unknown } | null;
+      const body = (await readBody(req)) as { cents?: unknown; asOf?: unknown } | null;
       const account = active.state.savings.account;
       if (!account) throw new ToolError('choose the savings account first', 409);
       const amount = body?.cents;
@@ -2410,7 +2380,7 @@ export async function start(
       const asOf = body?.asOf ?? ctx.today;
       if (!isDay(asOf) || asOf > ctx.today) throw new ToolError('a balance is for today or a day gone by, YYYY-MM-DD');
       const written = await active.append(who, { op: 'account.balance', account, cents: cents(amount), asOf, source: 'typed' });
-      await raiseSavingsCardFor(ctx, budgetInView(ctx, body?.budget), written);
+      await raiseSavingsCardFor(ctx, written);
       return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
     }
 
@@ -2484,10 +2454,8 @@ export async function start(
     // says what would land, and committing goes through the same approval path
     // as everything else.
     if (path === '/api/import/preview' && req.method === 'POST') {
-      const body = (await readBody(req)) as { filename?: string; content?: string; budget?: string };
+      const body = (await readBody(req)) as { filename?: string; content?: string };
       if (!body.content?.trim()) throw new ToolError('the file is empty');
-      const budget = body.budget && active.state.budgets.has(body.budget) ? body.budget
-        : active.state.budgets.size ? defaultBudget(ctx) : null;
 
       const parsed = parse(body.content);
       const state = active.state;
@@ -2526,10 +2494,10 @@ export async function start(
       const toDivide = fresh.filter((t) => t.category === SPLIT).length;
       // What the picker offers, in envelopes. A receipt only gets its own list
       // when a payee-narrowed envelope would label it differently.
-      const options = pickerOptions(state, budget, null);
+      const options = pickerOptions(state, null);
       const shared = JSON.stringify(options);
       // Whatever the rules left, Haiku suggests; a person still accepts each one.
-      const { suggested, error } = await suggestForRows(state, budget, fresh);
+      const { suggested, error } = await suggestForRows(state, fresh);
       return json(res, 200, {
         filename: body.filename ?? 'upload',
         format: parsed.format,
@@ -2539,7 +2507,6 @@ export async function start(
         ruled,
         toDivide,
         needsSorting: fresh.length - ruled,
-        budget,
         options,
         // What each statement says its account held, recorded on commit.
         balances: parsed.balances.map((b) => ({ account: b.account, cents: b.amount, exact: fmtExact(b.amount), asOf: b.asOf })),
@@ -2547,7 +2514,7 @@ export async function start(
         askSavings: parsed.format === 'csv' && state.savings.account !== null,
         ...(error ? { suggestError: error } : {}),
         rows: fresh.map((t) => {
-          const own = pickerOptions(state, budget, t);
+          const own = pickerOptions(state, t);
           const s = suggested.get(t.id);
           return {
             id: t.id, date: t.date, payee: t.payee, amount: fmtExact(t.amount),
@@ -2565,7 +2532,7 @@ export async function start(
         { rows?: { id: string; date: string; payee: string; amountCents: number;
                    account?: string; category?: string | null; suggestedBy?: string;
                    split?: { category: string; amountCents: number }[] }[]; source?: string;
-          balances?: { account?: unknown; cents?: unknown; asOf?: unknown }[]; savingsToday?: unknown; budget?: unknown };
+          balances?: { account?: unknown; cents?: unknown; asOf?: unknown }[]; savingsToday?: unknown };
       const balances = balanceEvents(active.state, body.balances, body.savingsToday, ctx.today);
       if (!body.rows?.length && !balances.length) throw new ToolError('nothing to import');
 
@@ -2622,7 +2589,7 @@ export async function start(
         ...splits,
         ...balances,
       ]);
-      await raiseSavingsCardFor(ctx, budgetInView(ctx, body.budget), written);
+      await raiseSavingsCardFor(ctx, written);
       // Read after the append: a divided receipt's category is __split, so it counts as sorted.
       return json(res, 200, {
         ...(txns.length ? {} : { note: 'every row was already in the ledger' }),
@@ -2640,22 +2607,21 @@ export async function start(
     // Suggestions for receipts already in the ledger with no envelope — the
     // Unsorted list on Budget. Read-only: accepting one is a categorize proposal.
     if (path === '/api/match' && req.method === 'POST') {
-      const body = (await readBody(req)) as { budget?: string; txnIds?: string[] };
+      const body = (await readBody(req)) as { txnIds?: string[] };
       const state = active.state;
-      const budget = body.budget && state.budgets.has(body.budget) ? body.budget : null;
       const rows = (body.txnIds ?? []).flatMap((id) => {
         const t = state.txns.get(id);
         return t && t.category === null
           ? [{ id: t.id, payee: t.payee, ...(t.memo ? { memo: t.memo } : {}), category: null }] : [];
       });
-      const { suggested, toDivide, error } = await suggestForRows(state, budget, rows);
+      const { suggested, toDivide, error } = await suggestForRows(state, rows);
       // Every open receipt a split rule covers, named or not: the queue asks with
       // no ids on load, so nothing goes to Claude, and still learns what to divide.
       for (const t of state.txns.values()) {
         if (t.category === null && categorize(state.rules, t) === SPLIT) toDivide.add(t.id);
       }
       return json(res, 200, {
-        options: pickerOptions(state, budget, null),
+        options: pickerOptions(state, null),
         suggestions: Object.fromEntries([...suggested].map(([id, x]) => [id, {
           choice: x.value, ...(x.rule ? { rule: x.rule } : {}), ...(x.parts ? { parts: [...x.parts] } : {}),
         }])),
@@ -2664,26 +2630,25 @@ export async function start(
       });
     }
 
-    if (path === '/api/budgets' && req.method === 'GET') {
+    if (path === '/api/budget' && req.method === 'GET') {
       const state = active.state;
-      // The income most recently recorded anywhere. Opening a month needs a
-      // figure and it is a decision, not a default — but offering the last one
-      // you used beats making someone look it up.
-      const latest = [...state.months.values()].sort((a, b) => a.month.localeCompare(b.month)).at(-1);
+      // The income most recently recorded. Opening a month needs a figure and it
+      // is a decision, not a default — but offering the last one you used beats
+      // making someone look it up.
+      const months = openMonths(state);
+      const latest = months.at(-1);
       return json(res, 200, {
         thisMonth: ctx.today.slice(0, 7),
-        lastIncomeExact: latest ? fmtExact(latest.income) : null,
-        budgets: [...state.budgets.values()].map((b) => ({
-          id: b.id, label: b.label, archived: b.archived === true,
-          location: b.location ?? null,
-          envelopes: b.envelopes.size,
-          months: [...state.months.values()].filter((m) => m.budget === b.id).map((m) => m.month).sort(),
-        })),
+        lastIncomeExact: latest ? fmtExact(state.months.get(latest)!.income) : null,
+        location: state.location,
+        envelopes: state.envelopes.size,
+        months,
+        started: firstRun(state, ctx.today).started,
       });
     }
 
     if (path === '/api/budget/first-run' && req.method === 'GET') {
-      return json(res, 200, firstRun(active.state, url.searchParams.get('budget') || null, ctx.today));
+      return json(res, 200, firstRun(active.state, ctx.today));
     }
 
     if (path === '/api/categories' && req.method === 'GET') {
@@ -2741,8 +2706,7 @@ export async function start(
     // ── the thread ───────────────────────────────────────────────────────────
     if (path === '/api/thread' && req.method === 'GET') {
       const q = threadQuery(url, active.state);
-      const asked = url.searchParams.get('budget') || null;
-      const budget = asked ?? (active.state.budgets.size ? defaultBudget(ctx) : null);
+      const started = firstRun(active.state, ctx.today).started;
       // Opening a day by its date or an id it holds reads the record and writes nothing: no briefing, no drift check.
       if (q.day !== undefined || q.at !== undefined) {
         const found = await threadDay(active, { who, today: ctx.today, ...q.base, ...(q.day !== undefined ? { day: q.day } : {}), ...(q.at !== undefined ? { at: q.at } : {}) });
@@ -2752,21 +2716,20 @@ export async function start(
       const noting = url.searchParams.get('quiet') !== '1';
       // A budget whose month is not open yet has nothing to brief on, which
       // is not a reason to hide the thread; the page says so.
-      const noOpenMonth = !!budget && active.state.budgets.has(budget)
-        && !active.state.months.has(monthKey(budget, ctx.today.slice(0, 7)));
+      const noOpenMonth = started && !active.state.months.has(ctx.today.slice(0, 7));
       if (noting) {
         // The day opens with the household's briefing: the money, the plans and
         // the Household calendar, one for every member. A calendar that cannot be
-        // read is a line in it. Should the briefing itself fail, the budget in
-        // view still gets its own section, as before there was a household one.
+        // read is a line in it. Should the briefing itself fail, the budget
+        // still gets its own section, as before there was a household one.
         try {
           await ensureHousehold(active, { who, today: ctx.today, sid: ctx.sid, tz, ...(ctx.household !== undefined ? { household: ctx.household } : {}) });
         } catch (err) {
           console.warn(`[briefing] the household's briefing was not written: ${(err as Error).message}`);
           // A refusal is Claude's answer for the day; asking it again for the budget would only be refused again.
-          if (budget && active.state.budgets.has(budget) && !noOpenMonth && !(err instanceof ClaudeRefused)) {
+          if (active.state.months.has(ctx.today.slice(0, 7)) && !(err instanceof ClaudeRefused)) {
             try {
-              await ensureSection(active, { who, budget, today: ctx.today });
+              await ensureSection(active, { who, today: ctx.today });
             } catch (e2) {
               if (!(e2 instanceof ToolError && e2.status === 409)) throw e2;
             }
@@ -2794,7 +2757,7 @@ export async function start(
         }
       }
       return json(res, 200, {
-        ...(budget ? {} : { noBudgets: true }),
+        ...(started ? {} : { notStarted: true }),
         ...(noOpenMonth ? { noOpenMonth: true } : {}),
         ...await thread(active, { who, today: ctx.today, ...q.base,
           ...(q.through !== undefined ? { through: q.through } : {}),
@@ -2812,7 +2775,7 @@ export async function start(
       return json(res, 200, {
         calendar: await todayEvents(ctx),
         plans: plansRail(ctx, await active.since(null), tz),
-        money: moneyRail(ctx, url.searchParams.get('budget') || null),
+        money: moneyRail(ctx),
         // What is not set up yet, worked out on this load and written nowhere.
         // This NAS's rows without asking Drive, whose row never counts here.
         setup: setupNotices({
@@ -2824,20 +2787,20 @@ export async function start(
           // Only an administrator is shown it, so nobody else costs a read of the certificate.
           signing: isAdmin && !session.local ? (await loadSigner(profileCertDir())).status : { signed: false, reason: 'no-directory' },
         }),
-        // Envelopes still needing a figure, and those short, for each live budget this month.
+        // Envelopes still needing a figure, and those short, this month.
         budget: budgetNotices(active.state, ctx.today),
       });
     }
 
     if (path === '/api/thread/note' && req.method === 'POST') {
-      const body = (await readBody(req)) as { text?: string; budget?: string | null };
-      return json(res, 200, { event: await note(ctx, body.text ?? '', body.budget ?? null) });
+      const body = (await readBody(req)) as { text?: string };
+      return json(res, 200, { event: await note(ctx, body.text ?? '') });
     }
 
     if (path === '/api/thread/ask' && req.method === 'POST') {
-      const body = (await readBody(req)) as { question?: string; budget?: string | null };
+      const body = (await readBody(req)) as { question?: string };
       try {
-        return json(res, 200, await askInThread(ctx, body.question ?? '', body.budget ?? null));
+        return json(res, 200, await askInThread(ctx, body.question ?? ''));
       } catch (err) {
         // A classifier decline is Claude's answer, not a fault in the budget.
         if (err instanceof ClaudeRefused) throw new ToolError(err.message, 422);
@@ -2880,9 +2843,7 @@ export async function start(
     if (path === '/api/calendar' && req.method === 'GET') {
       const window = weekWindow(url.searchParams.get('start'), url.searchParams.get('end'));
       const week = await weekEvents(ctx, window);
-      const budget = budgetInView(ctx, url.searchParams.get('budget'));
-      const live = budget !== null && !ctx.store.state.budgets.get(budget)!.archived;
-      return json(res, 200, { ...week, money: live ? calendarMoney(ctx.store.state, budget, { from: window.start, to: addDays(window.end, -1), today: ctx.today }) : null });
+      return json(res, 200, { ...week, money: calendarMoney(ctx.store.state, { from: window.start, to: addDays(window.end, -1), today: ctx.today }) });
     }
 
     // Look now, without waiting for Today's ten minutes: needs a NAS session.
@@ -3041,7 +3002,7 @@ export async function start(
           }
           if (typeof body['question'] !== 'string') throw new ToolError('question is required');
           try {
-            return json(res, 200, await askInThread(ctx, body['question'], null, id));
+            return json(res, 200, await askInThread(ctx, body['question'], id));
           } catch (err) {
             if (err instanceof ClaudeRefused) throw new ToolError(err.message, 422);
             throw err;
@@ -3068,7 +3029,7 @@ export async function start(
         }
         case 'POST note': {
           if (typeof body['text'] !== 'string') throw new ToolError('text is required');
-          return json(res, 200, { event: await note(ctx, body['text'], null, id) });
+          return json(res, 200, { event: await note(ctx, body['text'], id) });
         }
         case 'DELETE files/:key':
           return json(res, 200, { plan: await detach(ctx, id, key!, body['why']) });
@@ -3090,12 +3051,6 @@ export async function start(
         throw new ToolError(`${tool.name} is not approved in one step; approve its proposal`);
       }
       const args = (await readBody(req)) as Record<string, unknown>;
-      // A tool that wants a budget and was not given one gets the default, so a
-      // household with none says so once, in one voice, wherever you are.
-      if ('budget' in (tool.input['properties'] as Record<string, unknown> ?? {})
-          && !args['budget']) {
-        args['budget'] = defaultBudget(ctx);
-      }
       if (approve) {
         // The tool's check (a cover only while short) reads the state before the append lands on
         // disk, so two taps in the same moment would both pass it: run and commit one at a time

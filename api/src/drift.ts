@@ -399,7 +399,7 @@ async function askAboutPage(ctx: ToolContext, drift: EventId, plan: PlanId, by: 
   const { summary, effects } = pageDriftWords(p, d, zoneOf(ctx.store.state));
   return ctx.store.append(by, {
     op: 'proposal.offer', tool: 'resolve_drift', args: { drift, plan, choice: 'plan' }, summary, effects,
-    events: [], budget: null, month: null, envelopes: [], fingerprint: '', prompt: { kind: 'drift', ref: drift },
+    events: [], month: null, envelopes: [], fingerprint: '', prompt: { kind: 'drift', ref: drift },
   });
 }
 

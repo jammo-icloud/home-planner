@@ -39,7 +39,7 @@ async function refused(s: Store, op: Record<string, unknown>, message: RegExp, w
 }
 
 const DOC = { link: 'f3c1', file_id: '881', hash: 'abc', version_id: '1', path: '/team-folders/Planner/h1/today/2026-11-02-household.md' };
-const brief = (x: Record<string, unknown>) => ({ op: 'thread.briefing', day: '2026-11-02', source: 'household', budget: null,
+const brief = (x: Record<string, unknown>) => ({ op: 'thread.briefing', day: '2026-11-02', source: 'household',
   headline: 'Quiet day', writtenBy: 'fallback', ...x });
 
 describe('the doc pointer', () => {
@@ -64,7 +64,7 @@ describe('the doc pointer', () => {
   });
   test('an answer may carry a doc beside its headline, and a bad one is refused', async () => {
     const s = await household();
-    const [q] = await s.append('alice', { op: 'thread.ask', question: 'Why?', budget: null });
+    const [q] = await s.append('alice', { op: 'thread.ask', question: 'Why?' });
     const answer = { op: 'thread.answer', replyTo: q!.id, text: 'Because.', tools: [], model: 'm' };
     await s.append(CLAUDE, { ...answer, doc: DOC } as never);
     await refused(s, { ...answer, doc: { ...DOC, hash: '' } }, /a document is named by/);
@@ -72,12 +72,12 @@ describe('the doc pointer', () => {
 });
 
 describe('the pages', () => {
-  const B = { day: '2026-11-02', source: 'household', budget: null, writtenBy: 'claude', headline: 'Quiet day', body: 'Nothing moved.' } as const;
+  const B = { day: '2026-11-02', source: 'household', writtenBy: 'claude', headline: 'Quiet day', body: 'Nothing moved.' } as const;
   const A = { replyTo: 'mvsyzlo0-000260', plan: null, model: 'claude-x', question: 'Why is the gate stuck?', text: 'Because it sagged.', tools: [] as string[] };
 
   test('a briefing page, exactly', () => {
     assert.equal(renderBriefingPage(B),
-      '---\nplanner: 1\nkind: briefing\nday: 2026-11-02\nsource: household\nbudget: null\nwrittenBy: claude\n---\n\n# Quiet day\n\nNothing moved.\n');
+      '---\nplanner: 1\nkind: briefing\nday: 2026-11-02\nsource: household\nwrittenBy: claude\n---\n\n# Quiet day\n\nNothing moved.\n');
   });
   test('a briefing page is the same bytes every time', () => {
     assert.equal(renderBriefingPage(B), renderBriefingPage({ ...B }));
@@ -87,7 +87,7 @@ describe('the pages', () => {
     for (const body of bodies) {
       assert.equal(briefingBodyFrom(renderBriefingPage({ ...B, body })), body, JSON.stringify(body));
     }
-    assert.equal(briefingBodyFrom(renderBriefingPage({ ...B, budget: 'nm', source: 'budget', headline: '2026', body: 'x' })), 'x');
+    assert.equal(briefingBodyFrom(renderBriefingPage({ ...B, source: 'budget', headline: '2026', body: 'x' })), 'x');
   });
   test('an answer page ends with the tools it used, and reads back whole', () => {
     const page = renderAnswerPage({ ...A, plan: 'gate-1', tools: ['get_month', 'get_plan', 'get_month'] });
@@ -124,8 +124,8 @@ describe('the pages', () => {
     assert.equal(answerHeadline('y'.repeat(400)), 'y'.repeat(280) + '…');
   });
   test('file names', () => {
-    assert.equal(briefingFile('2026-11-02', 'household', null), '2026-11-02-household.md');
-    assert.equal(briefingFile('2026-11-02', 'budget', 'nm'), '2026-11-02-budget-nm.md');
+    assert.equal(briefingFile('2026-11-02', 'household'), '2026-11-02-household.md');
+    assert.equal(briefingFile('2026-11-02', 'budget'), '2026-11-02-budget.md');
   });
 });
 

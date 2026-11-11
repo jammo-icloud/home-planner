@@ -22,14 +22,13 @@ const base = (months: string[] = ['2026-08']) => replay([
   ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
   ev({ op: 'category.define', category: 'dining', label: 'Dining out' }),
   ev({ op: 'category.define', category: 'subs', label: 'Subscriptions' }),
-  ev({ op: 'budget.create', budget: 'harbor', label: 'Harbor' }),
-  ev({ op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'Groceries', group: 'People',
+  ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries', group: 'People',
        match: { categories: ['groceries'] }, template: parseDollars('1200.00'), rollover: false, order: 0 }),
-  ev({ op: 'envelope.define', budget: 'harbor', envelope: 'dine', label: 'Dining out', group: 'People',
+  ev({ op: 'envelope.define', envelope: 'dine', label: 'Dining out', group: 'People',
        match: { categories: ['dining'] }, template: parseDollars('325.00'), rollover: false, order: 1 }),
-  ev({ op: 'envelope.define', budget: 'harbor', envelope: 'subs', label: 'Subscriptions', group: 'People',
+  ev({ op: 'envelope.define', envelope: 'subs', label: 'Subscriptions', group: 'People',
        match: { categories: ['subs'] }, template: parseDollars('200.00'), rollover: false, order: 2 }),
-  ...months.map((m) => ev({ op: 'month.open', budget: 'harbor', month: m, income: parseDollars('9600.00') })),
+  ...months.map((m) => ev({ op: 'month.open', month: m, income: parseDollars('9600.00') })),
 ]);
 
 describe('the month clock', () => {
@@ -56,7 +55,7 @@ describe('pace', () => {
 
   test('projects to month end at the current rate', () => {
     const s = apply(base(), [ev({ op: 'txn.add', txns: [spent('-600.00', '10', 'groceries')] })]);
-    const v = monthView(s, 'harbor', '2026-08')!;
+    const v = monthView(s, '2026-08')!;
     const p = pace(v, monthClock('2026-08', '2026-08-10'), s).find((x) => x.envelope === 'food')!;
     // $600 in 10 of 31 days projects to $1,860 against $1,200 funded
     assert.equal(p.projected, parseDollars('1860.00'));
@@ -69,7 +68,7 @@ describe('pace', () => {
       spent('-421.00', '05', 'dining'),      // over its $325 already
       spent('-600.00', '05', 'groceries'),   // only projected over
     ] })]);
-    const ranked = pace(monthView(s, 'harbor', '2026-08')!, monthClock('2026-08', '2026-08-05'), s);
+    const ranked = pace(monthView(s, '2026-08')!, monthClock('2026-08', '2026-08-05'), s);
     assert.equal(ranked[0]!.envelope, 'dine');
     assert.equal(ranked[0]!.status, 'over');
     assert.equal(ranked[1]!.status, 'projected-over');
@@ -77,24 +76,23 @@ describe('pace', () => {
 
   test('untouched, unfunded envelopes are left out as noise', () => {
     const s = base();
-    const ids = pace(monthView(s, 'harbor', '2026-08')!, monthClock('2026-08', '2026-08-13'), s).map((p) => p.envelope);
+    const ids = pace(monthView(s, '2026-08')!, monthClock('2026-08', '2026-08-13'), s).map((p) => p.envelope);
     assert.deepEqual(ids.sort(), ['dine', 'food', 'subs'], 'funded envelopes still appear');
 
     const empty = replay([
-      ev({ op: 'budget.create', budget: 'b', label: 'B' }),
       ev({ op: 'category.define', category: 'c', label: 'C' }),
-      ev({ op: 'envelope.define', budget: 'b', envelope: 'e', label: 'E', group: 'g',
+      ev({ op: 'envelope.define', envelope: 'e', label: 'E', group: 'g',
            match: { categories: ['c'] }, template: ZERO }),
-      ev({ op: 'month.open', budget: 'b', month: '2026-08', income: ZERO }),
+      ev({ op: 'month.open', month: '2026-08', income: ZERO }),
     ]);
-    assert.equal(pace(monthView(empty, 'b', '2026-08')!, monthClock('2026-08', '2026-08-13'), empty).length, 0);
+    assert.equal(pace(monthView(empty, '2026-08')!, monthClock('2026-08', '2026-08-13'), empty).length, 0);
   });
 
   test('a finished month reports actuals, not a projection', () => {
     const s = apply(base(['2026-07']), [ev({ op: 'txn.add', txns: [
       { id: 'j', date: '2026-07-15', payee: 'X', amount: parseDollars('-900.00'), dedupeKey: 'j', category: 'groceries' },
     ] })]);
-    const p = pace(monthView(s, 'harbor', '2026-07')!, monthClock('2026-07', '2026-08-13'), s).find((x) => x.envelope === 'food')!;
+    const p = pace(monthView(s, '2026-07')!, monthClock('2026-07', '2026-08-13'), s).find((x) => x.envelope === 'food')!;
     assert.equal(p.projected, parseDollars('900.00'));
   });
 });
@@ -110,15 +108,14 @@ describe('fixed monthly charges are not extrapolated', () => {
     ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
     ev({ op: 'category.define', category: 'rent', label: 'Rent' }),
     ev({ op: 'category.define', category: 'elec', label: 'Electricity' }),
-    ev({ op: 'budget.create', budget: 'harbor', label: 'Harbor' }),
-    ev({ op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'Groceries', group: 'People',
+    ev({ op: 'envelope.define', envelope: 'food', label: 'Groceries', group: 'People',
          match: { categories: ['groceries'] }, template: parseDollars('1200.00'), rollover: false, order: 0 }),
-    ev({ op: 'envelope.define', budget: 'harbor', envelope: 'carry', label: 'Home carrying', group: 'House',
+    ev({ op: 'envelope.define', envelope: 'carry', label: 'Home carrying', group: 'House',
          match: { categories: ['rent'] }, template: parseDollars('2500.00'), rollover: false, order: 1 }),
-    ev({ op: 'envelope.define', budget: 'harbor', envelope: 'util', label: 'Utilities', group: 'House',
+    ev({ op: 'envelope.define', envelope: 'util', label: 'Utilities', group: 'House',
          match: { categories: ['elec'] }, template: parseDollars('300.00'), rollover: false, order: 2 }),
     ...['2026-06', '2026-07', '2026-08'].map((m) =>
-      ev({ op: 'month.open', budget: 'harbor', month: m, income: parseDollars('9600.00') })),
+      ev({ op: 'month.open', month: m, income: parseDollars('9600.00') })),
     ev({ op: 'txn.add', txns: [
       { id: 'r6', date: '2026-06-05', payee: 'P2P PAYMENT', amount: parseDollars('-2500.00'), dedupeKey: 'r6', category: 'rent' },
       { id: 'r7', date: '2026-07-05', payee: 'P2P PAYMENT', amount: parseDollars('-2500.00'), dedupeKey: 'r7', category: 'rent' },
@@ -131,7 +128,7 @@ describe('fixed monthly charges are not extrapolated', () => {
   const AUG_RENT: Txn = { id: 'r8', date: '2026-08-02', payee: 'P2P PAYMENT',
     amount: parseDollars('-2500.00'), dedupeKey: 'r8', category: 'rent' };
   const at = (s: State, day: string, envelope: string) =>
-    pace(monthView(s, 'harbor', '2026-08')!, monthClock('2026-08', day), s).find((x) => x.envelope === envelope)!;
+    pace(monthView(s, '2026-08')!, monthClock('2026-08', day), s).find((x) => x.envelope === envelope)!;
 
   test('rent paid on the 2nd does not project fifteen months of rent', () => {
     const p = at(house([AUG_RENT]), '2026-08-12', 'carry');
@@ -218,7 +215,7 @@ describe('fixed monthly charges are not extrapolated', () => {
     // Utilities has $300 funded and nothing spent, so it used to look like $300
     // of free money — right up to the power bill landing on the 25th.
     const s = house([AUG_RENT]);
-    const list = donors(monthView(s, 'harbor', '2026-08')!, monthClock('2026-08', '2026-08-12'), 'food', s);
+    const list = donors(monthView(s, '2026-08')!, monthClock('2026-08', '2026-08-12'), 'food', s);
     const util = list.find((d) => d.envelope === 'util')!;
     assert.equal(util.available, parseDollars('300.00'));
     assert.equal(util.spare, parseDollars('100.00'), 'only what is left after the expected bill');
@@ -243,14 +240,14 @@ describe('fixed monthly charges are not extrapolated', () => {
     const s = apply(house([AUG_RENT]), [
       ev({ op: 'category.define', category: 'vupkeep', label: 'Tolls, registration & upkeep', kind: 'People',
            sinking: { cost: parseDollars('3000.00'), everyYears: 1 } }),
-      ev({ op: 'envelope.define', budget: 'harbor', envelope: 'veh', label: 'Vehicles', group: 'People',
+      ev({ op: 'envelope.define', envelope: 'veh', label: 'Vehicles', group: 'People',
            match: { categories: ['vupkeep'] }, template: parseDollars('250.00'), order: 5 }),
-      ev({ op: 'month.open', budget: 'harbor', month: '2026-09', income: parseDollars('9600.00') }),
+      ev({ op: 'month.open', month: '2026-09', income: parseDollars('9600.00') }),
       ev({ op: 'txn.add', txns: [
         { id: 'v1', date: '2026-09-03', payee: 'MAIN ST TIRE', amount: parseDollars('-900.00'), dedupeKey: 'v1', category: 'vupkeep' },
       ] }),
     ]);
-    const p = pace(monthView(s, 'harbor', '2026-09')!, monthClock('2026-09', '2026-09-09'), s)
+    const p = pace(monthView(s, '2026-09')!, monthClock('2026-09', '2026-09-09'), s)
       .find((x) => x.envelope === 'veh')!;
 
     assert.equal(p.committed, parseDollars('900.00'));
@@ -270,14 +267,14 @@ describe('plan drift', () => {
   test('catches an envelope topped up month after month', () => {
     // three months, each planned at $325 and each topped up
     const s = apply(base(['2026-06', '2026-07', '2026-08']), [
-      ev({ op: 'move', budget: 'harbor', month: '2026-06', from: 'food', to: 'dine',
+      ev({ op: 'move', month: '2026-06', from: 'food', to: 'dine',
            amount: parseDollars('96.00'), why: 'dinner out' }),
-      ev({ op: 'move', budget: 'harbor', month: '2026-07', from: 'food', to: 'dine',
+      ev({ op: 'move', month: '2026-07', from: 'food', to: 'dine',
            amount: parseDollars('65.00'), why: 'birthday' }),
-      ev({ op: 'move', budget: 'harbor', month: '2026-08', from: 'food', to: 'dine',
+      ev({ op: 'move', month: '2026-08', from: 'food', to: 'dine',
            amount: parseDollars('83.00'), why: 'Nguyen' }),
     ]);
-    const d = drift(s, 'harbor', '2026-08', 3);
+    const d = drift(s, '2026-08', 3);
     const dine = d.find((x) => x.envelope === 'dine')!;
 
     assert.equal(dine.toppedUp, 3, 'three months running');
@@ -288,12 +285,12 @@ describe('plan drift', () => {
   });
 
   test('an untouched envelope shows no drift', () => {
-    const d = drift(base(['2026-07', '2026-08']), 'harbor', '2026-08', 3);
+    const d = drift(base(['2026-07', '2026-08']), '2026-08', 3);
     assert.ok(d.every((x) => x.toppedUp === 0));
   });
 
   test('only looks back over months that were actually opened', () => {
-    const d = drift(base(['2026-08']), 'harbor', '2026-08', 6);
+    const d = drift(base(['2026-08']), '2026-08', 6);
     assert.equal(d[0]!.months.length, 1);
   });
 });
@@ -352,7 +349,7 @@ describe('where to pull money from', () => {
       // groceries burning fast: balance looks healthy but it will need the money
       { id: 'b', date: '2026-08-02', payee: 'VALLEY', amount: parseDollars('-500.00'), dedupeKey: 'b', category: 'groceries' },
     ] })]);
-    const v = monthView(s, 'harbor', '2026-08')!;
+    const v = monthView(s, '2026-08')!;
     const list = donors(v, monthClock('2026-08', '2026-08-05'), 'dine', s);
 
     const subs = list.find((d) => d.envelope === 'subs')!;
@@ -365,7 +362,7 @@ describe('where to pull money from', () => {
 
   test('the target envelope is never offered as its own donor', () => {
     const st = base();
-    const v = monthView(st, 'harbor', '2026-08')!;
+    const v = monthView(st, '2026-08')!;
     assert.ok(!donors(v, monthClock('2026-08', '2026-08-05'), 'food', st).some((d) => d.envelope === 'food'));
   });
 });
@@ -394,7 +391,7 @@ describe('the briefing bundle', () => {
         { id: 'z', date: '2026-08-09', payee: 'MYSTERY', amount: parseDollars('-40.00'), dedupeKey: 'z', category: null },
       ] }),
     ]);
-    const snap = snapshot(s, 'harbor', '2026-08', '2026-08-13')!;
+    const snap = snapshot(s, '2026-08', '2026-08-13')!;
     assert.equal(snap.month, '2026-08');
     assert.equal(snap.clock.dayOfMonth, 13);
     assert.ok(snap.pace.length > 0);
@@ -404,7 +401,7 @@ describe('the briefing bundle', () => {
   });
 
   test('an unopened month returns nothing rather than zeroes', () => {
-    assert.equal(snapshot(base(), 'harbor', '2026-12', '2026-12-01'), null);
+    assert.equal(snapshot(base(), '2026-12', '2026-12-01'), null);
   });
 });
 
@@ -418,19 +415,18 @@ describe('the append-only store', () => {
     await a.load();
     await a.append('alice', [
       { op: 'category.define', category: 'groceries', label: 'Groceries' },
-      { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-      { op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'Groceries', group: 'People',
+      { op: 'envelope.define', envelope: 'food', label: 'Groceries', group: 'People',
         match: { categories: ['groceries'] }, template: parseDollars('1200.00') },
-      { op: 'month.open', budget: 'harbor', month: '2026-08', income: parseDollars('9600.00') },
+      { op: 'month.open', month: '2026-08', income: parseDollars('9600.00') },
     ]);
-    assert.equal(a.state.budgets.get('harbor')!.envelopes.size, 1);
+    assert.equal(a.state.envelopes.size, 1);
 
     // a fresh process reading the same file must land in the same place
     const b = new Store({ path });
     const report = await b.load();
-    assert.equal(report.events, 4);
+    assert.equal(report.events, 3);
     assert.equal(report.skipped.length, 0);
-    assert.equal(monthView(b.state, 'harbor', '2026-08')!.planned, parseDollars('1200.00'));
+    assert.equal(monthView(b.state, '2026-08')!.planned, parseDollars('1200.00'));
   });
 
   test('a rejected batch touches neither disk nor memory', async () => {
@@ -439,21 +435,20 @@ describe('the append-only store', () => {
     await s.load();
     await s.append('alice', [
       { op: 'category.define', category: 'g', label: 'G' },
-      { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-      { op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'F', group: 'P',
+      { op: 'envelope.define', envelope: 'food', label: 'F', group: 'P',
         match: { categories: ['g'] }, template: parseDollars('100.00') },
-      { op: 'month.open', budget: 'harbor', month: '2026-08', income: parseDollars('100.00') },
+      { op: 'month.open', month: '2026-08', income: parseDollars('100.00') },
     ]);
     const before = await readFile(path, 'utf8');
 
     // a move with no reason must be refused outright
     await assert.rejects(
-      s.append('bob', [{ op: 'move', budget: 'harbor', month: '2026-08', from: 'food', to: 'food2',
+      s.append('bob', [{ op: 'move', month: '2026-08', from: 'food', to: 'food2',
                              amount: parseDollars('10.00') } as never]),
       /requires a reason/,
     );
     assert.equal(await readFile(path, 'utf8'), before, 'the log is unchanged');
-    assert.equal(s.state.eventCount, 4, 'and so is memory');
+    assert.equal(s.state.eventCount, 3, 'and so is memory');
   });
 
   test('a corrupt final line is skipped, not fatal', async () => {

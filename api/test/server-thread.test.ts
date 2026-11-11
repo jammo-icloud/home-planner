@@ -57,23 +57,19 @@ before(async () => {
     { op: 'household.claim', label: 'Sandbox' },
     { op: 'category.define', category: 'groceries', label: 'Groceries' },
     { op: 'category.define', category: 'travel', label: 'Travel' },
-    { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'Food', group: 'People',
+    { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'People',
       match: { categories: ['groceries'] }, template: parseDollars('600.00'), order: 0 },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'trip', label: 'Travel', group: 'Future',
+    { op: 'envelope.define', envelope: 'trip', label: 'Travel', group: 'Future',
       match: { categories: ['travel'] }, template: parseDollars('400.00'), order: 1 },
-    { op: 'month.open', budget: 'harbor', month, income: parseDollars('1000.00') },
-    { op: 'budget.create', budget: 'cabin', label: 'Cabin' },
-    { op: 'budget.create', budget: 'attic', label: 'Attic' },
-    { op: 'budget.archive', budget: 'attic', archived: true, why: 'closed' },
+    { op: 'month.open', month, income: parseDollars('1000.00') },
     { op: 'rule.add', rule: 'r-bigbox', match: 'BIGBOX', category: '__split' },
   ]);
-  const [kept] = await seed.append('claude', { op: 'thread.briefing', day: '2026-01-01', source: 'household', budget: null,
+  const [kept] = await seed.append('claude', { op: 'thread.briefing', day: '2026-01-01', source: 'household',
     headline: 'Kept in Drive', doc: DOC, writtenBy: 'claude' });
   docId = kept!.id;
   const card = await offer({ store: seed, who: 'tester', today, proposals: new ProposalStore(), sid: null }, {
     tool: 'move_money', prompt: { kind: 'briefing', ref: null },
-    args: { budget: 'harbor', month, from: 'trip', to: 'food', amountCents: 5000, why: 'trip is paid' },
+    args: { month, from: 'trip', to: 'food', amountCents: 5000, why: 'trip is paid' },
   });
   cardId = card.id;
 
@@ -93,7 +89,7 @@ after(async () => { await close(); await nas.close(); });
 
 describe('the thread routes', () => {
   test('GET /api/thread writes today\'s section and returns the page', async () => {
-    const r = await call('GET', '/api/thread?budget=harbor');
+    const r = await call('GET', '/api/thread');
     assert.equal(r.status, 200);
     assert.ok(r.json.entries.some((e: any) => e.kind === 'briefing' && e.writtenBy === 'fallback'));
     assert.ok(r.json.waiting.some((w: any) => w.kind === 'offer' && w.offer.id === cardId));
@@ -129,15 +125,15 @@ describe('the thread routes', () => {
     assert.equal(await count(), before);
   });
 
-  test('the day\'s briefing is the household\'s, one for every budget in view', async () => {
-    const harbor = (await call('GET', '/api/thread?budget=harbor')).json;
-    const cabin = (await call('GET', '/api/thread?budget=cabin')).json;
+  test('the day\'s briefing is the household\'s, one a day', async () => {
+    const first = (await call('GET', '/api/thread')).json;
+    const again = (await call('GET', '/api/thread')).json;
     const today = (page: any) => page.entries.filter((e: any) => e.kind === 'briefing' && e.day === new Date().toISOString().slice(0, 10));
-    assert.equal(today(harbor).length, 1);
-    const [b] = today(harbor);
+    assert.equal(today(first).length, 1);
+    const [b] = today(first);
     assert.equal(b.source, 'household');
-    assert.equal(b.budget, null);
-    assert.deepEqual(today(cabin).map((e: any) => e.id), [b.id], 'the same briefing, whichever budget is in view');
+    assert.equal('budget' in b, false);
+    assert.deepEqual(today(again).map((e: any) => e.id), [b.id], 'the same briefing on a second look');
     // The sandbox has no Household calendar, and no NAS session to read one with.
     assert.match(b.body, /no Household calendar yet/);
   });
@@ -166,15 +162,15 @@ describe('the thread routes', () => {
   });
 
   test('a note is recorded and shows in the thread', async () => {
-    const r = await call('POST', '/api/thread/note', { text: 'trip is paid for', budget: 'harbor' });
+    const r = await call('POST', '/api/thread/note', { text: 'trip is paid for' });
     assert.equal(r.status, 200);
     assert.equal(r.json.event.op, 'thread.note');
-    const page = await call('GET', '/api/thread?budget=harbor');
+    const page = await call('GET', '/api/thread');
     assert.ok(page.json.entries.some((e: any) => e.kind === 'note' && e.text === 'trip is paid for'));
   });
 
   test('asking with no key configured says so', async () => {
-    const r = await call('POST', '/api/thread/ask', { question: 'How is food?', budget: 'harbor' });
+    const r = await call('POST', '/api/thread/ask', { question: 'How is food?' });
     assert.equal(r.status, 503);
   });
 
@@ -209,7 +205,7 @@ describe('the thread routes', () => {
 
   test('the import preview offers envelopes, and a commit keeps who suggested what', async () => {
     const csv = 'Date,Payee,Amount\n' + `${month}-02,HILLTOP FOODS,-42.10\n` + `${month}-03,MYSTERY SHOP,-5.00\n`;
-    const p = await call('POST', '/api/import/preview', { filename: 'x.csv', content: csv, budget: 'harbor' });
+    const p = await call('POST', '/api/import/preview', { filename: 'x.csv', content: csv });
     assert.equal(p.status, 200);
     assert.ok(p.json.options.some((o: any) => o.value === 'groceries' && o.label === 'Food' && o.group === 'People'));
     // No key here, so nothing is suggested and nothing says it failed.
@@ -221,12 +217,12 @@ describe('the thread routes', () => {
       { ...king, category: 'groceries', suggestedBy: 'claude' },
     ] });
     assert.equal(c.status, 200);
-    const page = await call('GET', '/api/thread?budget=harbor');
+    const page = await call('GET', '/api/thread');
     assert.ok(page.json.entries.some((e: any) => e.kind === 'change' && /imported 1/.test(e.what)));
   });
 
   test('/api/match answers with no suggestions when no key is set', async () => {
-    const r = await call('POST', '/api/match', { budget: 'harbor', txnIds: [] });
+    const r = await call('POST', '/api/match', { txnIds: [] });
     assert.equal(r.status, 200);
     assert.deepEqual(r.json.suggestions, {});
     assert.deepEqual(r.json.toDivide, []);
@@ -235,7 +231,7 @@ describe('the thread routes', () => {
 
   test('the import preview marks rows a split rule caught as to-divide, not ruled', async () => {
     const csv = 'Date,Payee,Amount\n' + `${month}-02,BIGBOX WHSE #0100,-165.00\n` + `${month}-03,HILLTOP FOODS #12,-42.10\n`;
-    const p = await call('POST', '/api/import/preview', { filename: 'y.csv', content: csv, budget: 'harbor' });
+    const p = await call('POST', '/api/import/preview', { filename: 'y.csv', content: csv });
     assert.equal(p.status, 200);
     const bigbox = p.json.rows.find((r: any) => /BIGBOX/.test(r.payee));
     const king = p.json.rows.find((r: any) => /HILLTOP/.test(r.payee));
@@ -255,7 +251,7 @@ describe('the thread routes', () => {
 
   test('a split row is imported as a receipt and its split, in one batch', async () => {
     const csv = 'Date,Payee,Amount\n' + `${month}-04,BIGBOX WHSE #0999,-165.00\n`;
-    const p = await call('POST', '/api/import/preview', { filename: 's.csv', content: csv, budget: 'harbor' });
+    const p = await call('POST', '/api/import/preview', { filename: 's.csv', content: csv });
     const bigbox = p.json.rows[0];
     assert.equal(bigbox.category, '__split');
     assert.equal(bigbox.amountCents, -16500);
@@ -279,14 +275,14 @@ describe('the thread routes', () => {
     assert.deepEqual(log[at + 1].parts, [{ category: 'groceries', amount: -12000 }, { category: 'travel', amount: -4500 }]);
 
     // Replay has it as a split receipt: the same file is now all duplicates.
-    const again = await call('POST', '/api/import/preview', { filename: 's.csv', content: csv, budget: 'harbor' });
+    const again = await call('POST', '/api/import/preview', { filename: 's.csv', content: csv });
     assert.equal(again.json.duplicates, 1);
     assert.equal(again.json.rows.length, 0);
   });
 
   test('a split row that is not divided, or not balanced, is refused and nothing lands', async () => {
     const csv = 'Date,Payee,Amount\n' + `${month}-05,BIGBOX WHSE #0888,-165.00\n` + `${month}-06,HILLTOP FOODS #55,-20.00\n`;
-    const p = await call('POST', '/api/import/preview', { filename: 'r.csv', content: csv, budget: 'harbor' });
+    const p = await call('POST', '/api/import/preview', { filename: 'r.csv', content: csv });
     const bigbox = p.json.rows.find((r: any) => /BIGBOX/.test(r.payee));
     const king = p.json.rows.find((r: any) => /HILLTOP/.test(r.payee));
     const before = (await logged()).length;
@@ -317,7 +313,7 @@ describe('the thread routes', () => {
     const log = await logged();
     assert.equal(log.length, before);
     assert.ok(!log.some((e) => e.op === 'txn.add' && e.txns.some((t: any) => t.id === bigbox.id || t.id === king.id)));
-    const after = await call('POST', '/api/import/preview', { filename: 'r.csv', content: csv, budget: 'harbor' });
+    const after = await call('POST', '/api/import/preview', { filename: 'r.csv', content: csv });
     assert.equal(after.json.duplicates, 0);
     assert.equal(after.json.rows.length, 2);
   });
@@ -328,7 +324,7 @@ describe('the thread routes', () => {
     ] }))]);
     try {
       const csv = 'Date,Payee,Amount\n' + `${month}-02,TARGET #77,-65.00\n` + `${month}-03,BIGBOX WHSE #0100,-165.00\n`;
-      const p = await call('POST', '/api/import/preview', { filename: 'z.csv', content: csv, budget: 'harbor' });
+      const p = await call('POST', '/api/import/preview', { filename: 'z.csv', content: csv });
       const row = p.json.rows.find((r: any) => /TARGET/.test(r.payee));
       assert.equal(row.suggested, '__split');
       assert.equal(row.rule, 'target');
@@ -339,7 +335,7 @@ describe('the thread routes', () => {
 
   test('/api/match returns a suggestion object with its rule, and the rows a split rule covers', async () => {
     const csv = 'Date,Payee,Amount\n' + `${month}-02,HILLTOP FOODS #12 SPRINGFIELD,-42.10\n` + `${month}-03,BIGBOX WHSE #0100,-165.00\n`;
-    const p = await call('POST', '/api/import/preview', { filename: 'q.csv', content: csv, budget: 'harbor' });
+    const p = await call('POST', '/api/import/preview', { filename: 'q.csv', content: csv });
     // Committed unsorted on purpose: the ledger holds an open Bigbox receipt that only a rule marks as a split.
     const rows = p.json.rows.map((r: any) => ({ ...r, category: null }));
     assert.equal((await call('POST', '/api/import/commit', { source: 'q.csv', rows })).status, 200);
@@ -350,7 +346,7 @@ describe('the thread routes', () => {
       { payee: 'HILLTOP FOODS #12 SPRINGFIELD', choice: 'groceries', confidence: 0.95, rule: 'hilltop foods' },
     ] }))]);
     try {
-      const r = await call('POST', '/api/match', { budget: 'harbor', txnIds: [king, bigbox] });
+      const r = await call('POST', '/api/match', { txnIds: [king, bigbox] });
       assert.equal(r.status, 200);
       assert.deepEqual(r.json.suggestions[king], { choice: 'groceries', rule: 'hilltop foods' });
       assert.equal(r.json.suggestions[bigbox], undefined);
@@ -361,14 +357,14 @@ describe('the thread routes', () => {
 
   test('/api/match with no ids still lists every open receipt a split rule covers, and asks Claude nothing', async () => {
     const csv = 'Date,Payee,Amount\n' + `${month}-04,BIGBOX WHSE #0999,-55.00\n`;
-    const p = await call('POST', '/api/import/preview', { filename: 'n.csv', content: csv, budget: 'harbor' });
+    const p = await call('POST', '/api/import/preview', { filename: 'n.csv', content: csv });
     const rows = p.json.rows.map((r: any) => ({ ...r, category: null }));
     assert.equal((await call('POST', '/api/import/commit', { source: 'n.csv', rows })).status, 200);
     const id = rows[0].id;
 
     const f = fake([]);
     try {
-      const r = await call('POST', '/api/match', { budget: 'harbor', txnIds: [] });
+      const r = await call('POST', '/api/match', { txnIds: [] });
       assert.equal(r.status, 200);
       assert.ok(r.json.toDivide.includes(id), 'the unsorted Bigbox receipt is to divide');
       assert.equal(new Set(r.json.toDivide).size, r.json.toDivide.length, 'each id once');
@@ -377,11 +373,11 @@ describe('the thread routes', () => {
     } finally { setClaudeClient(null); }
   });
 
-  test('a budget with no month open still shows its thread, and says so', async () => {
-    const r = await call('GET', '/api/thread?budget=cabin');
+  test('a month that is open is not said to be unopened, and the budget is started', async () => {
+    const r = await call('GET', '/api/thread');
     assert.equal(r.status, 200);
-    assert.equal(r.json.noOpenMonth, true);
-    assert.equal((await call('GET', '/api/thread?budget=harbor')).json.noOpenMonth, undefined);
+    assert.equal(r.json.noOpenMonth, undefined);
+    assert.equal(r.json.notStarted, undefined);
   });
 
   test('whoami says whether Claude is set up', async () => {
@@ -389,13 +385,13 @@ describe('the thread routes', () => {
   });
 
   test('Today\'s rails for a sandbox session: plans and money, and the calendar asks to sign in again', async () => {
-    const r = await call('GET', '/api/today?budget=harbor');
+    const r = await call('GET', '/api/today');
     assert.equal(r.status, 200, JSON.stringify(r.json));
     assert.deepEqual(r.json.calendar.today, []);
     assert.deepEqual(r.json.calendar.tomorrow, []);
     assert.match(r.json.calendar.unavailable, /sign in again/);
     assert.ok(Array.isArray(r.json.plans));
-    assert.equal(r.json.money.budget, 'harbor');
+    assert.equal('budget' in r.json.money, false);
     assert.equal(typeof r.json.money.toAssign, 'string');
     assert.match(r.json.money.toAssign, /\$/, 'text the engine wrote, not cents');
     assert.ok(Array.isArray(r.json.money.low) && r.json.money.low.length <= 5);
@@ -522,7 +518,7 @@ describe('drift on Today', () => {
 
   test('a sandbox session reads Today without a call to the NAS, and cannot ask for a check', async () => {
     const calls = await dsmCallsDuring(async () => {
-      assert.equal((await call('GET', '/api/thread?budget=harbor')).status, 200);
+      assert.equal((await call('GET', '/api/thread')).status, 200);
     });
     assert.deepEqual(calls, []);
     const r = await call('POST', '/api/calendar/check');
@@ -540,7 +536,7 @@ describe('drift on Today', () => {
     // A briefing kept in Drive on the old NAS, restored as a household of its own here.
     const id = `${(Date.now() + 60_000).toString(36)}-900001`;
     const kept = { id, at: new Date().toISOString(), who: 'claude', op: 'thread.briefing', day: today, source: 'household',
-      budget: null, headline: 'Kept on the old NAS', doc: DOC, writtenBy: 'claude' };
+      headline: 'Kept on the old NAS', doc: DOC, writtenBy: 'claude' };
     const restored = await as(aliceDsm, 'POST', '/api/restore', { content: `${JSON.stringify(kept)}\n`, asNewHousehold: 'Docs elsewhere' });
     assert.equal(restored.status, 200, JSON.stringify(restored.json));
     const r = await as(aliceDsm, 'GET', `/api/docs/${id}`);
@@ -880,7 +876,7 @@ describe('Today\'s rails, from the NAS', () => {
       said('Tomorrow at 10:00 is clear on your calendar.'),
     ]);
     try {
-      const r = await as('POST', '/api/thread/ask', { question: 'Schedule my dentist at 10 tomorrow', budget: null });
+      const r = await as('POST', '/api/thread/ask', { question: 'Schedule my dentist at 10 tomorrow' });
       assert.equal(r.status, 200, JSON.stringify(r.json));
       assert.equal(r.json.offers.length, 1);
     } finally {
@@ -952,7 +948,7 @@ describe('the calendar on screen', () => {
     ]);
     let offers: any[];
     try {
-      const r = await as(aliceDsm, 'POST', '/api/thread/ask', { question: 'Book the locksmith and my haircut tomorrow', budget: null });
+      const r = await as(aliceDsm, 'POST', '/api/thread/ask', { question: 'Book the locksmith and my haircut tomorrow' });
       assert.equal(r.status, 200, JSON.stringify(r.json));
       offers = r.json.offers;
       assert.equal(offers.length, 2);
@@ -1049,16 +1045,23 @@ describe('the calendar on screen', () => {
     assert.equal((await as(cookie, 'GET', '/api/calendar')).status, 400);
   });
 
-  test('money: null with no budget, an array with one, the default for a budget it does not know, null for an archived one', async () => {
+  test("money: the budget's rows, and none in a household with no envelopes", async () => {
     const q = `start=${inDays(0)}&end=${inDays(7)}`;
     const mine = await as(cookie, 'GET', `/api/calendar?${q}`);
     assert.equal(mine.status, 200, JSON.stringify(mine.json));
     assert.ok(Array.isArray(mine.json.money));
-    const named = await as(cookie, 'GET', `/api/calendar?${q}&budget=harbor`);
-    const unknown = await as(cookie, 'GET', `/api/calendar?${q}&budget=nope`);
-    assert.deepEqual(unknown.json.money, named.json.money, 'an unknown budget reads the default one');
-    assert.equal((await as(cookie, 'GET', `/api/calendar?${q}&budget=attic`)).json.money, null, 'an archived budget is no live budget');
     assert.equal((await as(aliceDsm, 'POST', '/api/households', { label: 'No budget' })).status, 200);
-    assert.equal((await as(aliceDsm, 'GET', `/api/calendar?${q}`)).json.money, null);
+    assert.deepEqual((await as(aliceDsm, 'GET', `/api/calendar?${q}`)).json.money, []);
+  });
+
+  test('a budget begun with no month open still shows its thread, and says so', async () => {
+    assert.equal((await as(aliceDsm, 'POST', '/api/households', { label: 'Begun' })).status, 200);
+    const before = await as(aliceDsm, 'GET', '/api/thread?quiet=1');
+    assert.equal(before.status, 200);
+    assert.deepEqual([before.json.notStarted, before.json.noOpenMonth], [true, undefined]);
+    const placed = await as(aliceDsm, 'POST', '/api/tools/set_location?approve=1', { label: 'Springfield, IL', why: 'where we live' });
+    assert.equal(placed.status, 200, JSON.stringify(placed.json));
+    const after = await as(aliceDsm, 'GET', '/api/thread?quiet=1');
+    assert.deepEqual([after.json.notStarted, after.json.noOpenMonth], [undefined, true]);
   });
 });

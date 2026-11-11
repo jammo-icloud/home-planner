@@ -12,8 +12,8 @@ import type { Cents } from './money.ts';
 import { monthView, envelopeFor } from './envelopes.ts';
 import type { EnvelopeView, MonthView } from './envelopes.ts';
 import { fundedFor, plannedFor } from './replay.ts';
-import { MONTHS_SHORT, isSpend, monthKey, monthOf, partsOf, prevMonth } from './types.ts';
-import type { BillDate, BillRecord, BudgetId, Day, EnvelopeId, Month, State, Txn } from './types.ts';
+import { MONTHS_SHORT, isSpend, monthOf, partsOf, prevMonth } from './types.ts';
+import type { BillDate, BillRecord, Day, EnvelopeId, Month, State, Txn } from './types.ts';
 
 // ─── the month's clock ────────────────────────────────────────────────────────
 
@@ -190,7 +190,7 @@ export function pace(view: MonthView, clock: MonthClock, state: State): Pace[] {
   const fixed = fixedCharges(state);
   const byKey = new Map(fixed.map((f) => [f.key, f]));
 
-  const bills = billsOf(state, view.budget, { fixed });
+  const bills = billsOf(state, { fixed });
 
   const out: Pace[] = [];
   for (const e of view.envelopes) {
@@ -264,29 +264,26 @@ export interface Drift {
  * which is a different and more useful finding than "over by $96 this month".
  * Only possible because the opening plan is never overwritten.
  */
-export function drift(state: State, budget: string, month: Month, lookback = 3): Drift[] {
-  const b = state.budgets.get(budget);
-  if (!b) return [];
-
+export function drift(state: State, month: Month, lookback = 3): Drift[] {
   const months: Month[] = [];
   let cursor = month;
   for (let i = 0; i < lookback; i++) {
-    if (state.months.has(monthKey(budget, cursor))) months.unshift(cursor);
+    if (state.months.has(cursor)) months.unshift(cursor);
     cursor = prevMonth(cursor);
   }
   if (months.length === 0) return [];
 
   const views = new Map<Month, MonthView>();
   for (const m of months) {
-    const v = monthView(state, budget, m);
+    const v = monthView(state, m);
     if (v) views.set(m, v);
   }
 
   const out: Drift[] = [];
-  for (const env of b.envelopes.values()) {
+  for (const env of state.envelopes.values()) {
     const rows: { month: Month; planned: Cents; funded: Cents; spent: Cents }[] = [];
     for (const m of months) {
-      const plan = state.months.get(monthKey(budget, m));
+      const plan = state.months.get(m);
       const view = views.get(m);
       if (!plan || !view) continue;
       const ev = view.envelopes.find((x) => x.envelope.id === env.id);
@@ -419,12 +416,9 @@ interface BillPart extends BillPaid { readonly month: Month; readonly charge: st
  */
 export function billsOf(
   state: State,
-  budget: BudgetId,
   opts: { fixed?: readonly FixedCharge[] } = {},
 ): ReadonlyMap<EnvelopeId, readonly Bill[]> {
   const out = new Map<EnvelopeId, readonly Bill[]>();
-  const b = state.budgets.get(budget);
-  if (!b) return out;
   const fixed = opts.fixed ?? fixedCharges(state);
   const byKey = new Map(fixed.map((f) => [f.key, f]));
 
@@ -434,12 +428,12 @@ export function billsOf(
   for (const t of state.txns.values()) {
     // whole receipts place a charge, by the receipt's category
     const f = byKey.get(chargeKey(t.payee, t.category));
-    const home = f ? envelopeFor(b, t) : null;
+    const home = f ? envelopeFor(state, t) : null;
     if (f && home) (charged.get(home.id) ?? charged.set(home.id, new Map()).get(home.id)!).set(f.key, f);
     // parts say what landed and what was paid
     for (const p of partsOf(t)) {
       if (!isSpend(p.category)) continue;
-      const env = envelopeFor(b, { ...t, category: p.category });
+      const env = envelopeFor(state, { ...t, category: p.category });
       if (!env) continue;
       const charge = chargeKey(t.payee, p.category);
       const month = monthOf(t.date);
@@ -452,16 +446,16 @@ export function billsOf(
   }
 
   const isFor = (part: BillPart, rec: BillRecord): boolean => rec.key !== '' && part.key.includes(rec.key);
-  const records = [...b.bills.values()];
+  const records = [...state.bills.values()];
 
   // where each record is listed
   const listed = new Map<EnvelopeId, BillRecord[]>();
   const list = (id: EnvelopeId, rec: BillRecord) => (listed.get(id) ?? listed.set(id, []).get(id)!).push(rec);
   for (const rec of records) {
-    const own = b.envelopes.get(rec.envelope);
+    const own = state.envelopes.get(rec.envelope);
     if (own && (parts.get(own.id) ?? []).some((p) => isFor(p, rec))) { list(own.id, rec); continue; }
     let best: { id: EnvelopeId; day: Day; order: number } | null = null;
-    for (const env of b.envelopes.values()) {
+    for (const env of state.envelopes.values()) {
       if (env.id === rec.envelope || env.sinking) continue;
       if (records.some((r) => r.envelope === env.id && r.key === rec.key)) continue;
       let day: Day | null = null;
@@ -473,7 +467,7 @@ export function billsOf(
     else if (own) list(own.id, rec);
   }
 
-  for (const env of b.envelopes.values()) {
+  for (const env of state.envelopes.values()) {
     const recs = (listed.get(env.id) ?? []).slice().sort((x, y) => (x.key < y.key ? -1 : x.key > y.key ? 1 : 0));
     // the listed record that takes a key: the exact one, else the longest it contains
     const taker = (key: string): BillRecord | null => {
@@ -689,7 +683,6 @@ const max0 = (c: Cents): Cents => (c > 0 ? c : ZERO);
 // ─── one bundle for the briefing ──────────────────────────────────────────────
 
 export interface Snapshot {
-  readonly budget: string;
   readonly month: Month;
   readonly clock: MonthClock;
   readonly view: MonthView;
@@ -706,14 +699,14 @@ export interface Snapshot {
  * Tools are shaped like the questions people ask, not like tables — answering
  * "how are we doing?" shouldn't cost six round trips.
  */
-export function snapshot(state: State, budget: string, month: Month, today: Day): Snapshot | null {
-  const view = monthView(state, budget, month);
+export function snapshot(state: State, month: Month, today: Day): Snapshot | null {
+  const view = monthView(state, month);
   if (!view) return null;
   const clock = monthClock(month, today);
   return {
-    budget, month, clock, view,
+    month, clock, view,
     pace: pace(view, clock, state),
-    drift: drift(state, budget, month),
+    drift: drift(state, month),
     unsorted: unsorted(state),
     recurring: recurring(state).filter((r) => r.unruled),
     balanced: Math.abs(view.toAssign) < 100,

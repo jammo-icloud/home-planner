@@ -151,7 +151,7 @@ describe('a restore in place says no in words wherever the fold would', () => {
     const { store: src } = await new Households(await dir()).create('alice', 'Theirs');
     await src.append('alice', { op: 'member.add', member: 'bob', why: 'he lives here' });
     await src.append('alice', { op: 'plan.create', plan: 'p1', title: 'Gate', area: 'House' });
-    await src.append('bob', { op: 'thread.note', plan: 'p1', text: 'the hinge is loose', budget: null });
+    await src.append('bob', { op: 'thread.note', plan: 'p1', text: 'the hinge is loose' });
     const target = await alicesHere();
     const plan = planRestore(target.state, await backupOf(src), ['plans', 'thread']);
     const bob = plan.collisions.find((c) => c.what === 'bob');
@@ -282,7 +282,7 @@ describe('the promise holds: a clean plan always applies', () => {
       const { store } = await new Households(await dir()).create('alice', 'Theirs');
       await store.append('alice', { op: 'member.add', member: 'bob', why: 'he lives here' });
       await store.append('alice', { op: 'plan.create', plan: 'p-note', title: 'Gate', area: 'House' });
-      await store.append('bob', { op: 'thread.note', plan: 'p-note', text: 'the hinge is loose', budget: null });
+      await store.append('bob', { op: 'thread.note', plan: 'p-note', text: 'the hinge is loose' });
       return store;
     }],
   ];
@@ -391,7 +391,7 @@ describe('a restore as a household of its own', () => {
     await src.append('bob', [
       { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
       { op: 'txn.add', txns: [{ id: 't1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-64.10'), dedupeKey: 't1', category: 'food' }] },
-      { op: 'budget.create', budget: 'home', label: 'Home' },
+      { op: 'household.locate', location: { label: 'Springfield, IL' }, why: 'where we live' },
     ]);
     await src.append('bob', { op: 'plan.create', plan: 'p-bob', title: 'Clean the gutters', area: 'House' });
     await src.append('bob', { op: 'plan.set', plan: 'p-bob', title: 'Clean all the gutters' });
@@ -402,7 +402,7 @@ describe('a restore as a household of its own', () => {
     const { store, summary } = await new Households(await dir()).createFromLog('alice', 'Restored', events);
     assert.equal(store.state.txns.size, 1);
     assert.equal(store.state.categories.size, 1);
-    assert.ok(store.state.budgets.has('home'));
+    assert.equal(store.state.location?.label, 'Springfield, IL');
     assert.deepEqual([...store.state.plans.keys()], ['p-alice']);
     assert.deepEqual([...store.state.members], ['alice']);
     assert.equal(store.state.owner, 'alice');
@@ -479,10 +479,10 @@ describe('a restore as a household of its own', () => {
   test('a broken backup still fails, and leaves no household behind', async () => {
     const { store: src } = await new Households(await dir()).create('alice', 'Theirs');
     const events = await eventsOf(src);
-    // A month for a budget that never existed: no membership to blame, so the restore fails.
-    const broken = { id: 'zz-000001', at: new Date().toISOString(), who: 'alice', op: 'month.open', budget: 'nowhere', month: '2026-08', income: 0 } as Event;
+    // Money put in a month that was never opened: no membership to blame, so the restore fails.
+    const broken = { id: 'zz-000001', at: new Date().toISOString(), who: 'alice', op: 'assign', month: '2026-08', envelope: 'food', to: 0, why: 'w' } as Event;
     const hh = new Households(await dir());
-    await assert.rejects(() => hh.createFromLog('alice', 'Restored', [...events, broken]), /nowhere/);
+    await assert.rejects(() => hh.createFromLog('alice', 'Restored', [...events, broken]), /not open/);
     assert.deepEqual(await hh.ids(), []);
   });
 });

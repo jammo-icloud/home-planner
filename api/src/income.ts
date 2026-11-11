@@ -17,13 +17,12 @@
 
 import { ZERO, add, cents } from './money.ts';
 import type { Cents } from './money.ts';
-import type { Actor, BudgetId, Month, State } from './types.ts';
+import type { Actor, Month, State } from './types.ts';
 
 export type Frequency = 'monthly' | 'semimonthly' | 'biweekly' | 'weekly' | 'annual' | 'once';
 
 export interface IncomeSource {
   readonly id: string;
-  readonly budget: BudgetId;
   readonly label: string;
   /** Whose income it is — someone planning their own is the reason this exists. */
   readonly who: Actor;
@@ -102,7 +101,7 @@ export function paydaysIn(source: IncomeSource, month: Month): string[] {
 export const monthlyTotal = (source: IncomeSource, month: Month): Cents =>
   cents(paydaysIn(source, month).length * source.amount);
 
-/** Every source in a budget, plus any hypothetical ones, for one month. */
+/** Every source given, the household's plus any hypothetical ones, for one month. */
 export function incomeFor(
   sources: readonly IncomeSource[],
   month: Month,
@@ -114,8 +113,7 @@ export function incomeFor(
   return { total: lines.reduce((n, l) => add(n, l.total), ZERO), lines };
 }
 
-export const sourcesFor = (state: State, budget: BudgetId): IncomeSource[] =>
-  [...state.incomeSources.values()].filter((s) => s.budget === budget);
+export const sourcesFor = (state: State): IncomeSource[] => [...state.incomeSources.values()];
 
 /** The month after this one. Kept here so projection does not import a whole module. */
 export function nextMonth(month: Month): Month {

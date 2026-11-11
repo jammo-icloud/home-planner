@@ -59,7 +59,7 @@ const DRIVE_PASSAGE_MAX = 240;
 const RAM_PASSAGE = 120;
 /** The most of a thread entry's words used as its title. */
 const TITLE_MAX = 80;
-/** A briefing's file: `<day>-<source>[-<budget>].md`. */
+/** A briefing's file: `<day>-<source>.md`. */
 const BRIEFING_FILE = /^(\d{4}-\d{2}-\d{2})-.+\.md$/;
 
 const kindList = SEARCH_KINDS.join(', ').replace(/, (?=[^,]*$)/, ' or ');

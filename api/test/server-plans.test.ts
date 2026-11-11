@@ -69,7 +69,7 @@ const seedAsk = async (plan: string, to: string, why: string): Promise<void> => 
   const [asked] = await homeStore.append('alice', { op: 'plan.ask', plan, to, why });
   await homeStore.append('alice', {
     op: 'proposal.offer', tool: 'answer_ask', args: { plan, answer: 'accept' }, summary: `${to} takes ${plan}`, effects: [],
-    events: [{ op: 'plan.ask.accept', plan }], budget: null, month: null, envelopes: [], fingerprint: '',
+    events: [{ op: 'plan.ask.accept', plan }], month: null, envelopes: [], fingerprint: '',
     prompt: { kind: 'ask', ref: asked!.id },
   });
 };
@@ -344,7 +344,7 @@ describe('the plan routes', () => {
     assert.equal((await call('alice', 'POST', `/api/plans/${id}`, { chips: 'x' })).status, 400);
     assert.equal((await call('alice', 'POST', `/api/plans/${id}`, { estimateCents: -5 })).status, 400);
     assert.equal((await call('alice', 'POST', `/api/plans/${id}`, { estimateCents: 1.5 })).status, 400);
-    assert.equal((await call('alice', 'POST', `/api/plans/${id}`, { envelope: { budget: 'nope', envelope: 'x' } })).status, 404,
+    assert.equal((await call('alice', 'POST', `/api/plans/${id}`, { envelope: 'x' })).status, 404,
       'an envelope that is not there is a 404, as the tool answers');
 
     r = await call('bob', 'POST', `/api/plans/${id}/state`, { state: 'doing' });
@@ -635,7 +635,7 @@ describe('attachments, kept on the NAS through File Station', () => {
     const [card] = await home.append('guest:linh@example.com', {
       op: 'proposal.offer', tool: 'approve_booking', summary: 'Linh would like to come', effects: [], events: [],
       args: { email: 'linh@example.com', name: 'Linh', arrive: '2099-05-01', depart: '2099-05-03', headcount: 1, note: '' },
-      budget: null, month: null, envelopes: [], fingerprint: '', prompt: { kind: 'booking', ref: null },
+      month: null, envelopes: [], fingerprint: '', prompt: { kind: 'booking', ref: null },
     });
     const no = await call('alice', 'POST', '/api/thread/decide', { offer: card!.id, decision: 'declined', why: 'away' });
     assert.equal(no.status, 502, JSON.stringify(no.json));

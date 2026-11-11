@@ -348,7 +348,7 @@ describe('the household: who owns it, who is in it', () => {
     const s = await store();
     await s.append('alice', { op: 'household.claim', label: 'Rivera' });
     await s.append('alice', { op: 'member.add', member: 'bob', why: 'my partner' });
-    await s.append('alice', { op: 'budget.create', budget: 'harbor', label: 'Harbor' });
+    await s.append('alice', { op: 'category.define', category: 'food', label: 'Groceries' });
 
     const reopened = new Store({ path: s.path });
     await reopened.load();
@@ -362,19 +362,18 @@ describe('the household: who owns it, who is in it', () => {
     await s.append('alice', { op: 'member.add', member: 'bob', why: 'my partner' });
     await s.append('alice', [
       { op: 'category.define', category: 'food', label: 'Groceries' },
-      { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-      { op: 'envelope.define', budget: 'harbor', envelope: 'daily', label: 'Daily life', group: 'People',
+      { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
         match: { categories: ['food'] }, template: parseDollars('1000.00'), order: 0 },
-      { op: 'month.open', budget: 'harbor', month: '2026-08', income: parseDollars('9600.00') },
+      { op: 'month.open', month: '2026-08', income: parseDollars('9600.00') },
     ]);
     await s.append('bob', {
-      op: 'move', budget: 'harbor', month: '2026-08', from: 'daily', to: 'daily',
+      op: 'move', month: '2026-08', from: 'daily', to: 'daily',
       amount: parseDollars('1.00'), why: 'x',
     }).catch(() => undefined); // same envelope is rejected; the point is the next line
 
     // Whatever either of them does lands in one log, so there is no version of
     // this where the two of them are looking at different numbers.
-    assert.equal(s.state.budgets.size, 1);
+    assert.equal(s.state.envelopes.size, 1);
     assert.equal(s.state.owner, 'alice');
   });
 });

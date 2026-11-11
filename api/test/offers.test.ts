@@ -27,14 +27,13 @@ async function ctx(who = 'alice'): Promise<ToolContext> {
     { op: 'category.define', category: 'groceries', label: 'Groceries' },
     { op: 'category.define', category: 'fun', label: 'Fun' },
     { op: 'category.define', category: 'travel', label: 'Travel' },
-    { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'Food', group: 'People',
+    { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'People',
       match: { categories: ['groceries'] }, template: parseDollars('600.00'), order: 0 },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'fun', label: 'Fun', group: 'People',
+    { op: 'envelope.define', envelope: 'fun', label: 'Fun', group: 'People',
       match: { categories: ['fun'] }, template: parseDollars('300.00'), order: 1 },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'trip', label: 'Travel', group: 'Future',
+    { op: 'envelope.define', envelope: 'trip', label: 'Travel', group: 'Future',
       match: { categories: ['travel'] }, template: parseDollars('400.00'), order: 2 },
-    { op: 'month.open', budget: 'harbor', month: '2026-08', income: parseDollars('1300.00') },
+    { op: 'month.open', month: '2026-08', income: parseDollars('1300.00') },
     { op: 'txn.add', txns: [
       { id: 'x1', date: '2026-08-03', payee: 'HILLTOP FOODS', amount: parseDollars('-580.00'), dedupeKey: 'x1', category: 'groceries' },
       { id: 'x2', date: '2026-08-04', payee: 'MYSTERY SHOP', amount: parseDollars('-10.00'), dedupeKey: 'x2', category: null },
@@ -45,7 +44,7 @@ async function ctx(who = 'alice'): Promise<ToolContext> {
 
 const as = (c: ToolContext, who: string): ToolContext => ({ ...c, who });
 const moveArgs = (from: string, to: string, amountCents = 12000) =>
-  ({ budget: 'harbor', month: '2026-08', from, to, amountCents, why: 'trip is paid for' });
+  ({ month: '2026-08', from, to, amountCents, why: 'trip is paid for' });
 
 async function spendOnFood(c: ToolContext, id: string) {
   await c.store.append('alice', { op: 'txn.add', txns: [
@@ -60,7 +59,6 @@ describe('cards', () => {
     assert.equal(o.who, 'claude');
     assert.equal(o.events[0]?.op, 'move');
     assert.deepEqual([...o.envelopes].sort(), ['food', 'trip']);
-    assert.equal(o.budget, 'harbor');
     assert.equal(o.month, '2026-08');
     assert.equal(o.status, 'open');
     assert.match(o.summary, /Move \$120\.00 from Travel to Food/);
@@ -68,7 +66,7 @@ describe('cards', () => {
 
   test('a read tool cannot be offered', async () => {
     const c = await ctx();
-    await assert.rejects(offer(c, { tool: 'get_month', args: { budget: 'harbor' }, prompt: BRIEFING }), ToolError);
+    await assert.rejects(offer(c, { tool: 'get_month', args: {}, prompt: BRIEFING }), ToolError);
   });
 
   test('approving appends the decision and its effect in one write, by whoever approved', async () => {
@@ -99,7 +97,7 @@ describe('cards', () => {
   test('an offer on other envelopes leaves the first alone', async () => {
     const c = await ctx();
     const first = await offer(c, { tool: 'move_money', args: moveArgs('trip', 'food'), prompt: BRIEFING });
-    await offer(c, { tool: 'set_assignment', args: { budget: 'harbor', month: '2026-08', envelope: 'fun', toCents: 25000, why: 'less fun' }, prompt: BRIEFING });
+    await offer(c, { tool: 'set_assignment', args: { month: '2026-08', envelope: 'fun', toCents: 25000, why: 'less fun' }, prompt: BRIEFING });
     assert.equal(c.store.state.thread.offers.get(first.id)?.status, 'open');
   });
 
@@ -143,7 +141,7 @@ describe('cards', () => {
     const fresh = await refresh(c, o.id);
     assert.equal(c.store.state.thread.offers.get(o.id)?.status, 'replaced');
     assert.equal(fresh.who, 'claude');
-    assert.equal(fresh.fingerprint, fingerprint(c.store.state, 'harbor', '2026-08', ['trip', 'food']));
+    assert.equal(fresh.fingerprint, fingerprint(c.store.state, '2026-08', ['trip', 'food']));
     await decide(c, fresh.id, 'approved', 'ok');
   });
 
@@ -157,13 +155,6 @@ describe('cards', () => {
     assert.equal(c.store.state.thread.offers.get(o.id)?.status, 'replaced');
   });
 
-  test('an offer for a budget that has gone can only be declined', async () => {
-    const c = await ctx();
-    const o = await offer(c, { tool: 'move_money', args: moveArgs('trip', 'food'), prompt: BRIEFING });
-    await c.store.append('alice', { op: 'budget.archive', budget: 'harbor', archived: true, why: 'moved' });
-    await assert.rejects(decide(c, o.id, 'approved', 'ok'), (e: ToolError) => e.status === 409);
-    await decide(c, o.id, 'declined');
-  });
 });
 
 describe('what is waiting', () => {
@@ -208,13 +199,13 @@ describe('what is waiting', () => {
   test('a card whose month has closed is not waiting', async () => {
     const c = await ctx();
     await offer(c, { tool: 'move_money', args: moveArgs('trip', 'food'), prompt: BRIEFING });
-    await c.store.append('alice', { op: 'month.close', budget: 'harbor', month: '2026-08', closed: true, why: 'done' });
+    await c.store.append('alice', { op: 'month.close', month: '2026-08', closed: true, why: 'done' });
     assert.equal((await kinds(c, 'alice')).filter((x) => x.kind === 'offer').length, 0);
   });
 
   test('a removed receipt waits for the other member, not the one who removed it, until they have seen it', async () => {
     const c = await ctx();
-    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget', budget: 'harbor',
+    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget',
       headline: 'h', body: 'b', writtenBy: 'fallback' });
     const [removal] = await c.store.append('alice', { op: 'txn.remove', txn: 'x1', why: 'duplicate' });
     assert.equal((await kinds(c, 'alice')).filter((x) => x.kind === 'flag').length, 0);
@@ -227,7 +218,7 @@ describe('what is waiting', () => {
     const c = await ctx();
     await c.store.append('alice', { op: 'txn.remove', txn: 'x1', why: 'old' });
     assert.equal((await kinds(c, 'bob')).filter((x) => x.kind === 'flag').length, 0, 'an upgraded log opens quiet');
-    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget', budget: 'harbor',
+    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget',
       headline: 'h', body: 'b', writtenBy: 'fallback' });
     const [later] = await c.store.append('alice', { op: 'txn.remove', txn: 'x2', why: 'new' });
     assert.deepEqual((await kinds(c, 'bob')).filter((x) => x.kind === 'flag'), [{ kind: 'flag', event: later!.id }]);
@@ -235,7 +226,7 @@ describe('what is waiting', () => {
 
   test('a removed receipt that has been put back is not waiting', async () => {
     const c = await ctx();
-    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget', budget: 'harbor',
+    await c.store.append('claude', { op: 'thread.briefing', day: TODAY, source: 'budget',
       headline: 'h', body: 'b', writtenBy: 'fallback' });
     const [removal] = await c.store.append('alice', { op: 'txn.remove', txn: 'x2', why: 'duplicate' });
     await c.store.append('alice', { op: 'txn.add', txns: [
@@ -299,7 +290,7 @@ describe('an ask to take a plan', () => {
     const c = await ctx();
     await c.store.append('alice', { op: 'plan.create', plan: 'p1', title: 'Kitchen', area: 'House' });
     const card = (tool: string, events: NewEvent[]): NewEvent => ({ op: 'proposal.offer', tool, args: { plan: 'p1' }, summary: 's', effects: [],
-      events, budget: null, month: null, envelopes: [], fingerprint: '', prompt: BRIEFING } as NewEvent);
+      events, month: null, envelopes: [], fingerprint: '', prompt: BRIEFING } as NewEvent);
     const [ask, shelf] = await c.store.append('claude', [card('ask_to_take', [{ op: 'plan.ask', plan: 'p1', to: 'bob', why: 'w' }]),
       card('create_plan', [{ op: 'plan.create', plan: 'p2', title: 'Hinge', area: 'House', parent: 'p1' }])]);
     const closed = (message: string) => (e: unknown) => e instanceof ToolError && e.status === 409 && e.message === message;
@@ -314,7 +305,7 @@ describe('an ask to take a plan', () => {
 });
 
 describe('an effect stage', () => {
-  const note: NewEvent = { op: 'thread.note', text: 'effect ran', budget: null };
+  const note: NewEvent = { op: 'thread.note', text: 'effect ran' };
   const stored: NewEvent = { op: 'category.define', category: 'gifts', label: 'Gifts' };
 
   /** A write tool that proposes one stored event and runs `effect` at decision time. */

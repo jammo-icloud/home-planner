@@ -17,9 +17,9 @@ const state = { members: new Set(['alice', 'bob', 'casey']) } as unknown as Stat
 const W: Pick<DayWindow, 'from' | 'to'> = { from: '2026-11-01', to: '2026-11-30' };
 const lit = (e: Record<string, unknown>): ThreadEntry => e as unknown as ThreadEntry;
 const note = (id: string, day: string, who: string, over: Record<string, unknown> = {}): ThreadEntry =>
-  lit({ kind: 'note', id, at: `${day}T10:00:00.000Z`, who, text: 'x', budget: null, lane: 'notes', day, ...over });
+  lit({ kind: 'note', id, at: `${day}T10:00:00.000Z`, who, text: 'x', lane: 'notes', day, ...over });
 const brief = (id: string, day: string, over: Record<string, unknown> = {}): ThreadEntry =>
-  lit({ kind: 'briefing', id, at: `${day}T08:00:00.000Z`, source: 'household', budget: null, day, headline: 'h', body: null,
+  lit({ kind: 'briefing', id, at: `${day}T08:00:00.000Z`, source: 'household', day, headline: 'h', body: null,
     writtenBy: 'claude', lane: 'claude', ...over });
 const card = (id: string, day: string, who: string, over: Record<string, unknown> = {}): ThreadEntry =>
   lit({ kind: 'card', id, at: `${day}T11:00:00.000Z`, who, offer: {}, lane: 'budget', day, ...over });
@@ -84,26 +84,25 @@ async function household() {
     { op: 'member.add', member: 'bob', why: 'x' },
     { op: 'member.add', member: 'casey', why: 'x' },
     { op: 'category.define', category: 'groceries', label: 'Groceries' },
-    { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'food', label: 'Food', group: 'People',
+    { op: 'envelope.define', envelope: 'food', label: 'Food', group: 'People',
       match: { categories: ['groceries'] }, template: parseDollars('600.00'), order: 0 },
-    { op: 'month.open', budget: 'harbor', month: '2026-11', income: parseDollars('1000.00') },
+    { op: 'month.open', month: '2026-11', income: parseDollars('1000.00') },
   ]);
   clock.now = NOW;
   return { store, clock };
 }
 
 const offerRaw = (summary: string, prompt: { kind: string; ref: string | null } = { kind: 'briefing', ref: null }, over: Record<string, unknown> = {}): NewEventShape =>
-  ({ op: 'proposal.offer', tool: 'move_money', args: { budget: 'harbor', month: '2026-11', from: 'food', to: 'food', amountCents: 5000, why: 'x' },
-    summary, effects: [], events: [], budget: 'harbor', month: '2026-11', envelopes: [], fingerprint: '', prompt, ...over }) as NewEventShape;
+  ({ op: 'proposal.offer', tool: 'move_money', args: { month: '2026-11', from: 'food', to: 'food', amountCents: 5000, why: 'x' },
+    summary, effects: [], events: [], month: '2026-11', envelopes: [], fingerprint: '', prompt, ...over }) as NewEventShape;
 
 describe('thread()', () => {
   test('the first load covers today\'s month; through adds more; today is always a row; entries hold today and open days', async () => {
     const { store, clock } = await household();
     clock.now = '2026-10-20T17:00:00.000Z';
-    await store.append('bob', { op: 'thread.note', text: 'october', budget: null });
+    await store.append('bob', { op: 'thread.note', text: 'october' });
     clock.now = '2026-11-03T17:00:00.000Z';
-    await store.append('bob', { op: 'thread.note', text: 'early', budget: null });
+    await store.append('bob', { op: 'thread.note', text: 'early' });
     clock.now = NOW;
     const first = await thread(store, { who: 'alice', today: D });
     assert.deepEqual(first.days.map((d) => d.day), [D, '2026-11-03']);
@@ -117,9 +116,9 @@ describe('thread()', () => {
   test('before is the next month back with a day in view under the kind', async () => {
     const { store, clock } = await household();
     clock.now = '2026-08-20T17:00:00.000Z';
-    await store.append('bob', { op: 'thread.note', text: 'august', budget: null });
+    await store.append('bob', { op: 'thread.note', text: 'august' });
     clock.now = '2026-09-20T17:00:00.000Z';
-    await store.append('alice', { op: 'thread.ask', question: 'september?', budget: null });
+    await store.append('alice', { op: 'thread.ask', question: 'september?' });
     clock.now = NOW;
     assert.equal((await thread(store, { who: 'alice', today: D })).before, '2026-09');
     assert.equal((await thread(store, { who: 'alice', today: D, lane: 'notes' })).before, '2026-08');
@@ -128,7 +127,7 @@ describe('thread()', () => {
 
   test('a person with nothing in view answers everyone', async () => {
     const { store } = await household();
-    await store.append('bob', { op: 'thread.note', text: 'hi', budget: null });
+    await store.append('bob', { op: 'thread.note', text: 'hi' });
     const none = await thread(store, { who: 'alice', today: D, person: 'casey' });
     assert.equal(none.who, 'everyone');
     assert.equal(none.entries.length, 1);
@@ -167,7 +166,7 @@ describe('thread()', () => {
     const { store } = await household();
     await store.append('alice', { op: 'plan.create', plan: 'p1', title: 'Fix the gate', area: 'House' } as NewEventShape);
     const [ask] = await store.append('alice', { op: 'plan.ask', plan: 'p1', to: 'bob', why: 'you know it' });
-    await store.append('alice', offerRaw('Take p1?', { kind: 'ask', ref: ask!.id }, { tool: 'answer_ask', args: { plan: 'p1' }, budget: null, month: null }));
+    await store.append('alice', offerRaw('Take p1?', { kind: 'ask', ref: ask!.id }, { tool: 'answer_ask', args: { plan: 'p1' }, month: null }));
     const item = (await thread(store, { who: 'bob', today: D })).waiting.find((w) => w.kind === 'offer')!;
     assert.equal(item.title, 'Fix the gate');
   });
@@ -178,7 +177,7 @@ describe('thread()', () => {
     await store.append('guest:dana@example.com', {
       op: 'proposal.offer', tool: 'approve_booking',
       args: { email: 'dana@example.com', name: 'Dana', arrive: '2026-12-12', depart: '2026-12-15', headcount: 2, note: 'hi' },
-      summary: 'Dana would like to come', effects: [], events: [], budget: null, month: null, envelopes: [],
+      summary: 'Dana would like to come', effects: [], events: [], month: null, envelopes: [],
       fingerprint: '', prompt: { kind: 'booking', ref: null } } as NewEventShape);
     const item = (await thread(store, { who: 'alice', today: D })).waiting.find((w) => w.kind === 'offer' && w.offer.who.startsWith('guest:'));
     assert.equal(item?.name, 'Dana');
@@ -186,10 +185,10 @@ describe('thread()', () => {
 
   test('adopted lines older than the day\'s first read in time order and are fresh', async () => {
     const { store } = await household();
-    const [a] = await store.append('alice', { op: 'thread.note', text: 'mine', budget: null });
+    const [a] = await store.append('alice', { op: 'thread.note', text: 'mine' });
     await store.append('alice', { op: 'briefing.read', upTo: a!.id });
     const old = { id: `${(Date.now() + 90_000).toString(36)}-910001`, at: '2026-11-10T07:00:00.000Z', who: 'bob',
-      op: 'thread.note', text: 'earlier', budget: null } as unknown as Event;
+      op: 'thread.note', text: 'earlier' } as unknown as Event;
     await store.adopt([old]);
     const page = await thread(store, { who: 'alice', today: D });
     const texts = page.entries.map((e) => (e.kind === 'note' ? e.text : e.kind));
@@ -202,7 +201,7 @@ describe('thread()', () => {
   test('threadDay finds a day by its date or by an id it holds', async () => {
     const { store, clock } = await household();
     clock.now = '2026-11-03T17:00:00.000Z';
-    const [q] = await store.append('bob', { op: 'thread.ask', question: 'hm?', budget: null });
+    const [q] = await store.append('bob', { op: 'thread.ask', question: 'hm?' });
     const [ans] = await store.append('claude', { op: 'thread.answer', replyTo: q!.id, text: 'yes', tools: [], model: 'm' });
     clock.now = NOW;
     const byDay = await threadDay(store, { who: 'alice', today: D, day: '2026-11-03' });
@@ -215,7 +214,7 @@ describe('thread()', () => {
   test('threadDay finds the day of an offer, a drift and a question by their ids', async () => {
     const { store, clock } = await household();
     clock.now = '2026-11-03T17:00:00.000Z';
-    const [q] = await store.append('bob', { op: 'thread.ask', question: 'hm?', budget: null });
+    const [q] = await store.append('bob', { op: 'thread.ask', question: 'hm?' });
     clock.now = '2026-11-04T17:00:00.000Z';
     const [o] = await store.append('claude', offerRaw('Move $50 to food'));
     clock.now = '2026-11-05T17:00:00.000Z';
@@ -231,7 +230,7 @@ describe('thread()', () => {
 
   test('everyEntry gives the whole record, newest day first', async () => {
     const { store } = await household();
-    await store.append('bob', { op: 'thread.note', text: 'hi', budget: null });
+    await store.append('bob', { op: 'thread.note', text: 'hi' });
     const { entries } = await everyEntry(store, 'alice');
     assert.ok(entries.some((e) => e.kind === 'note'));
   });

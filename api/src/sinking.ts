@@ -13,8 +13,8 @@ import type { Cents } from './money.ts';
 import { carriedInto, envelopeFor, matches, openMonths } from './envelopes.ts';
 import { fundedFor } from './replay.ts';
 import { nextMonth } from './income.ts';
-import { MONTHS_SHORT, monthKey, monthOf } from './types.ts';
-import type { AccountBalance, BudgetId, Day, Envelope, EnvelopeId, Month, SinkingEstimate, State } from './types.ts';
+import { MONTHS_SHORT, monthOf } from './types.ts';
+import type { AccountBalance, Day, Envelope, EnvelopeId, Month, SinkingEstimate, State } from './types.ts';
 
 /** A balance older than this is not compared: the funds have moved on since, and the answer would mislead. */
 export const STALE_AFTER_DAYS = 35;
@@ -95,7 +95,7 @@ export function estimatesFor(state: State, env: Envelope): Estimate[] {
  * what was saved as what the envelope carried into the month, so the figure
  * holds still while the month is lived in. Null for an ordinary envelope.
  */
-export function goalFor(state: State, budget: BudgetId, env: Envelope, month: Month): GoalView | null {
+export function goalFor(state: State, env: Envelope, month: Month): GoalView | null {
   const goal = env.sinking;
   if (!goal) return null;
   const estimates = estimatesFor(state, env);
@@ -106,18 +106,16 @@ export function goalFor(state: State, budget: BudgetId, env: Envelope, month: Mo
       by: null, monthsLeft: null, passed: false, estimates,
     };
   }
-  const saved = carriedInto(state, budget, month, env.id);
+  const saved = carriedInto(state, month, env.id);
   const { monthly, monthsLeft, passed } = byMonthly(goal.target, saved, month, goal.by);
   return { kind: 'by', monthly, target: goal.target, by: goal.by, monthsLeft, passed, estimates };
 }
 
 /** What a month opening now would plan each sinking envelope at: what its goal needs that month. */
-export function sinkingPlan(state: State, budget: BudgetId, month: Month): Map<EnvelopeId, Cents> {
+export function sinkingPlan(state: State, month: Month): Map<EnvelopeId, Cents> {
   const out = new Map<EnvelopeId, Cents>();
-  const b = state.budgets.get(budget);
-  if (!b) return out;
-  for (const env of b.envelopes.values()) {
-    const goal = goalFor(state, budget, env, month);
+  for (const env of state.envelopes.values()) {
+    const goal = goalFor(state, env, month);
     if (goal) out.set(env.id, goal.monthly);
   }
   return out;
@@ -131,33 +129,32 @@ export function sinkingPlan(state: State, budget: BudgetId, month: Month): Map<E
  * first day, the way the money goes over at the start of the month. A day in
  * a month not opened yet reads the last open month's end; one before any, nothing.
  */
-export function balanceAsOf(state: State, budget: BudgetId, env: EnvelopeId, day: Day): Cents {
-  const envelope = state.budgets.get(budget)?.envelopes.get(env);
+export function balanceAsOf(state: State, env: EnvelopeId, day: Day): Cents {
+  const envelope = state.envelopes.get(env);
   if (!envelope) return ZERO;
   const month = monthOf(day);
-  const plan = state.months.get(monthKey(budget, month));
+  const plan = state.months.get(month);
   if (!plan) {
-    const before = openMonths(state, budget).filter((m) => m < month).at(-1);
-    return before ? carriedInto(state, budget, nextMonth(before), env) : ZERO;
+    const before = openMonths(state).filter((m) => m < month).at(-1);
+    return before ? carriedInto(state, nextMonth(before), env) : ZERO;
   }
-  const b = state.budgets.get(budget)!;
   let spent = ZERO;
   for (const t of state.txns.values()) {
     if (monthOf(t.date) !== month || t.date > day) continue;
-    if (!matches(envelope, t) || envelopeFor(b, t)?.id !== env) continue;
+    if (!matches(envelope, t) || envelopeFor(state, t)?.id !== env) continue;
     spent = add(spent, cents(-t.amount));
   }
-  const carried = envelope.rollover ? carriedInto(state, budget, month, env) : ZERO;
+  const carried = envelope.rollover ? carriedInto(state, month, env) : ZERO;
   return sub(add(carried, fundedFor(plan, env)), spent);
 }
 
 /** The budget's sinking envelopes, in the order they were defined. */
-export const sinkingEnvelopes = (state: State, budget: BudgetId): Envelope[] =>
-  [...(state.budgets.get(budget)?.envelopes.values() ?? [])].filter((e) => e.sinking).sort((a, b) => a.order - b.order);
+export const sinkingEnvelopes = (state: State): Envelope[] =>
+  [...state.envelopes.values()].filter((e) => e.sinking).sort((a, b) => a.order - b.order);
 
 /** All the sinking envelopes held on a day, together. */
-export const heldAsOf = (state: State, budget: BudgetId, day: Day): Cents =>
-  sinkingEnvelopes(state, budget).reduce((n, e) => add(n, balanceAsOf(state, budget, e.id, day)), ZERO);
+export const heldAsOf = (state: State, day: Day): Cents =>
+  sinkingEnvelopes(state).reduce((n, e) => add(n, balanceAsOf(state, e.id, day)), ZERO);
 
 export type CheckStatus = 'no-account' | 'no-balance' | 'stale' | 'even' | 'over' | 'short';
 
@@ -190,14 +187,14 @@ const amount = (c: Cents): string => (Math.abs(c) < 100 ? fmtExact(c) : fmt(c));
  * balance older than `STALE_AFTER_DAYS` is said to be old instead. Null when
  * the budget has no sinking envelopes: there is nothing to check.
  */
-export function savingsCheck(state: State, budget: BudgetId, today: Day): SavingsCheck | null {
-  if (!sinkingEnvelopes(state, budget).length) return null;
+export function savingsCheck(state: State, today: Day): SavingsCheck | null {
+  if (!sinkingEnvelopes(state).length) return null;
   const account = state.savings.account;
   const balance = account ? state.savings.balances.get(account) ?? null : null;
   const daysOld = balance ? Math.max(0, daysBetween(balance.asOf, today)) : null;
   const compared = balance !== null && daysOld !== null && daysOld <= STALE_AFTER_DAYS;
   const day = compared ? balance.asOf : today;
-  const held = heldAsOf(state, budget, day);
+  const held = heldAsOf(state, day);
   const on = (d: Day) => (d === today ? 'today' : `on ${shortDay(d)}`);
   const words = (verdict: string) => ({
     held: `Sinking funds ${day === today ? `hold ${fmt(held)}` : `held ${fmt(held)} ${on(day)}`}.`,

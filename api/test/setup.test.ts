@@ -93,8 +93,8 @@ describe("Today's setup notices", () => {
     const state = stateOf(...CLAIMED,
       ['alice', { op: 'household.zone', zone: 'America/Denver' }],
       ['alice', { op: 'documents.folder', team: 'Planner', folder: 'h1', source: 'owner' }],
-      ['claude', { op: 'thread.briefing', day: '2026-11-02', source: 'household', budget: null, headline: 'Today', doc: DOC, writtenBy: 'fallback' }],
-      ['bob', { op: 'thread.ask', question: 'How is food?', budget: null }],
+      ['claude', { op: 'thread.briefing', day: '2026-11-02', source: 'household', headline: 'Today', doc: DOC, writtenBy: 'fallback' }],
+      ['bob', { op: 'thread.ask', question: 'How is food?' }],
       ['claude', { op: 'thread.answer', replyTo: 'e6', text: 'Fine.', tools: [], model: 'm', doc: ANSWER }],
       ['alice', { op: 'documents.folder', team: 'Planner', folder: 'h2', source: 'owner' }],
     );
@@ -119,7 +119,7 @@ describe("Today's setup notices", () => {
       ['guest:guests@example.com', {
         op: 'proposal.offer', tool: 'approve_booking',
         args: { email: 'guests@example.com', name: 'Nguyen family', arrive: '2026-12-12', depart: '2026-12-15', headcount: 3, note: 'hi' },
-        summary: 'Nguyen family would like to come', effects: [], events: [], budget: null, month: null, envelopes: [],
+        summary: 'Nguyen family would like to come', effects: [], events: [], month: null, envelopes: [],
         fingerprint: '', prompt: { kind: 'booking', ref: null },
       } as NewEventShape],
       [SYSTEM, { op: 'guests.booking', on: false, calendarGone: true }],
@@ -135,7 +135,7 @@ describe("Today's setup notices", () => {
     const second = stateOf(...lost.slice(0, -1), ['guest:guests@example.com', {
       op: 'proposal.offer', tool: 'approve_booking',
       args: { email: 'guests@example.com', name: 'Nguyen family', arrive: '2027-01-02', depart: '2027-01-05', headcount: 3, note: 'again' },
-      summary: 'Nguyen family would like to come again', effects: [], events: [], budget: null, month: null, envelopes: [],
+      summary: 'Nguyen family would like to come again', effects: [], events: [], month: null, envelopes: [],
       fingerprint: '', prompt: { kind: 'booking', ref: null },
     } as NewEventShape], lost.at(-1)!);
     assert.equal(setupNotices({ ...base, state: second })[0]!.text,
@@ -152,56 +152,44 @@ describe("Today's setup notices", () => {
 
 describe("Today's budget notices", () => {
   const TODAY = '2026-11-02';
-  const budget = (id: string, label: string): Line => ['alice', { op: 'budget.create', budget: id, label }];
   const category = (id: string): Line => ['alice', { op: 'category.define', category: id, label: id }];
-  const envelope = (b: string, id: string, label: string, order: number, o: { figure?: boolean } = {}): Line => ['alice', {
-    op: 'envelope.define', budget: b, envelope: id, label, group: 'Home', match: { categories: [id] },
+  const envelope = (id: string, label: string, order: number, o: { figure?: boolean } = {}): Line => ['alice', {
+    op: 'envelope.define', envelope: id, label, group: 'Home', match: { categories: [id] },
     template: cents(10000), rollover: true, order, ...(o.figure === false ? { needsFigure: true as const } : {}),
   } as NewEventShape];
-  const open = (b: string, month = '2026-11'): Line => ['alice', { op: 'month.open', budget: b, month, income: cents(100000) }];
+  const open = (month = '2026-11'): Line => ['alice', { op: 'month.open', month, income: cents(100000) }];
   const spend = (id: string, category: string, amount: number): Line => ['alice', {
     op: 'txn.add', txns: [{ id, date: '2026-11-01', payee: 'VALLEY MARKET', amount: cents(amount), dedupeKey: id, category }],
   } as NewEventShape];
 
   test('envelopes needing a figure are one notice that opens the first', () => {
-    const lines: Line[] = [...CLAIMED, budget('placitas', 'Placitas')];
+    const lines: Line[] = [...CLAIMED];
     for (let i = 0; i < 17; i++) lines.push(category(`e${i}`));
     // Listed out of order: the first is the lowest order, not the first written.
-    for (let i = 16; i >= 0; i--) lines.push(envelope('placitas', `e${i}`, `E${i}`, i + 1, { figure: false }));
-    lines.push(open('placitas'));
+    for (let i = 16; i >= 0; i--) lines.push(envelope(`e${i}`, `E${i}`, i + 1, { figure: false }));
+    lines.push(open());
     assert.deepEqual(budgetNotices(stateOf(...lines), TODAY), [{
       kind: 'figures', text: '17 envelopes still need a figure',
-      action: { label: 'Go to the first one', open: 'budget', budget: 'placitas', envelope: 'e0' },
+      action: { label: 'Go to the first one', open: 'budget', envelope: 'e0' },
     }]);
-    const one = stateOf(...CLAIMED, budget('placitas', 'Placitas'), category('e0'),
-      envelope('placitas', 'e0', 'E0', 1, { figure: false }), open('placitas'));
+    const one = stateOf(...CLAIMED, category('e0'),
+      envelope('e0', 'E0', 1, { figure: false }), open());
     assert.equal(budgetNotices(one, TODAY)[0]!.text, '1 envelope still needs a figure');
   });
 
   test('a short envelope with a figure is its own notice that opens its cover', () => {
-    const state = stateOf(...CLAIMED, budget('placitas', 'Placitas'), category('groceries'),
-      envelope('placitas', 'groceries', 'Groceries', 1), open('placitas'), spend('t1', 'groceries', -14200));
+    const state = stateOf(...CLAIMED, category('groceries'),
+      envelope('groceries', 'Groceries', 1), open(), spend('t1', 'groceries', -14200));
     assert.deepEqual(budgetNotices(state, TODAY), [{
       kind: 'short', text: 'Groceries is short $42',
-      action: { label: 'Cover it', open: 'budget', budget: 'placitas', envelope: 'groceries', cover: true },
+      action: { label: 'Cover it', open: 'budget', envelope: 'groceries', cover: true },
     }]);
   });
 
   test('an envelope with no figure yet is not also called short', () => {
-    const state = stateOf(...CLAIMED, budget('placitas', 'Placitas'), category('groceries'),
-      envelope('placitas', 'groceries', 'Groceries', 1, { figure: false }), open('placitas'), spend('t1', 'groceries', -14200));
+    const state = stateOf(...CLAIMED, category('groceries'),
+      envelope('groceries', 'Groceries', 1, { figure: false }), open(), spend('t1', 'groceries', -14200));
     assert.deepEqual(budgetNotices(state, TODAY).map((n) => n.kind), ['figures']);
-  });
-
-  test('with more than one live budget each notice names its budget', () => {
-    const state = stateOf(...CLAIMED,
-      budget('placitas', 'Placitas'), category('groceries'),
-      envelope('placitas', 'groceries', 'Groceries', 1), open('placitas'), spend('t1', 'groceries', -14200),
-      budget('lodge', 'Lodge'), envelope('lodge', 'groceries', 'Groceries', 1), open('lodge', '2026-10'),
-      budget('old', 'Old'), envelope('old', 'groceries', 'Groceries', 1, { figure: false }), open('old'),
-      ['alice', { op: 'budget.archive', budget: 'old', archived: true, why: 'done' }]);
-    assert.deepEqual(budgetNotices(state, TODAY).map((n) => n.text), ['Placitas: Groceries is short $42']);
-    // Lodge has no month open now, so only the live budget with one is named.
   });
 
   test('an administrator is warned 30 days before the profile certificate expires', () => {

@@ -48,10 +48,10 @@ import {
 } from './booking.ts';
 import type { BookingMail } from './booking.ts';
 import {
-  areaIndex, DRIFT_CHOICES, emailKey, isDay, isEmail, isGuest, isSpend, monthOf, monthKey, MONTHS_SHORT, partsOf, PERS, slug, SPLIT, TRANSFER, INCOME, zoneOf,
+  areaIndex, DRIFT_CHOICES, emailKey, isDay, isEmail, isGuest, isSpend, monthOf, MONTHS_SHORT, partsOf, PERS, slug, SPLIT, TRANSFER, INCOME, zoneOf,
 } from './types.ts';
 import type {
-  Actor, Assignment, BillDate, BudgetId, BudgetLocation, Day, DriftChoice, Envelope, Event, Match, Month, Per, Plan, PlanState, SinkingEstimate, SinkingGoal, SplitPart, State, Txn,
+  Actor, Assignment, BillDate, Day, DriftChoice, Envelope, Event, Location, Match, Month, Per, Plan, PlanState, SinkingEstimate, SinkingGoal, SplitPart, State, Txn,
 } from './types.ts';
 import type { Store, NewEvent } from './store.ts';
 
@@ -232,10 +232,10 @@ const basisWords = (b: Basis): string => `${fmtExact(b.amount)} a ${perWord(b.pe
 
 export { ToolError };
 
-const resolveMonth = (state: State, budget: string, month: unknown): Month => {
+const resolveMonth = (state: State, month: unknown): Month => {
   if (typeof month === 'string' && month) return month;
-  const latest = latestMonth(state, budget);
-  if (!latest) throw new ToolError(`no months are open for ${budget}`);
+  const latest = latestMonth(state);
+  if (!latest) throw new ToolError('no months are open');
   return latest;
 };
 
@@ -267,28 +267,24 @@ const billView = (b: Bill) => ({
 const getMonth: Tool = {
   name: 'get_month',
   description:
-    'How a budget is doing this month: every envelope with planned, funded, spent and left, ' +
+    'How the budget is doing this month: every envelope with planned, funded, spent and left, ' +
     'plus its bills, with any date a member set, pace projections, plan drift, the unsorted queue and whether it balances. ' +
     'Start here for any "how are we doing" question.',
   kind: 'read',
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string', description: 'A budget id — see the budgets in this household.' },
       month: { type: 'string', description: 'YYYY-MM. Defaults to the latest open month.' },
     },
-    required: ['budget'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    const month = resolveMonth(state, budget, args['month']);
-    const snap = snapshot(state, budget, month, ctx.today);
-    if (!snap) throw new ToolError(`${month} is not open for ${budget}`, 404);
-    const budgetRow = state.budgets.get(budget);
-    const billed = billsOf(state, budget);
+    const month = resolveMonth(state, args['month']);
+    const snap = snapshot(state, month, ctx.today);
+    if (!snap) throw new ToolError(`${month} is not open`, 404);
+    const billed = billsOf(state);
     return {
-      budget, month,
+      month,
       dayOfMonth: snap.clock.dayOfMonth,
       daysInMonth: snap.clock.daysInMonth,
       income: fmt(snap.view.income),
@@ -305,7 +301,7 @@ const getMonth: Tool = {
       card: cardFor(snap.view),
       groups: groupOrder(snap.view.envelopes.map((e) => e.envelope.group)),
       balanced: snap.balanced,
-      closed: state.months.get(monthKey(budget, month))?.closed === true,
+      closed: state.months.get(month)?.closed === true,
       movesThisMonth: snap.view.moveCount,
       spentOutsideThisBudget: fmt(snap.view.outside.total),
       envelopes: snap.view.envelopes.map((e) => ({
@@ -335,16 +331,16 @@ const getMonth: Tool = {
           ? { amount: fmtExact(e.envelope.basis.amount).replace('$', ''), per: e.envelope.basis.per }
           : null,
         // For every envelope with categories, so a figure can be changed from its receipts.
-        hint: budgetRow && (e.envelope.needsFigure || e.envelope.match.categories.length > 0)
-          ? hintView(hintFor(state, budgetRow, e.envelope, month)) : null,
+        hint: e.envelope.needsFigure || e.envelope.match.categories.length > 0
+          ? hintView(hintFor(state, e.envelope, month)) : null,
         // Short only once it has a figure: a flagged envelope shows Action required, never Short.
         short: e.envelope.needsFigure ? null : shortView(coverFor(state, snap.view, e.envelope.id, ctx.today)),
         // Saved in Savings: what it holds so far is what is left in it.
-        sinking: sinkingView(state, budget, e.envelope, month, e.available),
+        sinking: sinkingView(state, e.envelope, month, e.available),
         bills: e.envelope.sinking ? [] : (billed.get(e.envelope.id) ?? []).map(billView),
       })),
       // The sinking envelopes against the savings account; null with none.
-      savings: savingsView(state, budget, ctx.today),
+      savings: savingsView(state, ctx.today),
       pace: snap.pace.filter((p) => p.status !== 'ok').map((p) => ({
         envelope: p.envelope, label: p.label, status: p.status,
         spent: fmt(p.spent), left: fmt(p.available),
@@ -377,7 +373,7 @@ const getMonth: Tool = {
  * the template becomes it, the flag goes, and the source and basis become `figure.source` and
  * `figure.basis` (none when absent: a figure given as a monthly drops an old yearly basis).
  */
-export function redefine(budget: BudgetId, env: Envelope, change: {
+export function redefine(env: Envelope, change: {
   label?: string; group?: string; match?: Match; rollover?: boolean; sinking?: SinkingGoal | null;
   figure?: { template: Cents; source?: string; basis?: Basis };
 } = {}): NewEvent {
@@ -385,7 +381,7 @@ export function redefine(budget: BudgetId, env: Envelope, change: {
   const source = change.figure ? change.figure.source : env.source;
   const basis = change.figure ? change.figure.basis : env.basis;
   return {
-    op: 'envelope.define', budget, envelope: env.id,
+    op: 'envelope.define', envelope: env.id,
     label: change.label ?? env.label, group: change.group ?? env.group,
     match: change.match ?? env.match, rollover: change.rollover ?? env.rollover,
     template: change.figure?.template ?? env.template, order: env.order,
@@ -397,8 +393,8 @@ export function redefine(budget: BudgetId, env: Envelope, change: {
 }
 
 /** A sinking envelope's goal for get_month, as exact dollars: an editor round-trips them. */
-function sinkingView(state: State, budget: string, env: Envelope, month: Month, saved: Cents) {
-  const g = goalFor(state, budget, env, month);
+function sinkingView(state: State, env: Envelope, month: Month, saved: Cents) {
+  const g = goalFor(state, env, month);
   if (!g) return null;
   return {
     kind: g.kind,
@@ -414,8 +410,8 @@ function sinkingView(state: State, budget: string, env: Envelope, month: Month, 
 }
 
 /** The check against Savings for get_month and Settings: the figures, and the words to say them in. */
-export function savingsView(state: State, budget: string, today: Day) {
-  const c = savingsCheck(state, budget, today);
+export function savingsView(state: State, today: Day) {
+  const c = savingsCheck(state, today);
   if (!c) return null;
   return {
     status: c.status, account: c.account,
@@ -436,25 +432,23 @@ const explainEnvelope: Tool = {
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       envelope: { type: 'string', description: 'Envelope id, e.g. daily' },
       month: { type: 'string' },
     },
-    required: ['budget', 'envelope'],
+    required: ['envelope'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
     const envelopeId = str(args['envelope'], 'envelope');
-    const month = resolveMonth(state, budget, args['month']);
-    const view = monthView(state, budget, month);
-    if (!view) throw new ToolError(`${month} is not open for ${budget}`, 404);
+    const month = resolveMonth(state, args['month']);
+    const view = monthView(state, month);
+    if (!view) throw new ToolError(`${month} is not open`, 404);
     const e = view.envelopes.find((x) => x.envelope.id === envelopeId);
-    if (!e) throw new ToolError(`no envelope ${envelopeId} in ${budget}`, 404);
+    if (!e) throw new ToolError(`no envelope ${envelopeId}`, 404);
 
     const clock = monthClock(month, ctx.today);
     const p = pace(view, clock, state).find((x) => x.envelope === envelopeId);
-    const d = drift(state, budget, month, 4).find((x) => x.envelope === envelopeId);
+    const d = drift(state, month, 4).find((x) => x.envelope === envelopeId);
 
     // One entry per part that lands here. A split receipt shows its share as
     // `amount`, and the whole receipt as `of`, so the list adds up to `spent`.
@@ -470,7 +464,7 @@ const explainEnvelope: Tool = {
       }));
 
     return {
-      budget, month,
+      month,
       envelope: e.envelope.id,
       label: e.envelope.label,
       feedsFrom: e.envelope.match,
@@ -523,24 +517,22 @@ const findDonors: Tool = {
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       forEnvelope: { type: 'string', description: 'The envelope that needs money.' },
       month: { type: 'string' },
     },
-    required: ['budget', 'forEnvelope'],
+    required: ['forEnvelope'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
     const target = str(args['forEnvelope'], 'forEnvelope');
-    const month = resolveMonth(state, budget, args['month']);
-    const view = monthView(state, budget, month);
-    if (!view) throw new ToolError(`${month} is not open for ${budget}`, 404);
+    const month = resolveMonth(state, args['month']);
+    const view = monthView(state, month);
+    if (!view) throw new ToolError(`${month} is not open`, 404);
     const clock = monthClock(month, ctx.today);
     const need = view.envelopes.find((e) => e.envelope.id === target);
     const shortfall = need && need.available < 0 ? cents(-need.available) : ZERO;
     return {
-      budget, month,
+      month,
       forEnvelope: target,
       shortfall: fmt(shortfall),
       donors: donors(view, clock, target, state).map((d) => ({
@@ -556,8 +548,7 @@ const listTransactions: Tool = {
   name: 'list_transactions',
   description:
     'Search the ledger. Filter by month, category, envelope, payee text, or uncategorized only. ' +
-    'Transactions belong to the household, not to a budget — the same transaction is visible ' +
-    'from every budget.',
+    'Transactions belong to the household: every one is here, whatever envelope it lands in.',
   kind: 'read',
   input: {
     type: 'object',
@@ -603,85 +594,6 @@ const listTransactions: Tool = {
         // A split receipt's category is the marker; the parts say where it went.
         parts: t.split ? t.split.map((p) => ({ category: p.category, amount: fmtExact(p.amount) })) : null,
       })),
-    };
-  },
-};
-
-const compareBudgets: Tool = {
-  name: 'compare_budgets',
-  description:
-    'Line up two budgets side by side to show what the move actually costs per month. ' +
-    'Compares envelope templates, not a single month, so it answers "what changes when we go?".',
-  kind: 'read',
-  input: {
-    type: 'object',
-    properties: { a: { type: 'string' }, b: { type: 'string' } },
-    required: ['a', 'b'],
-  },
-  run(args, ctx) {
-    const state = ctx.store.state;
-    const aId = str(args['a'], 'a');
-    const bId = str(args['b'], 'b');
-    const A = state.budgets.get(aId);
-    const B = state.budgets.get(bId);
-    if (!A || !B) throw new ToolError('unknown budget', 404);
-
-    const keys = new Set([...A.envelopes.keys(), ...B.envelopes.keys()]);
-    const rows = [...keys].map((k) => {
-      const ea = A.envelopes.get(k);
-      const eb = B.envelopes.get(k);
-      const va = ea?.template ?? ZERO;
-      const vb = eb?.template ?? ZERO;
-      return {
-        envelope: k,
-        label: eb?.label ?? ea?.label ?? k,
-        group: eb?.group ?? ea?.group ?? 'Other',
-        [aId]: fmt(va), [bId]: fmt(vb),
-        [`${aId}Exact`]: fmtExact(va), [`${bId}Exact`]: fmtExact(vb),
-        difference: fmt(sub(vb, va)),
-        differenceExact: fmtExact(sub(vb, va)),
-        // An envelope that exists in one budget and not the other is a bigger
-        // finding than one whose number changed: it means a whole cost either
-        // appears or disappears with the move.
-        onlyIn: !ea ? bId : !eb ? aId : null,
-        raw: sub(vb, va),
-      };
-    }).sort((x, y) => Math.abs(y.raw) - Math.abs(x.raw));
-
-    const totalA = cents([...A.envelopes.values()].reduce((n, e) => n + e.template, 0));
-    const totalB = cents([...B.envelopes.values()].reduce((n, e) => n + e.template, 0));
-
-    /**
-     * What each plan costs is only half the question. Whether it fits is the
-     * other half, and that needs the income actually recorded for each budget —
-     * which may differ, since a move can change what either of you earns.
-     */
-    const fits = (id: string, total: Cents) => {
-      const sources = sourcesFor(state, id);
-      if (!sources.length) return { income: null, covered: null, gap: null };
-      const months = project(sources, monthOf(ctx.today), 12);
-      const lowest = months.reduce((m, x) => (x.total < m.total ? x : m), months[0]!);
-      return {
-        income: fmt(lowest.total),
-        covered: lowest.total >= total,
-        gap: lowest.total >= total ? fmt(cents(lowest.total - total)) : fmt(cents(total - lowest.total)),
-      };
-    };
-
-    return {
-      comparing: [aId, bId],
-      labels: { [aId]: A.label, [bId]: B.label },
-      monthlyTotal: { [aId]: fmt(totalA), [bId]: fmt(totalB) },
-      monthlyDifference: fmt(sub(totalB, totalA)),
-      // To the cent as well, because the annual figure is twelve times the exact
-      // monthly one. Showing only the rounded month invites a reader to multiply
-      // it and get a different answer to the one on the same line.
-      monthlyDifferenceExact: fmtExact(sub(totalB, totalA)),
-      annualDifference: fmt(cents(sub(totalB, totalA) * 12)),
-      // Measured against the leanest month in the next year, because a plan
-      // that only works in a three-paycheque month does not work.
-      affordability: { [aId]: fits(aId, totalA), [bId]: fits(bId, totalB) },
-      byEnvelope: rows.map(({ raw, ...r }) => r),
     };
   },
 };
@@ -744,13 +656,12 @@ const dayRange = (from: string, to: string): string => {
 
 export function describe(
   e: Event,
-  /** When given, budgets, envelopes, categories and months read by name rather than by id. */
+  /** When given, envelopes, categories and months read by name rather than by id. */
   state?: State,
 ): { id: string; at: string; who: Actor; what: string; why: string | null } {
   const why = (e as { why?: string }).why ?? null;
   // A name that has since gone falls back to the id: something, never nothing.
-  const budget = (id: string) => state?.budgets.get(id)?.label ?? id;
-  const env = (b: string, id: string) => state?.budgets.get(b)?.envelopes.get(id)?.label ?? id;
+  const env = (id: string) => state?.envelopes.get(id)?.label ?? id;
   const cat = (id: string | null) => id === null ? 'uncategorized'
     : !state ? id
     : id === TRANSFER ? 'a transfer' : id === INCOME ? 'income' : id === SPLIT ? 'a split' : state.categories.get(id)?.label ?? id;
@@ -759,10 +670,10 @@ export function describe(
   const plan = (id: string) => state?.plans.get(id)?.title ?? id;
   let what: string;
   switch (e.op) {
-    case 'assign': what = `set ${env(e.budget, e.envelope)} to ${fmt(e.to)}`; break;
-    case 'move': what = `moved ${fmt(e.amount)} from ${env(e.budget, e.from)} to ${env(e.budget, e.to)}`; break;
+    case 'assign': what = `set ${env(e.envelope)} to ${fmt(e.to)}`; break;
+    case 'move': what = `moved ${fmt(e.amount)} from ${env(e.from)} to ${env(e.to)}`; break;
     case 'income.set': what = `set income to ${fmt(e.amount)}`; break;
-    case 'month.open': what = `opened ${mon(e.month)} for ${budget(e.budget)}`; break;
+    case 'month.open': what = `opened ${mon(e.month)}`; break;
     case 'txn.add': what = `imported ${e.txns.length} transactions${e.source ? ` from ${e.source}` : ''}`; break;
     case 'txn.categorize': what = `categorized a transaction as ${cat(e.category)}`; break;
     case 'txn.split': {
@@ -774,17 +685,16 @@ export function describe(
     case 'rule.add': what = `added rule "${e.match}" to ${cat(e.category)}`; break;
     case 'rule.remove': what = 'removed a rule'; break;
     case 'envelope.define':
-      what = e.sinking ? `saved ${env(e.budget, e.envelope)} in Savings, in ${budget(e.budget)}`
-        : e.sinking === null ? `stopped saving ${env(e.budget, e.envelope)} in Savings, in ${budget(e.budget)}`
-        : `defined envelope ${env(e.budget, e.envelope)} in ${budget(e.budget)}`;
+      what = e.sinking ? `saved ${env(e.envelope)} in Savings`
+        : e.sinking === null ? `stopped saving ${env(e.envelope)} in Savings`
+        : `defined envelope ${env(e.envelope)}`;
       break;
-    case 'envelope.remove': what = `removed envelope ${env(e.budget, e.envelope)}`; break;
+    case 'envelope.remove': what = `removed envelope ${env(e.envelope)}`; break;
     case 'bill.set':
-      what = e.date ? `set ${e.name} in ${env(e.budget, e.envelope)} to ${billDateWords(e.date)}`
-        : `cleared the date on ${e.name} in ${env(e.budget, e.envelope)}`;
+      what = e.date ? `set ${e.name} in ${env(e.envelope)} to ${billDateWords(e.date)}`
+        : `cleared the date on ${e.name} in ${env(e.envelope)}`;
       break;
-    case 'bill.remove': what = `removed the bill ${e.name} from ${env(e.budget, e.envelope)}`; break;
-    case 'budget.create': what = `created budget ${e.label}`; break;
+    case 'bill.remove': what = `removed the bill ${e.name} from ${env(e.envelope)}`; break;
     case 'category.define': what = `defined category ${e.label}`; break;
     case 'category.sinking':
       what = e.sinking
@@ -794,21 +704,19 @@ export function describe(
     case 'account.balance': what = `noted account ${e.account} showed ${fmt(e.cents)} on ${shortDay(e.asOf)}`; break;
     case 'savings.account': what = e.account ? `chose account ${e.account} as Savings` : 'stopped keeping a savings account'; break;
     case 'txn.remove': what = 'removed a receipt from the ledger'; break;
-    case 'budget.rename': what = `renamed budget ${e.budget} to ${e.label}`; break;
-    case 'budget.locate':
-      what = e.location ? `put ${budget(e.budget)} in ${e.location.label}` : `stopped tying ${budget(e.budget)} to a place`; break;
-    case 'budget.archive': what = `${e.archived ? 'archived' : 'brought back'} budget ${budget(e.budget)}`; break;
+    case 'household.locate':
+      what = e.location ? `set where the household is to ${e.location.label}` : 'cleared where the household is'; break;
     case 'category.archive': what = `${e.archived ? 'stopped using' : 'brought back'} category ${cat(e.category)}`; break;
-    case 'month.close': what = `${e.closed ? 'closed' : 'reopened'} ${mon(e.month)} for ${budget(e.budget)}`; break;
-    case 'month.discard': what = `discarded ${mon(e.month)} for ${budget(e.budget)}`; break;
-    case 'income.source.define': what = `recorded income "${e.label}" for ${budget(e.budget)}`; break;
+    case 'month.close': what = `${e.closed ? 'closed' : 'reopened'} ${mon(e.month)}`; break;
+    case 'month.discard': what = `discarded ${mon(e.month)}`; break;
+    case 'income.source.define': what = `recorded income "${e.label}"`; break;
     case 'income.source.remove': what = `removed income ${e.source}`; break;
     case 'household.claim': what = `started the household ${e.label}`; break;
     case 'member.add': what = `shared the household with ${e.member}`; break;
     case 'member.remove': what = `removed ${e.member} from the household`; break;
     case 'briefing.read': what = 'read the briefing'; break;
-    case 'prediction.record': what = `forecast ${env(e.budget, e.envelope)} in ${budget(e.budget)} for ${mon(e.month)}`; break;
-    case 'thread.briefing': what = `wrote the briefing for ${e.budget ? budget(e.budget) : 'the household'}`; break;
+    case 'prediction.record': what = `forecast ${env(e.envelope)} for ${mon(e.month)}`; break;
+    case 'thread.briefing': what = `wrote the briefing for ${(e.source ?? 'budget') === 'budget' ? 'the budget' : 'the household'}`; break;
     case 'thread.ask': what = `asked: ${e.question}`; break;
     case 'thread.note': what = `left a note: ${e.text}`; break;
     case 'thread.answer': what = 'answered a question'; break;
@@ -964,21 +872,19 @@ export function describe(
 }
 
 /**
- * What a set of events would touch: which budget and month, and which
+ * What a set of events would touch: which month, and which
  * envelopes. Two cards touching the same envelope in the same month are the
  * same decision asked twice, and only one of them may stand.
  */
-export function touches(events: readonly NewEvent[]): { budget: string | null; month: Month | null; envelopes: string[] } {
-  let budget: string | null = null;
+export function touches(events: readonly NewEvent[]): { month: Month | null; envelopes: string[] } {
   let month: Month | null = null;
   const envelopes = new Set<string>();
   for (const e of events) {
-    if ('budget' in e && typeof e.budget === 'string') budget ??= e.budget;
     if ('month' in e && typeof e.month === 'string') month ??= e.month;
     if (e.op === 'move') { envelopes.add(e.from); envelopes.add(e.to); }
     if (e.op === 'assign') envelopes.add(e.envelope);
   }
-  return { budget, month, envelopes: [...envelopes] };
+  return { month, envelopes: [...envelopes] };
 }
 
 // ─── writes: these propose, they never apply ─────────────────────────────────
@@ -993,7 +899,6 @@ const moveMoney: Tool = {
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       month: { type: 'string' },
       from: { type: 'string' },
       to: { type: 'string' },
@@ -1001,12 +906,11 @@ const moveMoney: Tool = {
       why: { type: 'string', description: 'One line. This is what gets read the next morning.' },
       onlyWhileShort: { type: 'boolean', description: 'Refuse unless the envelope moved to is still short, so a cover is not made twice.' },
     },
-    required: ['budget', 'from', 'to', 'amountCents', 'why'],
+    required: ['from', 'to', 'amountCents', 'why'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    const month = resolveMonth(state, budget, args['month']);
+    const month = resolveMonth(state, args['month']);
     const from = str(args['from'], 'from');
     const to = str(args['to'], 'to');
     const amount = money(args['amountCents'], 'amountCents');
@@ -1015,8 +919,8 @@ const moveMoney: Tool = {
     if (from === to) throw new ToolError('cannot move money to the same envelope');
     if (amount <= 0) throw new ToolError('amount must be positive');
 
-    const view = monthView(state, budget, month);
-    if (!view) throw new ToolError(`${month} is not open for ${budget}`, 404);
+    const view = monthView(state, month);
+    if (!view) throw new ToolError(`${month} is not open`, 404);
     const src = view.envelopes.find((e) => e.envelope.id === from);
     const dst = view.envelopes.find((e) => e.envelope.id === to);
     if (!src || !dst) throw new ToolError('unknown envelope', 404);
@@ -1038,7 +942,7 @@ const moveMoney: Tool = {
       who: ctx.who,
       summary: `Move ${fmtExact(amount)} from ${src.envelope.label} to ${dst.envelope.label}`,
       effects,
-      events: [{ op: 'move', budget, month, from, to, amount, why }],
+      events: [{ op: 'move', month, from, to, amount, why }],
     }, new Date(`${ctx.today}T00:00:00Z`).toISOString());
   },
 };
@@ -1053,25 +957,23 @@ const setAssignment: Tool = {
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       month: { type: 'string' },
       envelope: { type: 'string' },
       toCents: { type: 'number' },
       why: { type: 'string' },
       onlyWhileShort: { type: 'boolean', description: 'Refuse unless the envelope is still short, so a cover assigned from a stale figure is not made twice.' },
     },
-    required: ['budget', 'envelope', 'toCents', 'why'],
+    required: ['envelope', 'toCents', 'why'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    const month = resolveMonth(state, budget, args['month']);
+    const month = resolveMonth(state, args['month']);
     const envelope = str(args['envelope'], 'envelope');
     const to = money(args['toCents'], 'toCents');
     const why = str(args['why'], 'why');
 
-    const view = monthView(state, budget, month);
-    if (!view) throw new ToolError(`${month} is not open for ${budget}`, 404);
+    const view = monthView(state, month);
+    if (!view) throw new ToolError(`${month} is not open`, 404);
     const e = view.envelopes.find((x) => x.envelope.id === envelope);
     if (!e) throw new ToolError(`no envelope ${envelope}`, 404);
     // toCents is absolute and read from the page's figures: once the envelope is covered, a second
@@ -1100,9 +1002,9 @@ const setAssignment: Tool = {
       // A figure set by hand is a figure, so the flag goes. The template is unchanged and is still
       // the public-data figure, so its source (and any basis) stays with it.
       events: [
-        { op: 'assign', budget, month, envelope, to, why },
+        { op: 'assign', month, envelope, to, why },
         ...(e.envelope.needsFigure
-          ? [redefine(budget, e.envelope, {
+          ? [redefine(e.envelope, {
             figure: {
               template: e.envelope.template,
               ...(e.envelope.source !== undefined ? { source: e.envelope.source } : {}),
@@ -1118,8 +1020,8 @@ const categorizeTxn: Tool = {
   name: 'categorize_transactions',
   description:
     'Propose categories for transactions, optionally creating rules so the same merchant is ' +
-    'never sorted twice. Categories are permanent facts about the ledger and apply to every ' +
-    'budget at once — never propose an envelope here.',
+    'never sorted twice. Categories are permanent facts about the ledger — never propose an ' +
+    'envelope here.',
   kind: 'write',
   input: {
     type: 'object',
@@ -1229,7 +1131,7 @@ const categorizeTxn: Tool = {
 const openMonth: Tool = {
   name: 'open_month',
   description:
-    "Propose opening a month, seeding every envelope from the budget's template, and each envelope saved " +
+    "Propose opening a month, seeding every envelope from its template, and each envelope saved " +
     'in Savings at what its goal needs that month. This writes ' +
     'the plan of record, which is then immutable — later changes are adjustments on top of it. ' +
     'The income comes from the recorded income sources by counting their actual paydays in that ' +
@@ -1239,22 +1141,18 @@ const openMonth: Tool = {
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       month: { type: 'string' },
       incomeCents: {
         type: 'number',
         description: 'Optional. Overrides what the recorded income sources say this month pays.',
       },
     },
-    required: ['budget', 'month'],
+    required: ['month'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
     const month = str(args['month'], 'month');
-    const b = state.budgets.get(budget);
-    if (!b) throw new ToolError(`no budget ${budget}`, 404);
-    if (state.months.has(monthKey(budget, month))) throw new ToolError(`${month} is already open for ${budget}`);
+    if (state.months.has(month)) throw new ToolError(`${month} is already open`);
 
     /**
      * The income is counted, not carried forward.
@@ -1263,12 +1161,12 @@ const openMonth: Tool = {
      * short by a whole paycheque — the sources know which months those are, and
      * asking a person to remember is asking them to get it wrong twice a year.
      */
-    const sources = sourcesFor(state, budget);
+    const sources = sourcesFor(state);
     const derived = incomeFor(sources, month);
     const override = args['incomeCents'] != null ? money(args['incomeCents'], 'incomeCents') : null;
     if (override === null && !sources.length) {
       throw new ToolError(
-        `No income is recorded for ${b.label}, so there is nothing to open the month at. `
+        'No income is recorded, so there is nothing to open the month at. '
         + 'Record what comes in and how often, and the month will open at whatever that month '
         + 'actually pays.');
     }
@@ -1277,14 +1175,14 @@ const openMonth: Tool = {
     // A sinking envelope is proposed at what its goal needs this month, not
     // its template: the goal is the reason it exists. People may fund it
     // differently once the month is open, as they may any envelope.
-    const sinking = sinkingPlan(state, budget, month);
-    const planned = cents([...b.envelopes.values()].reduce((n, e) => n + (sinking.get(e.id) ?? e.template), 0));
-    const clash = overlappingCategories(b);
-    const seeded = b.envelopes.size - sinking.size;
+    const sinking = sinkingPlan(state, month);
+    const planned = cents([...state.envelopes.values()].reduce((n, e) => n + (sinking.get(e.id) ?? e.template), 0));
+    const clash = overlappingCategories(state);
+    const seeded = state.envelopes.size - sinking.size;
     const effects = [
       sinking.size
-        ? `${seeded} envelope${seeded === 1 ? '' : 's'} seeded from the ${b.label} template, ${sinking.size} from ${sinking.size === 1 ? 'its goal' : 'their goals'}`
-        : `${b.envelopes.size} envelopes seeded from the ${b.label} template`,
+        ? `${seeded} envelope${seeded === 1 ? '' : 's'} seeded from the template, ${sinking.size} from ${sinking.size === 1 ? 'its goal' : 'their goals'}`
+        : `${state.envelopes.size} envelopes seeded from the template`,
       `Planned ${fmtExact(planned)} against income ${fmtExact(income)}`,
       `To assign would be ${fmtExact(sub(income, planned))}`,
     ];
@@ -1294,7 +1192,7 @@ const openMonth: Tool = {
     if (override !== null) {
       effects.push(sources.length
         ? `Using ${fmtExact(income)} rather than the ${fmtExact(derived.total)} the recorded income adds up to`
-        : `Using ${fmtExact(income)} for this month only — no income is recorded for ${b.label}`);
+        : `Using ${fmtExact(income)} for this month only — no income is recorded`);
     } else {
       for (const line of derived.lines.filter((l) => l.paydays.length)) {
         effects.push(`${line.source.label}: ${line.paydays.length} × ${fmtExact(line.source.amount)}`
@@ -1306,7 +1204,7 @@ const openMonth: Tool = {
       if (extra) effects.push('This is a month with an extra payday in it');
     }
     for (const [id, amount] of sinking) {
-      effects.push(`${b.envelopes.get(id)!.label} planned at ${fmtExact(amount)}, what its goal needs this month`);
+      effects.push(`${state.envelopes.get(id)!.label} planned at ${fmtExact(amount)}, what its goal needs this month`);
     }
     for (const [cat, envs] of clash) {
       effects.push(`Warning: category ${cat} is claimed by ${envs.join(' and ')} — spending would double count.`);
@@ -1314,9 +1212,9 @@ const openMonth: Tool = {
     return ctx.proposals.put({
       tool: 'open_month',
       who: ctx.who,
-      summary: `Open ${month} for ${b.label}`,
+      summary: `Open ${month}`,
       effects,
-      events: [{ op: 'month.open', budget, month, income, ...(sinking.size ? { plan: Object.fromEntries(sinking) } : {}) }],
+      events: [{ op: 'month.open', month, income, ...(sinking.size ? { plan: Object.fromEntries(sinking) } : {}) }],
     }, new Date(`${ctx.today}T00:00:00Z`).toISOString());
   },
 };
@@ -1373,131 +1271,19 @@ const restoreTxn: Tool = {
   },
 };
 
-// ─── shaping the budgets themselves ──────────────────────────────────────────
-
-const createBudget: Tool = {
-  name: 'create_budget',
-  description:
-    'Propose a new budget — another way of grouping the same categories into envelopes, ' +
-    'priced for a different place or circumstance. It shares the household ledger; only the ' +
-    'envelopes and their funding differ. Returns a proposal.',
-  kind: 'write',
-  input: {
-    type: 'object',
-    properties: {
-      label: { type: 'string', description: 'What to call it, usually where it is for.' },
-      copyFrom: { type: 'string', description: 'Optional. Start with another budget\'s envelopes.' },
-    },
-    required: ['label'],
-  },
-  run(args, ctx) {
-    const state = ctx.store.state;
-    const label = str(args['label'], 'label');
-    const id = slug(label);
-    if (!id) throw new ToolError('that name has no letters or numbers in it');
-    // Compare the name people actually see, not the slug. "Lakeside" already
-    // existed under the id "lake", so a slug check waved the duplicate through.
-    if (state.budgets.has(id)) throw new ToolError(`${label} already exists`);
-    for (const b of state.budgets.values()) {
-      if (b.label.toLowerCase() === label.toLowerCase()) throw new ToolError(`${label} already exists`);
-    }
-
-    const events: NewEvent[] = [{ op: 'budget.create', budget: id, label }];
-    const effects = [`A new budget "${label}" over the same categories`];
-
-    const from = typeof args['copyFrom'] === 'string' ? args['copyFrom'] : '';
-    if (from) {
-      const source = state.budgets.get(from);
-      if (!source) throw new ToolError(`no budget ${from}`, 404);
-      for (const env of source.envelopes.values()) {
-        events.push(redefine(id, env));
-      }
-      effects.push(`${source.envelopes.size} envelopes copied from ${source.label}, `
-        + 'which you can then price differently');
-    }
-    return ctx.proposals.put({
-      tool: 'create_budget', who: ctx.who,
-      summary: `Create the ${label} budget`, effects, events,
-    }, ctx.today);
-  },
-};
-
-const renameBudget: Tool = {
-  name: 'rename_budget',
-  description: 'Propose renaming a budget. The id and all its history stay as they are.',
-  kind: 'write',
-  input: {
-    type: 'object',
-    properties: { budget: { type: 'string' }, label: { type: 'string' } },
-    required: ['budget', 'label'],
-  },
-  run(args, ctx) {
-    const budget = str(args['budget'], 'budget');
-    const label = str(args['label'], 'label');
-    const b = ctx.store.state.budgets.get(budget);
-    if (!b) throw new ToolError(`no budget ${budget}`, 404);
-    return ctx.proposals.put({
-      tool: 'rename_budget', who: ctx.who,
-      summary: `Rename ${b.label} to ${label}`,
-      effects: [`"${b.label}" becomes "${label}"`, 'Nothing else changes'],
-      events: [{ op: 'budget.rename', budget, label }],
-    }, ctx.today);
-  },
-};
-
-const archiveBudget: Tool = {
-  name: 'archive_budget',
-  description:
-    'Propose putting a budget away, or bringing it back. Archiving hides it without ' +
-    'destroying anything — its months and moves stay in the log and stay answerable. ' +
-    'There is no way to delete a budget, and that is deliberate.',
-  kind: 'write',
-  input: {
-    type: 'object',
-    properties: {
-      budget: { type: 'string' },
-      archived: { type: 'boolean', description: 'false brings it back' },
-      why: { type: 'string', description: 'One line. Read the next time someone wonders where it went.' },
-    },
-    required: ['budget', 'archived', 'why'],
-  },
-  run(args, ctx) {
-    const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    const why = str(args['why'], 'why');
-    const archived = args['archived'] !== false;
-    const b = state.budgets.get(budget);
-    if (!b) throw new ToolError(`no budget ${budget}`, 404);
-
-    const months = [...state.months.values()].filter((m) => m.budget === budget).length;
-    const live = [...state.budgets.values()].filter((x) => !x.archived && x.id !== budget).length;
-    if (archived && live === 0) throw new ToolError('that is the only budget left');
-
-    return ctx.proposals.put({
-      tool: 'archive_budget', who: ctx.who,
-      summary: archived ? `Archive ${b.label}` : `Bring ${b.label} back`,
-      effects: archived
-        ? [`${b.label} disappears from the switcher`,
-           `Its ${months} month${months === 1 ? '' : 's'} of history stay in the log and stay readable`,
-           'Nothing is deleted, and you can bring it back']
-        : [`${b.label} returns to the switcher`],
-      events: [{ op: 'budget.archive', budget, archived, why }],
-    }, ctx.today);
-  },
-};
+// ─── shaping the budget itself ───────────────────────────────────────────────
 
 const defineEnvelope: Tool = {
   name: 'define_envelope',
   description:
     'Propose adding an envelope, or changing one — its name, which categories feed it, ' +
-    'or what the template funds it at. Changing an envelope changes only this budget\'s ' +
+    'or what the template funds it at. Changing an envelope changes only the budget\'s ' +
     'reading of the ledger; the receipts underneath are untouched. A figure known by the year, ' +
     'quarter, fortnight or week can be given as `basis` instead of templateCents, and the monthly is worked out from it.',
   kind: 'write',
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       envelope: { type: 'string', description: 'The id. A new one creates; an existing one edits.' },
       label: { type: 'string' },
       group: { type: 'string', description: 'The group it shows under, e.g. Home or Food. A new envelope with none goes under Everyday.' },
@@ -1509,14 +1295,10 @@ const defineEnvelope: Tool = {
       basis: { ...BASIS_INPUT, description: 'The figure as the bill is known, in place of templateCents; it is kept with the envelope.' },
       rollover: { type: 'boolean' },
     },
-    required: ['budget', 'envelope', 'label', 'categories'],
+    required: ['envelope', 'label', 'categories'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    const b = state.budgets.get(budget);
-    if (!b) throw new ToolError(`no budget ${budget}`, 404);
-
     const id = str(args['envelope'], 'envelope');
     const label = str(args['label'], 'label');
     const raw = args['categories'];
@@ -1527,13 +1309,13 @@ const defineEnvelope: Tool = {
     }
     // Two envelopes claiming a category would make a receipt land in whichever
     // was defined last, silently.
-    for (const other of b.envelopes.values()) {
+    for (const other of state.envelopes.values()) {
       if (other.id === id) continue;
       const clash = categories.find((c) => other.match.categories.includes(c));
-      if (clash) throw new ToolError(`${clash} already feeds ${other.label} in this budget`);
+      if (clash) throw new ToolError(`${clash} already feeds ${other.label}`);
     }
 
-    const existing = b.envelopes.get(id);
+    const existing = state.envelopes.get(id);
     const hasTemplate = args['templateCents'] !== undefined && args['templateCents'] !== null;
     const hasBasis = args['basis'] !== undefined && args['basis'] !== null;
     if (hasTemplate && hasBasis) throw new ToolError('give templateCents or basis, not both');
@@ -1547,12 +1329,12 @@ const defineEnvelope: Tool = {
     // With a template the define is a figure (flag and source go); without one an existing
     // envelope keeps all three, and a new one starts at nothing, flagged as having no figure.
     const event: NewEvent = existing
-      ? redefine(budget, existing, {
+      ? redefine(existing, {
         label, group, match, rollover, ...(given !== null ? { figure: { template: given, ...(basis ? { basis } : {}) } } : {}),
       })
       : {
-        op: 'envelope.define', budget, envelope: id, label, group, match,
-        template: given ?? cents(0), rollover, order: b.envelopes.size,
+        op: 'envelope.define', envelope: id, label, group, match,
+        template: given ?? cents(0), rollover, order: state.envelopes.size,
         ...(given === null ? { needsFigure: true as const } : {}),
         ...(basis ? { basis } : {}),
       };
@@ -1596,15 +1378,14 @@ const setSinkingGoal: Tool = {
   description:
     'Propose saving an envelope in Savings toward a goal, changing its goal, or making it an ordinary envelope ' +
     "again. Goal 'every': every so often, set aside from its categories' estimates, each a cost and how many years " +
-    "until it comes round (tyres $1,200 every 4 years is $25 a month); the estimates belong to the categories, so " +
-    "every budget derives the same figure, and any given here are set or changed (costCents null clears one). Goal " +
+    "until it comes round (tyres $1,200 every 4 years is $25 a month); the estimates belong to the categories, " +
+    "and any given here are set or changed (costCents null clears one). Goal " +
     "'by': a target by a month (targetCents, by YYYY-MM), set aside as what is left over the months left. Such an " +
     'envelope always rolls over, and each new month is planned at what its goal needs. Returns a proposal.',
   kind: 'write',
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       envelope: { type: 'string' },
       goal: { type: 'string', enum: ['every', 'by', 'none'] },
       targetCents: { type: 'number', description: "For 'by': what to have saved." },
@@ -1623,19 +1404,17 @@ const setSinkingGoal: Tool = {
         },
       },
     },
-    required: ['budget', 'envelope', 'goal'],
+    required: ['envelope', 'goal'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    const b = state.budgets.get(budget);
-    const env = b?.envelopes.get(str(args['envelope'], 'envelope'));
-    if (!b || !env) throw new ToolError(`no envelope ${String(args['envelope'])} in ${budget}`, 404);
+    const env = state.envelopes.get(str(args['envelope'], 'envelope'));
+    if (!env) throw new ToolError(`no envelope ${String(args['envelope'])}`, 404);
     const kind = args['goal'];
     if (kind !== 'every' && kind !== 'by' && kind !== 'none') throw new ToolError("goal is 'every', 'by' or 'none'");
     // This month if it is open, else the latest that is: what the goal is worked out against.
-    const month = state.months.has(monthKey(budget, monthOf(ctx.today))) ? monthOf(ctx.today)
-      : latestMonth(state, budget) ?? monthOf(ctx.today);
+    const month = state.months.has(monthOf(ctx.today)) ? monthOf(ctx.today)
+      : latestMonth(state) ?? monthOf(ctx.today);
 
     let goal: SinkingGoal | null = null;
     if (kind === 'by') {
@@ -1653,7 +1432,7 @@ const setSinkingGoal: Tool = {
 
     const events: NewEvent[] = [];
     if (JSON.stringify(goal ?? null) !== JSON.stringify(env.sinking ?? null)) {
-      events.push(redefine(budget, env, { sinking: goal }));
+      events.push(redefine(env, { sinking: goal }));
     }
     const after = new Map(env.match.categories.map((c) => [c, state.categories.get(c)?.sinking ?? null]));
     for (const a of asked) {
@@ -1676,7 +1455,7 @@ const setSinkingGoal: Tool = {
           : `${label(c)}: no estimate, so nothing is set aside for it`);
       }
     } else {
-      const saved = carriedInto(state, budget, month, env.id);
+      const saved = carriedInto(state, month, env.id);
       const { monthly, monthsLeft } = byMonthly(goal.target, saved, month, goal.by);
       effects.push(`${env.label} is saved in Savings: ${fmtExact(goal.target)} by ${monthName(goal.by)}`,
         `${fmtExact(monthly)} a month, over ${monthsLeft} month${monthsLeft === 1 ? '' : 's'} from ${monthName(month)}, worked out again each month`);
@@ -1695,23 +1474,21 @@ const setSinkingGoal: Tool = {
 const removeEnvelope: Tool = {
   name: 'remove_envelope',
   description:
-    'Propose removing an envelope from a budget. Its receipts are not deleted — they stop ' +
+    'Propose removing an envelope from the budget. Its receipts are not deleted — they stop ' +
     'belonging to any envelope, which means they stop being accounted for. The proposal says ' +
     'how many and how much. Requires a reason.',
   kind: 'write',
   input: {
     type: 'object',
-    properties: { budget: { type: 'string' }, envelope: { type: 'string' }, why: { type: 'string' } },
-    required: ['budget', 'envelope', 'why'],
+    properties: { envelope: { type: 'string' }, why: { type: 'string' } },
+    required: ['envelope', 'why'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
     const envelope = str(args['envelope'], 'envelope');
     const why = str(args['why'], 'why');
-    const b = state.budgets.get(budget);
-    const env = b?.envelopes.get(envelope);
-    if (!b || !env) throw new ToolError(`no envelope ${envelope} in ${budget}`, 404);
+    const env = state.envelopes.get(envelope);
+    if (!env) throw new ToolError(`no envelope ${envelope}`, 404);
 
     // What stops being accounted for. This is the number that matters, and it
     // is the reason this is a proposal rather than a button.
@@ -1727,15 +1504,15 @@ const removeEnvelope: Tool = {
 
     return ctx.proposals.put({
       tool: 'remove_envelope', who: ctx.who,
-      summary: `Remove ${env.label} from ${b.label}`,
+      summary: `Remove ${env.label}`,
       effects: [
-        `${env.label} disappears from ${b.label}`,
+        `${env.label} disappears from the budget`,
         orphaned
-          ? `${orphaned} receipts totalling ${fmtExact(total)} stop belonging to any envelope in this budget`
+          ? `${orphaned} receipts totalling ${fmtExact(total)} stop belonging to any envelope`
           : 'No receipts are affected',
-        'The receipts themselves are untouched, and other budgets are unaffected',
+        'The receipts themselves are untouched',
       ],
-      events: [{ op: 'envelope.remove', budget, envelope, why }],
+      events: [{ op: 'envelope.remove', envelope, why }],
     }, ctx.today);
   },
 };
@@ -1743,9 +1520,9 @@ const removeEnvelope: Tool = {
 const defineCategory: Tool = {
   name: 'define_category',
   description:
-    'Propose adding a category, or renaming one. Categories are household facts shared by every ' +
-    'budget — a receipt is groceries whichever budget is reading it — so this changes what things ' +
-    'are called everywhere at once. Returns a proposal.',
+    'Propose adding a category, or renaming one. Categories are household facts — a receipt is ' +
+    'groceries whichever envelope it lands in — so this changes what things are called everywhere ' +
+    'at once. Returns a proposal.',
   kind: 'write',
   input: {
     type: 'object',
@@ -1773,7 +1550,7 @@ const defineCategory: Tool = {
       tool: 'define_category', who: ctx.who,
       summary: existing ? `Rename ${existing.label} to ${label}` : `Add the ${label} category`,
       effects: existing
-        ? [`"${existing.label}" becomes "${label}" in every budget`,
+        ? [`"${existing.label}" becomes "${label}" everywhere`,
            'Receipts already in it are unaffected — only the name changes']
         : [`A new category "${label}" under ${kind}`,
            'It belongs to no envelope yet, so put it in one before spending lands in it'],
@@ -1808,9 +1585,7 @@ const archiveCategory: Tool = {
     if (!c) throw new ToolError(`no category ${id}`, 404);
 
     const held = [...state.txns.values()].filter((t) => partsOf(t).some((p) => p.category === id)).length;
-    const envelopes = [...state.budgets.values()]
-      .flatMap((b) => [...b.envelopes.values()].filter((e) => e.match.categories.includes(id))
-        .map((e) => `${e.label} in ${b.label}`));
+    const envelopes = [...state.envelopes.values()].filter((e) => e.match.categories.includes(id)).map((e) => e.label);
 
     return ctx.proposals.put({
       tool: 'archive_category', who: ctx.who,
@@ -1837,26 +1612,24 @@ const closeMonth: Tool = {
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       month: { type: 'string' },
       closed: { type: 'boolean', description: 'false reopens it' },
       why: { type: 'string' },
     },
-    required: ['budget', 'month', 'closed', 'why'],
+    required: ['month', 'closed', 'why'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
     const month = str(args['month'], 'month');
     const why = str(args['why'], 'why');
     const closed = args['closed'] !== false;
-    const plan = state.months.get(monthKey(budget, month));
-    if (!plan) throw new ToolError(`${month} is not open for ${budget}`, 404);
+    const plan = state.months.get(month);
+    if (!plan) throw new ToolError(`${month} is not open`, 404);
     if (!!plan.closed === closed) {
       throw new ToolError(closed ? 'that month is already closed' : 'that month is already open');
     }
 
-    const view = monthView(state, budget, month);
+    const view = monthView(state, month);
     const unsorted = [...state.txns.values()]
       .filter((t) => t.category === null && monthOf(t.date) === month).length;
 
@@ -1871,7 +1644,7 @@ const closeMonth: Tool = {
            'Whatever is left still carries into next month',
           ].filter(Boolean)
         : [`${month} can be changed again`],
-      events: [{ op: 'month.close', budget, month, closed, why }],
+      events: [{ op: 'month.close', month, closed, why }],
     }, ctx.today);
   },
 };
@@ -1885,26 +1658,24 @@ const discardMonth: Tool = {
   kind: 'write',
   input: {
     type: 'object',
-    properties: { budget: { type: 'string' }, month: { type: 'string' }, why: { type: 'string' } },
-    required: ['budget', 'month', 'why'],
+    properties: { month: { type: 'string' }, why: { type: 'string' } },
+    required: ['month', 'why'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
     const month = str(args['month'], 'month');
     const why = str(args['why'], 'why');
-    const plan = state.months.get(monthKey(budget, month));
-    if (!plan) throw new ToolError(`${month} is not open for ${budget}`, 404);
+    const plan = state.months.get(month);
+    if (!plan) throw new ToolError(`${month} is not open`, 404);
     if (plan.adjustments.length) {
       throw new ToolError(`${month} has been adjusted ${plan.adjustments.length} times — close it instead`);
     }
 
-    // Deliberately not a spending check. Receipts are shared by every budget, so
-    // a freshly opened month in a second budget already "has spending against
-    // it" — the same receipts the first reads. What makes a month lived in is what was
-    // decided in it, and that is the adjustments above.
-    const later = [...state.months.values()]
-      .filter((m) => m.budget === budget && m.month > month).map((m) => m.month);
+    // Deliberately not a spending check. Receipts land in a month whether it is
+    // open or not, so a freshly opened month already "has spending against it".
+    // What makes a month lived in is what was decided in it, and that is the
+    // adjustments above.
+    const later = [...state.months.keys()].filter((m) => m > month).sort();
     if (later.length) {
       // A later month may be carrying a balance out of this one.
       throw new ToolError(`${later.join(', ')} come after it — discard those first`);
@@ -1914,12 +1685,12 @@ const discardMonth: Tool = {
       tool: 'discard_month', who: ctx.who,
       summary: `Discard ${month}`,
       effects: [
-        `${month} stops being open for ${budget}, as though it had never been opened`,
+        `${month} stops being open, as though it had never been opened`,
         'No money was assigned or moved in it, so no decision is lost',
-        'Every receipt stays exactly where it is — other budgets still read them',
+        'Every receipt stays exactly where it is',
         'The record that it was opened, and discarded, stays in the log',
       ],
-      events: [{ op: 'month.discard', budget, month, why }],
+      events: [{ op: 'month.discard', month, why }],
     }, ctx.today);
   },
 };
@@ -1931,7 +1702,7 @@ const FREQ = ['monthly', 'semimonthly', 'biweekly', 'weekly', 'annual', 'once'] 
 const planIncome: Tool = {
   name: 'plan_income',
   description:
-    'What income a budget expects over the coming months, and what a change would do. Pass ' +
+    'What income the budget expects over the coming months, and what a change would do. Pass ' +
     '`imagine` to add a hypothetical job or raise without recording anything — this is a ' +
     'calculation, not a change, and it writes nothing. Counts real paydays, so a fortnightly ' +
     'salary shows the months that carry a third paycheque.',
@@ -1939,7 +1710,6 @@ const planIncome: Tool = {
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       from: { type: 'string', description: 'YYYY-MM. Defaults to this month.' },
       months: { type: 'number', description: 'How far ahead. Default 6.' },
       imagine: {
@@ -1959,23 +1729,20 @@ const planIncome: Tool = {
         },
       },
     },
-    required: ['budget'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    if (!state.budgets.has(budget)) throw new ToolError(`no budget ${budget}`, 404);
     const from = typeof args['from'] === 'string' && args['from'] ? args['from'] : monthOf(ctx.today);
     const howMany = Math.min(24, Math.max(1, Number(args['months'] ?? 6)));
 
-    const real = sourcesFor(state, budget);
+    const real = sourcesFor(state);
     const imagined: IncomeSource[] = (Array.isArray(args['imagine']) ? args['imagine'] : [])
       .map((raw, i) => {
         const r = raw as Record<string, unknown>;
         const frequency = str(r['frequency'], 'frequency');
         if (!(FREQ as readonly string[]).includes(frequency)) throw new ToolError(`unknown frequency ${frequency}`);
         return {
-          id: `imagined-${i}`, budget, label: str(r['label'], 'label'),
+          id: `imagined-${i}`, label: str(r['label'], 'label'),
           who: typeof r['earner'] === 'string' && r['earner'] ? r['earner'] : ctx.who,
           amount: money(r['amountCents'], 'amountCents'),
           frequency: frequency as IncomeSource['frequency'],
@@ -1989,11 +1756,10 @@ const planIncome: Tool = {
 
     // What the plan costs, so the projection can answer "does this cover it"
     // rather than only "how much comes in".
-    const b = state.budgets.get(budget)!;
-    const planned = [...b.envelopes.values()].reduce((n, e) => add(n, e.template), ZERO);
+    const planned = [...state.envelopes.values()].reduce((n, e) => add(n, e.template), ZERO);
 
     return {
-      budget, from, months: howMany,
+      from, months: howMany,
       plannedEachMonth: fmt(planned),
       recorded: real.map((s) => ({
         id: s.id, label: s.label, earner: s.who, frequency: s.frequency,
@@ -2026,14 +1792,13 @@ const planIncome: Tool = {
 const defineIncome: Tool = {
   name: 'define_income_source',
   description:
-    'Propose recording an income — a salary or any regular payment — as part of a budget\'s plan. ' +
+    'Propose recording an income — a salary or any regular payment — as part of the budget\'s plan. ' +
     'Give what arrives each payday and how often, never a monthly equivalent: dividing a ' +
     'fortnightly wage by twelve loses the months that carry a third payment.',
   kind: 'write',
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       label: { type: 'string' },
       earner: { type: 'string', description: 'Whose income it is.' },
       amountCents: { type: 'number', description: 'What arrives each payday.' },
@@ -2041,12 +1806,9 @@ const defineIncome: Tool = {
       anchor: { type: 'string', description: 'YYYY-MM-DD of a real payday.' },
       until: { type: 'string', description: 'Optional YYYY-MM, when it is known to stop.' },
     },
-    required: ['budget', 'label', 'amountCents', 'frequency', 'anchor'],
+    required: ['label', 'amountCents', 'frequency', 'anchor'],
   },
   run(args, ctx) {
-    const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    if (!state.budgets.has(budget)) throw new ToolError(`no budget ${budget}`, 404);
     const label = str(args['label'], 'label');
     const frequency = str(args['frequency'], 'frequency');
     if (!(FREQ as readonly string[]).includes(frequency)) throw new ToolError(`unknown frequency ${frequency}`);
@@ -2058,7 +1820,7 @@ const defineIncome: Tool = {
     const earner = typeof args['earner'] === 'string' && args['earner'] ? args['earner'] : ctx.who;
     const id = `inc-${slug(label)}-${anchor}`;
     const source: IncomeSource = {
-      id, budget, label, who: earner, amount,
+      id, label, who: earner, amount,
       frequency: frequency as IncomeSource['frequency'], anchor,
       ...(typeof args['until'] === 'string' && args['until'] ? { until: args['until'] } : {}),
     };
@@ -2075,7 +1837,7 @@ const defineIncome: Tool = {
           + (m.extraPayday ? '  ← a third paycheque lands this month' : '')),
       ],
       events: [{
-        op: 'income.source.define', source: id, budget, label, earner, amount,
+        op: 'income.source.define', source: id, label, earner, amount,
         frequency: frequency as IncomeSource['frequency'], anchor,
         ...(source.until ? { until: source.until } : {}),
       }],
@@ -2104,7 +1866,7 @@ const removeIncome: Tool = {
       tool: 'remove_income_source', who: ctx.who,
       summary: `Remove ${s.label}`,
       effects: [
-        `${s.label} stops counting towards what ${s.budget} expects`,
+        `${s.label} stops counting towards what the budget expects`,
         'Months already open keep the income they opened with',
       ],
       events: [{ op: 'income.source.remove', source: id, why }],
@@ -2112,18 +1874,16 @@ const removeIncome: Tool = {
   },
 };
 
-const locateBudget: Tool = {
-  name: 'set_budget_location',
+const setLocation: Tool = {
+  name: 'set_location',
   description:
-    'Propose recording where a budget is for. A budget differs from another because it is somewhere ' +
-    'else — that is why electricity and property tax are priced separately while groceries are not. ' +
-    'Recording the place also makes public cost data addressable. Pass location as null for a budget ' +
-    'that is a period rather than a place.',
+    'Propose recording where the household is. Electricity and property tax are priced by place ' +
+    'while groceries are not, and recording the place makes public cost data addressable. Leave ' +
+    'label out to clear it.',
   kind: 'write',
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       label: { type: 'string', description: 'The place, e.g. "Springfield, IL". Omit to clear the location.' },
       state: { type: 'string', description: 'Two-letter state code.' },
       postal: { type: 'string', description: 'ZIP — what rent indices are keyed on.' },
@@ -2131,16 +1891,13 @@ const locateBudget: Tool = {
       countyFips: { type: 'string', description: 'Census county FIPS, e.g. 043 for Sandoval.' },
       why: { type: 'string' },
     },
-    required: ['budget', 'why'],
+    required: ['why'],
   },
   async run(args, ctx) {
-    const budget = str(args['budget'], 'budget');
     const why = str(args['why'], 'why');
-    const b = ctx.store.state.budgets.get(budget);
-    if (!b) throw new ToolError(`no budget ${budget}`, 404);
 
     const label = typeof args['label'] === 'string' ? args['label'].trim() : '';
-    let location: BudgetLocation | null = label ? {
+    let location: Location | null = label ? {
       label,
       ...(args['state'] ? { state: String(args['state']).toUpperCase() } : {}),
       ...(args['postal'] ? { postal: String(args['postal']).trim() } : {}),
@@ -2178,10 +1935,10 @@ const locateBudget: Tool = {
     }
 
     return ctx.proposals.put({
-      tool: 'set_budget_location', who: ctx.who,
-      summary: location ? `Put ${b.label} in ${location.label}` : `Clear ${b.label}'s location`,
+      tool: 'set_location', who: ctx.who,
+      summary: location ? `Say the household is in ${location.label}` : 'Clear where the household is',
       effects: location
-        ? [`${b.label} is a budget for ${location.label}`,
+        ? [`The household is in ${location.label}`,
            ...found,
            location.postal ? `Rent data can be looked up for ZIP ${location.postal}`
                            : 'No ZIP recorded, so rent data cannot be looked up',
@@ -2189,9 +1946,9 @@ const locateBudget: Tool = {
                                : 'No county recorded, so Census figures cannot be looked up',
            location.state ? `State recorded, so the electricity figure for ${location.state} can be looked up`
                           : 'No state recorded, so the electricity figure cannot be looked up']
-        : [`${b.label} stops being tied to a place`,
-           'Right for a budget that is a period rather than a location'],
-      events: [{ op: 'budget.locate', budget, location, why }],
+        : ['The household stops being tied to a place',
+           'Local costs cannot be looked up until a place is given again'],
+      events: [{ op: 'household.locate', location, why }],
     }, ctx.today);
   },
 };
@@ -2199,23 +1956,19 @@ const locateBudget: Tool = {
 const localCosts: Tool = {
   name: 'look_up_local_costs',
   description:
-    'What public data says things cost where a budget is. Reads Zillow\'s rent index and, when a ' +
+    'What public data says things cost where the household is. Reads Zillow\'s rent index and, when a ' +
     'Census key is configured, county figures for rent and property tax. Every figure comes back ' +
     'with its source, the area it was measured over, when, and what it cannot tell you. These are ' +
     'measurements of a place, never a prediction about this household — read them as evidence.',
   kind: 'read',
   async run(args, ctx) {
-    const budget = str(args['budget'], 'budget');
-    const b = ctx.store.state.budgets.get(budget);
-    if (!b) throw new ToolError(`no budget ${budget}`, 404);
-    if (!b.location) {
-      throw new ToolError(`${b.label} has no location recorded, so there is nowhere to look up`);
-    }
-    const found = await lookUp(b.location, {
+    const location = ctx.store.state.location;
+    if (!location) throw new ToolError('the household has no location recorded, so there is nowhere to look up');
+    const found = await lookUp(location, {
       censusKey: resolvedEnv()['CENSUS_API_KEY'], eiaKey: resolvedEnv()['EIA_API_KEY'],
     });
     return {
-      budget, location: b.location.label,
+      location: location.label,
       found: found.estimates.map((e) => ({
         category: e.category,
         label: e.label,
@@ -2231,63 +1984,53 @@ const localCosts: Tool = {
       couldNotFind: found.missing,
     };
   },
-  input: {
-    type: 'object',
-    properties: { budget: { type: 'string' } },
-    required: ['budget'],
-  },
+  input: { type: 'object', properties: {} },
 };
 
 const seedFromLocation: Tool = {
   name: 'seed_from_location',
   description:
-    'Propose starting figures for the envelopes that public data can speak to, using the ' +
-    'budget\'s location. Covers only what is actually measured — rent, and property tax where a ' +
+    'Propose starting figures for the envelopes that public data can speak to, using where the ' +
+    'household is. Covers only what is actually measured — rent, and property tax where a ' +
     'Census key is configured — so it is a starting point for a few place-bound envelopes, not a ' +
     'budget. Every figure comes with its source. Nothing is applied until you approve it.',
   kind: 'write',
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       only: {
         type: 'array', items: { type: 'string' },
         description: 'Optional. Limit to these categories.',
       },
     },
-    required: ['budget'],
   },
   async run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    const b = state.budgets.get(budget);
-    if (!b) throw new ToolError(`no budget ${budget}`, 404);
-    if (!b.location) {
-      throw new ToolError(`${b.label} has no location recorded, so there is nothing to look up`);
-    }
+    const location = state.location;
+    if (!location) throw new ToolError('the household has no location recorded, so there is nothing to look up');
 
-    const found = await lookUp(b.location, {
+    const found = await lookUp(location, {
       censusKey: resolvedEnv()['CENSUS_API_KEY'], eiaKey: resolvedEnv()['EIA_API_KEY'],
     });
     const wanted = Array.isArray(args['only']) ? args['only'].map(String) : null;
     const useful = found.estimates.filter((e) => !wanted || wanted.includes(e.category));
     if (!useful.length) {
       throw new ToolError(
-        `No public data was found for ${b.location.label}. `
+        `No public data was found for ${location.label}. `
         + found.missing.join('; '));
     }
 
     const events: NewEvent[] = [];
     const effects: string[] = [];
     const month = monthOf(ctx.today);
-    const plan = state.months.get(monthKey(budget, month));
+    const plan = state.months.get(month);
     const open = plan !== undefined && !plan.closed;
     let applied = 0;
 
     for (const e of useful) {
       // Pricing only fills envelopes that are there. It used to make a lowercase category and
       // envelope for evidence with nowhere to go, which put names nobody chose into the budget.
-      const existing = [...b.envelopes.values()]
+      const existing = [...state.envelopes.values()]
         .find((env) => env.match.categories.includes(e.category));
       if (!existing) {
         effects.push(`Not applied: no envelope for ${e.label}`);
@@ -2300,11 +2043,11 @@ const seedFromLocation: Tool = {
       effects.push(existing.template === e.monthly
         ? `${existing.label}: already ${fmtExact(e.monthly)}, unchanged`
         : `${existing.label}: ${fmtExact(existing.template)} would become ${fmtExact(e.monthly)}`);
-      events.push(redefine(budget, existing, {
+      events.push(redefine(existing, {
         figure: { template: e.monthly, source: `${e.source}, ${e.measuredOver}, ${e.asOf}` },
       }));
       if (open) {
-        events.push({ op: 'assign', budget, month, envelope: existing.id, to: e.monthly, why: 'priced from local data' });
+        events.push({ op: 'assign', month, envelope: existing.id, to: e.monthly, why: 'priced from local data' });
       }
 
       // The provenance travels with the number. A figure whose origin is not on
@@ -2315,13 +2058,13 @@ const seedFromLocation: Tool = {
 
     if (!applied) {
       throw new ToolError(
-        `Nothing in ${b.label} is fed by what public data prices (${useful.map((e) => e.label).join(', ')}). `
+        `No envelope is fed by what public data prices (${useful.map((e) => e.label).join(', ')}). `
         + 'Make an envelope for one and price it again.', 409);
     }
 
     // Say what this does not cover. Two envelopes out of a household's forty is
     // a starting point, and calling it anything more would be a lie.
-    const untouched = b.envelopes.size - applied;
+    const untouched = state.envelopes.size - applied;
     const rest = untouched === 0 ? 'Everything else has no public figure and is still yours to set.'
       : untouched === 1 ? 'The other 1 has no public figure and is still yours to set.'
       : `The other ${untouched} have no public figure and are still yours to set.`;
@@ -2330,7 +2073,7 @@ const seedFromLocation: Tool = {
 
     return ctx.proposals.put({
       tool: 'seed_from_location', who: ctx.who,
-      summary: `Set ${applied} envelope${applied === 1 ? '' : 's'} from ${b.location.label} data`,
+      summary: `Set ${applied} envelope${applied === 1 ? '' : 's'} from ${location.label} data`,
       effects, events,
     }, ctx.today);
   },
@@ -2396,7 +2139,7 @@ const addStarterSet: Tool = {
 const makeStarterEnvelopes: Tool = {
   name: 'make_starter_envelopes',
   description:
-    'Propose the envelopes a new budget starts with, in one step: the rows a person ticked in the ' +
+    'Propose the envelopes the budget starts with, in one step: the rows a person ticked in the ' +
     'budget walkthrough. Each row is a label, a group and, for a starter row, the category that ' +
     'feeds it; a row with no category is one of their own and gets a category made from its name ' +
     '(or reuses one with that name). The starter categories and rules this household lacks are ' +
@@ -2406,7 +2149,6 @@ const makeStarterEnvelopes: Tool = {
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       envelopes: {
         type: 'array',
         description: 'The rows to make, in the order to show them.',
@@ -2421,13 +2163,10 @@ const makeStarterEnvelopes: Tool = {
         },
       },
     },
-    required: ['budget', 'envelopes'],
+    required: ['envelopes'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    const b = state.budgets.get(budget);
-    if (!b) throw new ToolError(`no budget ${budget}`, 404);
     const raw = args['envelopes'];
     if (!Array.isArray(raw) || raw.length === 0) throw new ToolError('make at least one envelope');
 
@@ -2473,11 +2212,11 @@ const makeStarterEnvelopes: Tool = {
       if (earlier !== undefined) throw new ToolError(`${earlier} and ${label} would both be fed by ${category}`);
       fedBy.set(category, label);
       // One envelope per category, or a receipt lands in whichever was defined last.
-      for (const other of b.envelopes.values()) {
-        if (other.match.categories.includes(category)) throw new ToolError(`${category} already feeds ${other.label} in ${b.label}`);
+      for (const other of state.envelopes.values()) {
+        if (other.match.categories.includes(category)) throw new ToolError(`${category} already feeds ${other.label}`);
       }
       // An envelope's id is its category's, and a define on an existing id would rewrite that envelope.
-      if (b.envelopes.has(category)) throw new ToolError(`${b.label} already has an envelope called ${category}`);
+      if (state.envelopes.has(category)) throw new ToolError(`there is already an envelope called ${category}`);
       rows.push({ label, group, category });
     }
 
@@ -2486,9 +2225,9 @@ const makeStarterEnvelopes: Tool = {
       ...missing.rules.map((r) => ({ op: 'rule.add' as const, rule: r.id, match: r.match, category: r.category })),
       ...own,
       ...rows.map((r, i): NewEvent => ({
-        op: 'envelope.define', budget, envelope: r.category, label: r.label, group: r.group,
+        op: 'envelope.define', envelope: r.category, label: r.label, group: r.group,
         match: { categories: [r.category] }, template: ZERO, rollover: true, needsFigure: true,
-        order: b.envelopes.size + i,
+        order: state.envelopes.size + i,
       })),
     ];
 
@@ -2499,7 +2238,7 @@ const makeStarterEnvelopes: Tool = {
 
     return ctx.proposals.put({
       tool: 'make_starter_envelopes', who: ctx.who,
-      summary: `Make ${rows.length} envelope${rows.length === 1 ? '' : 's'} in ${b.label}`,
+      summary: `Make ${rows.length} envelope${rows.length === 1 ? '' : 's'}`,
       effects, events,
     }, ctx.today);
   },
@@ -2518,21 +2257,17 @@ const setEnvelopeFigure: Tool = {
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       envelope: { type: 'string' },
       amountCents: { type: 'number', description: 'The figure a month, in cents. Zero is allowed. Give this or basis.' },
       basis: { ...BASIS_INPUT, description: 'The figure as the bill is known, e.g. { amountCents: 120000, per: "year" }. Give this or amountCents.' },
       month: { type: 'string', description: 'YYYY-MM. Defaults to this month.' },
     },
-    required: ['budget', 'envelope'],
+    required: ['envelope'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    const b = state.budgets.get(budget);
-    if (!b) throw new ToolError(`no budget ${budget}`, 404);
     const id = str(args['envelope'], 'envelope');
-    const env = b.envelopes.get(id);
+    const env = state.envelopes.get(id);
     if (!env) throw new ToolError(`no envelope ${id}`, 404);
     const hasAmount = args['amountCents'] !== undefined && args['amountCents'] !== null;
     const hasBasis = args['basis'] !== undefined && args['basis'] !== null;
@@ -2542,11 +2277,11 @@ const setEnvelopeFigure: Tool = {
     const amount = basis ? monthlyOf(basis) : money(args['amountCents'], 'amountCents');
     if (amount < 0) throw new ToolError('a figure is not less than nothing');
     const month = typeof args['month'] === 'string' && args['month'] ? args['month'] : monthOf(ctx.today);
-    const plan = state.months.get(monthKey(budget, month));
+    const plan = state.months.get(month);
     const open = plan !== undefined && !plan.closed;
 
-    const events: NewEvent[] = [redefine(budget, env, { figure: { template: amount, ...(basis ? { basis } : {}) } })];
-    if (open) events.push({ op: 'assign', budget, month, envelope: id, to: amount, why: 'gave it a figure' });
+    const events: NewEvent[] = [redefine(env, { figure: { template: amount, ...(basis ? { basis } : {}) } })];
+    if (open) events.push({ op: 'assign', month, envelope: id, to: amount, why: 'gave it a figure' });
     return ctx.proposals.put({
       tool: 'set_envelope_figure', who: ctx.who,
       summary: basis
@@ -2577,7 +2312,6 @@ const setBill: Tool = {
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       envelope: { type: 'string', description: 'The envelope the bill is listed in.' },
       bill: { type: 'string', description: "The bill's key, as get_month lists it." },
       name: { type: 'string', description: "A bill's name, or part of it; a new name makes a bill by hand. 60 characters at most." },
@@ -2588,18 +2322,15 @@ const setBill: Tool = {
       clear: { type: 'boolean', description: 'Take the date off.' },
       remove: { type: 'boolean', description: 'Remove a bill made by hand.' },
     },
-    required: ['budget', 'envelope'],
+    required: ['envelope'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    const b = state.budgets.get(budget);
-    if (!b) throw new ToolError(`no budget ${budget}`, 404);
     const id = str(args['envelope'], 'envelope');
-    const env = b.envelopes.get(id);
+    const env = state.envelopes.get(id);
     if (!env) throw new ToolError(`no envelope ${id}`, 404);
     if (env.sinking) throw new ToolError('a savings envelope has no bills');
-    const listed = billsOf(state, budget).get(id) ?? [];
+    const listed = billsOf(state).get(id) ?? [];
     const noBill = (x: string) => new ToolError(`no bill ${x} in ${env.label}`, 404);
 
     // the target
@@ -2632,13 +2363,13 @@ const setBill: Tool = {
     const byHand = target ? target.byHand : true;
     const label = env.label;
     // a bill that follows its receipts keeps one record, under its own envelope: write there, never a second
-    const home = target?.home && b.envelopes.has(target.home) ? target.home : id;
+    const home = target?.home && state.envelopes.has(target.home) ? target.home : id;
     // a new name that some other envelope's receipts already hold would be listed there at once
     if (!target && args['remove'] !== true && args['clear'] !== true) {
-      for (const [other, there] of billsOf(state, budget)) {
+      for (const [other, there] of billsOf(state)) {
         if (other === id) continue;
         const hit = there.find((x) => x.receipts.length > 0 && x.key.includes(key));
-        if (hit) throw new ToolError(`${name} is already a bill in ${b.envelopes.get(other)?.label ?? other}: set its date there`);
+        if (hit) throw new ToolError(`${name} is already a bill in ${state.envelopes.get(other)?.label ?? other}: set its date there`);
       }
     }
 
@@ -2649,7 +2380,7 @@ const setBill: Tool = {
         tool: 'set_bill', who: ctx.who,
         summary: `Remove the bill ${name}`,
         effects: [`It leaves ${label}'s page`, 'No money moves'],
-        events: [{ op: 'bill.remove', budget, envelope: home, bill: key, name }],
+        events: [{ op: 'bill.remove', envelope: home, bill: key, name }],
       }, ctx.today);
     }
     if (args['clear'] === true) {
@@ -2658,7 +2389,7 @@ const setBill: Tool = {
         tool: 'set_bill', who: ctx.who,
         summary: `${name}: date cleared`,
         effects: ['Its day comes from its last receipt again', 'No money moves'],
-        events: [{ op: 'bill.set', budget, envelope: home, bill: key, name, ...(byHand ? { byHand: true as const } : {}), date: null }],
+        events: [{ op: 'bill.set', envelope: home, bill: key, name, ...(byHand ? { byHand: true as const } : {}), date: null }],
       }, ctx.today);
     }
 
@@ -2682,7 +2413,7 @@ const setBill: Tool = {
       tool: 'set_bill', who: ctx.who,
       summary: `${name}: ${billDateWords(date)}`,
       effects: [`Shows ${billDateWords(date)} on ${label}'s page`, 'No money moves'],
-      events: [{ op: 'bill.set', budget, envelope: home, bill: key, name, ...(byHand ? { byHand: true as const } : {}), date }],
+      events: [{ op: 'bill.set', envelope: home, bill: key, name, ...(byHand ? { byHand: true as const } : {}), date }],
     }, ctx.today);
   },
 };
@@ -2698,24 +2429,20 @@ const setMonthIncome: Tool = {
   input: {
     type: 'object',
     properties: {
-      budget: { type: 'string' },
       month: { type: 'string', description: 'YYYY-MM. Defaults to this month.' },
       amountCents: { type: 'number', description: 'What the month brings in, in cents.' },
       why: { type: 'string', description: "Optional. Defaults to set this month's income." },
     },
-    required: ['budget', 'amountCents'],
+    required: ['amountCents'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
-    const budget = str(args['budget'], 'budget');
-    const b = state.budgets.get(budget);
-    if (!b) throw new ToolError(`no budget ${budget}`, 404);
     const month = typeof args['month'] === 'string' && args['month'] ? args['month'] : monthOf(ctx.today);
     const amount = money(args['amountCents'], 'amountCents');
     if (amount < 0) throw new ToolError('an income is not less than nothing');
-    const plan = state.months.get(monthKey(budget, month));
-    if (!plan) throw new ToolError(`${month} is not open for ${b.label}`, 404);
-    if (plan.closed) throw new ToolError(`${month} is closed for ${b.label}, so its income stays as it was`);
+    const plan = state.months.get(month);
+    if (!plan) throw new ToolError(`${month} is not open`, 404);
+    if (plan.closed) throw new ToolError(`${month} is closed, so its income stays as it was`);
     const why = typeof args['why'] === 'string' && args['why'].trim() ? args['why'].trim() : "set this month's income";
 
     // The month's own name, read as UTC so the zone of the server cannot move it a month.
@@ -2727,7 +2454,7 @@ const setMonthIncome: Tool = {
         `${name} income goes from ${fmtExact(plan.income)} to ${fmtExact(amount)}`,
         'The recorded income sources are not changed; this is the figure for this month only',
       ],
-      events: [{ op: 'income.set', budget, month, amount, why }],
+      events: [{ op: 'income.set', month, amount, why }],
     }, ctx.today);
   },
 };
@@ -2780,7 +2507,7 @@ const createPlan: Tool = {
 const updatePlan: Tool = {
   name: 'update_plan',
   description:
-    "Propose changes to a plan's card: its title, area, chips, notes, estimated cost, or the budget " +
+    "Propose changes to a plan's card: its title, area, chips, notes, estimated cost, or the " +
     'envelope it is paid from. Only the fields given change. Chips are free-text labels such as ' +
     '"researching" or "waiting on a quote"; they never change the state of a plan (Planning, Doing or Done), and chips and ' +
     'notes are replaced whole, so read get_plan and send the full list. Linking an envelope moves no ' +
@@ -2795,12 +2522,7 @@ const updatePlan: Tool = {
       chips: { type: 'array', items: { type: 'string' }, description: 'The whole set. An empty list clears them.' },
       notes: { type: 'string', description: 'The whole notes. Keep what is there unless asked to replace it.' },
       estimateCents: { type: ['number', 'null'], description: 'Whole cents. $1,800.00 is 180000. null clears it.' },
-      envelope: {
-        type: ['object', 'null'],
-        properties: { budget: { type: 'string' }, envelope: { type: 'string' } },
-        required: ['budget', 'envelope'],
-        description: 'The envelope it is paid from. null unlinks it.',
-      },
+      envelope: { type: ['string', 'null'], description: 'The id of the envelope it is paid from. null unlinks it.' },
     },
     required: ['plan'],
   },
@@ -2810,7 +2532,7 @@ const updatePlan: Tool = {
     const effects: string[] = [];
     const set: {
       title?: string; area?: string; chips?: string[]; notes?: string; estimate?: Cents | null;
-      envelope?: { budget: string; envelope: string } | null;
+      envelope?: string | null;
     } = {};
 
     if (args['title'] !== undefined) {
@@ -2836,10 +2558,7 @@ const updatePlan: Tool = {
     if (args['envelope'] !== undefined) {
       set.envelope = envelopeRef(state, args['envelope']);
       if (set.envelope === null) effects.push('No envelope linked');
-      else {
-        const b = state.budgets.get(set.envelope.budget)!;
-        effects.push(`Paid from ${b.envelopes.get(set.envelope.envelope)!.label} in ${b.label} — no money moves`);
-      }
+      else effects.push(`Paid from ${state.envelopes.get(set.envelope)!.label} — no money moves`);
     }
     if (!effects.length) throw new ToolError('nothing to change: give at least one field');
     // A new name or area goes to its due date and blocks on the calendar.
@@ -3541,12 +3260,12 @@ const savingsShort: Tool = {
   kind: 'write',
   input: {
     type: 'object',
-    properties: { budget: { type: 'string' }, account: { type: 'string' } },
-    required: ['budget', 'account'],
+    properties: { account: { type: 'string' } },
+    required: ['account'],
   },
-  run(args, ctx) {
-    const c = savingsCheck(ctx.store.state, str(args['budget'], 'budget'), ctx.today);
-    if (!c) throw new ToolError('that budget has no envelopes saved in Savings');
+  run(_args, ctx) {
+    const c = savingsCheck(ctx.store.state, ctx.today);
+    if (!c) throw new ToolError('no envelopes are saved in Savings');
     return ctx.proposals.put({
       tool: 'savings_short', who: ctx.who,
       summary: c.status === 'short' ? c.words.verdict.replace(/\.$/, '') : 'Savings covers the sinking funds now',
@@ -3635,12 +3354,12 @@ const searchTool: Tool = {
 };
 
 export const TOOLS: readonly Tool[] = [
-  getMonth, explainEnvelope, findDonors, listTransactions, compareBudgets, getActivity, addStarterSet,
+  getMonth, explainEnvelope, findDonors, listTransactions, getActivity, addStarterSet,
   makeStarterEnvelopes, setMonthIncome, setEnvelopeFigure, setBill,
   moveMoney, setAssignment, categorizeTxn, openMonth, restoreTxn,
-  createBudget, renameBudget, archiveBudget, defineEnvelope, setSinkingGoal, removeEnvelope,
+  defineEnvelope, setSinkingGoal, removeEnvelope,
   defineCategory, archiveCategory, closeMonth, discardMonth,
-  planIncome, defineIncome, removeIncome, locateBudget, localCosts, seedFromLocation,
+  planIncome, defineIncome, removeIncome, setLocation, localCosts, seedFromLocation,
   listPlans, getPlan, searchTool, createPlan, updatePlan, setPlanState, handPlan, setPlanGoal, answerAsk, setChecklist,
   setPlanDue, blockPlanTime, removePlan, linkContact, createContactTool, proposeEvent,
 ];
@@ -3661,7 +3380,7 @@ export const CARD_ONLY: ReadonlySet<string> = new Set([resolveDrift.name, approv
  * its sources and caveats, is shown before anyone approves it.
  */
 export const APPROVE_IN_ONE: ReadonlySet<string> = new Set([
-  'create_budget', 'set_budget_location', 'open_month', 'set_month_income', 'define_income_source',
+  'set_location', 'open_month', 'set_month_income', 'define_income_source',
   'make_starter_envelopes', 'set_envelope_figure', 'set_bill', 'move_money', 'set_assignment',
 ]);
 
@@ -3670,7 +3389,7 @@ export const forClaude = (t: Tool): boolean => TOOLS.includes(t);
 
 /**
  * The writes research on a plan may suggest: the plan tools, whose events
- * touch no budget, month or envelope. Research may read the budget and say
+ * touch no month or envelope. Research may read the budget and say
  * what a cost means for an envelope; moving money is decided in the budget,
  * never from a card. create_contact is one: it only adds someone to Contacts,
  * and nothing happens until a member approves the card.

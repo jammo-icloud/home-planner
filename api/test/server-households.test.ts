@@ -148,9 +148,9 @@ describe('the owner removes a household for good', () => {
     assert.equal(made.json.id, 'wren');
     const h = (await call(bob, 'GET', '/api/households')).json.households as { id: string }[];
     assert.ok(!h.some((x) => x.id === 'wren'), 'bob was in the old one, not this one');
-    const budgets = await call(alex, 'GET', '/api/budgets');
-    assert.equal(budgets.status, 200);
-    assert.deepEqual(budgets.json.budgets ?? [], []);
+    const budget = await call(alex, 'GET', '/api/budget');
+    assert.equal(budget.status, 200);
+    assert.deepEqual([budget.json.envelopes, budget.json.months, budget.json.started], [0, [], false]);
   });
 
   test('a sandbox session has nothing to remove', async () => {

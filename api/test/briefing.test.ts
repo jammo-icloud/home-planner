@@ -38,12 +38,11 @@ async function fixture(): Promise<{ store: Store; ctx: any }> {
     { op: 'category.define', category: 'groceries', label: 'Groceries' },
     { op: 'category.define', category: 'dining', label: 'Dining out' },
     { op: 'category.define', category: 'electricity', label: 'Electricity' },
-    { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'daily', label: 'Daily life', group: 'People',
+    { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
       match: { categories: ['groceries', 'dining'] }, template: parseDollars('1525.00'), rollover: false, order: 0 },
-    { op: 'envelope.define', budget: 'harbor', envelope: 'util', label: 'Utilities', group: 'House',
+    { op: 'envelope.define', envelope: 'util', label: 'Utilities', group: 'House',
       match: { categories: ['electricity'] }, template: parseDollars('300.00'), rollover: false, order: 1 },
-    { op: 'month.open', budget: 'harbor', month: '2026-08', income: parseDollars('9600.00') },
+    { op: 'month.open', month: '2026-08', income: parseDollars('9600.00') },
     { op: 'txn.add', txns: [
       { id: 'x1', date: '2026-08-03', payee: 'VALLEY MARKET #101', amount: parseDollars('-84.21'), dedupeKey: 'x1', category: 'groceries' },
       { id: 'x2', date: '2026-08-06', payee: 'CORNER BISTRO', amount: parseDollars('-1300.00'), dedupeKey: 'x2', category: 'dining' },
@@ -64,14 +63,13 @@ const draft = (over: Partial<Record<string, unknown>> = {}) => said(JSON.stringi
 
 afterEach(() => { setClaudeClient(null); });
 
-describe('a budget with no open month', () => {
+describe('a month not open', () => {
   test('is a state to act on, not a server fault', async () => {
     // It was a plain Error, so the server answered 500 for something as
-    // ordinary as a budget whose month has not been opened yet.
+    // ordinary as a month that has not been opened yet.
     const { store } = await fixture();
-    await store.append('alice', { op: 'budget.create', budget: 'cabin', label: 'Cabin' });
-    await assert.rejects(() => brief(store, { who: 'alice', budget: 'cabin', today: TODAY }),
-      (e: ToolError) => e instanceof ToolError && e.status === 409 && /no open month/.test(e.message));
+    await assert.rejects(() => brief(store, { who: 'alice', today: '2026-09-02' }),
+      (e: ToolError) => e instanceof ToolError && e.status === 409 && /2026-09 is not open/.test(e.message));
   });
 });
 
@@ -89,15 +87,15 @@ describe('a change list that has been cut short says so', () => {
 
   test('the total is kept beside the events shown', async () => {
     const store = await many();
-    const { shown, total } = await changesSinceSection(store, 'harbor', TODAY);
+    const { shown, total } = await changesSinceSection(store, TODAY);
     assert.equal(shown.length, 25);
     assert.ok(total > shown.length, `${total} changes, ${shown.length} shown`);
   });
 
   test('Claude is told the list is partial, and not to count from it', async () => {
     const store = await many();
-    const { shown, total } = await changesSinceSection(store, 'harbor', TODAY);
-    const snap = snapshot(store.state, 'harbor', '2026-08', TODAY)!;
+    const { shown, total } = await changesSinceSection(store, TODAY);
+    const snap = snapshot(store.state, '2026-08', TODAY)!;
     const text = facts(snap, store.state, shown, [], TODAY, total);
     assert.match(text, new RegExp(`the latest 25 of ${total}`));
     assert.match(text, /do not count from this list/);
@@ -105,20 +103,20 @@ describe('a change list that has been cut short says so', () => {
 
   test('a list shown whole carries no such warning', async () => {
     const { store } = await fixture();
-    const { shown, total } = await changesSinceSection(store, 'harbor', TODAY);
-    const snap = snapshot(store.state, 'harbor', '2026-08', TODAY)!;
+    const { shown, total } = await changesSinceSection(store, TODAY);
+    const snap = snapshot(store.state, '2026-08', TODAY)!;
     assert.equal(shown.length, total);
     assert.doesNotMatch(facts(snap, store.state, shown, [], TODAY, total), /the latest \d+ of/);
   });
 
   test('the screen and the plain briefing give the real number', async () => {
     const store = await many();
-    const { total } = await changesSinceSection(store, 'harbor', TODAY);
+    const { total } = await changesSinceSection(store, TODAY);
     setClaudeClient(null);
     const saved = process.env['ANTHROPIC_API_KEY'];
     delete process.env['ANTHROPIC_API_KEY'];
     try {
-      const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+      const b = await brief(store, { who: 'alice', today: TODAY });
       assert.equal(b.changes.length, 25);
       assert.equal(b.changesTotal, total);
       assert.match(b.body, new RegExp(`${total} changes since the last briefing`));
@@ -136,15 +134,15 @@ describe('friends staying are not money', () => {
     const [card] = await store.append('guest:linh@example.com', {
       op: 'proposal.offer', tool: 'approve_booking', summary: 'Linh would like to come', effects: [], events: [],
       args: { email: 'linh@example.com', name: 'Linh', arrive: '2026-09-01', depart: '2026-09-03', headcount: 1, note: '' },
-      budget: null, month: null, envelopes: [], fingerprint: '', prompt: { kind: 'booking', ref: null },
+      month: null, envelopes: [], fingerprint: '', prompt: { kind: 'booking', ref: null },
     });
     await store.append('guest:linh@example.com', { op: 'booking.cancel', stay: card!.id, why: 'withdrawn by the guest' });
     await store.append('alice', { op: 'booking.block', from: '2026-09-10', to: '2026-09-12', why: 'family visiting' });
     await store.append('alice', { op: 'category.define', category: 'coffee', label: 'Coffee run' });
-    const { shown, total } = await changesSinceSection(store, 'harbor', TODAY);
+    const { shown, total } = await changesSinceSection(store, TODAY);
     assert.deepEqual(shown.filter((e) => e.op.startsWith('guest.') || e.op.startsWith('booking.')), []);
     assert.ok(shown.some((e) => e.op === 'category.define' && e.category === 'coffee'), 'the money change is still there');
-    const text = facts(snapshot(store.state, 'harbor', '2026-08', TODAY)!, store.state, shown, [], TODAY, total);
+    const text = facts(snapshot(store.state, '2026-08', TODAY)!, store.state, shown, [], TODAY, total);
     assert.doesNotMatch(text, /linh@example\.com|Linh|withdr|family visiting|guest/i);
   });
 });
@@ -152,19 +150,19 @@ describe('friends staying are not money', () => {
 describe('what a section covers', () => {
   test('the first section does not replay the entire seed', async () => {
     const { store } = await fixture();
-    const { shown } = await changesSinceSection(store, 'harbor', TODAY);
+    const { shown } = await changesSinceSection(store, TODAY);
     assert.ok(shown.length <= 25, `first run showed ${shown.length} events`);
   });
 
   test('the next day lists only what changed since the previous section, for both of you', async () => {
     const { store } = await fixture();
     const f = fake([draft(), draft()]);
-    await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    await ensureSection(store, { who: 'alice', today: TODAY });
     await store.append('bob', {
-      op: 'move', budget: 'harbor', month: '2026-08',
+      op: 'move', month: '2026-08',
       from: 'util', to: 'daily', amount: parseDollars('25.00'), why: 'coffee run',
     });
-    await ensureSection(store, { who: 'alice', budget: 'harbor', today: '2026-08-14' });
+    await ensureSection(store, { who: 'alice', today: '2026-08-14' });
     const second = f.calls[1].messages[0].content as string;
     assert.match(second, /WHAT CHANGED SINCE THE LAST BRIEFING\n.*coffee run/s);
     assert.doesNotMatch(second, /imported 5 transactions/);
@@ -181,20 +179,20 @@ describe('what a section covers', () => {
   test('the facts include notes left since the last section', async () => {
     const { store } = await fixture();
     const f = fake([draft()]);
-    await store.append('bob', { op: 'thread.note', text: 'the trip is already paid for', budget: 'harbor' });
-    await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    await store.append('bob', { op: 'thread.note', text: 'the trip is already paid for' });
+    await ensureSection(store, { who: 'alice', today: TODAY });
     assert.match(f.calls[0].messages[0].content, /NOTES.*bob: "the trip is already paid for"/s);
   });
 
   test('a put-off card whose numbers moved is mentioned in the next section', async () => {
     const { store, ctx } = await fixture();
     const card = await offer(ctx, { tool: 'move_money', prompt: { kind: 'briefing', ref: null },
-      args: { budget: 'harbor', month: '2026-08', from: 'util', to: 'daily', amountCents: 5000, why: 'x' } });
+      args: { month: '2026-08', from: 'util', to: 'daily', amountCents: 5000, why: 'x' } });
     await decide(ctx, card.id, 'snoozed');
     await store.append('alice', { op: 'txn.add', txns: [
       { id: 'x8', date: '2026-08-12', payee: 'VALLEY MARKET', amount: parseDollars('-20.00'), dedupeKey: 'x8', category: 'groceries' }] });
     const f = fake([draft()]);
-    await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    await ensureSection(store, { who: 'alice', today: TODAY });
     assert.match(f.calls[0].messages[0].content, /PUT OFF.*Move \$50\.00 from Utilities to Daily life/s);
   });
 });
@@ -202,7 +200,7 @@ describe('what a section covers', () => {
 describe('the facts Claude is given', () => {
   test('every figure is pre-formatted, so nothing invites a unit conversion', async () => {
     const { store } = await fixture();
-    const snap = snapshot(store.state, 'harbor', '2026-08', TODAY)!;
+    const snap = snapshot(store.state, '2026-08', TODAY)!;
     const text = facts(snap, store.state, [], [], TODAY);
 
     assert.match(text, /funded now: \$1,825\b/);
@@ -216,10 +214,10 @@ describe('the facts Claude is given', () => {
   test('it carries the plan-vs-funded pair, not just the current number', async () => {
     const { store } = await fixture();
     await store.append('alice', {
-      op: 'move', budget: 'harbor', month: '2026-08',
+      op: 'move', month: '2026-08',
       from: 'util', to: 'daily', amount: parseDollars('100.00'), why: 'ate out twice',
     });
-    const snap = snapshot(store.state, 'harbor', '2026-08', TODAY)!;
+    const snap = snapshot(store.state, '2026-08', TODAY)!;
     const text = facts(snap, store.state, [], [], TODAY);
     assert.match(text, /Daily life \[daily\]: planned \$1,525, funded \$1,625\b/);
   });
@@ -232,7 +230,7 @@ describe('the facts Claude is given', () => {
     await store.append('alice', { op: 'txn.add', txns: [
       { id: 'x9', date: '2026-08-11', payee: 'LAKESIDE VET', amount: parseDollars('-240.00'), dedupeKey: 'x9', category: 'vet' },
     ] });
-    const snap = snapshot(store.state, 'harbor', '2026-08', TODAY)!;
+    const snap = snapshot(store.state, '2026-08', TODAY)!;
     assert.match(facts(snap, store.state, [], [], TODAY), /outside every envelope: \$240\b/);
   });
 
@@ -240,11 +238,11 @@ describe('the facts Claude is given', () => {
     const { store } = await fixture();
     await markRead(store, 'alice', store.state.lastEventId);
     await store.append('bob', {
-      op: 'move', budget: 'harbor', month: '2026-08',
+      op: 'move', month: '2026-08',
       from: 'util', to: 'daily', amount: parseDollars('50.00'), why: 'birthday dinner for mum',
     });
-    const snap = snapshot(store.state, 'harbor', '2026-08', TODAY)!;
-    const text = facts(snap, store.state, (await changesSinceSection(store, 'harbor', TODAY)).shown, [], TODAY);
+    const snap = snapshot(store.state, '2026-08', TODAY)!;
+    const text = facts(snap, store.state, (await changesSinceSection(store, TODAY)).shown, [], TODAY);
     assert.match(text, /bob: .*birthday dinner for mum/s);
   });
 });
@@ -253,7 +251,7 @@ describe('generation', () => {
   test('the stable house rules go first, with a cache breakpoint on them', async () => {
     const { store } = await fixture();
     const f = fake([draft()]);
-    await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    await brief(store, { who: 'alice', today: TODAY });
 
     const req = f.calls[0];
     assert.equal(req.model, 'claude-opus-5');
@@ -272,8 +270,8 @@ describe('generation', () => {
   test('a section is written once per budget per day and shared by both members', async () => {
     const { store } = await fixture();
     const f = fake([draft({ headline: 'first' })]);
-    const a = await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
-    const b = await ensureSection(store, { who: 'bob', budget: 'harbor', today: TODAY });
+    const a = await ensureSection(store, { who: 'alice', today: TODAY });
+    const b = await ensureSection(store, { who: 'bob', today: TODAY });
     assert.equal(f.calls.length, 1, 'the second look must not hit the API');
     assert.equal(b.event, a.event);
     const written = (await store.since(null)).filter((e) => e.op === 'thread.briefing');
@@ -285,8 +283,8 @@ describe('generation', () => {
     const { store } = await fixture();
     const f = fake([draft(), draft()]);
     await Promise.all([
-      ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY }),
-      ensureSection(store, { who: 'bob', budget: 'harbor', today: TODAY }),
+      ensureSection(store, { who: 'alice', today: TODAY }),
+      ensureSection(store, { who: 'bob', today: TODAY }),
     ]);
     assert.equal(f.calls.length, 1);
   });
@@ -294,12 +292,12 @@ describe('generation', () => {
   test('a change later that day does not rewrite the section; the thread shows it instead', async () => {
     const { store } = await fixture();
     const f = fake([draft({ headline: 'first' }), draft({ headline: 'second' })]);
-    const a = await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const a = await ensureSection(store, { who: 'alice', today: TODAY });
     await store.append('bob', {
-      op: 'move', budget: 'harbor', month: '2026-08',
+      op: 'move', month: '2026-08',
       from: 'util', to: 'daily', amount: parseDollars('25.00'), why: 'coffee run',
     });
-    const b = await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const b = await ensureSection(store, { who: 'alice', today: TODAY });
     assert.equal(f.calls.length, 1);
     assert.equal(b.event, a.event);
   });
@@ -307,8 +305,8 @@ describe('generation', () => {
   test('the next day writes a new one', async () => {
     const { store } = await fixture();
     const f = fake([draft(), draft()]);
-    const a = await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
-    const b = await ensureSection(store, { who: 'alice', budget: 'harbor', today: '2026-08-14' });
+    const a = await ensureSection(store, { who: 'alice', today: TODAY });
+    const b = await ensureSection(store, { who: 'alice', today: '2026-08-14' });
     assert.equal(f.calls.length, 2);
     assert.notEqual(b.event, a.event);
   });
@@ -316,7 +314,7 @@ describe('generation', () => {
   test('each runnable suggestion becomes a card raised by the section', async () => {
     const { store } = await fixture();
     fake([draft({ decisions: [{ title: 'Cover Daily life', detail: 'It is projected over.', envelope: 'daily', tool: 'move_money' }] })]);
-    const s = await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const s = await ensureSection(store, { who: 'alice', today: TODAY });
     const cards = [...store.state.thread.offers.values()];
     assert.equal(cards.length, 1);
     assert.deepEqual(cards[0]!.prompt, { kind: 'briefing', ref: s.event });
@@ -331,7 +329,7 @@ describe('generation', () => {
       title: 'Cover Daily life', detail: 'It is projected over.',
       envelope: 'daily', tool: 'move_money',
     }] })]);
-    const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const b = await brief(store, { who: 'alice', today: TODAY });
     assert.equal(b.decisions[0]!.suggests!.tool, 'move_money');
     assert.equal(store.state.eventCount, before, 'nothing may be written by a briefing');
   });
@@ -343,7 +341,7 @@ describe('generation', () => {
     fake([draft({ decisions: [{
       title: 'Cover Daily life', detail: 'over', envelope: 'daily', tool: 'move_money',
     }] })]);
-    const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const b = await brief(store, { who: 'alice', today: TODAY });
 
     const s = b.decisions[0]!.suggests!;
     const proposal = toolByName.get(s.tool)!.run(s.args as Record<string, unknown>, ctx) as
@@ -360,7 +358,7 @@ describe('generation', () => {
       title: 'Raise the Daily life plan', detail: 'it keeps needing topping up',
       envelope: 'daily', tool: 'set_assignment',
     }] })]);
-    const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const b = await brief(store, { who: 'alice', today: TODAY });
     const s = b.decisions[0]!.suggests!;
     assert.equal(s.tool, 'set_assignment');
     const proposal = toolByName.get(s.tool)!.run(s.args as Record<string, unknown>, ctx) as
@@ -373,10 +371,10 @@ describe('generation', () => {
     fake([draft({ decisions: [{
       title: 'Cover Daily life', detail: 'over', envelope: 'daily', tool: 'move_money',
     }] })]);
-    const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const b = await brief(store, { who: 'alice', today: TODAY });
 
     const args = b.decisions[0]!.suggests!.args as { from: string; to: string; amountCents: number };
-    const snap = snapshot(store.state, 'harbor', '2026-08', TODAY)!;
+    const snap = snapshot(store.state, '2026-08', TODAY)!;
     const p = snap.pace.find((x) => x.envelope === 'daily')!;
     const short = p.available < 0 ? -p.available : p.projectedOver;
     const best = donors(snap.view, snap.clock, 'daily', store.state)[0]!;
@@ -392,7 +390,7 @@ describe('generation', () => {
     fake([draft({ decisions: [{
       title: 'Look at Utilities', detail: 'it is fine', envelope: 'util', tool: 'move_money',
     }] })]);
-    const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const b = await brief(store, { who: 'alice', today: TODAY });
     // Utilities is not short of anything, so there is nothing to propose.
     assert.equal(b.decisions[0]!.suggests, undefined);
   });
@@ -402,7 +400,7 @@ describe('generation', () => {
     fake([{ model: 'claude-opus-5', stop_reason: 'refusal', stop_details: { category: 'other' },
             content: [], usage: { input_tokens: 5, output_tokens: 0 } }]);
     await assert.rejects(
-      () => brief(store, { who: 'alice', budget: 'harbor', today: TODAY }),
+      () => brief(store, { who: 'alice', today: TODAY }),
       ClaudeRefused);
   });
 
@@ -412,7 +410,7 @@ describe('generation', () => {
     const saved = process.env['ANTHROPIC_API_KEY'];
     delete process.env['ANTHROPIC_API_KEY'];
     try {
-      const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+      const b = await brief(store, { who: 'alice', today: TODAY });
       assert.match(b.body, /\$1,825\b/);
       assert.match(b.body, /without Claude/);
     } finally {
@@ -432,7 +430,7 @@ describe('generation', () => {
     // to replace the whole Today screen with the API's error.
     const { store } = await fixture();
     fake([outOfCredit()]);
-    const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const b = await brief(store, { who: 'alice', today: TODAY });
     assert.match(b.body, /\$1,825\b/, 'the same true figures as with no key at all');
     assert.match(b.body, /without Claude/);
     assert.match(b.body, /credit balance is too low/);
@@ -447,7 +445,7 @@ describe('generation', () => {
     const saved = process.env['ANTHROPIC_API_KEY'];
     delete process.env['ANTHROPIC_API_KEY'];
     try {
-      const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+      const b = await brief(store, { who: 'alice', today: TODAY });
       assert.match(b.body, /1 receipt \(\$10 out\) is not in an envelope yet/);
     } finally {
       if (saved !== undefined) process.env['ANTHROPIC_API_KEY'] = saved;
@@ -468,7 +466,7 @@ describe('generation', () => {
     const saved = process.env['ANTHROPIC_API_KEY'];
     delete process.env['ANTHROPIC_API_KEY'];
     try {
-      const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+      const b = await brief(store, { who: 'alice', today: TODAY });
       assert.match(b.body, /\$45 was spent in categories with no envelope here/);
     } finally {
       if (saved !== undefined) process.env['ANTHROPIC_API_KEY'] = saved;
@@ -478,9 +476,9 @@ describe('generation', () => {
   test('a fallback section is retried, and a Claude-written one replaces it that day', async () => {
     const { store } = await fixture();
     fake([outOfCredit(), draft()]);
-    const first = await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const first = await ensureSection(store, { who: 'alice', today: TODAY });
     assert.equal(first.writtenBy, 'fallback');
-    const again = await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY, retryEvery: 0 });
+    const again = await ensureSection(store, { who: 'alice', today: TODAY, retryEvery: 0 });
     assert.equal(again.writtenBy, 'claude');
     const latest = (await store.since(null)).filter((e) => e.op === 'thread.briefing').at(-1)!;
     assert.ok(latest.op === 'thread.briefing' && latest.replaces === first.event);
@@ -490,16 +488,16 @@ describe('generation', () => {
   test('while Claude is down, looking again soon does not wait on it again', async () => {
     const { store } = await fixture();
     const f = fake([outOfCredit(), draft()]);
-    await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
-    await ensureSection(store, { who: 'bob', budget: 'harbor', today: TODAY });
+    await ensureSection(store, { who: 'alice', today: TODAY });
+    await ensureSection(store, { who: 'bob', today: TODAY });
     assert.equal(f.calls.length, 1, 'retried at most every few minutes, not on every look');
   });
 
   test('while Claude stays unreachable, the fallback is not written twice', async () => {
     const { store } = await fixture();
     fake([outOfCredit(), outOfCredit()]);
-    await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
-    await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY, retryEvery: 0 });
+    await ensureSection(store, { who: 'alice', today: TODAY });
+    await ensureSection(store, { who: 'alice', today: TODAY, retryEvery: 0 });
     assert.equal((await store.since(null)).filter((e) => e.op === 'thread.briefing').length, 1);
   });
 });
@@ -508,9 +506,9 @@ describe('predictions', () => {
   test('Claude picks the envelope; the number comes from the projection', async () => {
     const { store } = await fixture();
     fake([draft({ predictEnvelope: 'daily', predictWhy: 'eating out has been steady' })]);
-    const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const b = await brief(store, { who: 'alice', today: TODAY });
 
-    const projected = snapshot(store.state, 'harbor', '2026-08', TODAY)!
+    const projected = snapshot(store.state, '2026-08', TODAY)!
       .pace.find((p) => p.envelope === 'daily')!.projected;
     assert.equal(b.prediction!.expected, projected);
 
@@ -522,7 +520,7 @@ describe('predictions', () => {
   test('an envelope Claude invented records nothing', async () => {
     const { store } = await fixture();
     fake([draft({ predictEnvelope: 'holidays' })]);
-    const b = await brief(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    const b = await brief(store, { who: 'alice', today: TODAY });
     assert.equal(b.prediction, null);
     assert.equal(store.state.predictions.length, 0);
   });
@@ -530,8 +528,8 @@ describe('predictions', () => {
   test('a forecast is Claude\'s, and recording it does not cost a second section', async () => {
     const { store } = await fixture();
     const f = fake([draft({ predictEnvelope: 'daily', predictWhy: 'steady' })]);
-    await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
-    await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    await ensureSection(store, { who: 'alice', today: TODAY });
+    await ensureSection(store, { who: 'alice', today: TODAY });
     assert.equal(f.calls.length, 1);
     assert.equal(store.state.predictions.at(-1)!.who, 'claude');
   });
@@ -539,14 +537,14 @@ describe('predictions', () => {
   test('a closed month is scored against what was actually spent', async () => {
     const { store } = await fixture();
     await store.append('system', [
-      { op: 'month.open', budget: 'harbor', month: '2026-07', income: parseDollars('9600.00') },
+      { op: 'month.open', month: '2026-07', income: parseDollars('9600.00') },
       { op: 'txn.add', txns: [
         { id: 'j1', date: '2026-07-14', payee: 'VALLEY MARKET #101', amount: parseDollars('-1000.00'), dedupeKey: 'j1', category: 'groceries' },
       ] },
     ]);
     await store.append('system', {
       op: 'prediction.record', prediction: 'harbor:2026-07:daily',
-      budget: 'harbor', month: '2026-07', envelope: 'daily',
+      month: '2026-07', envelope: 'daily',
       expected: parseDollars('1050.00'), why: 'steady',
     });
 
@@ -560,7 +558,7 @@ describe('predictions', () => {
     const { store } = await fixture();
     await store.append('system', {
       op: 'prediction.record', prediction: 'harbor:2026-08:daily',
-      budget: 'harbor', month: '2026-08', envelope: 'daily',
+      month: '2026-08', envelope: 'daily',
       expected: parseDollars('1500.00'), why: 'steady',
     });
     assert.deepEqual(scorePredictions(store.state, TODAY), []);
@@ -572,7 +570,7 @@ describe('the tool loop', () => {
     const { store, ctx } = await fixture();
     const before = store.state.eventCount;
     fake([
-      called('move_money', { budget: 'harbor', month: '2026-08', from: 'util', to: 'daily',
+      called('move_money', { month: '2026-08', from: 'util', to: 'daily',
                              amountCents: 9600, why: 'covering the overspend' }),
       said('Moving $96.00 from Utilities would cover it. Approve below.'),
     ]);
@@ -586,7 +584,7 @@ describe('the tool loop', () => {
   test('a failing tool is handed back rather than aborting the answer', async () => {
     const { store, ctx } = await fixture();
     const f = fake([
-      called('explain_envelope', { budget: 'harbor', month: '2026-08', envelope: 'nope' }),
+      called('explain_envelope', { month: '2026-08', envelope: 'nope' }),
       said('There is no envelope by that name.'),
     ]);
     const answer = await ask('How is nope doing?', ctx);
@@ -603,7 +601,7 @@ describe('the tool loop', () => {
     const f = fake([
       { model: 'claude-opus-5', stop_reason: 'tool_use', usage: { input_tokens: 1, output_tokens: 1 },
         content: [
-          { type: 'tool_use', id: 'a', name: 'get_month', input: { budget: 'harbor', month: '2026-08' } },
+          { type: 'tool_use', id: 'a', name: 'get_month', input: { month: '2026-08' } },
           { type: 'tool_use', id: 'b', name: 'list_transactions', input: { month: '2026-08' } },
         ] },
       said('done'),
@@ -657,10 +655,9 @@ describe('one briefing for the household', () => {
     at(NOW);
     await store.append('alice', [
       { op: 'category.define', category: 'groceries', label: 'Groceries' },
-      { op: 'budget.create', budget: 'harbor', label: 'Harbor' },
-      { op: 'envelope.define', budget: 'harbor', envelope: 'daily', label: 'Daily life', group: 'People',
+      { op: 'envelope.define', envelope: 'daily', label: 'Daily life', group: 'People',
         match: { categories: ['groceries'] }, template: parseDollars('600.00'), rollover: false, order: 0 },
-      { op: 'month.open', budget: 'harbor', month: '2026-08', income: parseDollars('1000.00') },
+      { op: 'month.open', month: '2026-08', income: parseDollars('1000.00') },
       { op: 'txn.add', txns: [
         { id: 'h1', date: '2026-08-03', payee: 'VALLEY MARKET', amount: parseDollars('-84.21'), dedupeKey: 'h1', category: 'groceries' }] },
       ...(o.calendar ? [{ op: 'calendar.household' as const, ...HOUSEHOLD_CAL, name: 'Household' }] : []),
@@ -914,7 +911,6 @@ describe('one briefing for the household', () => {
     assert.equal(written.length, 1);
     const e = written[0]! as Extract<typeof written[0], { op: 'thread.briefing' }>;
     assert.equal(e.source, 'household');
-    assert.equal(e.budget, null);
     assert.equal(e.headline, 'The gate is overdue.');
     assert.equal(e.who, 'claude');
     assert.equal(s.event, e.id);
@@ -973,7 +969,7 @@ describe('one briefing for the household', () => {
     const { store } = await household();
     // A section written for the budget earlier that day, before the household one existed.
     fake([draft({ headline: 'budget only' }), draft({ headline: 'for the household' })]);
-    await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    await ensureSection(store, { who: 'alice', today: TODAY });
     const s = await ensureHousehold(store, opts({ sid: null }));
     const { entries } = await everyEntry(store, 'alice');
     // `ordered` puts the briefing first in its day (it is no longer moved up in the page's own order).
@@ -985,7 +981,7 @@ describe('one briefing for the household', () => {
   });
 
   test('the log accepts the briefing sources and refuses any other', () => {
-    const base = { id: 'e1', at: NOW, who: 'claude', op: 'thread.briefing', day: TODAY, budget: null,
+    const base = { id: 'e1', at: NOW, who: 'claude', op: 'thread.briefing', day: TODAY,
       headline: 'h', body: 'b', writtenBy: 'claude' } as const;
     for (const source of ['budget', 'plans', 'calendar', 'household']) {
       assert.doesNotThrow(() => validate({ ...base, source } as never));
@@ -996,13 +992,6 @@ describe('one briefing for the household', () => {
   test('Claude is told it works for the household, not only its budget', () => {
     assert.match(METHOD_RULES.split('\n')[0]!, /household/);
     assert.match(METHOD_RULES.split('\n').slice(0, 2).join(' '), /plans|calendar/);
-  });
-
-  test('the household\'s briefing is no one budget\'s, and the log refuses one that names a budget', () => {
-    const base = { id: 'e1', at: NOW, who: 'claude', op: 'thread.briefing', day: TODAY,
-      headline: 'h', body: 'b', writtenBy: 'claude', source: 'household' } as const;
-    assert.doesNotThrow(() => validate({ ...base, budget: null } as never));
-    assert.throws(() => validate({ ...base, budget: 'harbor' } as never), /household's briefing/);
   });
 
   test('the fallback names each event on the calendar without a double colon', async () => {
@@ -1117,7 +1106,7 @@ describe("the household's briefing as a page in Drive", () => {
   test("a budget's own section stays in the log", async () => {
     const { store } = await fixture();
     fake([draft()]);
-    await ensureSection(store, { who: 'alice', budget: 'harbor', today: TODAY });
+    await ensureSection(store, { who: 'alice', today: TODAY });
     const e = (await briefings(store))[0]!;
     assert.equal(typeof e.body, 'string');
     assert.equal(e.doc, undefined);

@@ -6,7 +6,7 @@ import type { IncomeSource, Frequency } from '../src/income.ts';
 import { parseDollars, fmt } from '../src/money.ts';
 
 const source = (over: Partial<IncomeSource> & { frequency: Frequency; anchor: string }): IncomeSource => ({
-  id: 's1', budget: 'harbor', label: 'Salary', who: 'alice',
+  id: 's1', label: 'Salary', who: 'alice',
   amount: parseDollars('1000.00'),
   ...over,
 } as IncomeSource);
