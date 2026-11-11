@@ -323,7 +323,7 @@ const DRAWN_LATER: readonly string[] = [];
 /** Doors the server has closed that the page still knocks on, each until the page task that drops its last call (plan 2026-11-10-one-budget-envelopes, Ruling 20). */
 const RETIRING: readonly string[] = ['/api/tools/create_budget', '/api/tools/set_budget_location',
   '/api/tools/categorize_transactions', '/api/tools/define_category', '/api/tools/archive_category', '/api/tools/add_starter_set',
-  '/api/categories', '/api/tools/define_envelope'];
+  '/api/categories'];
 
 describe('the page ledger', () => {
   test('a Calendar form says a refusal once: only a week that cannot be read uses the error box', () => {
@@ -570,6 +570,15 @@ const ADDED_010: readonly Line[] = [
   ['B80', `"This month isn't open"`, 'plan'], ['B80', '{ envelope: envSel.value || null }', 'plan'],
   ['B27', "node(e.removed ? 'div' : 'button'", 'budget'], ['B27', "node('span', 'erow-title')", 'budget'],
   ['B18', "appendChild(rows);\n  }\n  // The check against the account is about the savings envelopes together, wherever they sit: after the last band.\n  if (result.savings) $('bands').appendChild(savingsCheckLine(result.savings));", 'budget'],
+  // Task 8: an empty category's own Add an envelope; the heading's menu; the two add rows; the two short forms, written at once.
+  ['B21', 'addEnvelopeForm(slot, { category: c.id })', 'budget'],
+  ['B22', 'function categoryMenu(', 'budget'], ['B22', "'Move up'", 'budget'], ['B22', "'Move down'", 'budget'],
+  ['B22', "'Move its envelopes first.'", 'budget'], ['B22', "approveNow('rename_category'", 'budget'],
+  ['B22', "approveNow('move_category'", 'budget'], ['B22', "approveNow('remove_category'", 'budget'], ['B22', 'function menuOn(', 'page'],
+  ['B23', 'id="cat-add"', 'budgetMarkup'], ['B23', 'id="env-new" type="button">Add an envelope', 'budgetMarkup'],
+  ['B24', 'function addEnvelopeForm(', 'budget'], ['B24', "'New category…'", 'budget'], ['B24', "approveNow('add_envelope'", 'budget'],
+  ['B24', "focus: 'change'", 'budget'],
+  ['B25', 'function addCategoryForm(', 'budget'], ['B25', "approveNow('add_category'", 'budget'], ['B25', "'Add it'", 'budget'],
 ];
 const GONE_010: readonly Line[] = [
   // Task 7: every trace of a second budget, Compare, the outside note and the savings band of its own.
@@ -586,6 +595,10 @@ const GONE_010: readonly Line[] = [
   ['B79', "b?.label ?? 'This budget'", 'page'], ['B80', "lab('Budget', budgetSel)", 'page'], ['B80', "a budget'}; this month isn't open", 'page'],
   ['B81', 'the budgets side by side', 'page'], ['B82', 'chosenBudget', 'page'], ['B82', 'loadBudgets', 'page'], ['B82', "'/api/budgets'", 'page'],
   ['B82', 'budget: month.budget', 'page'], ['B84', 'openBudgetAt(m.budget', 'page'],
+  // Task 8: the old Add an envelope panel, its Band and Fed by, its figure, and the tool it proposed. The Band pin names the
+  // envelope panel's field: the Categories sheet's own Band (Task 11's B61) is on the page until that sheet goes.
+  ['B24', "panel('Add an envelope'", 'page'], ['B24', 'Fed by (choose one or more)', 'page'], ['B24', "{ name: 'group', label: 'Band'", 'page'],
+  ['B24', 'Leave it empty to give it a figure later.', 'page'], ['B24', 'catOptions', 'page'], ['B24', "tool: 'define_envelope'", 'page'],
 ];
 describe('the page ledger: 0.10.0', () => {
   test('what 0.10.0 keeps, adds and takes away', () => {

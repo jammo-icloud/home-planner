@@ -180,9 +180,17 @@
   .erow-amt.fig{color:var(--figure-chip-ink)}
   .erow-sub{font-size:var(--fs-micro);color:var(--ink-soft);white-space:nowrap}
   .erow .chev{color:var(--ink-faint)}
-  /* A category's heading, where its menu will sit; an empty one says so under it. */
-  .band-head{display:flex;align-items:center;gap:var(--sp-2)}
+  /* A category's heading and its menu beside it; an empty one says so under it, with an Add an envelope of its own. */
+  .band-head{display:flex;align-items:center;gap:var(--sp-2);margin:0 0 var(--sp-1)}
+  .band-head h2{margin:0;min-width:0;overflow-wrap:anywhere}
+  .band-head > .menu{flex:none}
+  .band-head > .band-rename{flex:1}
   .band > .quiet{margin:0}
+  .band > .band-add{margin-top:var(--sp-1)}
+  .band-slot > .add-form,#add-slot > .add-form{margin-top:var(--sp-2)}
+  .cat-field{display:grid;min-width:0}
+  .cat-new .link{justify-self:start}
+  .menu-list .menu-note{margin:0;padding:var(--sp-2) var(--sp-3);font-size:var(--fs-small);color:var(--ink-soft)}
   /* A removed envelope a closed month keeps: a row that opens nothing, marked in quiet words. */
   .erow.removed{cursor:default}
   .erow.removed:active{background:none}
@@ -1834,7 +1842,10 @@
       </section>
 
       <div id="bands"></div>
-      <button class="add-row" id="env-new" type="button">Add an envelope</button>
+      <!-- Each opens its short form in the slot under them, and both step aside while it is open. -->
+      <button class="add-row hit" id="env-new" type="button">Add an envelope</button>
+      <button class="add-row hit" id="cat-add" type="button">Add a category</button>
+      <div id="add-slot"></div>
 
       <!-- Only when the month is due: in its last days, once it has ended, or closed. -->
       <section class="month-end" id="month-sec" hidden>
@@ -1992,7 +2003,9 @@ $('home-banner-done').addEventListener('click', () => {
 // the top of Budget. Real menus, so a keyboard works: Escape closes and
 // returns focus, the arrows move, Tab leaves, and picking anything closes it.
 const menus = [];
-const closeMenus = () => { for (const close of menus) close(false); };
+/** The category headings' menus, drawn with the list: emptied by each loadBudget, closed with the rest. */
+const bandMenus = [];
+const closeMenus = () => { for (const close of [...menus, ...bandMenus]) close(false); };
 /**
  * A menu hangs from its button's start or end edge; whichever it was given,
  * if that puts it within 8px of a side of the window it hangs from the other,
@@ -2010,10 +2023,16 @@ function keepOnScreen(list) {
   const dx = r.left < EDGE ? EDGE - r.left : r.right > max ? max - r.right : 0;
   if (dx) list.style.translate = `${Math.round(dx)}px 0`;
 }
-/** onOpen, if given, sets the menu up as it opens, before the focus goes in. */
+/** A menu in the markup, by its button's and its list's ids, closed with the others. */
 function setupMenu(btnId, listId, onOpen) {
-  const btn = $(btnId);
-  const list = $(listId);
+  menus.push(menuOn($(btnId), $(listId), onOpen));
+}
+/**
+ * The menu's behaviour on its button and its list, whether they are in the markup or drawn (a category's heading).
+ * onOpen, if given, sets the menu up as it opens, before the focus goes in. Answers its close, which the caller keeps
+ * where closeMenus finds it.
+ */
+function menuOn(btn, list, onOpen) {
   const items = () => [...list.querySelectorAll('[role^="menuitem"]')]
     .filter((x) => !x.disabled && !x.hidden && x.offsetParent !== null);
   const close = (focus) => {
@@ -2050,7 +2069,7 @@ function setupMenu(btnId, listId, onOpen) {
     else if (ev.key === 'End') { ev.preventDefault(); all.at(-1)?.focus(); }
     else if (ev.key === 'Tab') close(false);
   });
-  menus.push(close);
+  return close;
 }
 document.addEventListener('click', (ev) => { if (!ev.target.closest('.menu')) closeMenus(); });
 setupMenu('budget-menu-btn', 'budget-menu');
@@ -2313,6 +2332,7 @@ const ICONS = {
   'arrow-up-down': '<path d="m21 16-4 4-4-4"/><path d="M17 20V4"/><path d="m3 8 4-4 4 4"/><path d="M7 4v16"/>',
   down: '<path d="M4 6l4 4 4-4"/>',
   plus: '<path d="M8 3v10M3 8h10"/>',
+  more: '<circle cx="3" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="13" cy="8" r="1.3" fill="currentColor" stroke="none"/>',
   alert: '<circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/>',
 };
 function icon(name, cls = 'i sm') {
@@ -4600,6 +4620,8 @@ async function loadBudget() {
       $('budget').hidden = view !== 'budget';
       rowFocus = document.activeElement?.closest?.('#bands [data-envelope]')?.dataset.envelope ?? null;
       $('bands').textContent = '';
+      // The headings' menus go with the bands they were drawn in.
+      bandMenus.length = 0;
     }
   }
   if (load !== budgetLoads) return;
@@ -4645,7 +4667,8 @@ async function loadBudget() {
   // heading of its own, rather than under a heading made up for it.
   const known = new Set(result.categories.map((c) => c.id));
   for (const c of result.categories) {
-    $('bands').appendChild(categoryBand(c, result.envelopes.filter((e) => e.category === c.id)));
+    $('bands').appendChild(categoryBand(c, result.envelopes.filter((e) => e.category === c.id),
+      result.categories.indexOf(c), result.categories.length));
   }
   const orphans = result.envelopes.filter((e) => !known.has(e.category));
   if (orphans.length) {
@@ -4660,23 +4683,152 @@ async function loadBudget() {
 }
 
 /**
- * One category: its heading (in `.band-head`, where its menu goes), then its envelopes as one list, or
- * "No envelopes yet" while it has none. One surface per category: eleven envelopes are a list, not eleven cards.
+ * One category: its heading and its menu (in `.band-head`), then its envelopes as one list, or "No envelopes yet"
+ * and an Add an envelope of its own while it has none. `i` is its place of `n`. One surface per category: eleven
+ * envelopes are a list, not eleven cards.
  */
-function categoryBand(c, list) {
+function categoryBand(c, list, i, n) {
   const band = node('div', 'band');
   band.dataset.category = c.id;
   const head = node('div', 'band-head');
-  head.appendChild(node('h2', '', c.label));
+  const h = node('h2', '', c.label);
+  // Where focus lands once a change to the category is read again.
+  h.tabIndex = -1;
+  head.append(h, categoryMenu(c, i, n));
   band.appendChild(head);
   if (!list.length) {
-    band.appendChild(node('p', 'quiet', 'No envelopes yet'));
+    // Its form opens under the heading, with this category chosen.
+    const slot = node('div', 'band-slot');
+    const add = textBtn('Add an envelope', 'link hit band-add', null, () => addEnvelopeForm(slot, { category: c.id }));
+    band.append(node('p', 'quiet', 'No envelopes yet'), add, slot);
     return band;
   }
   const rows = node('div', 'list');
   for (const e of list) rows.appendChild(envelopeRow(e));
   band.appendChild(rows);
   return band;
+}
+
+/**
+ * A category heading's menu (Ruling 17): Rename, Move up (not on the first), Move down (not on the last), and Remove
+ * while it has no envelopes, else the line saying why it cannot go. Each is written at once: nothing moves money.
+ */
+function categoryMenu(c, i, n) {
+  const wrap = node('div', 'menu');
+  const btn = node('button', 'btn bare hit band-more');
+  btn.type = 'button';
+  btn.id = `cat-menu-btn-${c.id}`;
+  btn.setAttribute('aria-label', `${c.label}: rename, move or remove`);
+  btn.setAttribute('aria-haspopup', 'menu');
+  btn.setAttribute('aria-expanded', 'false');
+  btn.setAttribute('aria-controls', `cat-menu-${c.id}`);
+  btn.appendChild(icon('more', 'i'));
+  const list = node('div', 'menu-list');
+  list.id = `cat-menu-${c.id}`;
+  list.setAttribute('role', 'menu');
+  list.setAttribute('aria-labelledby', btn.id);
+  list.hidden = true;
+  const item = (label, act, cls = '') => {
+    const b = textBtn(label, `menu-item hit${cls}`, null, act);
+    b.setAttribute('role', 'menuitem');
+    return b;
+  };
+  list.appendChild(item('Rename', () => renameCategoryForm(c)));
+  if (i > 0) list.appendChild(item('Move up', () => categoryWrite(c, () => approveNow('move_category', { category: c.id, direction: 'up' }))));
+  if (i < n - 1) list.appendChild(item('Move down', () => categoryWrite(c, () => approveNow('move_category', { category: c.id, direction: 'down' }))));
+  if (c.envelopes === 0) list.appendChild(item('Remove', () => categoryWrite(c, () => approveNow('remove_category', { category: c.id })), ' danger'));
+  else list.appendChild(node('p', 'menu-note', 'Move its envelopes first.'));
+  wrap.append(btn, list);
+  bandMenus.push(menuOn(btn, list));
+  return wrap;
+}
+
+/** Focus on a category's heading once the list is drawn again; one that has gone gives it to the heading now in its place. */
+function focusCategory(id, at = 0) {
+  const bands = [...$('bands').querySelectorAll(':scope > .band[data-category]')];
+  const band = bands.find((b) => b.dataset.category === id) ?? bands[Math.min(at, bands.length - 1)];
+  (band?.querySelector('.band-head h2') ?? $('cat-add')).focus();
+}
+
+/**
+ * A move or a remove from a heading's menu: written, the list read again, focus on the heading. The menu has no slot
+ * of its own, so a refusal (another member moved it first, or put an envelope in it) is said after the reload.
+ */
+async function categoryWrite(c, write) {
+  const turn = householdTurn;
+  const at = [...$('bands').querySelectorAll(':scope > .band[data-category]')].findIndex((b) => b.dataset.category === c.id);
+  $('app-err').hidden = true;
+  let problem = null;
+  try { await write(); } catch (ex) { problem = ex; }
+  if (turn !== householdTurn) return;
+  try { await loadBudget(); } catch (ex) { showProblem(ex); return; }
+  if (turn !== householdTurn || view !== 'budget' || envelopePage) return;
+  // One another member removed meanwhile is named; the server's words name only its id.
+  const gone = !month?.categories?.some((x) => x.id === c.id);
+  if (problem) showProblem(gone ? new Error(`${c.label} has just been removed.`) : problem);
+  focusCategory(c.id, Math.max(at, 0));
+}
+
+/**
+ * Rename, in the heading's place: one field, Cancel and Save. Cancel and Escape put the heading back with focus on
+ * its menu's button. A refusal is said in the form's own slot with what was typed kept, after the list is read
+ * again; the form comes back on the heading if the category is still there.
+ */
+function renameCategoryForm(c, { typed = c.label, problem = '' } = {}) {
+  const head = $('bands').querySelector(`.band[data-category="${CSS.escape(c.id)}"] > .band-head`);
+  if (!head) return;
+  const kept = [...head.childNodes];
+  const input = node('input');
+  input.type = 'text';
+  input.maxLength = 40;
+  input.autocomplete = 'off';
+  input.value = typed;
+  const { err, say } = epErr();
+  const form = node('form', 'ep-form band-rename');
+  form.noValidate = true;
+  const close = (back) => {
+    if (listFormClose === close) listFormClose = null;
+    if (!form.isConnected) return;
+    head.replaceChildren(...kept);
+    if (back) head.querySelector('.band-more')?.focus();
+  };
+  const cancel = textBtn('Cancel', 'btn', null, () => close(true));
+  cancelMark(cancel, () => close(true));
+  const save = node('button', 'btn primary', 'Save');
+  save.type = 'submit';
+  const acts = node('div', 'ep-acts');
+  acts.append(cancel, save);
+  form.append(epField(`Rename ${c.label}`, input), err, acts);
+  form.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !ev.isComposing) { ev.preventDefault(); close(true); } });
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    const label = input.value.trim();
+    if (!label) { say('Give it a name'); input.focus(); return; }
+    if (label === c.label) { close(true); return; }
+    say('');
+    const turn = householdTurn;
+    for (const b of form.querySelectorAll('button')) b.disabled = true;
+    try {
+      await approveNow('rename_category', { category: c.id, label });
+    } catch (ex) {
+      if (turn !== householdTurn) return;
+      try { await loadBudget(); } catch { /* the form is still drawn, or the reload's own problem is said by the next one */ }
+      if (turn !== householdTurn || view !== 'budget' || envelopePage) return;
+      const now = month?.categories?.find((x) => x.id === c.id);
+      if (!now) { showProblem(new Error(`${c.label} has just been removed.`)); focusCategory(c.id); return; }
+      if (form.isConnected) close(false);
+      renameCategoryForm(now, { typed: input.value, problem: ex.message });
+      return;
+    }
+    close(false);
+    try { await loadBudget(); } catch (ex) { showProblem(ex); return; }
+    if (turn !== householdTurn || view !== 'budget' || envelopePage) return;
+    focusCategory(c.id);
+  });
+  holdListForm(close);
+  head.replaceChildren(form);
+  if (problem) { say(problem); err.focus({ preventScroll: true }); }
+  else { input.focus(); input.select(); }
 }
 
 /** What Savings showed against the envelopes saved in it, under the last category. */
@@ -6658,32 +6810,206 @@ function showManageProposal(card, row, proposal,
   row.append(yes, no);
 }
 
-const catOptions = async () => (await categoryList()).map((c) => ({ value: c.id, label: c.label }));
-
-$('env-new').addEventListener('click', async () => {
-  // The walkthrough's six groups in its order, then any others this budget has.
-  const starter = await api('/api/budget/first-run').then((r) => r.groups.map((g) => g.name)).catch(() => []);
-  const groups = [...new Set([...starter, ...(month?.groups ?? [])])];
-  panel('Add an envelope', [
-    { name: 'label', label: 'Name', placeholder: 'e.g. Vehicles' },
-    { name: 'group', label: 'Band', options: groups.map((g) => ({ value: g, label: g })) },
-    { name: 'figure', control: figureField({ label: 'From this month on', hint: 'Leave it empty to give it a figure later.' }) },
-    { name: 'categories', label: 'Fed by (choose one or more)', options: await catOptions(), multiple: true, wide: true },
-  ], (i) => {
-    // Left empty, it goes without a figure; a typed 0 is a figure.
-    const figure = i.figure.empty() ? null : i.figure.value();
-    if (!i.figure.empty() && !figure) throw new Error('A number, in dollars.');
-    return {
-      tool: 'define_envelope',
-      args: {
-        envelope: i.label.value.toLowerCase().replace(/[^a-z0-9]+/g, '').slice(0, 16),
-        label: i.label.value, group: i.group.value,
-        categories: [...i.categories.selectedOptions].map((o) => o.value),
-        ...(!figure ? {} : figure.per === 'month' ? { templateCents: figure.amountCents } : { basis: figure }),
-      },
-    };
+/**
+ * Which category: a select of `categories` (`{ id, label }`) starting on `start` (the first when it is not one of
+ * them), then "New category…", which swaps in a text field labelled "New category" with "Choose from the list" to
+ * go back. `typed`, when given, opens it on the text field holding those words. Answers `{ el, value(), focus() }`:
+ * value() is `{ category }`, `{ newCategory }`, or null while the new name is empty.
+ */
+function categoryField(categories, start, typed = null) {
+  const NEW = '__new';
+  const el = node('div', 'cat-field');
+  const select = node('select');
+  for (const c of categories) select.appendChild(new Option(c.label, c.id));
+  select.appendChild(new Option('New category…', NEW));
+  const first = categories.some((c) => c.id === start) ? start : categories[0]?.id ?? NEW;
+  select.value = first;
+  let chosen = first === NEW ? null : first;
+  const pick = epField('Category', select);
+  const input = node('input');
+  input.type = 'text';
+  input.maxLength = 40;
+  input.autocomplete = 'off';
+  input.value = typed ?? '';
+  // Back to the list only when there is a list to go back to.
+  const back = categories.length ? textBtn('Choose from the list', 'link hit', null, () => {
+    select.value = chosen ?? categories[0].id;
+    show(false);
+    select.focus();
+  }) : null;
+  const fresh = epField('New category', input, ...(back ? [back] : []));
+  fresh.classList.add('cat-new');
+  let typing = false;
+  const show = (asNew) => {
+    typing = asNew;
+    pick.hidden = asNew;
+    fresh.hidden = !asNew;
+  };
+  select.addEventListener('change', () => {
+    if (select.value !== NEW) { chosen = select.value; return; }
+    show(true);
+    input.focus();
   });
-});
+  el.append(pick, fresh);
+  show(typed !== null || first === NEW);
+  const value = () => {
+    if (!typing) return { category: select.value };
+    const name = input.value.trim();
+    return name ? { newCategory: name } : null;
+  };
+  return { el, value, focus: () => (typing ? input : select).focus() };
+}
+
+/**
+ * A category another member removed while this list was open, in words: the server names only its id. Null while
+ * it is still in the list read last, or was never one of `known` (`{ id, label }`).
+ */
+function removedWords(id, known) {
+  if (!id || month?.categories?.some((c) => c.id === id)) return null;
+  const was = known.find((c) => c.id === id);
+  return was ? `${was.label} has just been removed. Choose another category.` : null;
+}
+
+/** The one short form open on the list (an add, a heading's rename): opening another closes it first. */
+let listFormClose = null;
+function holdListForm(close) {
+  listFormClose?.(false);
+  listFormClose = close;
+}
+
+/**
+ * The add rows a slot's form stands in for, hidden while it is open, and the one focus goes back to: under the list
+ * `#env-new` or `#cat-add`, in an empty category its own Add an envelope.
+ */
+function slotOpeners(slot, kind) {
+  if (slot.id === 'add-slot') return { hide: [$('env-new'), $('cat-add')], back: $(kind === 'category' ? 'cat-add' : 'env-new') };
+  const own = [...slot.parentElement.querySelectorAll(':scope > .band-add')];
+  return { hide: own, back: own[0] ?? null };
+}
+
+/**
+ * A short form in `slot`: a heading, its fields, the error slot, Cancel first and "Add it" at the right. Cancel and
+ * Escape close it with focus back on the row that opened it. `submit(say)` does the work and answers whether the
+ * form stays open (a refusal said in it). Answers `{ form, close }`.
+ */
+function slotForm(slot, kind, title, fields, submit) {
+  const { hide, back } = slotOpeners(slot, kind);
+  const form = node('form', 'ep-form ep-card add-form');
+  form.noValidate = true;
+  const { err, say } = epErr();
+  const close = (focusBack) => {
+    if (listFormClose === close) listFormClose = null;
+    form.remove();
+    for (const r of hide) r.hidden = false;
+    if (focusBack && back?.isConnected) back.focus();
+  };
+  const cancel = textBtn('Cancel', 'btn', null, () => close(true));
+  cancelMark(cancel, () => close(true));
+  const go = node('button', 'btn primary', 'Add it');
+  go.type = 'submit';
+  const acts = node('div', 'ep-acts');
+  acts.append(cancel, go);
+  form.append(node('h3', 'ep-q', title), ...fields, err, acts);
+  form.addEventListener('keydown', (ev) => { if (ev.key === 'Escape' && !ev.isComposing) { ev.preventDefault(); close(true); } });
+  form.addEventListener('submit', async (ev) => {
+    ev.preventDefault();
+    say('');
+    const buttons = [...form.querySelectorAll('button')];
+    for (const b of buttons) b.disabled = true;
+    const open = await submit(say);
+    if (!open || !form.isConnected) return;
+    for (const b of buttons) b.disabled = false;
+  });
+  holdListForm(close);
+  for (const r of hide) r.hidden = true;
+  slot.replaceChildren(form);
+  return { form, close, say, err };
+}
+
+/** The slot an add-an-envelope form for `category` goes back to once the list is drawn again: its band's own, else the one under the list. */
+const envelopeSlotFor = (category) => (category && $('bands').querySelector(`.band[data-category="${CSS.escape(category)}"] > .band-slot`)) || $('add-slot');
+
+/**
+ * Add an envelope: Name and Category, then Add it, written at once at $0. Its page opens on Each month with focus
+ * on Change. A refusal (a name already used, a category another member has just removed) is said in the form's own
+ * slot with what was typed kept, once the list is read again, so the categories offered are the ones there now.
+ */
+function addEnvelopeForm(slot, { category = null, label = '', newCategory = null, problem = '' } = {}) {
+  const categories = (month?.categories ?? []).map((c) => ({ id: c.id, label: c.label }));
+  const name = node('input');
+  name.type = 'text';
+  name.maxLength = 40;
+  name.placeholder = 'e.g. Vehicles';
+  name.autocomplete = 'off';
+  name.value = label;
+  const field = categoryField(categories, category ?? categories[0]?.id, newCategory);
+  const { form, close, say, err } = slotForm(slot, 'envelope', 'Add an envelope', [epField('Name', name), field.el], async (say) => {
+    const label = name.value.trim();
+    if (!label) { say('Give it a name'); name.focus(); return true; }
+    const place = field.value();
+    if (!place) { say('Give the new category a name'); field.focus(); return true; }
+    const turn = householdTurn;
+    let r;
+    try {
+      r = await approveNow('add_envelope', { label, ...place });
+    } catch (ex) {
+      if (turn !== householdTurn) return false;
+      // Read again: what was refused may be news from another member, and the form is drawn again from what is there now.
+      try { await loadBudget(); } catch { /* the form below says the refusal either way */ }
+      if (turn !== householdTurn || view !== 'budget' || envelopePage) return false;
+      // Back where it was: the slot under the list stays through the reload; a band's is drawn again, if it still has one.
+      const home = slot.isConnected ? slot : envelopeSlotFor(slot.closest('.band')?.dataset.category);
+      if (form.isConnected) close(false);
+      addEnvelopeForm(home, {
+        category: place.category ?? null, label: name.value, newCategory: place.newCategory ?? null,
+        problem: removedWords(place.category, categories) ?? ex.message,
+      });
+      return false;
+    }
+    close(false);
+    try { await loadBudget(); } catch (ex) { showProblem(ex); return false; }
+    if (turn !== householdTurn || view !== 'budget' || envelopePage) return false;
+    openEnvelopePage(r.touches.envelope, { focus: 'change' });
+    return false;
+  });
+  if (problem) { say(problem); err.focus({ preventScroll: true }); err.scrollIntoView({ block: 'center' }); }
+  else placeForm(name);
+}
+
+/** Add a category: its name, then Add it; it is added last, and focus goes to its heading. */
+function addCategoryForm(slot) {
+  const name = node('input');
+  name.type = 'text';
+  name.maxLength = 40;
+  name.placeholder = 'e.g. Pets';
+  name.autocomplete = 'off';
+  const { close, err } = slotForm(slot, 'category', 'Add a category', [epField('Name', name)], async (say) => {
+    const label = name.value.trim();
+    if (!label) { say('Give it a name'); name.focus(); return true; }
+    const turn = householdTurn;
+    let r;
+    try {
+      r = await approveNow('add_category', { label });
+    } catch (ex) {
+      if (turn !== householdTurn) return false;
+      // The form is under the list, so it stays through the reload with what was typed.
+      try { await loadBudget(); } catch { /* said below either way */ }
+      if (turn !== householdTurn) return false;
+      say(ex.message);
+      err.focus({ preventScroll: true });
+      return true;
+    }
+    close(false);
+    try { await loadBudget(); } catch (ex) { showProblem(ex); return false; }
+    if (turn !== householdTurn || view !== 'budget' || envelopePage) return false;
+    focusCategory(r.proposal?.events?.find((e) => e.op === 'category.add')?.category ?? null, Infinity);
+    return false;
+  });
+  placeForm(name);
+}
+
+$('env-new').addEventListener('click', () => addEnvelopeForm($('add-slot')));
+$('cat-add').addEventListener('click', () => addCategoryForm($('add-slot')));
 
 // Income opens from its own figure: it belongs to the plan it pays for.
 $('inc-toggle').addEventListener('click', () => {
@@ -13958,6 +14284,9 @@ function forgetHousehold() {
   for (const id of ['ta-v', 'ta-line', 'ta-green', 't-income', 't-funded', 't-spent', 'inc-list', 'inc-projection',
     'unsorted-q', 'bands', 'month-note', 'walk-steps', 'walk-step']) $(id).textContent = '';
   for (const id of ['ta-next', 'unsorted-q', 'month-sec']) $(id).hidden = true;
+  // A short form left open on the list (an add, a rename) goes with the household it was for; the add rows come back.
+  listFormClose?.(false);
+  bandMenus.length = 0;
   $('cat-sec').hidden = true;
   $('cat-list').textContent = '';
   $('manage-panel').textContent = '';
