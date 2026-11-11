@@ -322,7 +322,7 @@ const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 const DRAWN_LATER: readonly string[] = [];
 /** Doors the server has closed that the page still knocks on, each until the page task that drops its last call (plan 2026-11-10-one-budget-envelopes, Ruling 20). */
 const RETIRING: readonly string[] = ['/api/tools/create_budget', '/api/tools/set_budget_location',
-  '/api/tools/categorize_transactions', '/api/tools/define_category', '/api/tools/archive_category', '/api/tools/add_starter_set',
+  '/api/tools/define_category', '/api/tools/archive_category', '/api/tools/add_starter_set',
   '/api/categories'];
 
 describe('the page ledger', () => {
@@ -555,6 +555,14 @@ const KEPT_010: readonly Line[] = [
   ['B32', "envSection('Bills', 'bills')", 'budget'], ['B33', 'Nothing has been spent from this envelope yet.', 'budget'],
   ['B33', 'do not trust this envelope', 'budget'], ['B34', 'Make this a savings goal', 'budget'], ['B34', 'Remove this envelope', 'budget'],
   ['B39', "host.querySelector('.ep-slot [data-cancel]')", 'budget'],
+  // Task 10: To sort's words, the split rule's mark, Suggest, the split editor and its words, Import's words, Put it back, Today's waiting item.
+  ['B40', 'Give each one an envelope.', 'budget'], ['B43', 'a rule says: divide this', 'budget'], ['B44', 'Nothing confident enough to suggest', 'budget'],
+  ['B48', 'function splitEditor(', 'budget'], ['B48', '+ another line', 'budget'], ['B48', 'an envelope is on two lines', 'budget'],
+  ['B48', 'a split needs two envelopes', 'budget'], ['B50', 'Drop a bank export here, or choose one', 'page'],
+  ['B51', '<div class="k">Sorted by rule</div>', 'page'], ['B52', 'Sort these by hand, or try again later.', 'budget'],
+  ['B53', 'Accept all suggestions', 'budget'], ['B55', 'What does Savings show today?', 'budget'],
+  ['B56', 'Every receipt has an envelope.', 'budget'], ['B57', 'still need an envelope.', 'budget'], ['B59', 'Put it back', 'budget'],
+  ['B83', 'In no envelope yet', 'today'], ['B47', "'Split across envelopes…'", 'matchSrc'],
 ];
 const ADDED_010: readonly Line[] = [
   // Task 7: the head names the month; two tabs; Where it is for the household; the list by category; the words that named a budget.
@@ -600,6 +608,13 @@ const ADDED_010: readonly Line[] = [
   ['B36', 'categories = categories.filter((c) => c.id !== gone.id);', 'budget'], ['B36', 'field.el.replaceWith(fresh.el);', 'budget'],
   ['B35', "form.setAttribute('aria-labelledby', title.id);", 'budget'],
   ['B39', "const cancel = textBtn('Cancel', 'btn', null, close);\n    cancel.dataset.cancel = '';\n    const save = node('button', 'btn primary', 'Save');", 'budget'],
+  // Task 10: To sort holds what the server says it holds; a pick, an Accept, a split and an Edit are written at once; a rule is
+  // offered after, shown, and kept only by Remember it; Import and Restore read and send an envelope; Today counts what To sort holds.
+  ['B83', "w.kind === 'tosort'", 'today'], ['B40', 'toSortOnly: true', 'budget'], ['B41', "approveNow('sort_receipts'", 'budget'],
+  ['B42', 'function ruleOffer(', 'budget'], ['B42', "'Show the rule'", 'budget'], ['B42', "'/api/tools/add_rule'", 'budget'],
+  ['B46', 't.missing', 'budget'], ['B48', 'envelope: l.sel.value', 'budget'],
+  ['B49', "approveNow('sort_receipts', { assignments: [entry] })", 'budget'], ['B54', 'r.envelope', 'budget'],
+  ['B60', 'envelopeSelect(options, r.envelope ?? null, { allowSplit: false })', 'budget'],
 ];
 const GONE_010: readonly Line[] = [
   // Task 7: every trace of a second budget, Compare, the outside note and the savings band of its own.
@@ -624,11 +639,30 @@ const GONE_010: readonly Line[] = [
   ['B28', "e.sinking ? 'Saved in Savings' : e.group", 'page'],
   ['B37', 'Kept on the categories, so every budget sets aside the same.', 'page'], ['B37', 'e.categories', 'page'],
   ['B38', 'Its receipts stay, but stop belonging to any envelope.', 'page'],
+  // Task 10: the uncategorised filter, the remember tick and its text, the per-row picker list, the proposal a sort was, the
+  // category a restore sent. `r.category` is pinned below on Import and Restore alone: the walkthrough's rows (Task 12) still say it.
+  ['B83', "w.kind === 'unsorted'", 'page'], ['B41', 'uncategorizedOnly', 'page'], ['B42', "' remember '", 'page'],
+  ['B42', 'remember: always ask to divide', 'page'], ['B42', 'Payee text the rule matches', 'page'],
+  ['B47', 'Not in this budget', 'matchSrc'], ['B47', 'records the category that feeds it', 'page'],
+  ['B49', "'/api/tools/categorize_transactions'", 'page'], ['B54', 'r.options ?? preview.options', 'page'],
+  ['B60', 'for (const c of await categoryList())', 'page'], ['B60', '...(sel.value ? { category: sel.value } : {})', 'page'],
 ];
+/** To sort's own code, for what it may never say again. */
+const queue = between(script, '// ── the unsorted queue', '// ── reading the screen again');
+/** Import and Restore a removed receipt, which read and send an envelope. */
+const importAndRestore = between(script, '// ── import', '// ── plan: the board and the card');
 describe('the page ledger: 0.10.0', () => {
   test('what 0.10.0 keeps, adds and takes away', () => {
     assert.deepEqual(missing(KEPT_010, true), []);
     assert.deepEqual(missing(ADDED_010, true), []);
     assert.deepEqual(missing(GONE_010, false), []);
+  });
+  test('To sort shows nothing before it is written (B45)', () => {
+    assert.ok(queue.includes('async function loadUnsorted('), 'the queue is found');
+    assert.equal(uncommented(queue).includes('Show what this would do'), false);
+  });
+  test('Import and Restore say envelope where they said category (B54, B60)', () => {
+    assert.ok(importAndRestore.includes('function renderPreview(') && importAndRestore.includes('async function askToRestore('), 'the two are found');
+    assert.equal(uncommented(importAndRestore).includes('r.category'), false);
   });
 });

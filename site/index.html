@@ -394,10 +394,8 @@
   table.rows td.pay{max-width:190px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   table.rows select{font:inherit;font-size:var(--fs-input);padding:5px 7px;border:1px solid var(--line-strong);
     border-radius:8px;background:var(--surface-raised);max-width:170px}
-  /* A receipt with no category is money that left the account and landed in no
-     envelope. Mark it, because nothing downstream can notice it is missing. */
-  table.rows .remember{display:block;margin-top:4px;font-size:var(--fs-micro);color:var(--ink-faint)}
-  table.rows .remember input:not([type]){width:12em;font-size:var(--fs-input);padding:2px 4px}
+  /* A receipt in no envelope is money that left the account and landed nowhere.
+     Mark it, because nothing downstream can notice it is missing. */
   table.rows tr.unsorted select{border-color:var(--caution-line);background:var(--caution-tint)}
   .tscroll{overflow-x:auto}
 
@@ -662,6 +660,12 @@
   .split-foot .btn,.split-line .btn{padding:3px 9px;font-size:var(--fs-micro)}
   .split-left{color:var(--caution)}
   .split-left.ok{color:var(--good)}
+  /* A rule offered once a receipt is sorted (To sort, Import): the question, what it would do, its buttons. */
+  .rule-offer{display:flex;flex-direction:column;gap:var(--sp-2);margin:var(--sp-2) 0}
+  .rule-offer:empty{display:none}
+  .rule-offer > p,.rule-offer .effects{margin:0}
+  .rule-offer .acts{display:flex;flex-wrap:wrap;gap:var(--sp-2)}
+  table.rows .split + .btn{margin-top:var(--sp-2)}
   .imp-sugg{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin:12px 0 0;font-size:var(--fs-small);color:var(--ink-soft)}
   .banks a{color:var(--accent-ink);font-weight:500}
 
@@ -3557,7 +3561,7 @@ function waitingWhen(w) {
 
 /** The small line under a waiting item: who raised it, and when; the receipts say where they stand. */
 function waitingLine(w) {
-  if (w.kind === 'unsorted') return 'In no envelope yet';
+  if (w.kind === 'tosort') return 'In no envelope yet';
   const when = waitingWhen(w);
   let line = when;
   if (w.by !== null) {
@@ -3590,7 +3594,7 @@ function renderWaiting() {
     end.appendChild(icon('go', 'i sm chev'));
     b.append(laneIcon(w.lane), text, end);
     b.addEventListener('click', async () => {
-      if (w.kind === 'unsorted') {
+      if (w.kind === 'tosort') {
         await showView('budget');
         $('unsorted-q').scrollIntoView({ block: 'start' });
       } else if (w.entry) {
@@ -6142,10 +6146,12 @@ function billForm(e, b, { close }) {
 
 // ── the unsorted queue ─────────────────────────────────────────────────────
 //
-// Receipts that came in without a category sit in no envelope, so Spent leaves
-// them out. Shown above the envelopes because they are the one part of this
-// screen that needs a person, and sorted the same way everything else changes:
-// proposed, shown, approved.
+// To sort: receipts in no envelope, and receipts in a month not yet closed
+// whose envelope (or one of whose split parts' envelopes) has been removed.
+// Spent leaves them out, so they are shown above the envelopes: the one part of
+// this screen that needs a person. Choosing an envelope sorts a receipt at once,
+// as a figure is written; a rule for its payee is offered after, shown, and kept
+// only when a person says so.
 
 /**
  * What a rule for this payee should match: the merchant, without the store
@@ -6160,20 +6166,130 @@ const ruleSuggestion = (payee) =>
 /** The rule a row offers: the model's checked string when it gave one, else the merchant from the payee. */
 const ruleFor = (row) => row.rule || ruleSuggestion(row.payee);
 
+/**
+ * A rule for a receipt just sorted, offered in `box`; To sort and Import share it. `match` is the payee text,
+ * `envelope` where it sorts to and `label` its name. add_rule only proposes, so the server is asked first and the
+ * offer is drawn only when a rule could be kept: a refused one shows nothing. "Show the rule" asks again and shows
+ * what the rule would do; only "Remember it" keeps it. Answers whether the offer was drawn; `onDone` hears
+ * 'remembered' or 'dismissed' once it is answered.
+ */
+async function ruleOffer(box, { match, envelope, label, txnId }, onDone = () => {}) {
+  const turn = householdTurn;
+  const ask = () => api('/api/tools/add_rule', { match, envelope, ...(txnId ? { txnId } : {}) });
+  try { await ask(); } catch { return false; }
+  if (turn !== householdTurn) return false;
+  // A household left, or the offer put away, while a press was out: nothing is drawn there.
+  const gone = () => turn !== householdTurn || !box.isConnected;
+  const q = node('p', 'quiet', envelope === '__split' ? `Always ask to divide ${match}?` : `Remember ${match} for ${label}?`);
+  const acts = node('div', 'acts');
+  const { err, say } = epErr();
+  const finish = (outcome, ...left) => { box.replaceChildren(...left); onDone(outcome); };
+  const notNow = textBtn('Not now', 'btn hit', null, () => finish('dismissed'));
+  const show = textBtn('Show the rule', 'btn hit', null, async () => {
+    show.disabled = true;
+    say('');
+    let proposal;
+    try {
+      ({ proposal } = await ask());
+    } catch (ex) {
+      if (gone()) return;
+      show.disabled = false;
+      say(ex.message);
+      err.focus();
+      return;
+    }
+    if (gone()) return;
+    const ul = node('ul', 'effects');
+    for (const e of proposal.effects) ul.appendChild(node('li', '', e));
+    const yes = textBtn('Remember it', 'btn primary hit', null, async () => {
+      yes.disabled = true;
+      say('');
+      try {
+        await api('/api/commit', { proposalId: proposal.id });
+      } catch (ex) {
+        if (gone()) return;
+        // A proposal is used once: shown again, it is asked for afresh.
+        ul.remove();
+        show.disabled = false;
+        acts.replaceChildren(notNow, show);
+        say(ex.message);
+        err.focus();
+        return;
+      }
+      if (turn !== householdTurn) return;
+      const done = node('p', 'ok', 'Remembered.');
+      done.tabIndex = -1;
+      finish('remembered', done);
+      if (box.isConnected) done.focus({ preventScroll: true });
+    });
+    acts.replaceChildren(notNow, yes);
+    box.replaceChildren(q, ul, acts, err);
+    yes.focus();
+  });
+  acts.append(notNow, show);
+  box.replaceChildren(q, acts, err);
+  return true;
+}
+
+/**
+ * Carried from a sort to the queue's next draw, which follows the reload it asked for: `at`, the place in the list
+ * to put focus on (the receipt now there); `offer`, whether that sort's rule offer takes focus instead; `said`, a
+ * line to say. Null when no sort is waiting to be drawn.
+ */
+let queueAfter = null;
+/** The rule offered for the receipt sorted last, `{ el, turn }`: kept above the list through the reloads until answered. */
+let queueOffer = null;
+
+/**
+ * Why a sort was refused, in words: an envelope another member has just removed is named, and taken out of
+ * `options` and of every picker under `host` (it can no longer be chosen); anything else is the server's own words.
+ */
+function sortRefusal(ex, options, host) {
+  const id = /^no envelope (\S+)$/.exec(ex.message)?.[1];
+  const gone = id ? options.find((o) => o.value === id) : null;
+  if (!gone) return ex.message;
+  options.splice(options.indexOf(gone), 1);
+  for (const o of host.querySelectorAll('option')) if (o.value === id) o.remove();
+  return `${gone.label} has just been removed. Choose another envelope.`;
+}
+
 async function loadUnsorted() {
   const turn = householdTurn;
   const box = $('unsorted-q');
   // No receipts named, so this only fetches the picker and the receipts a split
   // rule says to divide; nothing is asked of Claude.
   const [{ result }, { options, toDivide }] = await Promise.all([
-    api('/api/tools/list_transactions', { uncategorizedOnly: true, limit: 50 }),
+    api('/api/tools/list_transactions', { toSortOnly: true, limit: 50 }),
     api('/api/match', { txnIds: [] }),
   ]);
   // A household left meanwhile: its receipts are not drawn into the next one's Budget.
   if (turn !== householdTurn) return;
+  const after = queueAfter?.turn === turn ? queueAfter : null;
+  queueAfter = null;
+  const offer = queueOffer?.turn === turn ? queueOffer.el : null;
+  if (!offer) queueOffer = null;
+  // Focus follows a sort only while the person is still on this list and focus was not taken elsewhere meanwhile;
+  // focus inside the offer stays there through the redraw.
+  const active = document.activeElement;
+  const inOffer = !!offer && offer.contains(active);
+  const mayFocus = !!after && view === 'budget' && !envelopePage
+    && (!active || active === document.body || box.contains(active));
+  // Its way on, "Show the rule": the last of its buttons.
+  const offerFirst = () => (after?.offer ? offer?.querySelector('.acts button:last-child:not(:disabled)') : null) ?? null;
   box.textContent = '';
-  box.hidden = !result.matched;
-  if (!result.matched) return;
+  box.hidden = !result.matched && !offer && !after;
+  if (!result.matched) {
+    // Sorted to the last one: said here, with focus kept on it, until the screen is read again.
+    if (offer) box.appendChild(offer);
+    if (inOffer) active.focus({ preventScroll: true });
+    if (after) {
+      const done = node('p', 'ok', [after.said, 'Every receipt has an envelope.'].filter(Boolean).join(' '));
+      done.tabIndex = -1;
+      box.appendChild(done);
+      if (mayFocus && !inOffer) (offerFirst() ?? done).focus({ preventScroll: true });
+    }
+    return;
+  }
 
   const h = document.createElement('h3');
   h.textContent = `${result.matched} receipt${result.matched === 1 ? '' : 's'} to sort`;
@@ -6183,6 +6299,9 @@ async function loadUnsorted() {
     + 'so Spent does not include them. Give each one an envelope.'
     + (result.matched > result.showing ? ` Showing the newest ${result.showing}.` : '');
   box.append(h, note);
+  if (after?.said) box.appendChild(node('p', 'ok', after.said));
+  if (offer) box.appendChild(offer);
+  if (inOffer) active.focus({ preventScroll: true });
 
   const table = document.createElement('table');
   table.className = 'rows';
@@ -6200,69 +6319,141 @@ async function loadUnsorted() {
     amt.textContent = t.amount;
 
     const sel = envelopeSelect(options, null);
-    const remember = document.createElement('label');
-    remember.className = 'remember';
-    const tick = document.createElement('input');
-    tick.type = 'checkbox';
-    const says = document.createTextNode(' remember ');
-    const match = document.createElement('input');
-    match.value = ruleSuggestion(t.payee);
-    match.setAttribute('aria-label', 'Payee text the rule matches');
-    remember.append(tick, says, match);
-    remember.hidden = true;
+    sel.setAttribute('aria-label', `Envelope for ${t.payee}`);
+    // A refusal is said under the row, in the slot every row has.
+    const { err, say } = epErr();
     const cell = tr.insertCell();
-    cell.append(sel, remember);
-    const row = { id: t.id, amountCents: toCents(t.amount), sel, tick, match, tr, cell, remember, says, editor: null };
-    // Offered, not imposed: picking a category offers the rule, and the
-    // proposal says how many receipts it would cover before anything is kept.
-    sel.addEventListener('change', () => {
-      tr.querySelector('.sugg')?.remove();
-      tr.classList.remove('suggested');
-      if (sel.value === '__split') openSplit(row, []); else closeSplit(row);
-      remember.hidden = !sel.value;
-      tick.checked = !!sel.value;
-    });
+    cell.append(sel, err);
+    const row = {
+      id: t.id, payee: t.payee, rule: null, amountCents: toCents(t.amount), tr, cell, sel, err, say,
+      // What the picker read before the last pick, to put back when a sort is refused; the split it opens with.
+      was: '', parts: [], editor: null, save: null, tag: null,
+    };
+    sel.addEventListener('change', () => chose(row));
     rows.push(row);
+    // A split with a part in an envelope since removed: shown with its split, that part blank, to be chosen again.
+    if (t.parts && t.missing) {
+      const parts = t.parts.map((p) => ({ envelope: p.envelope, amountCents: toCents(p.amount) }));
+      row.parts = parts.map((p) => (t.missing.includes(p.envelope) ? { ...p, envelope: '' } : p));
+      sel.value = row.was = '__split';
+      openSplit(row, row.parts);
+    }
   }
   box.appendChild(table);
 
-  // Divided rows are sorted only once the editor balances; until then they stay marked.
+  /** Whether a refusal may take focus: it was on the control that was pressed, or nowhere, and not moved on since. */
+  const unfocused = (pressed) => { const a = document.activeElement; return !a || a === document.body || a === pressed; };
+  /** The list read again after a sort; a reload that fails is said in the app's error box. */
+  async function reload() {
+    try { await loadBudget(); } catch (ex) { showProblem(ex); }
+  }
+  // A split is saved once it balances, by its own button: the editor itself never writes.
   function settle(row) {
-    const split = row.sel.value === '__split';
-    if (!row.tr.classList.contains('suggested')) {
-      row.tr.className = (split ? row.editor?.balanced() : row.sel.value) ? '' : 'unsorted';
-    }
-    row.says.textContent = split ? ' remember: always ask to divide ' : ' remember ';
+    if (row.save) row.save.disabled = !row.editor?.balanced();
   }
   function openSplit(row, initialParts) {
     row.editor?.el.remove();
     row.editor = splitEditor(options, row.amountCents, initialParts, () => settle(row));
-    row.cell.insertBefore(row.editor.el, row.remember);
+    row.save ??= textBtn('Save the split', 'btn hit', null, () => void saveSplit(row));
+    row.cell.insertBefore(row.editor.el, row.err);
+    row.cell.insertBefore(row.save, row.err);
     settle(row);
   }
   function closeSplit(row) {
     row.editor?.el.remove();
     row.editor = null;
-    settle(row);
+    row.save?.remove();
   }
+  /** A suggestion not taken goes once the person chooses for themselves. */
+  function unsuggest(row) {
+    row.tag?.remove();
+    row.tag = null;
+    row.tr.classList.remove('suggested');
+  }
+  function chose(row) {
+    row.say('');
+    unsuggest(row);
+    const value = row.sel.value;
+    if (value === '__split') { row.was = value; openSplit(row, row.parts); return; }
+    if (!value) { row.was = value; closeSplit(row); return; }
+    void sortInto(row, value, false);
+  }
+
+  /** A pick, written at once; a rule for its payee is offered once it lands, then the list is read again. */
+  async function sortInto(row, envelope, kept) {
+    const label = options.find((o) => o.value === envelope)?.label ?? envelope;
+    row.sel.disabled = true;
+    if (row.save) row.save.disabled = true;
+    try {
+      await approveNow('sort_receipts', {
+        assignments: [{ txnId: row.id, envelope, ...(kept ? { suggestedBy: 'claude' } : {}) }],
+      });
+    } catch (ex) {
+      if (turn !== householdTurn || !row.tr.isConnected) return;
+      // Refused: the pick put back, and why said under the row.
+      row.sel.disabled = false;
+      row.say(sortRefusal(ex, options, table));
+      row.sel.value = row.was;
+      settle(row);
+      if (unfocused(row.sel)) row.sel.focus();
+      return;
+    }
+    if (turn !== householdTurn) return;
+    // Drawn again meanwhile (another row's sort): read again, so the list is not left showing this one.
+    if (!row.tr.isConnected) { await reload(); return; }
+    const el = node('div', 'rule-offer');
+    const shown = await ruleOffer(el, { match: ruleFor(row), envelope, label, txnId: row.id }, (outcome) => {
+      if (queueOffer?.el === el) queueOffer = null;
+      queueAfter = { turn, at: 0, offer: false, said: outcome === 'remembered' ? 'Remembered.' : null };
+      void reload();
+    });
+    if (turn !== householdTurn) return;
+    // One offer at a time: a newer sort's offer takes the place of one left unanswered.
+    if (shown) queueOffer = { el, turn };
+    queueAfter = { turn, at: rows.indexOf(row), offer: shown, said: null };
+    await reload();
+  }
+
+  async function saveSplit(row) {
+    if (!row.editor?.balanced()) return;
+    row.say('');
+    row.save.disabled = true;
+    row.sel.disabled = true;
+    try {
+      await approveNow('sort_receipts', { assignments: [{
+        txnId: row.id, envelope: '__split',
+        parts: row.editor.parts().map((p) => ({ envelope: p.envelope, amount: p.amountCents })),
+      }] });
+    } catch (ex) {
+      if (turn !== householdTurn || !row.tr.isConnected) return;
+      row.sel.disabled = false;
+      settle(row);
+      row.say(sortRefusal(ex, options, table));
+      if (unfocused(row.save)) row.err.focus();
+      return;
+    }
+    if (turn !== householdTurn) return;
+    queueAfter = { turn, at: rows.indexOf(row), offer: false, said: null };
+    await reload();
+  }
+
   // A split rule already decided these are to be divided, so no model is asked
-  // and there is nothing to accept — only amounts to type. The rule exists, so
-  // Remember is not offered again.
+  // and there is nothing to accept — only amounts to type.
   const markToDivide = (ids) => {
     for (const row of rows) {
       if (!ids.includes(row.id) || row.sel.value) continue;
-      row.sel.value = '__split';
+      row.sel.value = row.was = '__split';
       const tag = document.createElement('span');
       tag.className = 'sugg';
       tag.textContent = 'a rule says: divide this';
-      row.cell.insertBefore(tag, row.remember);
+      row.cell.insertBefore(tag, row.err);
       openSplit(row, []);
     }
   };
   markToDivide(toDivide ?? []);
 
   // Claude suggests; each suggestion still has to be accepted, and accepting
-  // one is only picking it — the sort itself is previewed and approved below.
+  // one is a pick like any other: written at once.
   if (claudeOn) {
     const ask = document.createElement('button');
     ask.type = 'button';
@@ -6273,24 +6464,25 @@ async function loadUnsorted() {
       ask.textContent = 'Asking Claude…';
       try {
         const r = await api('/api/match', { txnIds: rows.map((x) => x.id) });
+        if (turn !== householdTurn || !ask.isConnected) return;
         let n = 0;
         for (const row of rows) {
           const s = r.suggestions[row.id];
-          if (!s || row.sel.value) continue;
+          if (!s || row.sel.value || row.sel.disabled) continue;
           n++;
           // The model's rule was checked against the ledger; it beats the payee regex.
-          if (s.rule) row.match.value = s.rule;
-          const tag = suggestionTag(row.tr, row.sel, { suggested: s.choice }, () => {
-            row.tr.classList.remove('suggested');
-            tag.remove();
-            if (s.choice === '__split') { openSplit(row, s.parts ?? []); row.editor.focus(); } else settle(row);
-            row.remember.hidden = false;
-            row.tick.checked = true;
+          if (s.rule) row.rule = s.rule;
+          row.tag = suggestionTag(row.tr, row.sel, { suggested: s.choice }, () => {
+            unsuggest(row);
+            if (s.choice === '__split') {
+              row.was = '__split';
+              row.parts = s.parts ?? [];
+              openSplit(row, row.parts);
+              row.editor.focus();
+            } else void sortInto(row, s.choice, true);
           });
-          // Shown, not taken: until it is accepted the row still counts as unsorted.
-          row.sel.dataset.suggested = s.choice;
-          row.cell.insertBefore(tag, row.remember);
-          settle(row);
+          // Shown, not taken: until it is accepted the receipt is still To sort.
+          row.cell.insertBefore(row.tag, row.err);
         }
         markToDivide(r.toDivide ?? []);
         ask.textContent = r.suggestError ?? (n ? `${n} suggested` : 'Nothing confident enough to suggest');
@@ -6301,34 +6493,8 @@ async function loadUnsorted() {
     box.appendChild(ask);
   }
 
-  const go = document.createElement('button');
-  go.className = 'btn';
-  go.textContent = 'Show what this would do';
-  go.addEventListener('click', async () => {
-    const assignments = rows.filter((r) => r.sel.value && !r.tr.classList.contains('suggested')).flatMap((r) => {
-      const rule = r.tick.checked && r.match.value.trim() ? { alsoAddRuleMatching: r.match.value.trim() } : {};
-      if (r.sel.value === '__split') {
-        // Left out until it balances, as an unpicked row is. Its amounts are a
-        // person's, so it is never marked as Claude's suggestion.
-        if (!r.editor?.balanced()) return [];
-        return [{ txnId: r.id, category: '__split',
-          parts: r.editor.parts().map((p) => ({ category: p.category, amount: p.amountCents })), ...rule }];
-      }
-      return [{
-        txnId: r.id, category: r.sel.value, ...rule,
-        // Kept as Claude's suggestion only if what was accepted is what it suggested.
-        ...(r.sel.dataset.suggested && r.sel.dataset.suggested === r.sel.value ? { suggestedBy: 'claude' } : {}),
-      }];
-    });
-    if (!assignments.length) { rows[0]?.sel.focus(); return; }
-    try {
-      const { proposal } = await api('/api/tools/categorize_transactions', { assignments });
-      showProposal(box, proposal, go);
-    } catch (ex) {
-      go.textContent = ex.message;
-    }
-  });
-  box.appendChild(go);
+  if (!mayFocus || inOffer) return;
+  (offerFirst() ?? rows[Math.min(after.at, rows.length - 1)].sel).focus();
 }
 
 // ── reading the screen again ───────────────────────────────────────────────
@@ -7477,6 +7643,12 @@ async function showReceipts(body, e) {
     head.appendChild(node('span', 'count', String(result.transactions.length)));
     const was = body.closest('.ep-sec')?.querySelector(':scope > .ep-sec-h');
     if (was) was.replaceWith(head); else box.appendChild(head);
+    // A receipt's Edit just saved: focus on the list it was saved from, read again.
+    if (page.focusReceipts) {
+      page.focusReceipts = false;
+      head.tabIndex = -1;
+      head.focus({ preventScroll: true });
+    }
 
     if (!result.transactions.length) {
       const none = document.createElement('p');
@@ -7529,67 +7701,85 @@ async function showReceipts(body, e) {
 
 /**
  * The editor for one receipt in an envelope's list, mounted under its row: the
- * queue's picker, set to the receipt's envelope or to *Split across envelopes…*
- * with the parts it has. Save proposes one categorize_transactions entry — a
- * category sorts it whole and clears any split, a split replaces the parts —
- * and approving it rebuilds the list. Returns the function that closes it.
+ * picker, set to the receipt's envelope or to *Split across envelopes…* with the
+ * parts it has. Save sorts it at once (sort_receipts, approved in one): an
+ * envelope sorts it whole and clears any split, a split replaces the parts; the
+ * list is then read again, focus on its heading. Escape or Cancel puts it away,
+ * focus back on its Edit. Returns the function that closes it.
  */
 function editReceipt(row, t, options, onClose) {
+  const page = envelopePage;
   const box = document.createElement('div');
   box.className = 'tie-edit';
-  const sel = envelopeSelect(options, t.parts ? '__split' : t.category);
+  const was = t.parts ? '__split' : t.envelope;
+  const sel = envelopeSelect(options, was);
+  sel.setAttribute('aria-label', `Envelope for ${t.payee}`);
   let editor = null;
   const actions = document.createElement('div');
   actions.className = 'row';
-  const save = document.createElement('button');
-  save.type = 'button';
-  save.className = 'btn primary';
-  save.textContent = 'Save';
   const cancel = document.createElement('button');
   cancel.type = 'button';
-  cancel.className = 'btn';
+  cancel.className = 'btn hit';
   cancel.textContent = 'Cancel';
-  const err = document.createElement('p');
-  err.className = 'quiet';
-  err.hidden = true;
-  actions.append(save, cancel);
+  // What the envelope page's Escape presses before it goes Back.
+  cancel.dataset.cancel = '';
+  const save = document.createElement('button');
+  save.type = 'button';
+  save.className = 'btn primary hit';
+  save.textContent = 'Save';
+  const { err, say } = epErr();
+  actions.append(cancel, save);
   box.append(sel, actions, err);
 
-  // Any change after a proposal was shown makes that proposal stale: withdraw it.
   const update = () => {
-    box.querySelector('.effects')?.remove();
-    box.querySelector('.confirm')?.remove();
-    save.hidden = false;
-    err.hidden = true;
+    say('');
     save.disabled = !sel.value || (sel.value === '__split' && !editor?.balanced());
   };
   const mountEditor = () => {
     editor?.el.remove();
     editor = null;
     if (sel.value !== '__split') return;
-    // Pre-filled with the parts it has; a receipt sorted whole starts blank, as on the queue.
+    // Pre-filled with the parts it has; a receipt sorted whole starts blank, as in To sort.
     editor = splitEditor(options, t.amountCents, t.parts ?? [], update);
     sel.after(editor.el);
   };
   sel.addEventListener('change', () => { mountEditor(); update(); });
   mountEditor();
 
-  const close = () => { box.remove(); onClose(); };
+  const close = () => {
+    box.remove();
+    onClose();
+    row.querySelector('.a button')?.focus({ preventScroll: true });
+  };
   cancel.addEventListener('click', close);
   save.addEventListener('click', async () => {
+    // The envelope it is already in: nothing to write.
+    if (sel.value === was && was !== '__split') { close(); return; }
     const entry = sel.value === '__split'
-      ? { txnId: t.txn, category: '__split',
-        parts: editor.parts().map((p) => ({ category: p.category, amount: p.amountCents })) }
-      : { txnId: t.txn, category: sel.value };
+      ? { txnId: t.txn, envelope: '__split',
+        parts: editor.parts().map((p) => ({ envelope: p.envelope, amount: p.amountCents })) }
+      : { txnId: t.txn, envelope: sel.value };
     save.disabled = true;
     try {
-      const { proposal } = await api('/api/tools/categorize_transactions', { assignments: [entry] });
-      showProposal(box, proposal, save);
+      await approveNow('sort_receipts', { assignments: [entry] });
     } catch (ex) {
-      err.textContent = ex.message;
-      err.hidden = false;
+      // A refusal that lands after Back, or after the list was drawn again, has nowhere to go.
+      if (envelopePage !== page || !box.isConnected) return;
+      const words = sortRefusal(ex, options, box);
+      update();
+      say(words);
+      err.focus();
+      return;
     }
-    save.disabled = false;
+    // Written: the budget is read again even after Back, and with it the receipts (void showReceipts(rcpts, e)).
+    if (envelopePage === page) page.focusReceipts = true;
+    try {
+      await loadBudget();
+    } catch (ex) {
+      if (page) page.focusReceipts = false;
+      if (envelopePage !== page || !box.isConnected) return;
+      say('Saved. The screen could not be read again; go Back to see it.');
+    }
   });
 
   row.after(box);
@@ -7639,9 +7829,8 @@ $('file').addEventListener('change', async (ev) => {
 });
 
 /**
- * The envelopes of the budget in view, grouped as Budget groups them, then the
- * categories it has no envelope for, then transfers and income. Choosing one
- * records the category that feeds it.
+ * Every receipt picker: the envelopes by name under their categories, in the
+ * Budget's order, then Not spending (a transfer, income), then the split.
  */
 function envelopeSelect(options, value, { allowSplit = true } = {}) {
   const sel = document.createElement('select');
@@ -7675,7 +7864,7 @@ function suggestionTag(tr, sel, r, onAccept) {
   tag.textContent = 'Suggested';
   const ok = document.createElement('button');
   ok.type = 'button';
-  ok.className = 'btn';
+  ok.className = 'btn hit';
   ok.textContent = 'Accept';
   ok.addEventListener('click', () => onAccept());
   tag.appendChild(ok);
@@ -7687,9 +7876,11 @@ function suggestionTag(tr, sel, r, onAccept) {
 const exactDollars = (c) => new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(c / 100);
 
 /**
- * One receipt divided across envelopes, for Import and the unsorted queue alike.
- * Amounts are typed unsigned and take the receipt's sign, so 120.00 on a
- * −$165.00 receipt is −12000; a refund line inside a receipt is not offered.
+ * One receipt divided across envelopes, for Import, To sort and a receipt's
+ * Edit alike; its parts are `{ envelope, amountCents }`. It never writes:
+ * whoever mounts it sends `parts()` once it balances. Amounts are typed
+ * unsigned and take the receipt's sign, so 120.00 on a −$165.00 receipt is
+ * −12000; a refund line inside a receipt is not offered.
  * Leaving the one blank amount takes what is left, so a two-way split is one
  * number typed. Only a balanced split counts as divided — every line an
  * envelope, each envelope once, no zero line, and the parts summing to the
@@ -7707,16 +7898,16 @@ function splitEditor(options, amountCents, initialParts, onChange) {
   };
   // A line with neither an envelope nor an amount is an unused "+ another line", not a part.
   const used = () => lines.filter((l) => l.sel.value || l.amt.value.trim());
-  const parts = () => used().map((l) => ({ category: l.sel.value, amountCents: cents(l) }));
+  const parts = () => used().map((l) => ({ envelope: l.sel.value, amountCents: cents(l) }));
   const problem = () => {
     const ps = parts();
     const placed = ps.reduce((n, p) => n + (Number.isInteger(p.amountCents) ? p.amountCents : 0), 0);
     const left = (amountCents - placed) * sign;
     if (left > 0) return `${exactDollars(left)} still to place`;
     if (left < 0) return `${exactDollars(-left)} over`;
-    if (ps.some((p) => !p.category)) return 'every line needs an envelope';
+    if (ps.some((p) => !p.envelope)) return 'every line needs an envelope';
     if (ps.some((p) => !Number.isInteger(p.amountCents) || p.amountCents === 0)) return 'every line needs an amount';
-    if (new Set(ps.map((p) => p.category)).size !== ps.length) return 'an envelope is on two lines';
+    if (new Set(ps.map((p) => p.envelope)).size !== ps.length) return 'an envelope is on two lines';
     if (ps.length < 2) return 'a split needs two envelopes';
     return null;
   };
@@ -7731,13 +7922,14 @@ function splitEditor(options, amountCents, initialParts, onChange) {
     left.classList.toggle('ok', !p);
     onChange();
   };
-  // A line starts from a category alone (the queue, Import, a model's answer) or
-  // from a part already kept, whose amount is shown unsigned like a typed one.
+  // A line starts from an envelope alone (a model's answer) or from a part
+  // `{ envelope, amountCents }` already kept, whose amount is shown unsigned like
+  // a typed one; an envelope of '' is a part whose envelope has gone, left blank.
   const addLine = (init) => {
-    const category = typeof init === 'string' ? init : init?.category ?? null;
+    const envelope = typeof init === 'string' ? init : init?.envelope ?? null;
     const line = document.createElement('div');
     line.className = 'split-line';
-    const sel = envelopeSelect(options, category, { allowSplit: false });
+    const sel = envelopeSelect(options, envelope, { allowSplit: false });
     const amt = document.createElement('input');
     amt.inputMode = 'decimal';
     amt.placeholder = '0.00';
@@ -7819,17 +8011,19 @@ function renderPreview() {
   // divides it, it is an unsorted row marked to divide: it lands with no
   // envelope rather than holding back the statement.
   for (const r of preview.rows) {
-    if (r.category === '__split' && !r.split) { r.category = null; r.dividing = true; }
+    if (r.envelope === '__split' && !r.split) { r.envelope = null; r.dividing = true; }
   }
 
   // Unsorted first — those are the only ones that need a person.
   const rows = [...preview.rows].sort((a, b) =>
-    (a.category ? 1 : 0) - (b.category ? 1 : 0) || a.date.localeCompare(b.date));
+    (a.envelope ? 1 : 0) - (b.envelope ? 1 : 0) || a.date.localeCompare(b.date));
+  // One list for every row: the envelopes under their categories, Not spending, the split.
+  const options = preview.options;
 
   const accepters = [];
   for (const r of rows) {
     const tr = table.insertRow();
-    if (!r.category) tr.className = 'unsorted';
+    if (!r.envelope) tr.className = 'unsorted';
     tr.insertCell().textContent = r.date;
     const pay = tr.insertCell();
     pay.className = 'pay';
@@ -7840,17 +8034,17 @@ function renderPreview() {
     amt.textContent = r.amount;
 
     const cell = tr.insertCell();
-    const options = r.options ?? preview.options;
-    const sel = envelopeSelect(options, r.dividing ? '__split' : r.category);
+    const sel = envelopeSelect(options, r.dividing ? '__split' : r.envelope);
+    sel.setAttribute('aria-label', `Envelope for ${r.payee}`);
     cell.appendChild(sel);
 
     // The editor sits under the picker while it reads "Split across envelopes…".
     // Balanced, the row is a split; otherwise it commits unsorted, never half-divided.
     let editor = null;
     const sync = () => {
-      if (editor.balanced()) { r.category = '__split'; r.split = editor.parts(); }
-      else { r.category = null; delete r.split; }
-      tr.className = r.category ? '' : 'unsorted';
+      if (editor.balanced()) { r.envelope = '__split'; r.split = editor.parts(); }
+      else { r.envelope = null; delete r.split; }
+      tr.className = r.envelope ? '' : 'unsorted';
       updateCommit();
     };
     const openEditor = (initialParts) => {
@@ -7882,12 +8076,12 @@ function renderPreview() {
         editor.focus();
         return;
       }
-      r.category = r.suggested;
+      r.envelope = r.suggested;
       r.suggestedBy = 'claude';
       tr.classList.remove('unsorted');
       updateCommit();
     };
-    if (!r.category && !r.dividing && r.suggested) {
+    if (!r.envelope && !r.dividing && r.suggested) {
       tag = suggestionTag(tr, sel, r, accept);
       cell.insertBefore(tag, editor?.el ?? null);
       // A split needs a person to type its amounts, so "accept all" passes it by.
@@ -7900,7 +8094,7 @@ function renderPreview() {
       tr.classList.remove('suggested');
       if (sel.value === '__split') { openEditor([]); return; }
       closeEditor();
-      r.category = sel.value || null;
+      r.envelope = sel.value || null;
       tr.className = sel.value ? '' : 'unsorted';
       updateCommit();
     });
@@ -7951,8 +8145,8 @@ function savingsTyped() {
 }
 
 function updateCommit() {
-  const unsorted = preview.rows.filter((r) => !r.category).length;
-  const toDivide = preview.rows.filter((r) => !r.category && r.dividing).length;
+  const unsorted = preview.rows.filter((r) => !r.envelope).length;
+  const toDivide = preview.rows.filter((r) => !r.envelope && r.dividing).length;
   // A statement with nothing new in it still has its balance to record.
   const balances = (preview.balances?.length ?? 0) + (savingsTyped() !== null ? 1 : 0);
   $('imp-commit').textContent = preview.rows.length
@@ -7971,13 +8165,14 @@ $('imp-commit').addEventListener('click', async () => {
   try {
     const typed = savingsTyped();
     if (Number.isNaN(typed)) { $('imp-savings').focus(); throw new Error('What Savings shows is a dollar amount, like 12500.00'); }
+    // Each row says its `envelope`, and a divided one its `split: [{ envelope, amountCents }]`.
     const out = await api('/api/import/commit', {
       rows: preview.rows, source: preview.filename, balances: preview.balances ?? [],
       ...(typed !== null ? { savingsToday: typed } : {}),
     });
     // What a person kept of the model's: an envelope accepted, or a split it suggested, divided.
-    const kept = preview.rows.filter((r) => (r.suggestedBy === 'claude' && r.category)
-      || (r.keptSuggestion && r.category === '__split' && r.split));
+    const kept = preview.rows.filter((r) => (r.suggestedBy === 'claude' && r.envelope)
+      || (r.keptSuggestion && r.envelope === '__split' && r.split));
     $('imp-result').hidden = true;
     $('file').value = '';
     $('imp-err').className = 'ok';
@@ -7985,9 +8180,9 @@ $('imp-commit').addEventListener('click', async () => {
     const balNote = out.balances ? ` Recorded ${out.balances === 1 ? 'a balance' : `${out.balances} balances`}.` : '';
     $('imp-err').textContent = out.added
       ? `Added ${out.added} receipts, ${out.sorted} already sorted${out.divided ? ` (${out.divided} divided)` : ''}. `
-        + `${out.unsorted} still need an envelope.${balNote}`
+        + `${out.toSort} still need an envelope.${balNote}`
       : out.balances ? `No new receipts in it.${balNote}` : out.note;
-    if (out.added && kept.length) offerRules(kept);
+    if (out.added && kept.length) offerRules(kept, preview.options);
   } catch (ex) {
     $('imp-err').className = 'err';
     $('imp-err').textContent = ex.message;
@@ -7997,65 +8192,40 @@ $('imp-commit').addEventListener('click', async () => {
 });
 
 /**
- * Suggestions someone accepted, offered as rules so the same payee is sorted
- * by rule next time and Claude is asked less. Previewed and approved like any
- * other change.
+ * Suggestions someone accepted, offered as rules so the same payee is sorted by
+ * rule next time and Claude is asked less: one offer per payee text, each shown
+ * and kept on its own (ruleOffer). An offer the server would refuse is not drawn.
  */
-function offerRules(rows) {
+function offerRules(rows, options) {
   const box = $('imp-rules');
   box.textContent = '';
-  box.hidden = false;
+  box.hidden = true;
   const byMatch = new Map();
   for (const r of rows) {
     const match = ruleFor(r);
     if (match && !byMatch.has(match)) byMatch.set(match, r);
   }
-  const p = document.createElement('p');
-  p.className = 'quiet';
-  p.textContent = `Remember ${byMatch.size === 1 ? 'this as a rule' : `these ${byMatch.size} as rules`}, `
-    + 'so the same payee is sorted the same way next time?';
-  const go = document.createElement('button');
-  go.type = 'button';
-  go.className = 'btn';
-  go.textContent = 'Show the rules';
-  go.addEventListener('click', async () => {
-    go.disabled = true;
-    try {
-      const { proposal } = await api('/api/tools/categorize_transactions', {
-        // A split is re-sent as it landed, so the rule rides along and the receipt is unchanged.
-        assignments: [...byMatch].map(([match, r]) => (r.category === '__split'
-          ? { txnId: r.id, category: '__split',
-              parts: r.split.map((p) => ({ category: p.category, amount: p.amountCents })), alsoAddRuleMatching: match }
-          : { txnId: r.id, category: r.category, alsoAddRuleMatching: match })),
-      });
-      const ul = document.createElement('ul');
-      ul.className = 'effects';
-      for (const e of proposal.effects) ul.appendChild(Object.assign(document.createElement('li'), { textContent: e }));
-      const row = document.createElement('div');
-      row.className = 'row';
-      const yes = document.createElement('button');
-      yes.type = 'button';
-      yes.className = 'btn primary';
-      yes.textContent = byMatch.size === 1 ? 'Remember it' : 'Remember them';
-      yes.addEventListener('click', async () => {
-        yes.disabled = true;
-        try {
-          await api('/api/commit', { proposalId: proposal.id });
-          box.textContent = '';
-          box.appendChild(Object.assign(document.createElement('p'), { className: 'ok', textContent: 'Remembered.' }));
-        } catch (ex) { yes.textContent = ex.message; }
-      });
-      const no = document.createElement('button');
-      no.type = 'button';
-      no.className = 'btn';
-      no.textContent = 'Not now';
-      no.addEventListener('click', () => { box.hidden = true; });
-      row.append(yes, no);
-      go.remove();
-      box.append(ul, row);
-    } catch (ex) { go.textContent = ex.message; }
-  });
-  box.append(p, go);
+  // Put away once none is left to answer; focus on the next one, or on the import's result line.
+  const settle = () => {
+    const left = [...box.querySelectorAll(':scope > .rule-offer')].filter((x) => x.childElementCount);
+    box.hidden = left.length === 0;
+    return left;
+  };
+  for (const [match, r] of byMatch) {
+    const item = node('div', 'rule-offer');
+    box.appendChild(item);
+    const label = options.find((o) => o.value === r.envelope)?.label ?? r.envelope;
+    void ruleOffer(item, { match, envelope: r.envelope, label, txnId: r.id }, (outcome) => {
+      if (outcome !== 'dismissed') return;
+      item.remove();
+      const next = settle()[0]?.querySelector('button');
+      if (next) next.focus();
+      else { $('imp-err').tabIndex = -1; $('imp-err').focus(); }
+    }).then((shown) => {
+      if (!shown) item.remove();
+      settle();
+    });
+  }
 }
 
 // ── a removed receipt, and putting it back ─────────────────────────────────
@@ -8089,30 +8259,45 @@ function removedBlock(r) {
 }
 
 async function askToRestore(box, r, trigger) {
+  const turn = householdTurn;
   trigger.hidden = true;
+  // The receipt picker's own list, the same one To sort reads.
+  let options;
+  try {
+    ({ options } = await api('/api/match', { txnIds: [] }));
+  } catch (ex) {
+    if (turn !== householdTurn || !box.isConnected) return;
+    trigger.hidden = false;
+    let said = box.querySelector(':scope > .block-err');
+    if (!said) {
+      said = node('div', 'block-err');
+      said.setAttribute('role', 'alert');
+      box.appendChild(said);
+    }
+    said.textContent = ex.message;
+    return;
+  }
+  // A household left, or Today drawn again, while the list was read: nothing to open here.
+  if (turn !== householdTurn || !box.isConnected) return;
+  box.querySelector(':scope > .block-err')?.remove();
   const form = document.createElement('div');
   form.className = 'edit';
   form.style.flexBasis = '100%';
   form.style.marginTop = '10px';
 
-  const sel = document.createElement('select');
-  const none = document.createElement('option');
-  none.value = '';
-  none.textContent = '— no envelope yet —';
-  sel.appendChild(none);
-  for (const c of await categoryList()) {
-    const o = document.createElement('option');
-    o.value = c.id;
-    o.textContent = c.label;
-    sel.appendChild(o);
-  }
-  sel.value = r.category ?? '';
+  // Put back whole (Ruling 22): a split is made from To sort once it is back.
+  const sel = envelopeSelect(options, r.envelope ?? null, { allowSplit: false });
+  sel.options[0].textContent = '— no envelope yet —';
+  // An envelope since removed is not in the list: it goes back in no envelope unless one is chosen.
+  if (sel.selectedIndex < 0) sel.value = '';
 
   const why = document.createElement('input');
   why.placeholder = 'Why it belongs after all';
 
   const f1 = document.createElement('div'); f1.className = 'f';
   const l1 = document.createElement('label'); l1.textContent = 'Put it in';
+  sel.id = `restore-in-${++epFieldIds}`;
+  l1.htmlFor = sel.id;
   f1.append(l1, sel);
   const f2 = document.createElement('div'); f2.className = 'f why';
   const l2 = document.createElement('label'); l2.textContent = 'Reason';
@@ -8136,7 +8321,7 @@ async function askToRestore(box, r, trigger) {
     refused.textContent = '';
     try {
       const { proposal } = await api('/api/tools/restore_transaction', {
-        txnId: r.txnId, ...(sel.value ? { category: sel.value } : {}), why: why.value.trim(),
+        txnId: r.txnId, ...(sel.value ? { envelope: sel.value } : {}), why: why.value.trim(),
       });
       const ul = document.createElement('ul');
       ul.className = 'effects';
