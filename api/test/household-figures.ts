@@ -1,15 +1,24 @@
 import { readFileSync } from 'node:fs';
 
-import { snapshot, fixedCharges, lowEnvelopes, donors, monthClock } from '../src/analytics.ts';
+import { snapshot, fixedCharges, lowEnvelopes, donors, monthClock, toSort } from '../src/analytics.ts';
 import { monthView, openMonths } from '../src/envelopes.ts';
 import type { Event, State } from '../src/types.ts';
 
 /** Every figure the budget gives, in plain rows, so a field added to a type later does not alter them. */
-export type Figures = { fixed: readonly unknown[]; months: Record<string, any> };
+export type Figures = {
+  fixed: readonly unknown[];
+  months: Record<string, any>;
+  /** What To sort holds: its receipts' ids, sorted, and for a split held for a part, the envelopes it names that are not here. */
+  toSort: { txnIds: string[]; missing: [string, string[]][] };
+  /** The headings, `[id, label]`, in their order. */
+  categories: [string, string][];
+  /** The ids of the envelopes removed. */
+  removed: string[];
+};
 
-/** A fixture log by name, from ./fixtures/<name>.jsonl. */
-export function readLog(name: string): Event[] {
-  const text = readFileSync(new URL(`./fixtures/${name}.jsonl`, import.meta.url), 'utf8');
+/** The household log, from ./fixtures/household-log.jsonl. */
+export function readLog(): Event[] {
+  const text = readFileSync(new URL('./fixtures/household-log.jsonl', import.meta.url), 'utf8');
   return text.split('\n').filter((l) => l.trim()).map((l) => JSON.parse(l) as Event);
 }
 
@@ -40,5 +49,15 @@ export function figuresOf(state: State): Figures {
       };
     }
   }
-  return { fixed: fixedCharges(state).map((f) => [f.key, f.payee, f.envelope, f.typical, f.months]), months };
+  const queue = toSort(state);
+  return {
+    fixed: fixedCharges(state).map((f) => [f.key, f.payee, f.envelope, f.typical, f.months]),
+    months,
+    toSort: {
+      txnIds: [...queue.txnIds].sort(),
+      missing: [...queue.missing].map(([id, gone]): [string, string[]] => [id, [...gone]]).sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0)),
+    },
+    categories: [...state.categories.values()].map((c): [string, string] => [c.id, c.label]),
+    removed: [...state.removedEnvelopes.keys()],
+  };
 }
