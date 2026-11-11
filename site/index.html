@@ -304,7 +304,8 @@
   .walk-row.own{flex-wrap:wrap}
   .walk-row.own .cat-field{flex:1 1 100%}
   .walk-row.off > input[type="text"]{color:var(--ink-faint);text-decoration:line-through}
-  .walk-row.off .chip{opacity:.5}
+  /* Unticked: the chip goes quiet in words' own colour, not by fading the text. */
+  .walk-row.off .chip{color:var(--ink-soft);background:none}
   .walk-own .walk-hint{font-size:var(--fs-small);color:var(--ink-soft);margin:6px 0 0}
   .walk-own .walk-rows:empty{display:none}
   .walk-own .walk-rows{margin-bottom:8px}
@@ -4589,6 +4590,8 @@ async function loadBudget() {
   if (load !== budgetLoads) return;
   // Pricing comes straight after the envelopes and nothing records it, so the walkthrough holds it.
   if (fr.step || pricingFor !== null) { clearEnvelopePage(); drawWalk(fr); return; }
+  // The list, as the walkthrough sees it: a walk drawn after it (Discard's lone income step) follows a step.
+  walkShown = 'list';
   // Before the month is asked for: receipts belong to the household, not to a
   // month, and a month not opened yet must not hide them.
   loadUnsorted().catch((ex) => console.warn('unsorted queue:', ex.message));
@@ -6703,6 +6706,7 @@ function drawWalk(fr) {
   if (alone) {
     walkIncomeEdit = null;
     $('walk-step').replaceChildren(walkIncomeStep(fr));
+    walkFocus('alone');
     return;
   }
   // Where it is comes before income, and is part of getting income started.
@@ -6743,17 +6747,23 @@ function drawWalk(fr) {
   else if (at === 'income' || walkIncomeEdit) step.appendChild(walkIncomeStep(fr));
   else if (at === 'envelopes') step.appendChild(walkEnvelopesStep(fr));
   else step.appendChild(walkPricingStep(fr));
-  // A step that follows another: the button pressed went with the old one, so focus goes to the
-  // new one's field, or its heading, rather than to the top of the page.
-  const shown = where ? 'where' : walkIncomeEdit ? 'income' : at;
+  walkFocus(where ? 'where' : walkIncomeEdit ? 'income' : at);
+}
+
+/**
+ * A step that follows another (`shown`: where, income, alone, envelopes, pricing): the button pressed
+ * went with the old one, so focus goes to the new one's field, or its heading, rather than to the top
+ * of the page. The step drawn on arriving takes none.
+ */
+function walkFocus(shown) {
+  const step = $('walk-step');
   const moved = walkShown !== null && walkShown !== shown;
   walkShown = shown;
-  if (moved && !step.contains(document.activeElement)) {
-    const h = step.querySelector('h2');
-    const first = shown === 'where' || shown === 'income' ? step.querySelector('input') : null;
-    if (first) first.focus();
-    else if (h) { h.tabIndex = -1; h.focus(); }
-  }
+  if (!moved || step.contains(document.activeElement)) return;
+  const first = ['where', 'income', 'alone'].includes(shown) ? step.querySelector('input') : null;
+  const h = step.querySelector('h2');
+  if (first) first.focus();
+  else if (h) { h.tabIndex = -1; h.focus(); }
 }
 
 /** A labelled field in the page's `.edit` style. */
@@ -6814,8 +6824,15 @@ function walkWhereStep() {
       skip.disabled = false;
       return;
     }
-    // Its facts (the head's menu, where it is) and the walk, read again together.
-    await loadBudget();
+    // Its facts (the head's menu, where it is) and the walk, read again together. A reload that
+    // fails leaves this step drawn: it says so, and Save or Skip can be pressed again.
+    try {
+      await loadBudget();
+    } catch (ex) {
+      save.disabled = false;
+      skip.disabled = false;
+      showProblem(ex);
+    }
   });
   return form;
 }
@@ -6845,15 +6862,16 @@ function walkIncomeStep(fr) {
   }
 
   const acts = node('div', 'walk-acts');
-  const save = node('button', 'btn primary', 'Save');
+  const save = node('button', 'btn primary hit', 'Save');
   save.type = 'submit';
   // Skip opens the month at nothing, so it is only offered while the month is not open.
-  const other = !editing && fr.monthOpen ? null : textBtn(editing ? 'Cancel' : 'Skip', 'btn', null, async () => {
+  const other = !editing && fr.monthOpen ? null : textBtn(editing ? 'Cancel' : 'Skip', 'btn hit', null, async () => {
     if (editing) { walkIncomeEdit = null; drawWalk(walkFr); return; }
     // Skipped is still a month: it opens at nothing, and the card says so.
     await run(() => approveNow('open_month', { month: fr.month, incomeCents: 0 }));
   });
-  acts.append(...[save, other].filter(Boolean));
+  // The secondary first, Save at the right.
+  acts.append(...[other, save].filter(Boolean));
   const msg = walkMsg();
   form.append(acts, msg);
 
@@ -6870,7 +6888,14 @@ function walkIncomeStep(fr) {
       return;
     }
     walkIncomeEdit = null;
-    await loadBudget();
+    // Written, but the reload failed: this step stays drawn, says so, and can be pressed again.
+    try {
+      await loadBudget();
+    } catch (ex) {
+      save.disabled = false;
+      if (other) other.disabled = false;
+      showProblem(ex);
+    }
   }
 
   form.addEventListener('submit', async (ev) => {
@@ -6980,7 +7005,10 @@ function walkEnvelopesStep(fr) {
     } catch (ex) { msg.textContent = ex.message; count(); return; }
     walkDraft = null;
     pricingFor = true;
-    await loadBudget();
+    // Made, but the reload failed: said, and the button is given back.
+    try {
+      await loadBudget();
+    } catch (ex) { count(); showProblem(ex); return; }
     window.scrollTo({ top: 0 });
   });
   count();

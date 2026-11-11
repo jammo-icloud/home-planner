@@ -568,6 +568,8 @@ const KEPT_010: readonly Line[] = [
   ['B69', "Start the household's budget", 'budgetMarkup'], ['B69', "['envelopes', 'Envelopes']", 'budget'],
   ['B71', 'the same every month', 'budget'], ['B71', 'seen in imports', 'budget'],
   ['B74', "'Set the location'", 'budget'], ['B74', "'Finish'", 'budget'],
+  ['B73', 'Start with these envelopes.', 'budget'], ['B73', "'Add one of your own'", 'budget'],
+  ['B73', 'priced in step 3', 'budget'], ['B73', 'e.g. Childcare, Pets, Tuition, HOA', 'budget'],
 ];
 const ADDED_010: readonly Line[] = [
   // Task 7: the head names the month; two tabs; Where it is for the household; the list by category; the words that named a budget.
@@ -637,7 +639,10 @@ const ADDED_010: readonly Line[] = [
   ['B66', "name: 'Receipts and rules'", 'page'], ['B66', "Needs the budget's envelopes.", 'page'],
   ['B67', "{ key: 'budget', name: 'Budget'", 'page'], ['B67', "new Set(['facts', 'budget', 'months', 'thread'])", 'page'],
   // Task 12: Where it is in place of naming a budget, its Skip held on the page; the envelopes under the starter categories.
-  ['B70', 'function walkWhereStep(', 'budget'], ['B70', "'Where it is'", 'budget'], ['B70', 'Give a town or a ZIP, or Skip.', 'budget'],
+  ['B70', 'function walkWhereStep(', 'budget'], ['B70', "node('h2', '', 'Where it is')", 'budget'], ['B70', 'Give a town or a ZIP, or Skip.', 'budget'],
+  // Fix round 1: the lone income step takes focus as the others do; the income step's secondary first; an unticked chip quiet by colour.
+  ['B72', "walkFocus('alone');", 'budget'], ['B71', 'acts.append(...[other, save].filter(Boolean));', 'budget'],
+  ['B73', '.walk-row.off .chip{color:var(--ink-soft)', 'css'],
   ['B70', "approveNow('set_location'", 'budget'], ['B70', 'walkWhereSkipped = true', 'budget'],
   ['B73', 'for (const [gi, g] of fr.categories.entries())', 'budget'], ['B73', 'categoryField(fr.categories', 'budget'],
   // Two rows Task 10 carried without a pin, so the completeness test below finds every row: Import's rules offered one by one.
@@ -681,7 +686,7 @@ const GONE_010: readonly Line[] = [
   ['B66', 'Receipts, categories and rules', 'page'], ['B67', 'Budgets and envelopes', 'page'], ['B67', 'how categories are grouped', 'page'],
   // Task 12: naming a budget, and the groups the envelopes step drew. With the walkthrough's rows gone, `r.category` is gone from the whole budget region.
   ['B70', 'Name the budget', 'page'], ['B70', 'Make the budget', 'page'], ['B70', "'create_budget'", 'page'], ['B70', 'fr.budget', 'page'],
-  ['B73', "'Group'", 'page'], ['B73', 'fr.groups', 'page'], ['B54', 'r.category', 'budget'],
+  ['B73', "'Group'", 'page'], ['B73', 'fr.groups', 'page'], ['B54', 'r.category', 'budget'], ['B73', '.walk-row.off .chip{opacity', 'css'],
   // The two rows Task 10 carried without a pin here: the proposal a sort was (B45, also its own test below) and Import's rules shown together (B58).
   ['B45', "api('/api/tools/categorize_transactions', { assignments })", 'page'], ['B58', "'Remember them'", 'page'], ['B58', "'Show the rules'", 'page'],
 ];
