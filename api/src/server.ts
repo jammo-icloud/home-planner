@@ -201,7 +201,7 @@ import {
   AuthError, GuestSessions, OtpRequired, Sessions, checkWithDsm, clearedCookie, clearedGuestCookie, guestCookie,
   localBypassUser, readCookie, sessionCookie, AUTH_VERSION, COOKIE, GUEST_COOKIE,
 } from './auth.ts';
-import { APPROVE_IN_ONE, CARD_ONLY, ToolError, touches, commit, runTool, toolByName, toolSchemas, ProposalStore } from './tools.ts';
+import { APPROVE_IN_ONE, CARD_ONLY, ToolError, touches, commit, refusedInOne, runTool, toolByName, toolSchemas, ProposalStore } from './tools.ts';
 import type { Proposal, ToolContext } from './tools.ts';
 import { firstRun } from './first-run.ts';
 import { openMonths } from './envelopes.ts';
@@ -3034,6 +3034,10 @@ export async function start(
         throw new ToolError(`${tool.name} is not approved in one step; approve its proposal`);
       }
       const args = (await readBody(req)) as Record<string, unknown>;
+      // A press sorts a receipt at once, but a rule it would add is shown first: refused here, not in the tool,
+      // so Claude's sort_receipts cards keep their rule.
+      const refused = approve ? refusedInOne(tool.name, args) : null;
+      if (refused) throw new ToolError(refused);
       if (approve) {
         // The tool's check (a cover only while short) reads the state before the append lands on
         // disk, so two taps in the same moment would both pass it: run and commit one at a time

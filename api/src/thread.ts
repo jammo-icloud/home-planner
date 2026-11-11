@@ -535,7 +535,7 @@ function waitingItems(
         inView: (lane === undefined || lane === 'budget') && person === 'everyone' });
     }
   }
-  const rank = (i: WaitingItem): number => (i.kind === 'unsorted' ? 1 : 0);
+  const rank = (i: WaitingItem): number => (i.kind === 'tosort' ? 1 : 0);
   return items
     .map((x, i) => ({ x, i }))
     .sort((a, b) => rank(a.x) - rank(b.x) || ((a.x.at ?? '') < (b.x.at ?? '') ? 1 : (a.x.at ?? '') > (b.x.at ?? '') ? -1 : 0) || a.i - b.i)

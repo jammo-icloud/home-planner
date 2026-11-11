@@ -782,6 +782,51 @@ describe('remove_envelope', () => {
   });
 });
 
+describe('envelopes and categories, as Claude proposes them', () => {
+  test('each heading tool proposes the one op it says, and writes nothing until approved', async () => {
+    const c = await ctx();
+    const before = c.store.state.eventCount;
+    const events = (name: string, args: Record<string, unknown>) => (call(name, args, c) as Proposal).events;
+    assert.deepEqual(events('add_envelope', { label: ' Pets ', category: 'people' }),
+      [{ op: 'envelope.define', envelope: 'pets', label: 'Pets', category: 'people', template: 0, rollover: true, order: 2 }]);
+    assert.deepEqual(events('add_envelope', { label: 'Pets', newCategory: 'Animals' }).map((e) => e.op), ['category.add', 'envelope.define']);
+    assert.deepEqual(events('change_envelope', { envelope: 'util', category: 'people' }),
+      [{ op: 'envelope.define', envelope: 'util', label: 'Utilities', category: 'people', rollover: false, template: 30000, order: 1 }]);
+    assert.deepEqual(events('add_category', { label: 'Future' }), [{ op: 'category.add', category: 'future', label: 'Future' }]);
+    assert.deepEqual(events('rename_category', { category: 'house', label: 'Home' }), [{ op: 'category.rename', category: 'house', label: 'Home' }]);
+    assert.deepEqual(events('move_category', { category: 'house', direction: 'up' }), [{ op: 'category.move', category: 'house', to: 0 }]);
+    assert.throws(() => call('remove_category', { category: 'house' }, c), (e: unknown) =>
+      e instanceof ToolError && e.status === 409 && e.message === 'Move its envelopes first.');
+    assert.equal(c.store.state.eventCount, before);
+  });
+
+  test('a category id taken by a live one gets the next, and a removed envelope\'s id is never given again', async () => {
+    const c = await ctx();
+    await c.store.append('alice', [{ op: 'category.add', category: 'pets', label: 'Animals' }, { op: 'envelope.remove', envelope: 'util', why: 'gone' }]);
+    assert.deepEqual((call('add_category', { label: 'Pets' }, c) as Proposal).events, [{ op: 'category.add', category: 'pets-2', label: 'Pets' }]);
+    assert.equal(((call('add_envelope', { label: 'Util', category: 'people' }, c) as Proposal).events[0] as { envelope: string }).envelope, 'util-2');
+  });
+
+  test('touches names the envelope a press added or changed, and only when there is one', async () => {
+    const c = await ctx();
+    assert.deepEqual(touches((call('add_envelope', { label: 'Pets', newCategory: 'Animals' }, c) as Proposal).events),
+      { month: null, envelopes: [], envelope: 'pets' });
+    assert.equal('envelope' in touches((call('add_category', { label: 'Future' }, c) as Proposal).events), false);
+  });
+
+  test('add_rule: a split rule asks a person, a taken rule id is not reused, and money that is not spending is a target', async () => {
+    const c = await ctx();
+    await c.store.append('alice', [{ op: 'rule.add', rule: 'r-quikstop', match: 'QUIKSTOP 1', envelope: 'daily' }]);
+    const split = call('add_rule', { match: 'BIGBOX', envelope: SPLIT }, c) as Proposal;
+    assert.equal(split.summary, 'Always ask to divide "BIGBOX"');
+    assert.ok(split.effects.includes('From now on, a receipt matching "BIGBOX" waits for a person to divide it'), split.effects.join('|'));
+    const quik = call('add_rule', { match: 'QUIKSTOP', envelope: 'util', txnId: 'x4' }, c) as Proposal;
+    assert.deepEqual(quik.events, [{ op: 'rule.add', rule: 'r-quikstop-2', match: 'QUIKSTOP', envelope: 'util' }]);
+    assert.ok(quik.effects.includes('1 receipt here already matches it and stays where it is'), quik.effects.join('|'));
+    assert.equal((call('add_rule', { match: 'PAYMENT THANK', envelope: TRANSFER }, c) as Proposal).summary, 'Remember "PAYMENT THANK" for a transfer');
+  });
+});
+
 describe('plan tools', () => {
   /** The same household, claimed by alice with bob in it: a shelf p1 holding p2, and a plan p3. */
   async function planCtx(): Promise<ToolContext> {

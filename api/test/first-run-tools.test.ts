@@ -185,32 +185,27 @@ describe('giving an envelope a figure', () => {
     assert.throws(() => figure(c, { amountCents: -1 }), /a figure is not less than nothing/);
   });
 
-  test('define_envelope without a template keeps the template, the flag and the source; with one clears them', async () => {
+  test('a rename keeps the template, the flag and the source; a figure then clears them', async () => {
     const c = await fresh(flagged({ source: 'a statement' }));
-    const rename = (extra: Record<string, unknown>) => toolByName.get('define_envelope')!.run({
-      envelope: 'groceries', label: 'Food at home', ...extra,
-    }, c) as Proposal;
-    await commit(rename({}).id, c);
+    await commit((toolByName.get('change_envelope')!.run({ envelope: 'groceries', label: 'Food at home' }, c) as Proposal).id, c);
     assert.equal(groceries(c).label, 'Food at home');
     assert.equal(groceries(c).needsFigure, true);
     assert.equal(groceries(c).source, 'a statement');
     assert.equal(groceries(c).template, 0);
 
-    await commit(rename({ templateCents: 50000 }).id, c);
+    await commit(figure(c, { amountCents: 50000 }).id, c);
     assert.equal('needsFigure' in groceries(c), false);
     assert.equal(groceries(c).source, undefined);
     assert.equal(groceries(c).template, 50000);
   });
 
-  test('a new envelope defined without a template starts with no figure', async () => {
+  test('a new envelope added by a press starts at $0, a figure, not flagged as having none', async () => {
     const c = await fresh(flagged());
     await c.store.append('alex', [{ op: 'category.add', category: 'pets', label: 'Pets' }]);
-    const p = toolByName.get('define_envelope')!.run({
-      envelope: 'pets', label: 'Pets', category: 'pets',
-    }, c) as Proposal;
+    const p = toolByName.get('add_envelope')!.run({ label: 'Pets', category: 'pets' }, c) as Proposal;
     await commit(p.id, c);
     const e = c.store.state.envelopes.get('pets')!;
-    assert.equal(e.needsFigure, true);
+    assert.equal('needsFigure' in e, false);
     assert.equal(e.template, 0);
   });
 
@@ -318,29 +313,19 @@ describe('a figure kept with its basis', () => {
     assert.throws(() => figure(c, { basis: { amountCents: -1, per: 'year' } }), /a figure is not less than nothing/);
   });
 
-  test('define_envelope takes a basis beside templateCents', async () => {
+  test('a rename or a move under another category keeps the basis; a monthly figure drops it', async () => {
     const c = await fresh(plain());
-    const define = (extra: Record<string, unknown>) => toolByName.get('define_envelope')!.run({
-      envelope: 'carins', label: 'Car insurance', ...extra,
-    }, c) as Proposal;
-    assert.throws(() => define({ templateCents: 100, basis: { amountCents: 1200, per: 'year' } }), /give templateCents or basis, not both/);
-    await commit(define({ basis: { amountCents: 25000, per: 'quarter' } }).id, c);
+    const change = (args: Record<string, unknown>) =>
+      commit((toolByName.get('change_envelope')!.run({ envelope: 'carins', ...args }, c) as Proposal).id, c);
+    await commit(figure(c, { basis: { amountCents: 25000, per: 'quarter' } }).id, c);
     assert.equal(carins(c).template, 8334);
     assert.deepEqual(carins(c).basis, { amount: 25000, per: 'quarter' });
-    // A rename keeps it; a template drops it.
-    await commit(define({ label: 'Car' }).id, c);
+    await change({ label: 'Car' });
+    await change({ newCategory: 'Vehicles' });
+    assert.deepEqual([carins(c).label, carins(c).category, carins(c).template], ['Car', 'vehicles', 8334]);
     assert.deepEqual(carins(c).basis, { amount: 25000, per: 'quarter' });
-    await commit(define({ templateCents: 9000 }).id, c);
+    await commit(figure(c, { amountCents: 9000 }).id, c);
     assert.equal('basis' in carins(c), false);
-
-    await c.store.append('alex', [{ op: 'category.add', category: 'pets', label: 'Pets' }]);
-    await commit((toolByName.get('define_envelope')!.run({
-      envelope: 'pets', label: 'Pets', category: 'pets', basis: { amountCents: 1200, per: 'year' },
-    }, c) as Proposal).id, c);
-    const pets = c.store.state.envelopes.get('pets')!;
-    assert.equal(pets.template, 100);
-    assert.deepEqual(pets.basis, { amount: 1200, per: 'year' });
-    assert.equal('needsFigure' in pets, false);
   });
 
   test("setting this month's assignment by hand keeps the basis with the template", async () => {

@@ -295,7 +295,7 @@ export async function adjust(ctx: ToolContext, offerId: EventId, args: Record<st
 export type Waiting =
   | { kind: 'offer'; offer: Offer; moved: boolean }
   | { kind: 'flag'; event: EventId }
-  | { kind: 'unsorted'; count: number };
+  | { kind: 'tosort'; count: number };
 
 /**
  * What is waiting on this person.
@@ -329,6 +329,6 @@ export function waiting(state: State, who: Actor, events: readonly Event[]): Wai
     out.push({ kind: 'flag', event: e.id });
   }
   const u = toSort(state);
-  if (u.count) out.push({ kind: 'unsorted', count: u.count });
+  if (u.count) out.push({ kind: 'tosort', count: u.count });
   return out;
 }

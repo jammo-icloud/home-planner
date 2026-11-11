@@ -64,7 +64,9 @@ export const TOOL_LANES: Readonly<Record<string, Lane>> = {
   set_sinking_goal: 'budget', sort_receipts: 'budget', restore_transaction: 'budget',
   open_month: 'budget', close_month: 'budget', discard_month: 'budget',
   set_location: 'budget', seed_from_location: 'budget',
-  define_envelope: 'budget', remove_envelope: 'budget', make_starter_envelopes: 'budget',
+  add_envelope: 'budget', change_envelope: 'budget', add_category: 'budget', rename_category: 'budget',
+  move_category: 'budget', remove_category: 'budget', add_rule: 'budget',
+  remove_envelope: 'budget', make_starter_envelopes: 'budget',
   define_income_source: 'budget',
   remove_income_source: 'budget', savings_short: 'budget', set_bill: 'budget',
 };

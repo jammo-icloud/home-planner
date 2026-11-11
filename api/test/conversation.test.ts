@@ -220,7 +220,7 @@ describe('asking from a plan', () => {
     ]);
     const r = await askInThread(c, 'Can we fund this from travel?', 'heater');
     const offered = (f.calls[0].tools as { name: string }[]).map((t) => t.name);
-    for (const name of ['move_money', 'set_assignment', 'open_month', 'set_location', 'define_envelope']) {
+    for (const name of ['move_money', 'set_assignment', 'open_month', 'set_location', 'add_envelope', 'change_envelope', 'add_rule']) {
       assert.ok(!offered.includes(name), `${name} is not offered to research`);
     }
     for (const name of ['get_month', 'get_plan', 'list_plans', 'set_plan_due', 'create_plan', 'update_plan']) {

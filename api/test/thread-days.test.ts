@@ -150,12 +150,12 @@ describe('thread()', () => {
     assert.deepEqual([offerItem.lane, offerItem.by, offerItem.title, offerItem.entry, offerItem.inView, offerItem.day],
       ['budget', 'claude', 'Move $50 to food', o!.id, false, D]);
     const last = mine.waiting.at(-1)!;
-    assert.equal(last.kind, 'unsorted');
+    assert.equal(last.kind, 'tosort');
     assert.equal(last.title, '1 receipt to sort');
     assert.equal(last.entry, undefined);
     assert.equal(last.day, undefined);
     const all = await thread(store, { who: 'alice', today: D });
-    assert.equal(all.waiting.find((w) => w.kind === 'unsorted')!.inView, true);
+    assert.equal(all.waiting.find((w) => w.kind === 'tosort')!.inView, true);
     const flag = all.waiting.find((w) => w.kind === 'flag')!;
     assert.equal(flag.title, 'A receipt was removed: Corner Shop, $12.40');
     assert.equal(flag.by, 'bob');

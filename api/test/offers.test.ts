@@ -230,9 +230,9 @@ describe('what is waiting', () => {
     assert.ok(!(await kinds(c, 'bob')).some((x) => x.kind === 'flag' && x.event === removal!.id));
   });
 
-  test('unsorted receipts wait as one item with a count', async () => {
+  test('the receipts To sort holds wait as one item with a count', async () => {
     const c = await ctx();
-    assert.deepEqual((await kinds(c, 'alice')).filter((x) => x.kind === 'unsorted'), [{ kind: 'unsorted', count: 1 }]);
+    assert.deepEqual((await kinds(c, 'alice')).filter((x) => x.kind === 'tosort'), [{ kind: 'tosort', count: 1 }]);
   });
 });
 

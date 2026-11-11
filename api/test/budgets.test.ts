@@ -83,34 +83,37 @@ describe('an envelope with no figure yet', () => {
 describe('changing the shape of an envelope', () => {
   test('two envelopes cannot share a name, case and spaces ignored', async () => {
     const { ctx } = await fixture();
-    await assert.rejects(() => run('define_envelope', {
-      envelope: 'newone', label: ' daily LIFE ', category: 'people', templateCents: 10000,
-    }, ctx), (e: unknown) => e instanceof ToolError && /There is already an envelope called Daily life\./.test(e.message));
+    for (const [name, args] of [['add_envelope', { label: ' daily LIFE ', category: 'people' }],
+      ['change_envelope', { envelope: 'util', label: ' daily LIFE ' }]] as const) {
+      await assert.rejects(() => run(name, args, ctx), (e: unknown) =>
+        e instanceof ToolError && e.status === 409 && e.message === 'There is already an envelope called Daily life.', name);
+    }
   });
 
   test('a category that is not here is refused', async () => {
     const { ctx } = await fixture();
-    await assert.rejects(() => run('define_envelope', {
-      envelope: 'x', label: 'X', category: 'invented', templateCents: 1000,
-    }, ctx), (e: unknown) => e instanceof ToolError && /no category invented/.test(e.message));
+    for (const [name, args] of [['add_envelope', { label: 'X', category: 'invented' }],
+      ['change_envelope', { envelope: 'util', category: 'invented' }]] as const) {
+      await assert.rejects(() => run(name, args, ctx), (e: unknown) =>
+        e instanceof ToolError && e.status === 404 && e.message === 'no category invented', name);
+    }
   });
 
-  test('editing the template does not reach into a month already open', async () => {
+  test('a new template does not reach into a month already open, and a rename keeps its own category', async () => {
     const { store, ctx } = await fixture();
     const before = monthView(store.state, '2026-08')!
       .envelopes.find((e) => e.envelope.id === 'util')!;
     assert.equal(fmt(before.planned), '$300');
 
-    const p = await run('define_envelope', {
-      envelope: 'util', label: 'Utilities', templateCents: parseDollars('615.00'),
-    }, ctx);
-    assert.ok(p.effects.some((e) => /keep the plan they opened with/.test(e)));
-    await commit(p.id, ctx);
+    // The figure is for the months to come; August opened with its plan.
+    await commit((await run('set_envelope_figure', { envelope: 'util', amountCents: parseDollars('615.00'), month: '2026-09' }, ctx)).id, ctx);
+    await commit((await run('change_envelope', { envelope: 'util', label: 'Power and water' }, ctx)).id, ctx);
 
     const after = monthView(store.state, '2026-08')!
       .envelopes.find((e) => e.envelope.id === 'util')!;
     assert.equal(fmt(after.planned), '$300', 'the plan of record is still the plan of record');
     assert.equal(fmt(after.funded), '$300');
+    assert.equal(store.state.envelopes.get('util')!.template, parseDollars('615.00'));
     assert.equal(store.state.envelopes.get('util')!.category, 'house', 'a change that names no category keeps its own');
   });
 
@@ -130,8 +133,7 @@ describe('changing the shape of an envelope', () => {
 
   test('a new envelope with no category is refused', async () => {
     const { ctx } = await fixture();
-    await assert.rejects(() => run('define_envelope', {
-      envelope: 'empty', label: 'Empty', templateCents: 1000,
-    }, ctx), (e: unknown) => e instanceof ToolError && /a new envelope needs a category/.test(e.message));
+    await assert.rejects(() => run('add_envelope', { label: 'Empty' }, ctx),
+      (e: unknown) => e instanceof ToolError && e.message === 'Choose a category, or name a new one.');
   });
 });

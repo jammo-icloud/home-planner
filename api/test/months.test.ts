@@ -251,13 +251,11 @@ describe('opening a month at what actually comes in', () => {
 describe('categories are headings', () => {
   test('a new one can be added and then an envelope put under it', async () => {
     const { store, ctx } = await fixture();
-    await store.append('alice', { op: 'category.add', category: 'pets', label: 'Pets' });
+    await commit((await run('add_category', { label: 'Pets' }, ctx)).id, ctx);
     assert.equal(store.state.categories.get('pets')!.label, 'Pets');
 
-    await commit((await run('define_envelope', {
-      envelope: 'pets', label: 'Pets', category: 'pets', templateCents: parseDollars('110.00'),
-    }, ctx)).id, ctx);
-    assert.equal(store.state.envelopes.get('pets')!.category, 'pets');
+    await commit((await run('add_envelope', { label: 'Vet', category: 'pets' }, ctx)).id, ctx);
+    assert.equal(store.state.envelopes.get('vet')!.category, 'pets');
   });
 
   test('renaming changes the name everywhere and moves no money', async () => {

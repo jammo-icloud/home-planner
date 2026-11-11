@@ -321,7 +321,7 @@ const DRAWN_LATER: readonly string[] = [];
 const RETIRING: readonly string[] = ['/api/tools/compare_budgets', '/api/tools/create_budget', '/api/tools/rename_budget',
   '/api/tools/archive_budget', '/api/tools/set_budget_location', '/api/budgets',
   '/api/tools/categorize_transactions', '/api/tools/define_category', '/api/tools/archive_category', '/api/tools/add_starter_set',
-  '/api/categories'];
+  '/api/categories', '/api/tools/define_envelope'];
 
 describe('the page ledger', () => {
   test('a Calendar form says a refusal once: only a week that cannot be read uses the error box', () => {

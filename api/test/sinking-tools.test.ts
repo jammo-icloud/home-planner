@@ -98,7 +98,7 @@ describe('set_sinking_goal', () => {
   test('renaming the envelope keeps its estimate', async () => {
     const c = await ctx();
     await approve('set_sinking_goal', AUTO_EVERY, c);
-    await approve('define_envelope', { envelope: 'auto', label: 'Car upkeep' }, c);
+    await approve('change_envelope', { envelope: 'auto', label: 'Car upkeep' }, c);
     const auto = c.store.state.envelopes.get('auto')!;
     assert.deepEqual([auto.label, auto.sinking], ['Car upkeep', { kind: 'every', estimate: { cost: 90000, everyYears: 1 } }]);
   });

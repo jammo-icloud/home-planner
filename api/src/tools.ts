@@ -880,17 +880,21 @@ export function describe(
 /**
  * What a set of events would touch: which month, and which
  * envelopes. Two cards touching the same envelope in the same month are the
- * same decision asked twice, and only one of them may stand.
+ * same decision asked twice, and only one of them may stand. `envelope` is the
+ * one envelope the events define, when they define exactly one: the envelope a
+ * press just added or changed, for the page to open.
  */
-export function touches(events: readonly NewEvent[]): { month: Month | null; envelopes: string[] } {
+export function touches(events: readonly NewEvent[]): { month: Month | null; envelopes: string[]; envelope?: EnvelopeId } {
   let month: Month | null = null;
   const envelopes = new Set<string>();
+  const defined: EnvelopeId[] = [];
   for (const e of events) {
     if ('month' in e && typeof e.month === 'string') month ??= e.month;
     if (e.op === 'move') { envelopes.add(e.from); envelopes.add(e.to); }
     if (e.op === 'assign') envelopes.add(e.envelope);
+    if (e.op === 'envelope.define') defined.push(e.envelope);
   }
-  return { month, envelopes: [...envelopes] };
+  return { month, envelopes: [...envelopes], ...(defined.length === 1 ? { envelope: defined[0]! } : {}) };
 }
 
 // ─── writes: these propose, they never apply ─────────────────────────────────
@@ -1276,76 +1280,271 @@ const restoreTxn: Tool = {
 
 // ─── shaping the budget itself ───────────────────────────────────────────────
 
-const defineEnvelope: Tool = {
-  name: 'define_envelope',
+/**
+ * Where an envelope goes: a category that is here (`category`, its id), or a new one by name
+ * (`newCategory`), with the `category.add` that makes it. Exactly one of the two; with
+ * `optional`, neither is none. A name a category here already has is refused, never merged.
+ */
+function placeArg(state: State, args: Record<string, unknown>, optional = false):
+  { id: CategoryId; label: string; add: NewEvent | null } | null {
+  const given = (k: string) => typeof args[k] === 'string' && (args[k] as string).trim() ? (args[k] as string) : null;
+  const id = given('category');
+  const typed = given('newCategory');
+  if (!id && !typed && optional) return null;
+  if (!id === !typed) throw new ToolError('Choose a category, or name a new one.');
+  if (id) {
+    const c = state.categories.get(id);
+    if (!c) throw new ToolError(`no category ${id}`, 404);
+    return { id, label: c.label, add: null };
+  }
+  const label = typed!.trim();
+  const taken = [...state.categories.values()].find((c) => nameKey(c.label) === nameKey(label));
+  if (taken) throw new ToolError(`There is already a category called ${taken.label}. Choose it from the list.`, 409);
+  const made = categoryIdFor(state, label);
+  return { id: made, label, add: { op: 'category.add', category: made, label } };
+}
+
+/** Refused when another live envelope (not `id`) has this name, case and spaces ignored. */
+function envelopeNameFree(state: State, label: string, id?: EnvelopeId): void {
+  const taken = [...state.envelopes.values()].find((x) => x.id !== id && nameKey(x.label) === nameKey(label));
+  if (taken) throw new ToolError(`There is already an envelope called ${taken.label}.`, 409);
+}
+
+/** Refused when another category (not `id`) has this name, case and spaces ignored. */
+function categoryNameFree(state: State, label: string, id?: CategoryId): void {
+  const taken = [...state.categories.values()].find((x) => x.id !== id && nameKey(x.label) === nameKey(label));
+  if (taken) throw new ToolError(`There is already a category called ${taken.label}.`, 409);
+}
+
+const categoryOr404 = (state: State, id: string) => {
+  const c = state.categories.get(id);
+  if (!c) throw new ToolError(`no category ${id}`, 404);
+  return c;
+};
+
+const CATEGORY_INPUT = {
+  category: { type: 'string', description: 'The id of a category heading get_month lists. Give this or newCategory.' },
+  newCategory: { type: 'string', description: 'The name of a new category heading, added in the same step. Give this or category.' },
+};
+
+const addEnvelope: Tool = {
+  name: 'add_envelope',
   description:
-    'Propose adding an envelope, or changing one — its name, the category it sits under, ' +
-    'or what the template funds it at. Receipts sorted into it stay in it. A figure known by the year, ' +
-    'quarter, fortnight or week can be given as `basis` instead of templateCents, and the monthly is worked out from it.',
+    'Propose adding an envelope under a category heading: one get_month lists, or a new one named here and ' +
+    'added with it. It starts at $0 planned and $0 funded, and every month after opens it at $0 until it is given ' +
+    'a figure with set_envelope_figure. Its id is made from its name and never changes; a name another envelope has, ' +
+    'case ignored, is refused.',
   kind: 'write',
   input: {
     type: 'object',
-    properties: {
-      envelope: { type: 'string', description: 'The id. A new one creates; an existing one edits.' },
-      label: { type: 'string' },
-      category: { type: 'string', description: 'The id of the category it sits under, one get_month lists. A change may leave it out to keep its own.' },
-      templateCents: {
-        type: 'number',
-        description: 'What a new month opens it at. Leaving it out keeps the figure the envelope has; a new envelope then starts with no figure.',
-      },
-      basis: { ...BASIS_INPUT, description: 'The figure as the bill is known, in place of templateCents; it is kept with the envelope.' },
-      rollover: { type: 'boolean' },
-    },
-    required: ['envelope', 'label'],
+    properties: { label: { type: 'string', description: 'Its name, as the household reads it.' }, ...CATEGORY_INPUT },
+    required: ['label'],
+  },
+  run(args, ctx) {
+    const state = ctx.store.state;
+    const label = str(args['label'], 'label').trim();
+    envelopeNameFree(state, label);
+    const place = placeArg(state, args)!;
+    const envelope = envelopeIdFor(state, label);
+    // Last in its category, and after every envelope there is, so no two share a place.
+    const order = Math.max(-1, ...[...state.envelopes.values()].map((e) => e.order)) + 1;
+    return ctx.proposals.put({
+      tool: 'add_envelope', who: ctx.who,
+      summary: `Add ${label} under ${place.label}`,
+      effects: [
+        ...(place.add ? [`A new category, ${place.label}`] : []),
+        `A new envelope, ${label}, last under ${place.label}, at $0 until it is given a figure`,
+      ],
+      events: [
+        ...(place.add ? [place.add] : []),
+        { op: 'envelope.define', envelope, label, category: place.id, template: cents(0), rollover: true, order },
+      ],
+    }, ctx.today);
+  },
+};
+
+const changeEnvelope: Tool = {
+  name: 'change_envelope',
+  description:
+    'Propose renaming an envelope, putting it under another category heading, or both. Its id, figure, funding, ' +
+    'goal, bills and receipts stay as they are: a rename changes only the name. A new heading can be named with ' +
+    'newCategory and is added in the same step.',
+  kind: 'write',
+  input: {
+    type: 'object',
+    properties: { envelope: { type: 'string' }, label: { type: 'string', description: 'Its new name.' }, ...CATEGORY_INPUT },
+    required: ['envelope'],
   },
   run(args, ctx) {
     const state = ctx.store.state;
     const id = str(args['envelope'], 'envelope');
-    const label = str(args['label'], 'label');
-    const existing = state.envelopes.get(id);
-    if (!existing && state.removedEnvelopes.has(id)) throw new ToolError(`${id} was removed; a new envelope takes a new id`);
-    const category = typeof args['category'] === 'string' && args['category'] ? args['category'] : existing?.category;
-    if (!category) throw new ToolError('a new envelope needs a category');
-    if (!state.categories.has(category)) throw new ToolError(`no category ${category}`, 404);
-    const taken = [...state.envelopes.values()].find((x) => x.id !== id && nameKey(x.label) === nameKey(label));
-    if (taken) throw new ToolError(`There is already an envelope called ${taken.label}.`, 409);
-    const hasTemplate = args['templateCents'] !== undefined && args['templateCents'] !== null;
-    const hasBasis = args['basis'] !== undefined && args['basis'] !== null;
-    if (hasTemplate && hasBasis) throw new ToolError('give templateCents or basis, not both');
-    const basis = hasBasis ? basisArg(args['basis']) : undefined;
-    const given = basis ? monthlyOf(basis) : hasTemplate ? money(args['templateCents'], 'templateCents') : null;
-    if (given !== null && given < 0) throw new ToolError('a figure is not less than nothing');
-    const rollover = typeof args['rollover'] === 'boolean' ? args['rollover'] : existing?.rollover ?? true;
-
-    // With a template the define is a figure (flag and source go); without one an existing
-    // envelope keeps all three, and a new one starts at nothing, flagged as having no figure.
-    const event: NewEvent = existing
-      ? redefine(existing, {
-        label, category, rollover, ...(given !== null ? { figure: { template: given, ...(basis ? { basis } : {}) } } : {}),
-      })
-      : {
-        op: 'envelope.define', envelope: id, label, category,
-        template: given ?? cents(0), rollover, order: state.envelopes.size,
-        ...(given === null ? { needsFigure: true as const } : {}),
-        ...(basis ? { basis } : {}),
-      };
-    const figureWords = given !== null
-      ? `funded at ${fmtExact(given)} a month${basis ? `, from ${basisWords(basis)}` : ''}`
-      : existing ? (existing.needsFigure ? 'still with no figure' : `funded at ${fmtExact(existing.template)} a month`)
-      : 'with no figure yet';
-
+    const env = state.envelopes.get(id);
+    if (!env) throw new ToolError(`no envelope ${id}`, 404);
+    const label = typeof args['label'] === 'string' && args['label'].trim() ? args['label'].trim() : env.label;
+    envelopeNameFree(state, label, id);
+    const place = placeArg(state, args, true) ?? { id: env.category, label: state.categories.get(env.category)?.label ?? env.category, add: null };
+    const renamed = label !== env.label;
+    const moved = place.id !== env.category;
+    if (!renamed && !moved) throw new ToolError('nothing would change');
     return ctx.proposals.put({
-      tool: 'define_envelope', who: ctx.who,
-      summary: existing ? `Update ${existing.label}` : `Add the ${label} envelope`,
+      tool: 'change_envelope', who: ctx.who,
+      summary: renamed && moved ? `Rename ${env.label} to ${label} and move it under ${place.label}`
+        : renamed ? `Rename ${env.label} to ${label}` : `Move ${env.label} under ${place.label}`,
       effects: [
-        existing
-          ? `${existing.label} becomes "${label}", ${figureWords}`
-          : `A new envelope "${label}" under ${state.categories.get(category)!.label}, ${figureWords}`,
-        // The plan of record is a snapshot; changing the template cannot reach
-        // back into a month that has already opened.
-        'Months already open keep the plan they opened with',
+        ...(place.add ? [`A new category, ${place.label}`] : []),
+        ...(renamed ? [`${env.label} is called ${label} from now on`] : []),
+        ...(moved ? [`${label} sits under ${place.label}`] : []),
+        'Its figure, its money and its receipts stay as they are',
       ],
-      events: [event],
+      events: [...(place.add ? [place.add] : []), redefine(env, { label, category: place.id })],
+    }, ctx.today);
+  },
+};
+
+const addCategory: Tool = {
+  name: 'add_category',
+  description:
+    'Propose adding a category: a heading envelopes sit under, added last. It starts empty. ' +
+    'A name another category has, case ignored, is refused.',
+  kind: 'write',
+  input: { type: 'object', properties: { label: { type: 'string', description: 'Its name.' } }, required: ['label'] },
+  run(args, ctx) {
+    const state = ctx.store.state;
+    const label = str(args['label'], 'label').trim();
+    categoryNameFree(state, label);
+    return ctx.proposals.put({
+      tool: 'add_category', who: ctx.who,
+      summary: `Add the category ${label}`,
+      effects: [`${label} is added last, with no envelopes yet`],
+      events: [{ op: 'category.add', category: categoryIdFor(state, label), label }],
+    }, ctx.today);
+  },
+};
+
+const renameCategory: Tool = {
+  name: 'rename_category',
+  description:
+    'Propose renaming a category heading. The envelopes under it stay under it, and no money moves.',
+  kind: 'write',
+  input: {
+    type: 'object',
+    properties: { category: { type: 'string', description: 'The id get_month lists.' }, label: { type: 'string', description: 'Its new name.' } },
+    required: ['category', 'label'],
+  },
+  run(args, ctx) {
+    const state = ctx.store.state;
+    const c = categoryOr404(state, str(args['category'], 'category'));
+    const label = str(args['label'], 'label').trim();
+    if (label === c.label) throw new ToolError('nothing would change');
+    categoryNameFree(state, label, c.id);
+    return ctx.proposals.put({
+      tool: 'rename_category', who: ctx.who,
+      summary: `Rename ${c.label} to ${label}`,
+      effects: [`${c.label} is called ${label} from now on; its envelopes stay under it`],
+      events: [{ op: 'category.rename', category: c.id, label }],
+    }, ctx.today);
+  },
+};
+
+const moveCategory: Tool = {
+  name: 'move_category',
+  description:
+    'Propose moving a category heading one place up or down the list, its envelopes with it. ' +
+    'The first cannot go up and the last cannot go down.',
+  kind: 'write',
+  input: {
+    type: 'object',
+    properties: { category: { type: 'string', description: 'The id get_month lists.' }, direction: { type: 'string', enum: ['up', 'down'] } },
+    required: ['category', 'direction'],
+  },
+  run(args, ctx) {
+    const state = ctx.store.state;
+    const c = categoryOr404(state, str(args['category'], 'category'));
+    const direction = args['direction'];
+    if (direction !== 'up' && direction !== 'down') throw new ToolError("direction is 'up' or 'down'");
+    const at = [...state.categories.keys()].indexOf(c.id);
+    if (direction === 'up' && at === 0) throw new ToolError(`${c.label} is already first.`, 409);
+    if (direction === 'down' && at === state.categories.size - 1) throw new ToolError(`${c.label} is already last.`, 409);
+    const to = direction === 'up' ? at - 1 : at + 1;
+    return ctx.proposals.put({
+      tool: 'move_category', who: ctx.who,
+      summary: `Move ${c.label} ${direction}`,
+      effects: [`${c.label} becomes number ${to + 1} of ${state.categories.size}, its envelopes with it`],
+      events: [{ op: 'category.move', category: c.id, to }],
+    }, ctx.today);
+  },
+};
+
+const removeCategory: Tool = {
+  name: 'remove_category',
+  description:
+    'Propose removing a category heading that has no envelopes under it. One that still has envelopes is refused: ' +
+    'move them under another category, or remove them, first.',
+  kind: 'write',
+  input: { type: 'object', properties: { category: { type: 'string', description: 'The id get_month lists.' } }, required: ['category'] },
+  run(args, ctx) {
+    const state = ctx.store.state;
+    const c = categoryOr404(state, str(args['category'], 'category'));
+    if ([...state.envelopes.values()].some((e) => e.category === c.id)) throw new ToolError('Move its envelopes first.', 409);
+    return ctx.proposals.put({
+      tool: 'remove_category', who: ctx.who,
+      summary: `Remove the category ${c.label}`,
+      effects: [`${c.label} goes from the list`],
+      events: [{ op: 'category.remove', category: c.id }],
+    }, ctx.today);
+  },
+};
+
+/** ruleProblem's words that are about the request itself; the rest are about what is already here. */
+const RULE_INPUT_PROBLEMS: ReadonlySet<string> = new Set(['a rule needs at least 3 characters', 'not in the payee']);
+
+const addRule: Tool = {
+  name: 'add_rule',
+  description:
+    'Propose a rule: a receipt imported from now on whose payee or memo contains `match` (case ignored) is sorted ' +
+    'into `envelope`, an envelope id get_month lists, or __transfer / __income, or __split to have a person divide ' +
+    'it. Receipts already here stay where they are. Give txnId when the rule comes from one receipt, and the match ' +
+    'must then be in its payee. Refused when a rule already has the match, or when it would have caught receipts ' +
+    'sorted somewhere else.',
+  kind: 'write',
+  input: {
+    type: 'object',
+    properties: {
+      match: { type: 'string', description: 'Text in the payee, at least 3 characters.' },
+      envelope: { type: 'string' },
+      txnId: { type: 'string', description: 'Optional. The receipt the rule was seen on.' },
+    },
+    required: ['match', 'envelope'],
+  },
+  run(args, ctx) {
+    const state = ctx.store.state;
+    const match = str(args['match'], 'match').trim();
+    const envelope = str(args['envelope'], 'envelope');
+    if (isSpend(envelope) && !state.envelopes.has(envelope)) throw new ToolError(`no envelope ${envelope}`, 404);
+    const txnId = typeof args['txnId'] === 'string' && args['txnId'] ? args['txnId'] : null;
+    const t = txnId === null ? null : state.txns.get(txnId);
+    if (t === undefined) throw new ToolError(`no transaction ${txnId}`, 404);
+    const problem = ruleProblem(state, t?.payee ?? null, match, envelope);
+    if (problem) throw new ToolError(problem, RULE_INPUT_PROBLEMS.has(problem) ? 400 : 409);
+
+    const base = `r-${match.toLowerCase().replace(/\W+/g, '-')}`;
+    let rule = base;
+    for (let n = 2; state.rules.some((r) => r.id === rule); n++) rule = `${base}-${n}`;
+    const already = [...state.txns.values()].filter((x) =>
+      `${x.payee} ${x.memo ?? ''}`.toLowerCase().includes(match.toLowerCase())).length;
+    const into = filedLabel(state, envelope);
+    return ctx.proposals.put({
+      tool: 'add_rule', who: ctx.who,
+      summary: envelope === SPLIT ? `Always ask to divide "${match}"` : `Remember "${match}" for ${into}`,
+      effects: [
+        envelope === SPLIT
+          ? `From now on, a receipt matching "${match}" waits for a person to divide it`
+          : `From now on, a receipt matching "${match}" goes into ${into}`,
+        already
+          ? `${already} receipt${already === 1 ? '' : 's'} here already match${already === 1 ? 'es' : ''} it and stay${already === 1 ? 's' : ''} where ${already === 1 ? 'it is' : 'they are'}`
+          : 'No receipt here matches it yet',
+      ],
+      events: [{ op: 'rule.add', rule, match, envelope }],
     }, ctx.today);
   },
 };
@@ -3230,7 +3429,8 @@ export const TOOLS: readonly Tool[] = [
   getMonth, explainEnvelope, findDonors, listTransactions, getActivity,
   makeStarterEnvelopes, setMonthIncome, setEnvelopeFigure, setBill,
   moveMoney, setAssignment, sortReceipts, openMonth, restoreTxn,
-  defineEnvelope, setSinkingGoal, removeEnvelope,
+  addEnvelope, changeEnvelope, addCategory, renameCategory, moveCategory, removeCategory, addRule,
+  setSinkingGoal, removeEnvelope,
   closeMonth, discardMonth,
   planIncome, defineIncome, removeIncome, setLocation, localCosts, seedFromLocation,
   listPlans, getPlan, searchTool, createPlan, updatePlan, setPlanState, handPlan, setPlanGoal, answerAsk, setChecklist,
@@ -3249,13 +3449,30 @@ export const CARD_ONLY: ReadonlySet<string> = new Set([resolveDrift.name, approv
 
 /**
  * The tools the walkthrough and the budget's one-tap actions approve in the same
- * request, with ?approve=1. seed_from_location is not here: its proposal, with
- * its sources and caveats, is shown before anyone approves it.
+ * request, with ?approve=1: sorting a receipt, and adding, renaming and moving
+ * envelopes and categories, move no money behind a person's back. seed_from_location
+ * is not here: its proposal, with its sources and caveats, is shown before anyone
+ * approves it. Nor is add_rule: a rule is shown before it is kept, and sort_receipts
+ * is approved in one only without one (the route refuses alsoAddRuleMatching).
  */
 export const APPROVE_IN_ONE: ReadonlySet<string> = new Set([
+  'sort_receipts', 'add_envelope', 'change_envelope', 'add_category', 'rename_category', 'move_category', 'remove_category',
   'set_location', 'open_month', 'set_month_income', 'define_income_source',
   'make_starter_envelopes', 'set_envelope_figure', 'set_bill', 'move_money', 'set_assignment',
 ]);
+
+/**
+ * Why a call approved in one is refused before it runs, or null: sorting by a press never
+ * adds a rule, which is shown first (add_rule). Claude's sort_receipts cards keep theirs.
+ */
+export function refusedInOne(name: string, args: Record<string, unknown>): string | null {
+  if (name !== 'sort_receipts' || !Array.isArray(args['assignments'])) return null;
+  const withRule = (args['assignments'] as unknown[]).some((a) => {
+    const m = typeof a === 'object' && a !== null ? (a as Record<string, unknown>)['alsoAddRuleMatching'] : undefined;
+    return typeof m === 'string' && m.trim() !== '';
+  });
+  return withRule ? 'A rule is shown before it is added.' : null;
+}
 
 /** Whether Claude may call it: the ones in TOOLS. */
 export const forClaude = (t: Tool): boolean => TOOLS.includes(t);
