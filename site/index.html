@@ -5285,9 +5285,11 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
   // With no figure, the first thing on the page is the only thing to do.
   const asking = e.needsFigure && open;
 
+  // The category it sits under, and the month: the same line for every envelope, savings ones too.
+  const category = month.categories.find((c) => c.id === e.category);
   const { section, body } = envFrame({
     back: 'Budget', onBack: () => closeEnvelopePage(), title: e.label,
-    line: `${e.sinking ? 'Saved in Savings' : e.group} · ${monthLong(month.month)}`,
+    line: category ? `${category.label} · ${monthLong(month.month)}` : monthLong(month.month),
   });
   body.appendChild(asking ? envFigureForm(e, { question: true, done: 'heading' }).form : envCard(e));
 
@@ -5295,12 +5297,109 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
   // except as the place the goal form opens.
   const each = envSection('Each month');
   each.el.hidden = asking;
+  // The slot under the foot, where Rename and Change its category open (drawn only while the month is open).
+  let footSlot = null;
+  const closeFoot = () => footSlot?.querySelector('[data-cancel]')?.click();
   // The goal form in Each month's place: from Change on a savings envelope and from the foot's link.
   const openGoal = (back) => {
     closeBillForm();
+    closeFoot();
     each.el.hidden = false;
     each.el.querySelector('.ep-sec-h').scrollIntoView({ block: 'start' });
-    void goalForm(each.slot, e, { onCancel: () => renderEnvelopePage({ focus: back }) });
+    goalForm(each.slot, e, { onCancel: () => renderEnvelopePage({ focus: back }) });
+  };
+  // Put away an open goal form without drawing the page again: Each month as it was.
+  const closeGoal = () => {
+    if (!each.slot.querySelector(':scope > .goal-form')) return;
+    drawEach();
+    each.el.hidden = asking;
+  };
+  /**
+   * Rename, or Change its category: a small form in the slot under the foot, written at once (Ruling 9), since
+   * neither moves money. Opening one closes an open Bills form, the goal form and the other. A refusal (a name
+   * another envelope has, a category another member has just removed) is said in the form with what was typed kept.
+   */
+  const openFootForm = (kind) => {
+    closeBillForm();
+    closeFoot();
+    closeGoal();
+    const opener = footSlot.previousElementSibling.querySelector(`[data-key="${kind}"]`);
+    const form = node('form', 'ep-form ep-card');
+    form.noValidate = true;
+    const categories = month.categories.map((c) => ({ id: c.id, label: c.label }));
+    let name = null;
+    let field = null;
+    if (kind === 'rename') {
+      name = node('input');
+      name.type = 'text';
+      name.maxLength = 40;
+      name.autocomplete = 'off';
+      name.value = e.label;
+      form.append(node('h3', 'ep-q', 'Rename'), epField('Name', name));
+    } else {
+      field = categoryField(categories, e.category);
+      form.append(node('h3', 'ep-q', 'Change its category'), field.el);
+    }
+    const close = () => {
+      form.remove();
+      if (opener?.isConnected) opener.focus({ preventScroll: true });
+    };
+    const acts = node('div', 'ep-acts');
+    // The secondary first, the primary at the right; Cancel is also what Escape presses.
+    const cancel = textBtn('Cancel', 'btn', null, close);
+    cancel.dataset.cancel = '';
+    const save = node('button', 'btn primary', 'Save');
+    save.type = 'submit';
+    acts.append(cancel, save);
+    const { err, say } = epErr();
+    form.append(acts, err);
+    form.addEventListener('submit', async (ev) => {
+      ev.preventDefault();
+      say('');
+      let send;
+      if (kind === 'rename') {
+        const label = name.value.trim();
+        if (!label) { say('Give it a name'); name.focus({ preventScroll: true }); return; }
+        // The same name: nothing to write.
+        if (label === e.label) { close(); return; }
+        send = () => approveNow('change_envelope', { envelope: e.id, label });
+      } else {
+        const place = field.value();
+        if (!place) { say('Give the new category a name'); field.focus(); return; }
+        if (place.category === e.category) { close(); return; }
+        send = () => approveNow('change_envelope', { envelope: e.id, ...field.value() });
+      }
+      const page = envelopePage;
+      cancel.disabled = save.disabled = true;
+      try {
+        await send();
+      } catch (ex) {
+        if (envelopePage !== page) return;
+        // The server names only an id for what another member has just removed: said here in words.
+        const gone = categories.find((c) => c.id === field?.value()?.category);
+        say(gone && ex.message === `no category ${gone.id}` ? `${gone.label} has just been removed. Choose another category.`
+          : ex.message === `no envelope ${e.id}` ? `${e.label} has just been removed. Go Back to see the list.`
+          : ex.message);
+        cancel.disabled = save.disabled = false;
+        err.focus({ preventScroll: true });
+        return;
+      }
+      // Committed: the list is read again even if Back was pressed meanwhile. The page, still open, is drawn
+      // once by that reload with focus on the link that opened the form. A reload that fails leaves Save off.
+      page.focusNext = kind;
+      try {
+        await loadBudget();
+      } catch {
+        page.focusNext = null;
+        if (envelopePage !== page) return;
+        cancel.disabled = false;
+        say('Saved. The screen could not be read again; go Back to see it.');
+        err.focus({ preventScroll: true });
+      }
+    });
+    footSlot.replaceChildren(form);
+    form.querySelector('.ep-q').scrollIntoView({ block: 'start' });
+    (name ?? field).focus({ preventScroll: true });
   };
   const drawEach = () => {
     const s = e.sinking;
@@ -5351,11 +5450,14 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
   // A closed month is history: nothing on its page changes the envelope.
   if (open) {
     const foot = node('div', 'ep-foot');
+    footSlot = node('div', 'ep-slot');
     foot.append(
-      textBtn(e.sinking ? 'Change its goal' : 'Make this a savings goal', 'link', 'goal', () => openGoal('goal')),
-      textBtn('Remove this envelope', 'link danger', 'remove', () => openRemovePage()),
+      textBtn(e.sinking ? 'Change its goal' : 'Make this a savings goal', 'link hit', 'goal', () => openGoal('goal')),
+      textBtn('Rename', 'link hit', 'rename', () => openFootForm('rename')),
+      textBtn('Change its category', 'link hit', 'move', () => openFootForm('move')),
+      textBtn('Remove this envelope', 'link danger hit', 'remove', () => openRemovePage()),
     );
-    body.appendChild(foot);
+    body.append(foot, footSlot);
   }
 
   host.replaceChildren(section);
@@ -5628,9 +5730,8 @@ function openFundingPage() {
 function openRemovePage() {
   const cur = month?.envelopes?.find((x) => x.id === envelopePage?.id);
   if (!cur) return;
-  const sub = openEnvSubPage('remove', {
-    title: `Remove ${cur.label}`, line: 'Its receipts stay, but stop belonging to any envelope.', backTo: 'remove',
-  });
+  // The line is the server's count of what goes back to To sort, so it waits for the proposal (Ruling 19).
+  const sub = openEnvSubPage('remove', { title: `Remove ${cur.label}`, line: '', backTo: 'remove' });
   if (!sub) return;
   const { page, e, section, body } = sub;
   const form = node('form', 'ep-form');
@@ -5657,6 +5758,10 @@ function openRemovePage() {
       const rows = [...$('bands').querySelectorAll('[data-envelope]')];
       const at = rows.findIndex((r) => r.dataset.envelope === e.id);
       const beside = at < 0 ? null : (rows[at + 1] ?? rows[at - 1])?.dataset.envelope ?? null;
+      // The head's line, empty until now, is the server's count sentence (Ruling 19): what goes back to To sort and
+      // which rules go with it. This will lists every effect, the bills that go included.
+      const headLine = section.querySelector('.set-line');
+      if (headLine) headLine.textContent = proposal.effects?.find((x) => x.includes('back to To sort')) ?? '';
       reviewState(body, proposal, reason, {
         onChange: () => {},
         onApproved: async () => {
@@ -5679,13 +5784,11 @@ function openRemovePage() {
 }
 
 /**
- * Saved in Savings: the goal, and for one saved every so often the estimates
- * on its categories, edited here though they are kept on the categories, so
- * every budget works out the same figure. Shown, then approved, like any change.
- * Drawn in `slot` in place of what it holds, once the categories are read;
- * nothing when the page it was opened on has gone by then.
+ * Saved in Savings: the goal, and for one saved every so often its own
+ * estimate, what it costs and how many years until it comes round. Shown, then
+ * approved, like any change (Ruling 9). Drawn in `slot` in place of what it holds.
  */
-async function goalForm(slot, e, { onCancel }) {
+function goalForm(slot, e, { onCancel }) {
   const page = envelopePage;
   const s = e.sinking;
   const wrap = node('div', 'goal-form');
@@ -5708,29 +5811,20 @@ async function goalForm(slot, e, { onCancel }) {
   const head = node('div', 'edit');
   head.appendChild(fieldOf('Goal', kind, 'f why'));
 
-  // Every so often: one line per category feeding it, with its estimate if it has one.
-  const cats = await categoryList();
-  if (!slot.isConnected || envelopePage !== page) return;
-  const estimates = s?.estimates ?? (e.categories ?? []).map((id) => {
-    const c = cats.find((x) => x.id === id);
-    return { category: id, label: c?.label ?? id, cost: c?.sinking?.cost ?? null, everyYears: c?.sinking?.everyYears ?? null };
-  });
+  // Every so often: one estimate, the envelope's own, filled with the one it has.
+  const est = s?.estimate ?? null;
   const every = node('div', 'goal-every');
-  const lines = estimates.map((x) => {
-    const cost = node('input');
-    cost.inputMode = 'decimal';
-    cost.placeholder = 'e.g. 1200';
-    cost.value = x.cost ? x.cost.replace(/[$,]/g, '') : '';
-    const years = node('input');
-    years.inputMode = 'decimal';
-    years.placeholder = 'e.g. 4';
-    years.value = x.everyYears ?? '';
-    const line = node('div', 'edit');
-    line.append(fieldOf(`${x.label} costs`, cost), fieldOf('Every how many years', years));
-    every.appendChild(line);
-    return { category: x.category, cost, years };
-  });
-  every.appendChild(node('p', 'hint', 'Kept on the categories, so every budget sets aside the same. Leave a cost empty for none.'));
+  const cost = node('input');
+  cost.inputMode = 'decimal';
+  cost.placeholder = 'e.g. 1200';
+  cost.value = est ? plainDollars(est.cost) : '';
+  const years = node('input');
+  years.inputMode = 'decimal';
+  years.placeholder = 'e.g. 4';
+  years.value = est ? String(est.everyYears) : '';
+  const line = node('div', 'edit');
+  line.append(fieldOf('It costs', cost), fieldOf('Every how many years', years));
+  every.append(line, node('p', 'hint', 'Leave the cost empty for none.'));
 
   // By a date: a target, and the month to have it by.
   const target = node('input');
@@ -5762,15 +5856,15 @@ async function goalForm(slot, e, { onCancel }) {
         Object.assign(args, { targetCents: t, by: by.value });
       }
       if (kind.value === 'every') {
-        args.estimates = lines.map((l) => {
-          const raw = l.cost.value.trim();
-          if (!raw) return { category: l.category, costCents: null };
+        const raw = cost.value.trim();
+        if (!raw) args.estimate = null;
+        else {
           const c = toCents(raw);
-          if (!Number.isFinite(c) || c <= 0) { l.cost.focus(); throw new Error('A cost is a dollar amount, like 1200'); }
-          const y = Number(l.years.value);
-          if (!(y > 0)) { l.years.focus(); throw new Error('How often is a number of years, like 4'); }
-          return { category: l.category, costCents: c, everyYears: y };
-        });
+          if (!Number.isFinite(c) || c <= 0) { cost.focus(); throw new Error('A cost is a dollar amount, like 1200'); }
+          const y = Number(years.value);
+          if (!(y > 0)) { years.focus(); throw new Error('How often is a number of years, like 4'); }
+          args.estimate = { costCents: c, everyYears: y };
+        }
       }
       const { proposal } = await api('/api/tools/set_sinking_goal', args);
       if (envelopePage !== page) return;

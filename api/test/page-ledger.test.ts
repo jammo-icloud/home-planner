@@ -549,6 +549,12 @@ const KEPT_010: readonly Line[] = [
   ['B14', 'Record an income', 'budgetMarkup'], ['B14', 'id="inc-what-if"', 'budgetMarkup'], ['B15', 'id="needs-h">Needs you<', 'budgetMarkup'],
   ['B19', 'function envelopeRow(', 'budget'], ['B19', "amt = 'No figure yet'", 'budget'],
   ['B26', 'id="month-close"', 'budgetMarkup'], ['B26', '`Reopen ${name}`', 'budget'],
+  // Task 9: the envelope's page keeps its card, its sections, the funding page, Bills, Receipts, the foot and Escape.
+  ['B29', 'function envCard(', 'budget'], ['B29', 'How much each month?', 'budget'], ['B29', 'function coverBlock(', 'budget'],
+  ['B30', "envSection('Each month')", 'budget'], ['B31', 'function openFundingPage(', 'budget'], ['B31', "epField('Take it from', from)", 'budget'],
+  ['B32', "envSection('Bills', 'bills')", 'budget'], ['B33', 'Nothing has been spent from this envelope yet.', 'budget'],
+  ['B33', 'do not trust this envelope', 'budget'], ['B34', 'Make this a savings goal', 'budget'], ['B34', 'Remove this envelope', 'budget'],
+  ['B39', "host.querySelector('.ep-slot [data-cancel]')", 'budget'],
 ];
 const ADDED_010: readonly Line[] = [
   // Task 7: the head names the month; two tabs; Where it is for the household; the list by category; the words that named a budget.
@@ -580,6 +586,13 @@ const ADDED_010: readonly Line[] = [
   ['B24', 'function addEnvelopeForm(', 'budget'], ['B24', "'New category…'", 'budget'], ['B24', "approveNow('add_envelope'", 'budget'],
   ['B24', "focus: 'change'", 'budget'],
   ['B25', 'function addCategoryForm(', 'budget'], ['B25', "approveNow('add_category'", 'budget'], ['B25', "'Add it'", 'budget'],
+  // Task 9: the page's line names the category; Rename and Change its category in the foot, written at once; one estimate; Remove's count sentence.
+  ['B28', 'month.categories.find((c) => c.id === e.category)', 'budget'],
+  ['B35', "textBtn('Rename', 'link hit', 'rename'", 'budget'],
+  ['B36', "textBtn('Change its category', 'link hit', 'move'", 'budget'], ['B36', "approveNow('change_envelope'", 'budget'],
+  ['B37', "'It costs'", 'budget'], ['B37', 'Leave the cost empty for none.', 'budget'],
+  // B38: the count sentence is not the server's first effect ("<name> disappears from the budget" is), so it is found by its words.
+  ['B38', "headLine.textContent = proposal.effects?.find((x) => x.includes('back to To sort'))", 'budget'],
 ];
 const GONE_010: readonly Line[] = [
   // Task 7: every trace of a second budget, Compare, the outside note and the savings band of its own.
@@ -600,6 +613,10 @@ const GONE_010: readonly Line[] = [
   // envelope panel's field: the Categories sheet's own Band (Task 11's B61) is on the page until that sheet goes.
   ['B24', "panel('Add an envelope'", 'page'], ['B24', 'Fed by (choose one or more)', 'page'], ['B24', "{ name: 'group', label: 'Band'", 'page'],
   ['B24', 'Leave it empty to give it a figure later.', 'page'], ['B24', 'catOptions', 'page'], ['B24', "tool: 'define_envelope'", 'page'],
+  // Task 9: the group or Savings on the page's line, the estimates kept on the categories, and Remove's old line.
+  ['B28', "e.sinking ? 'Saved in Savings' : e.group", 'page'],
+  ['B37', 'Kept on the categories, so every budget sets aside the same.', 'page'], ['B37', 'e.categories', 'page'],
+  ['B38', 'Its receipts stay, but stop belonging to any envelope.', 'page'],
 ];
 describe('the page ledger: 0.10.0', () => {
   test('what 0.10.0 keeps, adds and takes away', () => {
