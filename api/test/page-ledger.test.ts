@@ -576,6 +576,7 @@ const ADDED_010: readonly Line[] = [
   ['B22', "'Move its envelopes first.'", 'budget'], ['B22', "approveNow('rename_category'", 'budget'],
   ['B22', "approveNow('move_category'", 'budget'], ['B22', "approveNow('remove_category'", 'budget'], ['B22', 'function menuOn(', 'page'],
   ['B23', 'id="cat-add"', 'budgetMarkup'], ['B23', 'id="env-new" type="button">Add an envelope', 'budgetMarkup'],
+  ['B23', 'class="add-row hit" id="env-new"', 'budgetMarkup'],
   ['B24', 'function addEnvelopeForm(', 'budget'], ['B24', "'New category…'", 'budget'], ['B24', "approveNow('add_envelope'", 'budget'],
   ['B24', "focus: 'change'", 'budget'],
   ['B25', 'function addCategoryForm(', 'budget'], ['B25', "approveNow('add_category'", 'budget'], ['B25', "'Add it'", 'budget'],

@@ -190,7 +190,10 @@
   .band-slot > .add-form,#add-slot > .add-form{margin-top:var(--sp-2)}
   .cat-field{display:grid;min-width:0}
   .cat-new .link{justify-self:start}
-  .menu-list .menu-note{margin:0;padding:var(--sp-2) var(--sp-3);font-size:var(--fs-small);color:var(--ink-soft)}
+  /* Remove on a category that still has envelopes: said, reachable, and inert; the line under it says why. */
+  .menu-item[aria-disabled="true"]{color:var(--ink-soft);cursor:default;padding-block:var(--sp-1)}
+  .menu-item[aria-disabled="true"]:hover{background:none}
+  .menu-item .menu-note{display:block;font-size:var(--fs-small);color:var(--ink-soft)}
   /* A removed envelope a closed month keeps: a row that opens nothing, marked in quiet words. */
   .erow.removed{cursor:default}
   .erow.removed:active{background:none}
@@ -4737,7 +4740,16 @@ function categoryMenu(c, i, n) {
   if (i > 0) list.appendChild(item('Move up', () => categoryWrite(c, () => approveNow('move_category', { category: c.id, direction: 'up' }))));
   if (i < n - 1) list.appendChild(item('Move down', () => categoryWrite(c, () => approveNow('move_category', { category: c.id, direction: 'down' }))));
   if (c.envelopes === 0) list.appendChild(item('Remove', () => categoryWrite(c, () => approveNow('remove_category', { category: c.id })), ' danger'));
-  else list.appendChild(node('p', 'menu-note', 'Move its envelopes first.'));
+  else {
+    // An item, so a screen reader reaches it and hears why; it does nothing and leaves the menu open.
+    const blocked = item('', () => {});
+    blocked.setAttribute('aria-disabled', 'true');
+    blocked.dataset.keepOpen = '';
+    const words = node('span', '', 'Remove ');
+    words.appendChild(node('span', 'menu-note', 'Move its envelopes first.'));
+    blocked.appendChild(words);
+    list.appendChild(blocked);
+  }
   wrap.append(btn, list);
   bandMenus.push(menuOn(btn, list));
   return wrap;
@@ -6857,7 +6869,8 @@ function categoryField(categories, start, typed = null) {
     const name = input.value.trim();
     return name ? { newCategory: name } : null;
   };
-  return { el, value, focus: () => (typing ? input : select).focus() };
+  // `picked`: the category last chosen from the list, which a form drawn again after a refusal starts on.
+  return { el, value, picked: () => chosen, focus: () => (typing ? input : select).focus() };
 }
 
 /**
@@ -6956,12 +6969,13 @@ function addEnvelopeForm(slot, { category = null, label = '', newCategory = null
       if (turn !== householdTurn) return false;
       // Read again: what was refused may be news from another member, and the form is drawn again from what is there now.
       try { await loadBudget(); } catch { /* the form below says the refusal either way */ }
-      if (turn !== householdTurn || view !== 'budget' || envelopePage) return false;
+      // Gone elsewhere meanwhile: the form is put away, so the list comes back with its add rows.
+      if (turn !== householdTurn || view !== 'budget' || envelopePage) { if (form.isConnected) close(false); return false; }
       // Back where it was: the slot under the list stays through the reload; a band's is drawn again, if it still has one.
       const home = slot.isConnected ? slot : envelopeSlotFor(slot.closest('.band')?.dataset.category);
       if (form.isConnected) close(false);
       addEnvelopeForm(home, {
-        category: place.category ?? null, label: name.value, newCategory: place.newCategory ?? null,
+        category: place.category ?? field.picked(), label: name.value, newCategory: place.newCategory ?? null,
         problem: removedWords(place.category, categories) ?? ex.message,
       });
       return false;
