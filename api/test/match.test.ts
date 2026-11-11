@@ -373,4 +373,22 @@ describe('ruleProblem', () => {
     ]);
     assert.equal(ruleProblem(store.state, null, 'quik', 'food'), null);
   });
+
+  test('a receipt To sort holds because its envelope was removed is filed nowhere, so it never blocks', async () => {
+    const store = await household();
+    const gym = (id: string, date: string) =>
+      ({ id, date, payee: 'EXAMPLE GYM', amount: parseDollars('-40.00'), dedupeKey: id, envelope: 'gym' });
+    await store.append('alice', [
+      { op: 'envelope.define', envelope: 'gym', label: 'Gym', category: 'people', template: parseDollars('40.00'), order: 4 },
+      { op: 'month.open', month: '2026-08', income: parseDollars('5000.00') },
+      { op: 'txn.add', txns: [gym('g1', '2026-08-01'), gym('g2', '2026-08-02')] },
+      { op: 'envelope.remove', envelope: 'gym', why: 'cancelled the membership' },
+      { op: 'envelope.define', envelope: 'gym-2', label: 'Gym', category: 'people', template: parseDollars('0.00'), order: 5 },
+      { op: 'txn.sort', txn: 'g1', envelope: 'gym-2', manual: true },
+    ]);
+    assert.equal(ruleProblem(store.state, 'EXAMPLE GYM', 'EXAMPLE GYM', 'gym-2'), null);
+    // Sorted somewhere live, it still blocks.
+    await store.append('alice', [{ op: 'txn.sort', txn: 'g2', envelope: 'food', manual: true }]);
+    assert.equal(ruleProblem(store.state, 'EXAMPLE GYM', 'EXAMPLE GYM', 'gym-2'), 'already filed under Food');
+  });
 });

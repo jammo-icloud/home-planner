@@ -273,6 +273,25 @@ describe('sorting by a press', () => {
     // A press never adds a rule without showing it.
     await refusedWith(approve('add_rule', { match: 'CORNER', envelope: 'dining' }), 'add_rule is not approved in one step; approve its proposal');
   });
+  test('a rule for a Gym added again is offered, though the old Gym\'s receipts wait in To sort', async () => {
+    const s = new Store({ path: join(dir, 'households', household, 'events.jsonl') });
+    await s.load();
+    // Written before the server opens this household, so it reads it.
+    await s.append('alice', [{ op: 'txn.add', txns: [
+      { id: 'y1', date: '2026-11-04', payee: 'EXAMPLE GYM', amount: cents(-4000), dedupeKey: 'y1', envelope: 'gym' },
+      { id: 'y2', date: '2026-11-05', payee: 'EXAMPLE GYM', amount: cents(-4000), dedupeKey: 'y2', envelope: 'gym' },
+    ] }]);
+    s.close();
+    const p = await propose('remove_envelope', { envelope: 'gym', why: 'cancelled the membership' });
+    assert.equal((await call('POST', '/api/commit', { proposalId: p.proposal.id })).status, 200);
+    assert.equal((await approve('add_envelope', { label: 'Gym', category: 'fun' })).touches.envelope, 'gym-2');
+    assert.equal((await approve('sort_receipts', { assignments: [{ txnId: 'y1', envelope: 'gym-2' }] })).httpStatus, 200);
+    const r = await propose('add_rule', { match: 'EXAMPLE GYM', envelope: 'gym-2', txnId: 'y1' });
+    assert.equal(r.httpStatus, 200, JSON.stringify(r));
+    assert.equal(r.proposal.summary, 'Remember "EXAMPLE GYM" for Gym');
+    // y2 still names the removed Gym, and stays in To sort until a person sorts it.
+    assert.equal(state().txns.get('y2')!.envelope, 'gym');
+  });
   test('nothing the page calls at once is a proposal tool, and define_envelope is gone', () => {
     for (const n of ['sort_receipts', 'add_envelope', 'change_envelope', 'add_category', 'rename_category', 'move_category', 'remove_category']) assert.ok(APPROVE_IN_ONE.has(n), n);
     assert.equal(APPROVE_IN_ONE.has('add_rule'), false);

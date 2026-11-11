@@ -12,6 +12,7 @@
 
 import { classify, claudeConfigured, unavailableReason } from './claude.ts';
 import type { Source } from './connectors.ts';
+import { inToSort } from './analytics.ts';
 import { byRule } from './replay.ts';
 import { INCOME, SPLIT, TRANSFER } from './types.ts';
 import type { SortedInto, State } from './types.ts';
@@ -199,9 +200,10 @@ export const filedLabel = (state: State, e: SortedInto): string =>
  * A rule rewrites every future receipt it matches, so one that contradicts what
  * a person already did is worse than none. The scan reads receipts the way
  * `byRule` does — payee and memo, lower-cased, by substring — so what it
- * rejects is exactly what the rule would have swept up. A receipt nobody has
- * filed yet never blocks; a split counts as filed under "a split", which is
- * only agreeable to a rule that also says split.
+ * rejects is exactly what the rule would have swept up. A receipt To sort holds
+ * (nobody has filed it yet, or it names an envelope that has gone, in a month
+ * that does not keep it) is filed nowhere and never blocks; a split counts as
+ * filed under "a split", which is only agreeable to a rule that also says split.
  */
 export function ruleProblem(state: State, payee: string | null, rule: string, target: string): string | null {
   const match = rule.trim().toLowerCase();
@@ -210,7 +212,7 @@ export function ruleProblem(state: State, payee: string | null, rule: string, ta
   if (state.rules.some((r) => r.match.trim().toLowerCase() === match)) return 'already a rule';
   const elsewhere = new Set<string>();
   for (const t of state.txns.values()) {
-    if (t.envelope === null || t.envelope === target) continue;
+    if (t.envelope === null || t.envelope === target || inToSort(state, t)) continue;
     if (byRule([{ id: '', match, envelope: target }], t) !== null) elsewhere.add(filedLabel(state, t.envelope));
   }
   return elsewhere.size ? `already filed under ${[...elsewhere].join(', ')}` : null;

@@ -1124,7 +1124,7 @@ const sortReceipts: Tool = {
           : `Rule "${match}" would cover ${wouldMatch} transaction${s} from now on`);
         if (existing) effects.push(`Replaces the rule "${existing.match}" → ${filedLabel(state, existing.envelope)}`);
         if (problem?.startsWith('already filed under ')) {
-          const clash = [...state.txns.values()].filter((x) => x.envelope !== null && x.envelope !== envelope
+          const clash = [...state.txns.values()].filter((x) => !inToSort(state, x) && x.envelope !== envelope
             && `${x.payee} ${x.memo ?? ''}`.toLowerCase().includes(match.toLowerCase())).length;
           effects.push(`Rule "${match}" also matches ${clash} receipt${clash === 1 ? '' : 's'} filed elsewhere (${problem.slice('already filed under '.length)})`);
         }
