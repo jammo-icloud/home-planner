@@ -15,7 +15,8 @@ import { copyFile, link, mkdir, open, readFile, readdir, rm, stat, writeFile, re
 import { existsSync } from 'node:fs';
 import { join, resolve } from 'node:path';
 
-import { Store } from './store.ts';
+import { replay, replayLeavingOut } from './replay.ts';
+import { newEventId, Store } from './store.ts';
 import { scopeOf } from './restore.ts';
 import { CONFIG_OPS, SYSTEM } from './types.ts';
 import type { Actor, Event } from './types.ts';
@@ -183,20 +184,35 @@ export class Households {
   /**
    * Write a whole log at once, for a restore that brings its own history.
    *
-   * The people in the backup are left behind on purpose. Membership is the one
+   * Who holds the file decides what comes with it. When it is the backup's
+   * owner, this is someone restoring their own household: the people come too,
+   * in their own order, and the backup's claim stays where it was, carrying
+   * the new label. It is the same person, so the fold takes it, and every
+   * member and every plan comes back.
+   *
+   * When it is someone else, the people are left behind. Membership is the one
    * band of the model that is local to a server: those names are DSM accounts
    * on the machine the backup came from, and they may not exist here. What
-   * travels is the money — facts, budgets and months. Who may see it is decided
-   * again, here, starting with whoever holds the file.
+   * travels is the money — facts, budgets and months — under a claim by
+   * whoever holds the file, written before every carried line so their own
+   * lines and the money fold. A carried line the fold still refuses because
+   * its author, or whom it asks or hands a plan to, is not a member here is
+   * left out; so is a later plan, conversation or booking line that cannot
+   * stand once one of those is gone. Which, and how many, is decided by
+   * folding, not by guessing, and the answer counts them by person. Nobody's
+   * `who` is rewritten. Any other refusal is a broken backup, and fails the
+   * restore with nothing written.
    *
-   * The household's own choices are the owner's, and the backup's owner is not
-   * this one: left in, the fold would refuse them and the log would not load.
+   * The household's own choices are the owner's, and the backup's owner may not
+   * be this one: left in, the fold would refuse them and the log would not load.
    * So every CONFIG_OPS event is left out, and the time zone and the envelope
    * model, which are about the family rather than the machine, are written again
    * by the new owner once they hold the claim. The folder for documents and the
    * booking switch are not carried: no two households share a folder, and
    * friends book with one household at a time. The answer says what was done.
    *
+   * The log lands whole or not at all (a temporary file, then a rename), and
+   * only once the lines that stand have been replayed whole in memory.
    * Refuses to land on top of an existing household: overwriting somebody's
    * ledger is not something a file upload should be able to do by accident.
    */
@@ -206,16 +222,45 @@ export class Households {
     if (!isValidId(id)) throw new Error(`"${id}" is not a usable household id`);
     if ((await this.ids()).includes(id)) throw new Error(`a household called "${id}" already exists`);
 
+    const claim = events.find((e) => e.op === 'household.claim');
+    let lines: Event[];
+    if (claim?.op === 'household.claim' && claim.who === who) {
+      lines = events.filter((e) => !CONFIG_OPS.has(e.op)).map((e) => (e === claim ? { ...claim, label } : e));
+    } else {
+      const taken = new Set(events.map((e) => e.id));
+      let mine = newEventId();
+      while (taken.has(mine)) mine = newEventId();
+      const claimed = { id: mine, at: new Date().toISOString(), who, op: 'household.claim', label } as Event;
+      lines = [claimed, ...events.filter((e) => scopeOf(e) !== 'people' && !CONFIG_OPS.has(e.op))];
+    }
+
+    // Who is not here, and what of theirs stays behind, in the order first met.
+    const wrote = new Map<Actor, Event[]>();
+    const toward = new Map<Actor, number>();
+    let after = 0;
+    const kept = replayLeavingOut(lines, (e, err) => {
+      if (err.outsider !== undefined) {
+        if (err.outsider === e.who) wrote.set(e.who, [...(wrote.get(e.who) ?? []), e]);
+        else toward.set(err.outsider, (toward.get(err.outsider) ?? 0) + 1);
+        return true;
+      }
+      const band = scopeOf(e);
+      if ((wrote.size || toward.size) && (band === 'plans' || band === 'thread' || band === 'bookings')) {
+        after++;
+        return true;
+      }
+      return false;
+    });
+    replay(kept); // what will be on disk folds whole, or nothing is written
+
     await mkdir(join(this.dir, id), { recursive: true });
     const file = this.path(id);
-    const carried = events.filter((e) => scopeOf(e) !== 'people' && !CONFIG_OPS.has(e.op));
     const tmp = `${file}.tmp`;
-    await writeFile(tmp, carried.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
+    await writeFile(tmp, kept.map((e) => JSON.stringify(e)).join('\n') + '\n', 'utf8');
     await rename(tmp, file);
 
     const store = new Store({ path: file });
     await store.load();
-    await store.append(who, { op: 'household.claim', label });
 
     const summary: string[] = [];
     const zone = events.findLast((e) => e.op === 'household.zone');
@@ -232,6 +277,16 @@ export class Households {
       summary.push('The copy chooses its own folder for documents and starts with booking off: '
         + 'no two households share a folder, and friends book with one household at a time.');
     }
+    const count = (n: number, kind: string) => `${n} ${kind}line${n === 1 ? '' : 's'}`;
+    for (const [person, theirs] of wrote) {
+      const kind = theirs.every((e) => scopeOf(e) === 'plans') ? 'plan '
+        : theirs.every((e) => scopeOf(e) === 'bookings') ? 'booking ' : '';
+      summary.push(`Left out ${count(theirs.length, kind)} written by ${person}, who is not a member here.`);
+    }
+    for (const [person, n] of toward) {
+      summary.push(`Left out ${count(n, 'plan ')} asking or handing a plan to ${person}, who is not a member here.`);
+    }
+    if (after) summary.push(`Left out ${count(after, 'more ')} that needed one of those.`);
     await retireShelves(store);
     this.#open.set(id, store);
     return { id, store, summary };

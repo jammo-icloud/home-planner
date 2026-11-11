@@ -15,10 +15,10 @@
  * refusal is merely annoying.
  */
 
-import { guestEmail, validate } from './replay.ts';
+import { guestEmail, needsMember, validate } from './replay.ts';
 import { goalSpelling, sameGoal, shelfGoals } from './plan-rules.ts';
 import type { ShelfView } from './plan-rules.ts';
-import { areaIndex, areaMoved, isGuest } from './types.ts';
+import { areaIndex, areaMoved, CONFIG_OPS, isGuest, SYSTEM } from './types.ts';
 import type { Event, State } from './types.ts';
 
 export type Scope = 'facts' | 'budgets' | 'months' | 'people' | 'thread' | 'settings' | 'plans' | 'bookings';
@@ -161,10 +161,58 @@ export function planRestore(
   // The folder for documents is never taken from a backup: it is chosen here,
   // where the check against every other household's folder runs, and a move
   // starts only from that choice.
-  const take = backup.events.filter((e) => wanted.has(scopeOf(e)) && !FOLDER_OPS.has(e.op));
+  let take = backup.events.filter((e) => wanted.has(scopeOf(e)) && !FOLDER_OPS.has(e.op));
 
   const collisions: Collision[] = [];
   const missingPrerequisites: string[] = [];
+
+  // ── people ───────────────────────────────────────────────────────────────
+  // A restore lands in the household it is made from, which has an owner: the
+  // backup's claim cannot fold here, so it is never taken, and the household
+  // keeps its own name and owner. The member lines are walked in order against
+  // this household's owner and its members as they will be, and each one the
+  // fold would refuse is named instead: only the owner adds or removes a
+  // member, and the owner is never removed. An add that is already true here
+  // changes nothing, and is left out.
+  let owner = target.owner;
+  const members = new Set(target.members);
+  let claimSetAside = false;
+  if (wanted.has('people')) {
+    const said = new Set<string>();
+    const refuse = (what: string, why: string) => {
+      if (said.has(why)) return;
+      said.add(why);
+      collisions.push({ kind: 'owner', what, why });
+    };
+    const onlyOwner = (by: string, doing: string, whom: string) =>
+      `the backup has ${by} ${doing} ${whom} as a member, but only ${owner}, who owns this household, can do that here: `
+      + `leave People out, and ${owner} can ${doing === 'adding' ? 'add' : 'remove'} ${whom} here`;
+    take = take.filter((e) => {
+      if (e.op === 'household.claim') {
+        // Only a household nobody has claimed yet takes a claim, as the fold does.
+        if (owner !== null) { claimSetAside = true; return false; }
+        owner = e.who;
+        members.add(e.who);
+        return true;
+      }
+      if (e.op === 'member.add') {
+        if (e.who !== owner) { refuse(e.member, onlyOwner(e.who, 'adding', e.member)); return false; }
+        if (members.has(e.member)) return false;
+        members.add(e.member);
+        return true;
+      }
+      if (e.op === 'member.remove') {
+        if (e.member === owner) {
+          refuse(e.member, `the backup removes ${owner}, who owns this household, and an owner cannot be removed: leave People out`);
+          return false;
+        }
+        if (e.who !== owner) { refuse(e.member, onlyOwner(e.who, 'removing', e.member)); return false; }
+        members.delete(e.member);
+        return true;
+      }
+      return true;
+    });
+  }
 
   // ── facts ────────────────────────────────────────────────────────────────
   if (wanted.has('facts')) {
@@ -235,33 +283,32 @@ export function planRestore(
     }
   }
 
-  // Whose they are. The fold takes a plan line only from a member, and asks
-  // only of a member, so a plan made by (or asked of) an account that is not
-  // in this household would stop the restore part-way. Named here instead, one
+  // Whose they are. The fold takes a plan line, a note on a plan, or a line
+  // about guests and stays only from a member (`needsMember`), and asks or
+  // hands a plan only to one, so such a line from an account that is not in
+  // this household would stop the restore part-way. Named here instead, one
   // line per account: add them as a member first, or restore these where they
-  // are one. Members the backup's own people bring, when taken too, count.
-  if (wanted.has('plans')) {
-    const members = new Set(target.members);
-    const outsiders = new Map<string, 'made' | 'asked' | 'handed'>();
-    const outside = (who: string, how: 'made' | 'asked' | 'handed') => {
-      if (!members.has(who) && !outsiders.has(who)) outsiders.set(who, how);
+  // are one. Only the members there will really be count: this household's,
+  // and the member lines taken above, in order. Never the backup's claimer.
+  {
+    const now = new Set(target.members);
+    const outsiders = new Map<string, 'made' | 'asked' | 'handed' | 'kept'>();
+    const outside = (who: string, how: 'made' | 'asked' | 'handed' | 'kept') => {
+      if (!now.has(who) && !outsiders.has(who)) outsiders.set(who, how);
     };
     for (const e of take) {
-      if (e.op === 'household.claim') members.add(e.who);
-      else if (e.op === 'member.add') members.add(e.member);
-      else if (e.op === 'member.remove') members.delete(e.member);
-      // The app's own line, written by system, which the fold takes from no one else: nobody to add.
-      else if (e.op === 'shelves.retire') continue;
-      else if (scopeOf(e) === 'plans') {
-        outside(e.who, 'made');
-        if (e.op === 'plan.ask') outside(e.to, 'asked');
-        if (e.op === 'plan.hand') outside(e.to, 'handed');
-      } else if ((e.op === 'thread.ask' || e.op === 'thread.note') && e.plan !== undefined) outside(e.who, 'made');
+      if (e.op === 'household.claim') now.add(e.who);
+      else if (e.op === 'member.add') now.add(e.member);
+      else if (e.op === 'member.remove') now.delete(e.member);
+      else if (needsMember(e)) outside(e.who, scopeOf(e) === 'bookings' ? 'kept' : 'made');
+      if (e.op === 'plan.ask') outside(e.to, 'asked');
+      if (e.op === 'plan.hand') outside(e.to, 'handed');
     }
+    const theirs = { made: 'plans of theirs', asked: 'plans asked of them', handed: 'plans handed to them', kept: 'guests and stays they kept' };
     for (const [who, how] of outsiders) {
       collisions.push({
         kind: 'owner', what: who,
-        why: `${who} is not a member of this household, and the backup has plans ${how === 'made' ? 'of theirs' : how === 'asked' ? 'asked of them' : 'handed to them'}: `
+        why: `${who} is not a member of this household, and the backup has ${theirs[how]}: `
           + `add ${who} as a member first, or restore these where ${who} is one`,
       });
     }
@@ -313,6 +360,25 @@ export function planRestore(
   }
 
   // ── settings ─────────────────────────────────────────────────────────────
+  // The household's choices are its owner's, and the fold takes them from no
+  // one else: a choice the backup's owner made is named, once each, rather
+  // than refused part-way.
+  if (wanted.has('settings')) {
+    const choice: Partial<Record<Event['op'], string>> = {
+      'household.zone': 'time zone', 'envelopes.model': 'envelope model', 'guests.booking': 'booking switch',
+    };
+    const said = new Set<string>();
+    for (const e of take) {
+      if (!CONFIG_OPS.has(e.op) || e.who === owner || e.who === SYSTEM || said.has(e.op)) continue;
+      said.add(e.op);
+      const what = choice[e.op] ?? e.op;
+      collisions.push({
+        kind: 'owner', what,
+        why: `the backup's ${what} was chosen by ${e.who}, but only ${owner ?? 'the owner'}, who owns this household, can choose it here: `
+          + `leave Settings out, and ${owner ?? 'the owner'} can choose it again`,
+      });
+    }
+  }
   // One Household calendar per household. The backup's first one has no
   // `replaces`, so it cannot take the place of one that is already set.
   if (wanted.has('settings') && target.calendar.household) {
@@ -458,6 +524,16 @@ export function planRestore(
   for (const e of take) counts[scopeOf(e)]++;
 
   const summary: string[] = [];
+  if (claimSetAside) {
+    summary.push(`This household keeps its own name, ${target.label}, and its owner, ${target.owner}: the backup's claim is not taken.`);
+  }
+  if (wanted.has('people')) {
+    const names = (who: string[]) => (who.length === 1 ? who[0]! : `${who.slice(0, -1).join(', ')} and ${who.at(-1)!}`);
+    const joining = [...members].filter((m) => !target.members.has(m));
+    const leaving = [...target.members].filter((m) => !members.has(m));
+    if (joining.length) summary.push(`Adds ${names(joining)} as member${joining.length === 1 ? '' : 's'}.`);
+    if (leaving.length) summary.push(`Removes ${names(leaving)} as member${leaving.length === 1 ? '' : 's'}.`);
+  }
   if (counts.facts) {
     const receipts = take.reduce((n, e) => n + (e.op === 'txn.add' ? e.txns.length : 0), 0);
     summary.push(`${receipts} receipts, plus the categories and rules that sort them`);

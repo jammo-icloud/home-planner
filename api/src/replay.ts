@@ -55,10 +55,17 @@ export class ReplayError extends Error {
   // Plain field, not a parameter property: Node's strip-only TypeScript support
   // erases types but never generates code, so `constructor(readonly x)` is out.
   readonly event: Event | undefined;
-  constructor(message: string, event?: Event) {
+  /**
+   * Set when the refusal is only that this person is not a member here: the
+   * line's author, or whom it asks or hands a plan to. A restore that leaves
+   * the people behind leaves such a line out by this, not by its wording.
+   */
+  readonly outsider: Actor | undefined;
+  constructor(message: string, event?: Event, outsider?: Actor) {
     super(event ? `${message} (event ${event.id}, op ${event.op})` : message);
     this.name = 'ReplayError';
     this.event = event;
+    this.outsider = outsider;
   }
 }
 
@@ -169,6 +176,32 @@ export function apply(state: State, events: Iterable<Event>): State {
   const d = thaw(state);
   for (const e of events) applyTo(d, e);
   return freeze(d);
+}
+
+/**
+ * Which lines of a log stand, folding them in order and asking about each one
+ * the fold refuses: `leaveOut` answers true to go on without it, false to fail
+ * as `replay` would. Anything thrown that is not a refusal fails at once.
+ *
+ * Only an answer to which lines stand, never a state to keep: a refused line
+ * may have touched the draft before it was refused, so the caller replays the
+ * kept lines whole before trusting them.
+ */
+export function replayLeavingOut(events: Iterable<Event>, leaveOut: (e: Event, err: ReplayError) => boolean): Event[] {
+  const d = emptyDraft();
+  const kept: Event[] = [];
+  for (const e of events) {
+    const { lastEventId, count } = d;
+    try {
+      applyTo(d, e);
+      kept.push(e);
+    } catch (err) {
+      if (!(err instanceof ReplayError) || !leaveOut(e, err)) throw err;
+      d.lastEventId = lastEventId;
+      d.count = count;
+    }
+  }
+  return kept;
 }
 
 function thaw(s: State): Draft {
@@ -1006,16 +1039,24 @@ function refuseIfClosed(d: Draft, e: Event): void {
  * membership too, but they are one door and this is the log.
  */
 function refuseNonMember(d: Draft, e: Event): void {
-  if (e.who === CLAUDE) return; // CLAUDE_MAY already says what it may write
+  if (needsMember(e) && !d.members.has(e.who)) {
+    throw new ReplayError(`${e.who} is not a member of this household`, e, e.who);
+  }
+}
+
+/**
+ * Whether the fold takes this line only from a member of the household. A
+ * restore asks the same question before it promises anything.
+ */
+export function needsMember(e: Event): boolean {
+  if (e.who === CLAUDE) return false; // CLAUDE_MAY already says what it may write
   const onPlan = planShaped(e.op)
     || ((e.op === 'thread.ask' || e.op === 'thread.note') && e.plan !== undefined);
   // The guest list and the household's nights are the members' to keep. A
   // guest's own cancel is the one way in from outside, and
   // refuseGuest has its say on that.
   const booking = e.op.startsWith('guest.') || e.op.startsWith('booking.');
-  if ((onPlan || (booking && !isGuest(e.who))) && !d.members.has(e.who)) {
-    throw new ReplayError(`${e.who} is not a member of this household`, e);
-  }
+  return onPlan || (booking && !isGuest(e.who));
 }
 
 /** The guest's email, from `guest:<email>`, as the log keys it. */
@@ -1735,7 +1776,7 @@ function fold(d: Draft, e: Event): void {
       if (e.who !== p.owner) throw new ReplayError(`only the owner, ${p.owner}, can ask someone to take ${p.title}`, e);
       if (p.asked) throw new ReplayError(`already asked ${p.asked.to} to take ${p.title}`, e);
       if (e.to === p.owner) throw new ReplayError(`${p.title} is already ${e.to}'s`, e);
-      if (!d.members.has(e.to)) throw new ReplayError(`${e.to} is not in this household`, e);
+      if (!d.members.has(e.to)) throw new ReplayError(`${e.to} is not in this household`, e, e.to);
       d.plans.set(p.id, { ...p, asked: { to: e.to, at: e.at, why: e.why } });
       return;
     }
@@ -1752,7 +1793,7 @@ function fold(d: Draft, e: Event): void {
     case 'plan.hand': {
       const p = livePlan(d, e.plan, e);
       if (e.to === p.owner) throw new ReplayError(`${p.title} is already ${e.to}'s`, e);
-      if (!d.members.has(e.to)) throw new ReplayError(`${e.to} is not in this household`, e);
+      if (!d.members.has(e.to)) throw new ReplayError(`${e.to} is not in this household`, e, e.to);
       d.hands.set(e.id, { plan: p.id, from: p.owner, to: e.to });
       // Handed on at once, so an ask for it is settled; the state, its clock and the calendar stay as they are.
       lapseAsk(d, { ...p, owner: e.to, ownerSince: e.at, ownerFrom: p.owner }, e);

@@ -561,6 +561,54 @@ describe('drift on Today', () => {
     assert.match(restored.json.summary[1], /chooses its own folder/);
   });
 
+  test('a restore the preview says yes to is done: 200, never 500, with the people band', async () => {
+    /** A backup made elsewhere: `owner` claims it, then `then` writes into it. */
+    const backup = async (owner: string, then: (s: InstanceType<typeof Store>) => Promise<unknown>) => {
+      const s = new Store({ path: join(await mkdtemp(join(tmpdir(), 'pb-restore-people-')), 'events.jsonl') });
+      await s.load();
+      await s.append(owner, { op: 'household.claim', label: 'Elsewhere' });
+      await then(s);
+      return readFile(s.path, 'utf8');
+    };
+    const cases: [string, string, boolean][] = [
+      ["alice's own, with a plan", await backup('alice', (s) => s.append('alice', { op: 'plan.create', plan: 'srv-p1', title: 'Paint the fence', area: 'House' })), true],
+      ["alice's own, with bob and casey and a plan of bob's", await backup('alice', async (s) => {
+        await s.append('alice', [{ op: 'member.add', member: 'bob', why: 'he lives here' }, { op: 'member.add', member: 'casey', why: 'she lives here' }]);
+        await s.append('bob', { op: 'plan.create', plan: 'srv-p2', title: 'Fix the gate', area: 'House' });
+      }), true],
+      ["bob's, with a member he added", await backup('bob', (s) => s.append('bob', { op: 'member.add', member: 'casey', why: 'she lives here' })), false],
+    ];
+    let n = 0;
+    for (const [what, content, clean] of cases) {
+      await household(`People back ${++n}`);
+      const scopes = ['people', 'plans'];
+      const preview = await as(aliceDsm, 'POST', '/api/restore/preview', { content, scopes });
+      assert.equal(preview.status, 200, JSON.stringify(preview.json));
+      assert.equal(preview.json.canApply, clean, `${what}: ${JSON.stringify(preview.json.collisions)}`);
+      if (!preview.json.canApply) {
+        assert.ok(preview.json.collisions.some((c: any) => c.kind === 'owner'), what);
+        continue;
+      }
+      const r = await as(aliceDsm, 'POST', '/api/restore', { content, scopes });
+      assert.equal(r.status, 200, `${what}: ${JSON.stringify(r.json)}`);
+    }
+    const log = ((await as(aliceDsm, 'GET', '/api/backup')).json as string).trim().split('\n').map((l) => JSON.parse(l));
+    assert.deepEqual(log.filter((e: any) => e.op === 'household.claim').map((e: any) => e.who), ['alice'], 'one claim, this household\'s own');
+  });
+
+  test("alice's own backup with a plan restores as a household of its own", async () => {
+    const s = new Store({ path: join(await mkdtemp(join(tmpdir(), 'pb-restore-own-')), 'events.jsonl') });
+    await s.load();
+    await s.append('alice', { op: 'household.claim', label: 'Elsewhere' });
+    await s.append('alice', { op: 'member.add', member: 'bob', why: 'he lives here' });
+    await s.append('bob', { op: 'plan.create', plan: 'srv-own', title: 'Clean the gutters', area: 'House' });
+    const r = await as(aliceDsm, 'POST', '/api/restore', { content: await readFile(s.path, 'utf8'), asNewHousehold: 'Own again' });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    const log = ((await as(aliceDsm, 'GET', '/api/backup')).json as string).trim().split('\n').map((l) => JSON.parse(l));
+    assert.ok(log.some((e: any) => e.op === 'plan.create' && e.plan === 'srv-own'));
+    assert.ok(log.some((e: any) => e.op === 'member.add' && e.member === 'bob'));
+  });
+
   test('a deleted event\'s card says so', async () => {
     await household('Drift deleted');
     const gate = await plannedOn('Fix the gate', '2026-11-07');

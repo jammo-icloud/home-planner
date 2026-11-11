@@ -39,6 +39,11 @@ export interface LoadReport {
  */
 let seq = 0;
 
+/** A new event id: sortable, collision-free within a process, and readable in the raw file. */
+export function newEventId(now: Date = new Date()): string {
+  return `${now.getTime().toString(36)}-${String(++seq).padStart(6, '0')}`;
+}
+
 /** Keep the sequence past an id already in a log. */
 function pastId(id: string): void {
   const n = Number(id.split('-').at(-1));
@@ -123,7 +128,7 @@ export class Store {
 
   /** Sortable, collision-free within a process (across every household's log), and readable in the raw file. */
   #id(): string {
-    return `${this.#now().getTime().toString(36)}-${String(++seq).padStart(6, '0')}`;
+    return newEventId(this.#now());
   }
 
   /**

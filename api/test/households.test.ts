@@ -516,9 +516,11 @@ describe('restoring a whole household keeps its zone and model, and chooses its 
 
     const target = await new Households(await dir()).create('alice', 'Mine');
     const before = target.store.state.eventCount;
-    const events = eventsToApply(planRestore(target.store.state, backup, ['settings']));
-    assert.equal(events.length, 1);
-    await assert.rejects(() => target.store.adopt(events), /owner/);
+    // Refused at the preview, in words, rather than said yes to and refused by the fold.
+    const plan = planRestore(target.store.state, backup, ['settings']);
+    assert.deepEqual(plan.collisions.map((c) => [c.kind, c.what]), [['owner', 'time zone']]);
+    assert.match(plan.collisions[0]!.why, /chosen by someone-else, but only alice/);
+    assert.throws(() => eventsToApply(plan), /collision/);
     assert.equal(target.store.state.eventCount, before);
     assert.equal(target.store.state.zone, null);
   });
