@@ -593,6 +593,13 @@ const ADDED_010: readonly Line[] = [
   ['B37', "'It costs'", 'budget'], ['B37', 'Leave the cost empty for none.', 'budget'],
   // B38: the count sentence is not the server's first effect ("<name> disappears from the budget" is), so it is found by its words.
   ['B38', "headLine.textContent = proposal.effects?.find((x) => x.includes('back to To sort'))", 'budget'],
+  // Task 9 fix round 1: one form at a time across Each month and the foot; a late goal proposal stays out of a slot
+  // given back; a category just removed leaves the list; the foot form's Cancel is what Escape presses.
+  ['B34', "each.slot.querySelector(':scope > .goal-form, :scope > form')", 'budget'], ['B34', 'closeBillForm();\n      closeFoot();\n      const amt', 'budget'],
+  ['B37', 'if (envelopePage !== page || !wrap.isConnected) return;\n      showProposal(slot, proposal, go);', 'budget'],
+  ['B36', 'categories = categories.filter((c) => c.id !== gone.id);', 'budget'], ['B36', 'field.el.replaceWith(fresh.el);', 'budget'],
+  ['B35', "form.setAttribute('aria-labelledby', title.id);", 'budget'],
+  ['B39', "const cancel = textBtn('Cancel', 'btn', null, close);\n    cancel.dataset.cancel = '';\n    const save = node('button', 'btn primary', 'Save');", 'budget'],
 ];
 const GONE_010: readonly Line[] = [
   // Task 7: every trace of a second budget, Compare, the outside note and the savings band of its own.

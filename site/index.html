@@ -5308,25 +5308,31 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
     each.el.querySelector('.ep-sec-h').scrollIntoView({ block: 'start' });
     goalForm(each.slot, e, { onCancel: () => renderEnvelopePage({ focus: back }) });
   };
-  // Put away an open goal form without drawing the page again: Each month as it was.
-  const closeGoal = () => {
-    if (!each.slot.querySelector(':scope > .goal-form')) return;
+  // Put away a form open in Each month (the goal, or Change's figure) without drawing the page again: Each month as it was.
+  const closeEach = () => {
+    if (!each.slot.querySelector(':scope > .goal-form, :scope > form')) return;
     drawEach();
     each.el.hidden = asking;
   };
   /**
    * Rename, or Change its category: a small form in the slot under the foot, written at once (Ruling 9), since
-   * neither moves money. Opening one closes an open Bills form, the goal form and the other. A refusal (a name
-   * another envelope has, a category another member has just removed) is said in the form with what was typed kept.
+   * neither moves money. Opening one closes an open Bills form, a form in Each month and the other. A refusal (a
+   * name another envelope has, a category another member has just removed) is said in the form with what was typed
+   * kept; a category just removed is taken out of the list. Its title is the form's label, not a heading, since the
+   * slot sits after Receipts in the page's outline.
    */
   const openFootForm = (kind) => {
     closeBillForm();
     closeFoot();
-    closeGoal();
+    closeEach();
     const opener = footSlot.previousElementSibling.querySelector(`[data-key="${kind}"]`);
     const form = node('form', 'ep-form ep-card');
     form.noValidate = true;
-    const categories = month.categories.map((c) => ({ id: c.id, label: c.label }));
+    const title = node('p', 'ep-q', kind === 'rename' ? 'Rename' : 'Change its category');
+    title.id = `ep-foot-q-${++epFieldIds}`;
+    form.setAttribute('aria-labelledby', title.id);
+    form.appendChild(title);
+    let categories = month.categories.map((c) => ({ id: c.id, label: c.label }));
     let name = null;
     let field = null;
     if (kind === 'rename') {
@@ -5335,10 +5341,10 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
       name.maxLength = 40;
       name.autocomplete = 'off';
       name.value = e.label;
-      form.append(node('h3', 'ep-q', 'Rename'), epField('Name', name));
+      form.appendChild(epField('Name', name));
     } else {
       field = categoryField(categories, e.category);
-      form.append(node('h3', 'ep-q', 'Change its category'), field.el);
+      form.appendChild(field.el);
     }
     const close = () => {
       form.remove();
@@ -5367,19 +5373,27 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
         const place = field.value();
         if (!place) { say('Give the new category a name'); field.focus(); return; }
         if (place.category === e.category) { close(); return; }
-        send = () => approveNow('change_envelope', { envelope: e.id, ...field.value() });
+        send = () => approveNow('change_envelope', { envelope: e.id, ...place });
       }
       const page = envelopePage;
       cancel.disabled = save.disabled = true;
       try {
         await send();
       } catch (ex) {
-        if (envelopePage !== page) return;
-        // The server names only an id for what another member has just removed: said here in words.
+        // Back, or the form put away for another while the press was out: nothing to say it in.
+        if (envelopePage !== page || !form.isConnected) return;
+        // The server names only an id for what another member has just removed: said here in words, and the
+        // list drawn again without it, on the envelope's own category.
         const gone = categories.find((c) => c.id === field?.value()?.category);
-        say(gone && ex.message === `no category ${gone.id}` ? `${gone.label} has just been removed. Choose another category.`
-          : ex.message === `no envelope ${e.id}` ? `${e.label} has just been removed. Go Back to see the list.`
-          : ex.message);
+        if (gone && ex.message === `no category ${gone.id}`) {
+          categories = categories.filter((c) => c.id !== gone.id);
+          const fresh = categoryField(categories, e.category);
+          field.el.replaceWith(fresh.el);
+          field = fresh;
+          say(`${gone.label} has just been removed. Choose another category.`);
+        } else {
+          say(ex.message === `no envelope ${e.id}` ? `${e.label} has just been removed. Go Back to see the list.` : ex.message);
+        }
         cancel.disabled = save.disabled = false;
         err.focus({ preventScroll: true });
         return;
@@ -5391,7 +5405,7 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
         await loadBudget();
       } catch {
         page.focusNext = null;
-        if (envelopePage !== page) return;
+        if (envelopePage !== page || !form.isConnected) return;
         cancel.disabled = false;
         say('Saved. The screen could not be read again; go Back to see it.');
         err.focus({ preventScroll: true });
@@ -5412,6 +5426,7 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
     if (e.needsFigure && !open) { each.slot.replaceChildren(envLine('No figure yet', '', null)); return; }
     const change = open ? textBtn('Change', 'btn bare', 'change', () => {
       closeBillForm();
+      closeFoot();
       const amt = e.basis?.amount ?? e.templateExact;
       const { form, control } = envFigureForm(e, {
         amount: Number.isFinite(toCents(amt)) ? plainDollars(amt) : '',
@@ -5867,10 +5882,11 @@ function goalForm(slot, e, { onCancel }) {
         }
       }
       const { proposal } = await api('/api/tools/set_sinking_goal', args);
-      if (envelopePage !== page) return;
+      // Back, or the form put away for Rename or Change its category meanwhile: the slot is Each month's again.
+      if (envelopePage !== page || !wrap.isConnected) return;
       showProposal(slot, proposal, go);
     } catch (ex) {
-      if (envelopePage !== page) return;
+      if (envelopePage !== page || !wrap.isConnected) return;
       msg.textContent = ex.message;
     }
   });
