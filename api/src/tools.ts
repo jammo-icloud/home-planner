@@ -914,7 +914,7 @@ const moveMoney: Tool = {
       to: { type: 'string' },
       amountCents: { type: 'number', description: 'Whole cents. $96.00 is 9600.' },
       why: { type: 'string', description: 'One line. This is what gets read the next morning.' },
-      onlyWhileShort: { type: 'boolean', description: 'Refuse unless the envelope moved to is still short, so a cover is not made twice.' },
+      onlyWhileShort: { type: 'boolean', description: 'Refuse unless the envelope the money goes to is still short, so a cover is not made twice.' },
     },
     required: ['from', 'to', 'amountCents', 'why'],
   },

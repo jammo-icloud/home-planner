@@ -79,7 +79,8 @@ export function pickerOptions(state: State): PickerOption[] {
   ];
 }
 
-const SYSTEM = `You sort a household's bank transactions into their budget envelopes.
+/** What Haiku is told; exported so a test can read its words. */
+export const SYSTEM = `You sort a household's bank transactions into its envelopes.
 
 You are given the envelopes (each with an id and a name) and a list of payee strings exactly as the
 bank wrote them. For each payee, choose the one envelope id it most plausibly belongs to, and say how

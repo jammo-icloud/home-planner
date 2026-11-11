@@ -183,6 +183,9 @@ export function scorePredictions(state: State, today: Day): ScoredPrediction[] {
 
 const line = (label: string, value: string): string => `  ${label}: ${value}`;
 
+/** "1 receipt", "3 receipts". */
+const receipts = (n: number): string => `${n} receipt${n === 1 ? '' : 's'}`;
+
 /**
  * Render the snapshot as text.
  *
@@ -257,7 +260,7 @@ export function facts(
 
   if (snap.toSort.count) {
     parts.push('');
-    parts.push(`UNCATEGORISED: ${snap.toSort.count} transactions — ${fmt(snap.toSort.outflow)} out, `
+    parts.push(`TO SORT: ${receipts(snap.toSort.count)} — ${fmt(snap.toSort.outflow)} out, `
       + `${fmt(snap.toSort.inflow)} in`
       + (snap.toSort.oldest ? `, oldest ${snap.toSort.oldest}` : '')
       + '. Only the outflow is unexplained spending; the inflow is mostly pay and card payments.');
@@ -653,7 +656,7 @@ async function gather(store: Store, o: HouseholdOptions): Promise<Gathered> {
   const calendar = await calendarBlock(state, o, tz);
 
   const text = [
-    month ? month.text : `TODAY IS ${o.today}.\n\nTHIS MONTH\n  no budget open for ${monthOf(o.today)}.`,
+    month ? month.text : `TODAY IS ${o.today}.\n\nTHIS MONTH\n  ${monthOf(o.today)} is not open yet.`,
     ['PLANS', ...plans.lines].join('\n'),
     ['HOUSEHOLD CALENDAR', ...calendar.lines].join('\n'),
   ].join('\n\n');
@@ -964,14 +967,14 @@ function fallback(snap: Snapshot, changeCount: number, why: string): Drafted {
 }
 
 /** The month in plain words, without saying who wrote it. */
-function plainMonth(snap: Snapshot, changeCount: number): Drafted {
+export function plainMonth(snap: Snapshot, changeCount: number): Drafted {
   const over = snap.pace.filter((p) => p.status === 'over');
   const heading = over.length
     ? `${over.length} envelope${over.length > 1 ? 's are' : ' is'} over: ${over.map((p) => p.label).join(', ')}`
     : !snap.balanced
       ? `${fmt(snap.view.toAssign)} still needs assigning`
       : snap.toSort.count
-        ? `${snap.toSort.count} transactions still need categorising`
+        ? `${receipts(snap.toSort.count)} to sort`
         : 'Nothing needs attention today.';
   return {
     headline: heading,
@@ -979,7 +982,7 @@ function plainMonth(snap: Snapshot, changeCount: number): Drafted {
       + `spent ${fmt(snap.view.activity)}, ${fmt(snap.view.toAssign)} left to assign. `
       // Unsorted receipts are in no envelope, so "spent" leaves them out.
       + (snap.toSort.count
-        ? `${snap.toSort.count} receipt${snap.toSort.count === 1 ? '' : 's'} `
+        ? `${receipts(snap.toSort.count)} `
           + `(${fmt(snap.toSort.outflow)} out) ${snap.toSort.count === 1 ? 'is' : 'are'} not in an envelope yet. `
         : '')
       + `${changeCount} change${changeCount === 1 ? '' : 's'} since the last briefing.`,
@@ -1007,7 +1010,7 @@ function householdFallback(g: Gathered, why: string): Drafted {
   return {
     headline,
     body: [
-      money ? money.body : 'No budget is open for this month.',
+      money ? money.body : 'This month is not open yet.',
       g.plans.plain,
       g.calendar.plain,
       `(Written without Claude — ${why}.)`,

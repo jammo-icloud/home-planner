@@ -225,7 +225,7 @@ describe('the facts Claude is given', () => {
       { id: 'x9', date: '2026-08-11', payee: 'LAKESIDE VET', amount: parseDollars('-240.00'), dedupeKey: 'x9', envelope: 'vet' },
     ] });
     const snap = snapshot(store.state, '2026-08', TODAY)!;
-    assert.match(facts(snap, store.state, [], [], TODAY), /: 2 transactions — \$250 out/);
+    assert.match(facts(snap, store.state, [], [], TODAY), /^TO SORT: 2 receipts — \$250 out/m);
   });
 
   test('the changes section quotes the note, because every edit has one', async () => {
@@ -946,14 +946,14 @@ describe('one briefing for the household', () => {
     assert.ok(latest.op === 'thread.briefing' && latest.replaces === first.event && latest.source === 'household');
   });
 
-  test('with no budget open it still briefs on plans and the calendar', async () => {
+  test('with this month not open it still briefs on plans and the calendar', async () => {
     const { store } = await household();
     const f = await householdFacts(store, opts({ sid: null, today: '2026-09-02' }));
-    assert.match(f.text, /THIS MONTH\n.*no budget open/);
+    assert.match(f.text, /THIS MONTH\n {2}2026-09 is not open yet\./);
     assert.ok(!f.sources.includes('budget'));
     const b = await noKey(() => briefHousehold(store, opts({ sid: null, today: '2026-09-02' })));
     assert.equal(b.writtenBy, 'fallback');
-    assert.match(b.body, /No budget is open/);
+    assert.match(b.body, /This month is not open yet\./);
   });
 
   test('the household briefing opens the day, and the budget\'s own section stands aside', async () => {
