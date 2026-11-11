@@ -22,7 +22,7 @@ async function fresh(seed: NewEvent[] = []): Promise<Store> {
   return store;
 }
 
-const placitas: NewEvent = { op: 'household.locate', location: { label: 'Placitas, NM' }, why: 'where we live' };
+const placitas: NewEvent = { op: 'household.locate', location: { label: 'Springfield, IL' }, why: 'where we live' };
 const open: NewEvent = { op: 'month.open', month: '2026-11', income: cents(0) };
 const envelope: NewEvent[] = [
   { op: 'category.define', category: 'groceries', label: 'Groceries' },
@@ -48,7 +48,7 @@ describe('where the walkthrough is', () => {
     const r = firstRun(s.state, TODAY);
     assert.equal(r.step, 'income');
     assert.equal(r.started, true);
-    assert.equal(r.location, 'Placitas, NM');
+    assert.equal(r.location, 'Springfield, IL');
     assert.deepEqual(r.income.suggestion, { exact: '$6,400.00', from: 'source' });
   });
 

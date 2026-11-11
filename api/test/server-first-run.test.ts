@@ -92,29 +92,29 @@ describe('approving in the request that runs the tool', () => {
   test('first-run answers the step, with no budget to ask about', async () => {
     await fresh('Placitas');
     assert.equal((await call('GET', '/api/budget/first-run')).json.step, 'where');
-    assert.equal((await where('Placitas, NM')).status, 200);
+    assert.equal((await where('Springfield, IL')).status, 200);
     const r = await call('GET', '/api/budget/first-run');
     assert.equal(r.json.step, 'income');
-    assert.equal(r.json.location, 'Placitas, NM');
+    assert.equal(r.json.location, 'Springfield, IL');
   });
 
   test('approve runs a named tool and writes it as the member, in one request', async () => {
-    const r = await where('Cabin, NM');
+    const r = await where('Shelbyville, IL');
     assert.equal(r.status, 200, JSON.stringify(r.json));
     assert.equal(r.json.committed[0].op, 'household.locate');
     assert.equal(r.json.committed[0].who, 'alex');
     assert.deepEqual(r.json.touches, { month: null, envelopes: [] });
-    assert.equal((await call('GET', '/api/budget')).json.location.label, 'Cabin, NM');
+    assert.equal((await call('GET', '/api/budget')).json.location.label, 'Shelbyville, IL');
   });
 
   test('a tool outside the set is refused with approve and writes nothing', async () => {
-    const last = (await where('Mesa, NM')).json.lastEventId;
+    const last = (await where('Capital City, IL')).json.lastEventId;
     const r = await approve('define_category', { category: 'pets', label: 'Pets' });
     assert.equal(r.status, 400);
     assert.match(r.json.error, /not approved in one step/);
     const cats = await call('GET', '/api/categories');
     assert.ok(!cats.json.categories.some((c: any) => c.id === 'pets'));
-    const next = (await where('Vega, NM')).json.lastEventId;
+    const next = (await where('Ogdenville, IL')).json.lastEventId;
     assert.equal(seq(next), seq(last) + 1, 'one write after the last one before the refusal');
   });
 
@@ -124,7 +124,7 @@ describe('approving in the request that runs the tool', () => {
     const again = await approve('open_month', { month: thisMonth, incomeCents: 0 });
     assert.ok(again.status >= 400 && again.status < 500, String(again.status));
     assert.match(again.json.error, /already open/);
-    const next = await where('Sandia, NM');
+    const next = await where('North Haverbrook, IL');
     assert.equal(seq(next.json.lastEventId), seq(first.json.lastEventId) + 1);
   });
 

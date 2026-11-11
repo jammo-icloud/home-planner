@@ -471,6 +471,15 @@ function validateSinking(e: Event): void {
     case 'savings.account':
       if (e.account !== null && !named(e.account)) throw refuse('the savings account is named, or null for none');
       return;
+    case 'household.locate': {
+      // Null clears it; anything else is a place with a name to say back.
+      const loc: unknown = e.location;
+      if (loc === null) return;
+      if (typeof loc !== 'object' || loc === undefined || Array.isArray(loc) || !named((loc as { label?: unknown }).label)) {
+        throw refuse('where the household is has a name (location.label), or is null to clear it');
+      }
+      return;
+    }
   }
 }
 
@@ -1240,7 +1249,7 @@ function fold(d: Draft, e: Event): void {
     }
 
     case 'household.locate': {
-      d.location = e.location;
+      d.location = e.location ?? null;
       return;
     }
 

@@ -36,6 +36,14 @@ describe('one budget per household', () => {
     assert.throws(() => requireReason(ev({ op: 'household.locate', location: null } as never)));   // the store's append runs it
     assert.ok(REQUIRES_WHY.has('household.locate'));
   });
+  test('household.locate takes a place with a name, or null to clear it', () => {
+    const at = (location: unknown) => ev({ op: 'household.locate', location, why: 'w' } as never);
+    for (const bad of [undefined, 'Springfield, IL', { postal: '62701' }, { label: '  ' }, ['Springfield']]) {
+      assert.throws(() => replay([claim, at(bad)]), /where the household is has a name/, JSON.stringify(bad));
+    }
+    const cleared = replay([claim, at({ label: 'Springfield, IL' }), at(null)]);
+    assert.equal(cleared.location, null);
+  });
   test('no tool takes a budget, and the budget tools are gone', () => {
     for (const t of TOOLS) assert.equal(JSON.stringify(t.input).includes('"budget"'), false, t.name);
     assert.deepEqual(TOOLS.map((t) => t.name).filter((n) => ['create_budget', 'rename_budget', 'archive_budget', 'compare_budgets', 'set_budget_location'].includes(n)), []);
@@ -49,5 +57,13 @@ describe('one budget per household', () => {
     // Where it is skipped and the month opened: the income step is done, so Envelopes, though nothing has started it.
     const skipped = replay([claim, ev({ op: 'month.open', month: '2026-11', income: cents(0) })]);
     assert.deepEqual(pick(firstRun(skipped, today)), { step: 'envelopes', started: false });
+  });
+  test('envelopes alone start the budget, with no place and the month closed', () => {
+    const s = replay([claim, ev({ op: 'category.define', category: 'groceries', label: 'Groceries' }),
+      ev({ op: 'envelope.define', envelope: 'groc', label: 'Groceries', group: 'Food', match: { categories: ['groceries'] }, template: cents(60000) }),
+      ev({ op: 'month.open', month: '2026-11', income: cents(500000) }),
+      ev({ op: 'month.close', month: '2026-11', closed: true, why: 'done' })]);
+    assert.equal(s.location, null);
+    assert.deepEqual(pick(firstRun(s, '2026-11-10')), { step: null, started: true });
   });
 });
