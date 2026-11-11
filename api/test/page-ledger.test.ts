@@ -321,7 +321,7 @@ const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
 const DRAWN_LATER: readonly string[] = [];
 /** Doors the server has closed that the page still knocks on, each until the page task that drops its last call (plan 2026-11-10-one-budget-envelopes, Ruling 20). */
-const RETIRING: readonly string[] = ['/api/tools/create_budget', '/api/tools/set_budget_location'];
+const RETIRING: readonly string[] = [];
 
 describe('the page ledger', () => {
   test('a Calendar form says a refusal once: only a week that cannot be read uses the error box', () => {
@@ -564,6 +564,10 @@ const KEPT_010: readonly Line[] = [
   // Task 11: the savings account's form, its hint, and the Months band's words.
   ['B65', "submit: 'Record it'", 'page'], ['B65', 'Envelopes saved in Savings are checked against this account.', 'page'],
   ['B68', 'Opened plans and every move made in them.', 'page'],
+  // Task 12: the walkthrough's heading, rail and words; the income step's; the pricing step's two buttons.
+  ['B69', "Start the household's budget", 'budgetMarkup'], ['B69', "['envelopes', 'Envelopes']", 'budget'],
+  ['B71', 'the same every month', 'budget'], ['B71', 'seen in imports', 'budget'],
+  ['B74', "'Set the location'", 'budget'], ['B74', "'Finish'", 'budget'],
 ];
 const ADDED_010: readonly Line[] = [
   // Task 7: the head names the month; two tabs; Where it is for the household; the list by category; the words that named a budget.
@@ -632,6 +636,12 @@ const ADDED_010: readonly Line[] = [
   ['B63', "key: 'savings', title: 'Savings account'", 'page'], ['B63', 'The account the envelopes saved in Savings live in.', 'page'],
   ['B66', "name: 'Receipts and rules'", 'page'], ['B66', "Needs the budget's envelopes.", 'page'],
   ['B67', "{ key: 'budget', name: 'Budget'", 'page'], ['B67', "new Set(['facts', 'budget', 'months', 'thread'])", 'page'],
+  // Task 12: Where it is in place of naming a budget, its Skip held on the page; the envelopes under the starter categories.
+  ['B70', 'function walkWhereStep(', 'budget'], ['B70', "'Where it is'", 'budget'], ['B70', 'Give a town or a ZIP, or Skip.', 'budget'],
+  ['B70', "approveNow('set_location'", 'budget'], ['B70', 'walkWhereSkipped = true', 'budget'],
+  ['B73', 'for (const [gi, g] of fr.categories.entries())', 'budget'], ['B73', 'categoryField(fr.categories', 'budget'],
+  // Two rows Task 10 carried without a pin, so the completeness test below finds every row: Import's rules offered one by one.
+  ['B58', 'void ruleOffer(item, { match, envelope: r.envelope, label, txnId: r.id }', 'budget'],
 ];
 const GONE_010: readonly Line[] = [
   // Task 7: every trace of a second budget, Compare, the outside note and the savings band of its own.
@@ -657,7 +667,7 @@ const GONE_010: readonly Line[] = [
   ['B37', 'Kept on the categories, so every budget sets aside the same.', 'page'], ['B37', 'e.categories', 'page'],
   ['B38', 'Its receipts stay, but stop belonging to any envelope.', 'page'],
   // Task 10: the uncategorised filter, the remember tick and its text, the per-row picker list, the proposal a sort was, the
-  // category a restore sent. `r.category` is pinned below on Import and Restore alone: the walkthrough's rows (Task 12) still say it.
+  // category a restore sent. `r.category` is pinned with Task 12's rows, on the whole budget region.
   ['B83', "w.kind === 'unsorted'", 'page'], ['B41', 'uncategorizedOnly', 'page'], ['B42', "' remember '", 'page'],
   ['B42', 'remember: always ask to divide', 'page'], ['B42', 'Payee text the rule matches', 'page'],
   ['B47', 'Not in this budget', 'matchSrc'], ['B47', 'records the category that feeds it', 'page'],
@@ -669,11 +679,14 @@ const GONE_010: readonly Line[] = [
   ['B61', "['House', 'People', 'Future']", 'page'], ['B61', 'function categoryList(', 'page'], ['B61', 'categoriesCache', 'page'],
   ['B61', '.cat-kind', 'css'], ['B64', 'Edit the categories', 'page'], ['B64', 'categoriesInUse', 'page'],
   ['B66', 'Receipts, categories and rules', 'page'], ['B67', 'Budgets and envelopes', 'page'], ['B67', 'how categories are grouped', 'page'],
+  // Task 12: naming a budget, and the groups the envelopes step drew. With the walkthrough's rows gone, `r.category` is gone from the whole budget region.
+  ['B70', 'Name the budget', 'page'], ['B70', 'Make the budget', 'page'], ['B70', "'create_budget'", 'page'], ['B70', 'fr.budget', 'page'],
+  ['B73', "'Group'", 'page'], ['B73', 'fr.groups', 'page'], ['B54', 'r.category', 'budget'],
+  // The two rows Task 10 carried without a pin here: the proposal a sort was (B45, also its own test below) and Import's rules shown together (B58).
+  ['B45', "api('/api/tools/categorize_transactions', { assignments })", 'page'], ['B58', "'Remember them'", 'page'], ['B58', "'Show the rules'", 'page'],
 ];
 /** To sort's own code, for what it may never say again. */
 const queue = between(script, '// ── the unsorted queue', '// ── reading the screen again');
-/** Import and Restore a removed receipt, which read and send an envelope. */
-const importAndRestore = between(script, '// ── import', '// ── plan: the board and the card');
 describe('the page ledger: 0.10.0', () => {
   test('what 0.10.0 keeps, adds and takes away', () => {
     assert.deepEqual(missing(KEPT_010, true), []);
@@ -684,8 +697,8 @@ describe('the page ledger: 0.10.0', () => {
     assert.ok(queue.includes('async function loadUnsorted('), 'the queue is found');
     assert.equal(uncommented(queue).includes('Show what this would do'), false);
   });
-  test('Import and Restore say envelope where they said category (B54, B60)', () => {
-    assert.ok(importAndRestore.includes('function renderPreview(') && importAndRestore.includes('async function askToRestore('), 'the two are found');
-    assert.equal(uncommented(importAndRestore).includes('r.category'), false);
+  test('every row of the ledger is pinned', () => {
+    const rows = new Set([...KEPT_010, ...ADDED_010, ...GONE_010].map(([r]) => r));
+    assert.deepEqual(Array.from({ length: 84 }, (_, i) => `B${i + 1}`).filter((r) => !rows.has(r)), []);
   });
 });
