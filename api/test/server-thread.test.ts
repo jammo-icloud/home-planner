@@ -615,6 +615,27 @@ describe('drift on Today', () => {
     assert.ok(none.json.summary.includes('Every line selected from this backup is already here: there is nothing to restore.'), JSON.stringify(none.json.summary));
   });
 
+  test('facts restored in place twice: the second preview says there is nothing to restore, and the restore takes nothing', async () => {
+    await household('Facts twice');
+    const s = new Store({ path: join(await mkdtemp(join(tmpdir(), 'pb-restore-facts-')), 'events.jsonl') });
+    await s.load();
+    await s.append('alice', { op: 'household.claim', label: 'Elsewhere' });
+    await s.append('alice', [{ op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' },
+      { op: 'txn.add', txns: [{ id: 'srv-t1', date: '2026-08-02', payee: 'MARKET', amount: parseDollars('-12.00'), dedupeKey: 'srv-t1', category: 'food' }] }]);
+    const content = await readFile(s.path, 'utf8');
+    const first = await as(aliceDsm, 'POST', '/api/restore/preview', { content, scopes: ['facts'] });
+    assert.equal(first.json.canApply, true, JSON.stringify(first.json));
+    assert.equal((await as(aliceDsm, 'POST', '/api/restore', { content, scopes: ['facts'] })).status, 200);
+    const again = await as(aliceDsm, 'POST', '/api/restore/preview', { content, scopes: ['facts'] });
+    assert.equal(again.status, 200);
+    assert.equal(again.json.canApply, false, JSON.stringify(again.json));
+    assert.deepEqual(again.json.summary, ['Every line selected from this backup is already here: there is nothing to restore.']);
+    const before = ((await as(aliceDsm, 'GET', '/api/backup')).json as string).trim().split('\n').length;
+    const r = await as(aliceDsm, 'POST', '/api/restore', { content, scopes: ['facts'] });
+    assert.equal(r.json.restored ?? 0, 0, JSON.stringify(r.json));
+    assert.equal(((await as(aliceDsm, 'GET', '/api/backup')).json as string).trim().split('\n').length, before, 'nothing was written');
+  });
+
   test("alice's own backup with a plan restores as a household of its own", async () => {
     const s = new Store({ path: join(await mkdtemp(join(tmpdir(), 'pb-restore-own-')), 'events.jsonl') });
     await s.load();

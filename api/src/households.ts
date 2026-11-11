@@ -77,13 +77,6 @@ export const slugify = (label: string): string =>
     .slice(0, 39)
   || `household-${Date.now().toString(36)}`;
 
-/** The plans, stays, offers and conversation lines a line names, by id. */
-const NAMING = ['plan', 'stay', 'request', 'proposal', 'replyTo', 'replaces', 'event', 'drift', 'block'] as const;
-const named = (e: Event): string[] => NAMING.flatMap((k) => {
-  const v = (e as unknown as Record<string, unknown>)[k];
-  return typeof v === 'string' ? [v] : [];
-});
-
 export class Households {
   readonly dir: string;
   #open = new Map<string, Store>();
@@ -204,11 +197,14 @@ export class Households {
    * whoever holds the file, written before every carried line so their own
    * lines and the money fold. A carried line the fold still refuses because
    * its author, or whom it asks or hands a plan to, is not a member here is
-   * left out; so is a later line the fold refuses that names a plan, stay,
-   * offer or question one of those made, since it cannot stand without it.
-   * Which, and how many, is decided by folding, not by guessing, and the
-   * answer counts them by person. Nobody's `who` is rewritten. Any other
-   * refusal is a broken backup, and fails the restore with nothing written.
+   * left out. Once one has been, a later plan, conversation or booking line
+   * the fold refuses is left out too: it may lean on what went (a plan, a
+   * guest, an appointment, a goal), and no list of what leans on what would
+   * stay complete. It is counted apart, in words that do not claim why.
+   * Which lines, and how many, is decided by folding, not by guessing. Nobody's
+   * `who` is rewritten. A refusal of a money or settings line, or any refusal
+   * before something was left out, is a broken backup, and fails the restore
+   * with nothing written.
    *
    * The household's own choices are the owner's, and the backup's owner may not
    * be this one: left in, the fold would refuse them and the log would not load.
@@ -245,24 +241,15 @@ export class Households {
     const wrote = new Map<Actor, Event[]>();
     const toward = new Map<Actor, number>();
     let after = 0;
-    // What a left-out line made: its own id (an offer, a stay, a question), and
-    // the plan a left-out plan.create began. A refused line that names one of
-    // these was refused for that, and goes with it; any other refusal fails.
-    const gone = new Set<string>();
-    const leave = (e: Event) => {
-      gone.add(e.id);
-      if (e.op === 'plan.create') gone.add(e.plan);
-    };
     const kept = replayLeavingOut(lines, (e, err) => {
       if (err.outsider !== undefined) {
         if (err.outsider === e.who) wrote.set(e.who, [...(wrote.get(e.who) ?? []), e]);
         else toward.set(err.outsider, (toward.get(err.outsider) ?? 0) + 1);
-        leave(e);
         return true;
       }
-      if (named(e).some((id) => gone.has(id))) {
+      const band = scopeOf(e);
+      if ((wrote.size || toward.size) && (band === 'plans' || band === 'thread' || band === 'bookings')) {
         after++;
-        leave(e);
         return true;
       }
       return false;
@@ -302,7 +289,7 @@ export class Households {
     for (const [person, n] of toward) {
       summary.push(`Left out ${count(n, 'plan ')} asking or handing a plan to ${person}, who is not a member here.`);
     }
-    if (after) summary.push(`Left out ${count(after, 'more ')} that needed one of those.`);
+    if (after) summary.push(`Left out ${count(after, 'more ')} this household refused once those were gone.`);
     await retireShelves(store);
     this.#open.set(id, store);
     return { id, store, summary };

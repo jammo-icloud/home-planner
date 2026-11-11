@@ -76,6 +76,7 @@ export class ReplayError extends Error {
 interface Draft {
   categories: Map<string, Category>;
   budgets: Map<string, { id: string; label: string; archived?: boolean; location?: BudgetLocation; envelopes: Map<EnvelopeId, Envelope>; bills: Map<string, BillRecord> }>;
+  /** Receipts are replaced whole on every change, never edited in place, so a thaw shares them. */
   txns: Map<string, Txn>;
   rules: Rule[];
   months: Map<string, {
@@ -1350,28 +1351,34 @@ function fold(d: Draft, e: Event): void {
     }
 
     case 'txn.categorize': {
-      const t = d.txns.get(e.txn);
-      if (!t) return; // a categorize for a transaction since removed is inert, not fatal
+      const was = d.txns.get(e.txn);
+      if (!was) return; // a categorize for a transaction since removed is inert, not fatal
+      // A new receipt, never the one in the map: a thaw shares them, so an
+      // edit in place would reach the state it came from, and a dry run or a
+      // refused batch would change the live household without a line.
+      const t = { ...was };
       // Where the choice came from changes only when the choice does:
       // re-confirming the same category keeps "suggested by Claude".
       if (e.suggestedBy) t.suggestedBy = e.suggestedBy;
-      else if (t.category !== e.category) delete t.suggestedBy;
+      else if (was.category !== e.category) delete t.suggestedBy;
       t.category = e.category;
       delete t.split; // a receipt sorted whole is no longer in parts
       if (e.manual) t.manual = true;
+      d.txns.set(e.txn, t);
       return;
     }
 
     case 'txn.split': {
-      const t = d.txns.get(e.txn);
-      if (!t) return; // a split for a receipt since removed is inert, like a categorize
-      if (e.parts.reduce((total, p) => add(total, p.amount), ZERO) !== t.amount) {
+      const was = d.txns.get(e.txn);
+      if (!was) return; // a split for a receipt since removed is inert, like a categorize
+      if (e.parts.reduce((total, p) => add(total, p.amount), ZERO) !== was.amount) {
         throw new ReplayError('the parts of a split must add up to the receipt', e);
       }
-      t.category = SPLIT;
-      t.split = e.parts;
+      // A new receipt, as a categorize writes one: the old may be shared with the state.
+      const t = { ...was, category: SPLIT, split: e.parts };
       t.manual = true; // a split is always a human's call; rules must not override it
       delete t.suggestedBy;
+      d.txns.set(e.txn, t);
       return;
     }
 

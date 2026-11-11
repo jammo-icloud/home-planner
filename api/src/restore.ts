@@ -147,6 +147,34 @@ export interface RestorePlan {
   readonly summary: readonly string[];
 }
 
+/** What a line does, in a few words, for a collision that has only the fold's reason to give. */
+const DOING: Partial<Record<Event['op'], string>> = {
+  'plan.create': 'making a plan', 'plan.set': 'changing a plan', 'plan.state': "moving a plan along",
+  'plan.ask': 'asking someone to take a plan', 'plan.ask.accept': 'taking on a plan', 'plan.ask.decline': 'turning down a plan',
+  'plan.hand': 'handing on a plan', 'plan.remove': 'removing a plan', 'plan.goal': "setting a plan's goal",
+  'goal.rename': 'renaming a goal', 'goal.remove': 'removing a goal', 'plan.due': "dating a plan",
+  'plan.checklist': "changing a plan's checklist", 'plan.attach': 'adding a file to a plan', 'plan.detach': 'taking a file off a plan',
+  'plan.block': 'setting time aside for a plan', 'plan.unblock': 'freeing time set aside for a plan',
+  'calendar.appointment': 'adding an appointment', 'calendar.appointment.change': 'changing an appointment',
+  'calendar.appointment.remove': 'removing an appointment',
+  'txn.categorize': 'sorting a receipt', 'txn.split': 'splitting a receipt', 'txn.remove': 'removing a receipt',
+  'category.archive': 'archiving a category', 'envelope.define': 'setting up an envelope', 'envelope.remove': 'removing an envelope',
+  'bill.set': 'setting a bill', 'bill.remove': 'removing a bill',
+  'month.open': 'opening a month', 'month.close': 'closing a month', 'assign': 'setting an envelope for a month',
+  'move': 'moving money between envelopes', 'income.set': "setting a month's income",
+  'areas.remove': 'removing an area', 'areas.move': 'moving an area', 'areas.rename': 'renaming an area',
+  'guest.allow': 'adding a guest', 'guest.revoke': 'taking a guest off the list',
+  'booking.confirm': 'confirming a stay', 'booking.cancel': 'cancelling a stay', 'booking.suggest': 'suggesting other dates',
+  'booking.release': "taking a stay off the calendar", 'booking.unblock': 'freeing nights kept for the household',
+  'proposal.offer': 'a suggestion', 'proposal.decide': 'deciding a suggestion', 'thread.answer': 'an answer',
+};
+/** The fallback: the part of the household the line is about. */
+const ABOUT: Record<Scope, string> = {
+  facts: 'receipts', budgets: 'budgets', months: 'months', people: 'who is a member', thread: 'the conversation',
+  settings: 'settings', plans: 'plans', bookings: 'guests and stays',
+};
+const doing = (e: Event): string => DOING[e.op] ?? `a line about ${ABOUT[scopeOf(e)]}`;
+
 /** Where documents live, and what moved there: settings, but never restored in place. */
 const FOLDER_OPS: ReadonlySet<Event['op']> = new Set(['documents.folder', 'documents.moved']);
 
@@ -546,7 +574,7 @@ export function planRestore(
       const e = err.event;
       collisions.push({
         kind: err.outsider !== undefined ? 'owner' : 'refused',
-        what: e ? `${e.op} by ${e.who}` : 'a line of the backup',
+        what: e ? `${doing(e)}, by ${e.who}` : 'a line of the backup',
         why: `this household would refuse it: ${err.reason}`,
       });
     }
@@ -565,8 +593,9 @@ export function planRestore(
     const names = (who: string[]) => (who.length === 1 ? who[0]! : `${who.slice(0, -1).join(', ')} and ${who.at(-1)!}`);
     const joining = [...members].filter((m) => !target.members.has(m));
     const leaving = [...target.members].filter((m) => !members.has(m));
-    if (joining.length) summary.push(`Adds ${names(joining)} as member${joining.length === 1 ? '' : 's'}.`);
-    if (leaving.length) summary.push(`Removes ${names(leaving)} as member${leaving.length === 1 ? '' : 's'}.`);
+    const asMembers = (n: number) => (n === 1 ? 'as a member' : 'as members');
+    if (joining.length) summary.push(`Adds ${names(joining)} ${asMembers(joining.length)}.`);
+    if (leaving.length) summary.push(`Removes ${names(leaving)} ${asMembers(leaving.length)}.`);
   }
   if (counts.facts) {
     const receipts = take.reduce((n, e) => n + (e.op === 'txn.add' ? e.txns.length : 0), 0);
