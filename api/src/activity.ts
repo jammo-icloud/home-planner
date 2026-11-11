@@ -95,6 +95,23 @@ export function envelopeBefores(log: readonly Event[]): Map<string, EnvelopeBefo
   return out;
 }
 
+/**
+ * The name each removed category had when it went, by the removal's event id: once removed a
+ * category keeps no record, and an id is not a word a person reads.
+ */
+function removedCategoryNames(log: readonly Event[]): Map<string, string> {
+  const label = new Map<string, string>();
+  const out = new Map<string, string>();
+  for (const e of log) {
+    if (e.op === 'category.add' || e.op === 'category.rename') label.set(e.category, e.label);
+    else if (e.op === 'category.remove') {
+      const was = label.get(e.category);
+      if (was !== undefined) out.set(e.id, was);
+    }
+  }
+  return out;
+}
+
 /** Names as a list, "A, B and C", at most six of them and then "and N more". */
 function names(xs: readonly string[]): string {
   const shown = xs.length > 6 ? xs.slice(0, 6) : xs;
@@ -141,6 +158,7 @@ export function changes(
   log: readonly Event[] = all,
 ): Change[] {
   const befores = envelopeBefores(log);
+  const goneCategories = removedCategoryNames(log);
   const meaningful = all.filter(isChange);
   const out: Change[] = [];
   for (let i = 0; i < meaningful.length; i++) {
@@ -148,11 +166,17 @@ export function changes(
     const group = [e];
     while (i + 1 < meaningful.length && sameAction(e, meaningful[i + 1]!)) group.push(meaningful[++i]!);
     const d = describe(e, state, befores.get(e.id));
+    // A category removed reads by the name it had, which only the log still holds.
+    const gone = e.op === 'category.remove' && !state.categories.has(e.category) ? goneCategories.get(e.id) : undefined;
+    if (gone !== undefined) d.what = `removed the category ${gone}`;
     const removed = e.op === 'txn.remove' ? findRemoved(meaningful, e.txn, state) : undefined;
     out.push({
       id: e.id, at: e.at, who: e.who,
       what: group.length === 1 ? d.what
         : e.op === 'envelope.define' ? envelopesLine(group, state, befores)
+        // Categories or rules added together are named, each of them: "Home (7 times)" would name one.
+        : e.op === 'category.add' ? `added the categories ${names(group.map((x) => (x as Extract<Event, { op: 'category.add' }>).label))}`
+        : e.op === 'rule.add' ? `added the rules ${names(group.map((x) => `"${(x as Extract<Event, { op: 'rule.add' }>).match}"`))}`
         : `${d.what} (${group.length} times)`,
       why: d.why, count: group.length, events: group,
       ...(removed ? { removed } : {}),

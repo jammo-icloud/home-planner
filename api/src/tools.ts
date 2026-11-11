@@ -577,9 +577,13 @@ const listTransactions: Tool = {
     rows.sort((a, b) => b.date.localeCompare(a.date));
 
     // Under an envelope filter only that envelope's share of a split counts; the whole receipt would count it twice.
+    // Under To sort only, a split held for a part whose envelope is gone counts that part alone: its other parts
+    // are in their envelopes, and Spent includes them.
     const share = (t: Txn): number[] => envelope && envelope !== SPLIT
       ? partsOf(t).filter((p) => p.envelope === envelope).map((p) => p.amount)
-      : [t.amount];
+      : args['toSortOnly'] && held.has(t.id)
+        ? partsOf(t).filter((p) => held.get(t.id)!.includes(p.envelope as EnvelopeId)).map((p) => p.amount)
+        : [t.amount];
     const amounts = rows.flatMap(share);
 
     return {
@@ -1313,6 +1317,12 @@ const restoreTxn: Tool = {
 // ─── shaping the budget itself ───────────────────────────────────────────────
 
 /**
+ * A category id that is not here: removed (by another member, while a page was open) or never one. A removed
+ * category keeps no record, so there is no name to say, and an id is not a word a person reads.
+ */
+const NO_CATEGORY = 'That category is not here: it may have just been removed.';
+
+/**
  * Where an envelope goes: a category that is here (`category`, its id), or a new one by name
  * (`newCategory`), with the `category.add` that makes it. Exactly one of the two; with
  * `optional`, neither is none. A name a category here already has is refused, never merged.
@@ -1326,7 +1336,7 @@ function placeArg(state: State, args: Record<string, unknown>, optional = false)
   if (!id === !typed) throw new ToolError('Choose a category, or name a new one.');
   if (id) {
     const c = state.categories.get(id);
-    if (!c) throw new ToolError(`no category ${id}`, 404);
+    if (!c) throw new ToolError(NO_CATEGORY, 404);
     return { id, label: c.label, add: null };
   }
   const label = typed!.trim();
@@ -1350,7 +1360,7 @@ function categoryNameFree(state: State, label: string, id?: CategoryId): void {
 
 const categoryOr404 = (state: State, id: string) => {
   const c = state.categories.get(id);
-  if (!c) throw new ToolError(`no category ${id}`, 404);
+  if (!c) throw new ToolError(NO_CATEGORY, 404);
   return c;
 };
 
@@ -1517,7 +1527,7 @@ const removeCategory: Tool = {
   run(args, ctx) {
     const state = ctx.store.state;
     const c = categoryOr404(state, str(args['category'], 'category'));
-    if ([...state.envelopes.values()].some((e) => e.category === c.id)) throw new ToolError('Move its envelopes first.', 409);
+    if ([...state.envelopes.values()].some((e) => e.category === c.id)) throw new ToolError(`${c.label} still has envelopes. Move them first.`, 409);
     return ctx.proposals.put({
       tool: 'remove_category', who: ctx.who,
       summary: `Remove the category ${c.label}`,
@@ -2274,22 +2284,22 @@ const makeStarterEnvelopes: Tool = {
       if (!label) throw new ToolError('every envelope needs a name');
       if (labels.has(nameKey(label))) {
         const here = [...state.envelopes.values()].find((e) => nameKey(e.label) === nameKey(label));
-        throw new ToolError(here ? `There is already an envelope called ${here.label}.` : `${label} is named twice`, 409);
+        throw new ToolError(here ? `There is already an envelope called ${here.label}.` : `Two envelopes are called ${label}. Give each its own name.`, 409);
       }
       labels.add(nameKey(label));
 
       const given = typeof r['category'] === 'string' && r['category'] ? r['category'] : null;
       const fresh = typeof r['newCategory'] === 'string' && r['newCategory'].trim() ? r['newCategory'].trim() : null;
-      if (given && fresh) throw new ToolError(`${label} names a category and a new one; give one`);
+      if (given && fresh) throw new ToolError(`Choose a category for ${label}, or name a new one, not both.`);
       let category: CategoryId;
       if (given) {
         if (state.categories.has(given)) category = given;
         else {
           const starter = starterOf(given);
-          if (!starter) throw new ToolError(`no category ${given}`, 404);
+          if (!starter) throw new ToolError(`The category chosen for ${label} is not here: it may have just been removed.`, 404);
           // A category typed new in an earlier row, under this id or this name, would be written twice.
           const twice = [...typed.values()].find((c) => c.id === given || nameKey(c.label) === nameKey(starter.label));
-          if (twice) throw new ToolError(`${twice.label} is named as a new category and as the starter category ${starter.label}: choose it once`, 409);
+          if (twice) throw new ToolError(`${twice.label} is typed as a new category and is also the starter category ${starter.label}. Choose it from the list once.`, 409);
           // A starter category whose name is here already under another id is that one.
           const same = [...state.categories.values()].find((c) => nameKey(c.label) === nameKey(starter.label));
           if (same) category = same.id;
@@ -2312,7 +2322,7 @@ const makeStarterEnvelopes: Tool = {
           }
           category = made.id;
         }
-      } else throw new ToolError(`${label} needs a category`);
+      } else throw new ToolError(`Choose a category for ${label}.`);
 
       const base = typeof r['id'] === 'string' && r['id'] ? slug(r['id']) || undefined : undefined;
       const id = envelopeIdFor(envelopeTaken, label, base);

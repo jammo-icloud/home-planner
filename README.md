@@ -13,7 +13,7 @@ day's briefing, answers questions and suggests changes for a person to approve.
 Every change is an event appended to the household's log, a file that is never
 rewritten: a receipt imported, money moved between envelopes, a month opened, a
 plan's due date, a question asked, a suggestion approved, a member added. The
-balances, the history, the categories, who has access and where documents live
+balances, the history, the envelopes, who has access and where documents live
 are all a pure replay of that file, so the in-memory state can be thrown away and
 rebuilt at any time. Every event is attributed to the member who made it, and a
 backup of a household is its log.
@@ -45,12 +45,14 @@ reminders, never decisions, and go once the thing is set.
   how often it comes: a week, a fortnight, a month, a quarter, every six months
   or a year. The page shows the monthly it becomes before saving, and the
   envelope keeps saying where it came from ("from $14,400 a year"). An envelope
-  with categories can also take its figure from the average of its last one,
-  three or six months of receipts. The Budget screen is a list of envelopes;
+  can also take its figure from the average of its receipts over the last one,
+  three or six months. The Budget screen is a list of envelopes;
   each opens its own page with what is left, its figure, this month's funding
   and its receipts.
-- **Several budgets, compared.** A budget can carry a place, and Compare sets
-  budgets side by side.
+- **One budget, sorted into envelopes.** Each receipt is sorted into one
+  envelope, by a person helped by rules and Claude's suggestions; envelopes sit
+  under categories, the headings of the Budget page. Two homes are two
+  households.
 - **Bills.** An envelope's page lists its bills. A member may give one a Due, Auto Pay or Pay by date; with none, its day is the day of its last receipt. A receipt is what says it is paid, and the Calendar shows each bill on its day.
 
 ### Pricing from public data

@@ -320,8 +320,6 @@ const GONE: readonly Line[] = [
 const GONE_FROM_PLAN_MARKUP: readonly string[] = ['Both', 'Mine', 'Theirs'];
 /** Ids reached for at the top level that a function draws before anything asks for them: each named with who draws it. */
 const DRAWN_LATER: readonly string[] = [];
-/** Doors the server has closed that the page still knocks on, each until the page task that drops its last call (plan 2026-11-10-one-budget-envelopes, Ruling 20). */
-const RETIRING: readonly string[] = [];
 
 describe('the page ledger', () => {
   test('a Calendar form says a refusal once: only a week that cannot be read uses the error box', () => {
@@ -366,8 +364,7 @@ describe('the page ledger', () => {
     for (const m of script.matchAll(/approveNow\('([a-z_]+)'|tool: '([a-z_]+)'/g)) called.add(`/api/tools/${m[1] ?? m[2]}`);
     const unanswered = [...called].filter((route) => (route.startsWith('/api/tools/')
       ? !tools.includes(`name: '${route.slice('/api/tools/'.length)}'`) : !server.includes(route)));
-    assert.deepEqual(unanswered.filter((r) => !RETIRING.includes(r)), []);
-    assert.deepEqual(RETIRING.filter((r) => !unanswered.includes(r)), [], 'a door the page no longer calls, or one still open, comes off RETIRING');
+    assert.deepEqual(unanswered, []);
     assert.ok(called.size >= 10, 'the pattern still finds the routes the page calls');
     const subs = new Set([...script.matchAll(/planPath\([^()]*?, ['`]\/([a-z-]+)/g)].map((m) => m[1]!));
     assert.ok(subs.size >= 10, 'the pattern still finds the plan sub-routes');
@@ -705,5 +702,9 @@ describe('the page ledger: 0.10.0', () => {
   test('every row of the ledger is pinned', () => {
     const rows = new Set([...KEPT_010, ...ADDED_010, ...GONE_010].map(([r]) => r));
     assert.deepEqual(Array.from({ length: 84 }, (_, i) => `B${i + 1}`).filter((r) => !rows.has(r)), []);
+  });
+  test('a household chosen on the picker that cannot then be read (a log from before 0.10.0) lands back on the picker, saying why', () => {
+    const open = between(script, 'async function openHousehold(', "$('hh-signout')");
+    assert.match(open, /try \{ await enterApp\(\); \} catch \(ex\) \{ await pickerSaying\(ex\); \}/);
   });
 });

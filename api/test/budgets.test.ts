@@ -95,7 +95,7 @@ describe('changing the shape of an envelope', () => {
     for (const [name, args] of [['add_envelope', { label: 'X', category: 'invented' }],
       ['change_envelope', { envelope: 'util', category: 'invented' }]] as const) {
       await assert.rejects(() => run(name, args, ctx), (e: unknown) =>
-        e instanceof ToolError && e.status === 404 && e.message === 'no category invented', name);
+        e instanceof ToolError && e.status === 404 && e.message === 'That category is not here: it may have just been removed.', name);
     }
   });
 

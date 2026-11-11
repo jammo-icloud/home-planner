@@ -258,6 +258,14 @@ describe('reads answer questions in one call', () => {
     assert.equal(r.moneyIn, '$250.00');
   });
 
+  test("To sort's money out counts only the part of a split whose envelope is gone", async () => {
+    const c = await ctx();
+    await splitX4(c);
+    await c.store.append('alice', { op: 'envelope.remove', envelope: 'util', why: 'moved' });
+    const r = call('list_transactions', { toSortOnly: true }, c) as Record<string, any>;
+    assert.deepEqual([r.matched, r.moneyOut, r.moneyIn], [2, '$124.00', '$0.00'], 'x3 whole ($120) and x4\'s Utilities part ($4), not its Daily life part');
+  });
+
   test('list_transactions filters the shared ledger', async () => {
     const c = await ctx();
     const all = call('list_transactions', {}, c) as Record<string, any>;
@@ -444,6 +452,27 @@ describe('with the household at hand, a sentence uses names', () => {
       ['renamed the envelope Rent to Housing; put Water under People']);
     assert.deepEqual(await lineFor(many.slice(0, 4).map((e) => ({ ...e, label: `${e.label}x` }))),
       ['changed the envelopes A1x, A2x, A3x and A4x']);
+  });
+
+  test('categories and rules written together are each named, and a removed category by the name it had', async () => {
+    const c = await ctx();
+    const before = (await c.store.since(null)).length;
+    await c.store.append('alice', [
+      { op: 'category.add', category: 'food', label: 'Food' }, { op: 'category.add', category: 'fun', label: 'Fun' },
+      { op: 'category.add', category: 'kids', label: 'Children' },
+    ]);
+    await c.store.append('alice', [
+      { op: 'rule.add', rule: 'r1', match: 'PAYMENT THANK YOU', envelope: TRANSFER }, { op: 'rule.add', rule: 'r2', match: 'PAYROLL', envelope: INCOME },
+    ]);
+    await c.store.append('alice', { op: 'category.rename', category: 'kids', label: 'Kids' });
+    await c.store.append('bob', { op: 'category.remove', category: 'kids' });
+    const log = await c.store.since(null);
+    assert.deepEqual(changes(log.slice(before), c.store.state, log).map((r) => r.what), [
+      'added the categories Food, Fun and Children',
+      'added the rules "PAYMENT THANK YOU" and "PAYROLL"',
+      'renamed a category to Kids',
+      'removed the category Kids',
+    ]);
   });
 
   test('an envelope removed and its name added again reads as added, and the old record is left as it was', async () => {
@@ -883,7 +912,7 @@ describe('envelopes and categories, as Claude proposes them', () => {
     assert.deepEqual(events('rename_category', { category: 'house', label: 'Home' }), [{ op: 'category.rename', category: 'house', label: 'Home' }]);
     assert.deepEqual(events('move_category', { category: 'house', direction: 'up' }), [{ op: 'category.move', category: 'house', to: 0 }]);
     assert.throws(() => call('remove_category', { category: 'house' }, c), (e: unknown) =>
-      e instanceof ToolError && e.status === 409 && e.message === 'Move its envelopes first.');
+      e instanceof ToolError && e.status === 409 && e.message === 'House still has envelopes. Move them first.');
     assert.equal(c.store.state.eventCount, before);
   });
 

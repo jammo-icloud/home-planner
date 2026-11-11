@@ -655,8 +655,10 @@ export function planRestore(
     summary.push(`${opened} opened month${opened === 1 ? '' : 's'} and everything adjusted in them`);
   }
   if (counts.thread) {
-    const said = take.filter((e) => e.op !== 'proposal.decide' && e.op !== 'flag.seen').length;
-    summary.push(`${said} messages and suggestions from the conversation, with what was decided`);
+    // Only the conversation's own lines: what was said and suggested, not what was decided on it, nor any other band's.
+    const said = take.filter((e) => scopeOf(e) === 'thread' && e.op !== 'proposal.decide' && e.op !== 'flag.seen').length;
+    summary.push(said ? `${counted(said, 'message or suggestion', 'messages and suggestions')} from the conversation, with what was decided`
+      : 'what was decided on the conversation\'s suggestions');
   }
   if (counts.settings) {
     summary.push('the household\'s settings: areas, links, calendars, the arrival note, appearance, the time zone, booking and the envelope model');

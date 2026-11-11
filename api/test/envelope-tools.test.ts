@@ -220,19 +220,19 @@ describe('changing an envelope and the headings', () => {
     await refusedWith(approve('rename_category', { category: 'food', label: 'food and drink' }), 'nothing would change');
   });
   test('a category is removed only when empty', async () => {
-    await refusedWith(approve('remove_category', { category: 'food' }), 'Move its envelopes first.');
+    await refusedWith(approve('remove_category', { category: 'food' }), 'Food still has envelopes. Move them first.');
     await approve('add_category', { label: 'Pets' });
     const r = await approve('remove_category', { category: 'pets' });
     assert.equal(r.summary, 'Remove the category Pets');
     assert.equal(state().categories.has('pets'), false);
   });
   test('a heading or envelope that went meanwhile is said, not guessed', async () => {
-    await refusedWith(approve('add_envelope', { label: 'X', category: 'gone' }), 'no category gone');
+    await refusedWith(approve('add_envelope', { label: 'X', category: 'gone' }), 'That category is not here: it may have just been removed.');
     await refusedWith(approve('change_envelope', { envelope: 'gone', label: 'X' }), 'no envelope gone');
     for (const [name, args] of [['rename_category', { category: 'gone', label: 'X' }], ['move_category', { category: 'gone', direction: 'up' }],
       ['remove_category', { category: 'gone' }], ['change_envelope', { envelope: 'dining', category: 'gone' }]] as const) {
       const r = await approve(name, args);
-      assert.deepEqual([r.httpStatus, r.error], [404, 'no category gone'], name);
+      assert.deepEqual([r.httpStatus, r.error], [404, 'That category is not here: it may have just been removed.'], name);
     }
     assert.equal((await approve('change_envelope', { envelope: 'gone', label: 'X' })).httpStatus, 404);
   });

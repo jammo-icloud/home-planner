@@ -93,13 +93,13 @@ describe('make_starter_envelopes', () => {
     ]);
     const after = d.store.state.lastEventId;
     assert.throws(() => make(d, [{ label: 'groceries ', id: 'groceries', category: 'food' }]), /There is already an envelope called Groceries\./);
-    assert.throws(() => make(d, [{ label: 'Dining', category: 'food' }, { label: 'DINING', category: 'food' }]), /DINING is named twice/);
+    assert.throws(() => make(d, [{ label: 'Dining', category: 'food' }, { label: 'DINING', category: 'food' }]), /Two envelopes are called DINING\. Give each its own name\./);
     assert.throws(() => make(d, [{ label: 'Dining', newCategory: ' food' }]), /There is already a category called Food\./);
-    assert.throws(() => make(d, [{ label: 'Dining', category: 'food', newCategory: 'Eating' }]), /give one/);
+    assert.throws(() => make(d, [{ label: 'Dining', category: 'food', newCategory: 'Eating' }]), /Choose a category for Dining, or name a new one, not both\./);
     const e = await fresh();
     assert.throws(() => make(e, [{ label: 'Snacks', newCategory: 'Food' }, { label: 'Groceries', id: 'groceries', category: 'food' }]),
-      /Food is named as a new category and as the starter category Food: choose it once/);
-    assert.throws(() => make(e, [{ label: 'Snacks', newCategory: 'Home' }, { label: 'Rent', id: 'rent', category: 'home' }]), /choose it once/);
+      /Food is typed as a new category and is also the starter category Food\. Choose it from the list once\./);
+    assert.throws(() => make(e, [{ label: 'Snacks', newCategory: 'Home' }, { label: 'Rent', id: 'rent', category: 'home' }]), /Choose it from the list once/);
     // The other way round, the starter category is used for the typed name: one category.add.
     const p = make(e, [{ label: 'Groceries', id: 'groceries', category: 'food' }, { label: 'Snacks', newCategory: 'food' }]);
     assert.deepEqual(p.events.filter((x) => x.op === 'category.add').map((x) => (x as { category: string }).category), ['food']);
@@ -110,8 +110,8 @@ describe('make_starter_envelopes', () => {
     const c = await fresh();
     assert.throws(() => make(c, []), /at least one envelope/);
     assert.throws(() => make(c, [{ label: '  ', category: 'home' }]), /name/);
-    assert.throws(() => make(c, [{ label: 'Rent' }]), /Rent needs a category/);
-    assert.throws(() => make(c, [{ label: 'Rent', category: 'nope' }]), /no category nope/);
+    assert.throws(() => make(c, [{ label: 'Rent' }]), /Choose a category for Rent\./);
+    assert.throws(() => make(c, [{ label: 'Rent', category: 'nope' }]), /The category chosen for Rent is not here: it may have just been removed\./);
     assert.throws(() => make(c, [{ label: '!!!', category: 'home' }]), /letters or numbers/);
   });
 });

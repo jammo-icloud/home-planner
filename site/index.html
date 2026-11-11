@@ -27,7 +27,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F9FE" />
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F131A" />
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/tokens.css?v=0.9.2" />
+<link rel="stylesheet" href="/tokens.css?v=0.10.0" />
 <style>
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -38,7 +38,7 @@
     padding:env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);}
   h1,h2,h3{font-weight:600;letter-spacing:-.015em;margin:0}
   .wrap{max-width:720px;margin:0 auto;padding:0 20px}
-  .num,.toassign .v,.totals .v{font-variant-numeric:tabular-nums}
+  .toassign .v,.totals .v{font-variant-numeric:tabular-nums}
   [hidden]{display:none !important}
   /* Anything typed into is 16px, or iOS zooms the page on focus. Class rules below
      say the same; this catches the inputs the script builds with no class of their own. */
@@ -103,17 +103,8 @@
   .effects li{margin:2px 0}
   .ok{color:var(--good);font-size:var(--fs-small);font-weight:500}
 
-  ul.changes{list-style:none;margin:0;padding:0}
-  ul.changes li{display:flex;gap:10px;padding:9px 0;border-bottom:1px solid var(--hair);font-size:var(--fs-small)}
-  ul.changes li:last-child{border-bottom:none}
-  .changes .when{color:var(--ink-faint);white-space:nowrap;font-size:var(--fs-micro);padding-top:1px}
-  .changes .why{color:var(--ink-soft);display:block;font-size:var(--fs-micro)}
   .quiet{color:var(--ink-soft);font-size:var(--fs-ui)}
 
-  .score{display:flex;gap:8px;align-items:baseline;font-size:var(--fs-small);padding:7px 0}
-  .score .tag{font-size:var(--fs-micro);font-weight:500;padding:2px 7px;border-radius:999px}
-  .tag.hit{background:var(--good-tint);color:var(--good)}
-  .tag.miss{background:var(--problem-tint);color:var(--problem)}
 
   /* ── budget ────────────────────────────────────────────────────────── */
   .toassign{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--r-card);
@@ -215,6 +206,8 @@
   .ep-sums{display:flex;justify-content:space-between;flex-wrap:wrap;gap:var(--sp-1) var(--sp-3);margin:0;
     font-size:var(--fs-small);color:var(--ink-soft)}
   .ep-sec{display:grid;gap:var(--sp-2);min-width:0}
+  /* A slot is a grid item: without this a receipt's long payee widens it past a phone's edge, Edit with it. */
+  .ep-sec > .ep-slot{min-width:0}
   /* Scrolled to the top for a form: the heading lands below the sticky bar, the field clear of a phone's keyboard. */
   .ep-sec-h{margin:0;font-size:var(--fs-small);font-weight:600;text-transform:uppercase;letter-spacing:.02em;
     color:var(--ink-faint);scroll-margin-top:72px}
@@ -355,7 +348,7 @@
   .bar span{display:block;height:100%;background:var(--accent);border-radius:999px}
   .bar span.over{background:var(--problem)}
 
-  /* Saved in Savings: the check against the account sits under their band. */
+  /* The savings envelopes' check against the account, under the last category. */
   .savings-check{font-size:var(--fs-small);color:var(--ink-soft);margin:8px 2px 0}
   .savings-check b{font-weight:600;color:var(--ink)}
   .savings-check.short b{color:var(--problem)}
@@ -447,16 +440,12 @@
   .hh-item .meta{font-size:var(--fs-micro);color:var(--ink-faint);display:block}
   .hh .actions{display:flex;flex-direction:column;gap:8px}
   .hh .btn{width:100%;padding:11px}
-  .hr{height:1px;background:var(--line);margin:16px 0}
 
   /* Admin sees that households exist. Never what is in them, which the row says
      out loud rather than leaving it to be assumed. */
   .adm{display:flex;justify-content:space-between;align-items:center;gap:12px;
     border:1px solid var(--line);border-radius:10px;padding:11px 13px;font-size:var(--fs-small);margin-bottom:7px}
   .adm .meta{font-size:var(--fs-micro);color:var(--ink-faint);display:block}
-
-  /* ── budget switcher ───────────────────────────────────────────────── */
-  .archived-note{font-size:var(--fs-micro);color:var(--problem);margin-top:6px}
 
   /* ── partial restore ───────────────────────────────────────────────── */
   .pick{display:flex;gap:11px;align-items:flex-start;border:1px solid var(--line);
@@ -478,22 +467,11 @@
     padding:11px 13px;font-size:var(--fs-small);color:var(--caution);margin-top:10px}
   .needs ul{margin:6px 0 0;padding-left:18px}
 
-  /* ── activity ──────────────────────────────────────────────────────── */
+  /* ── filters, and a receipt that was removed ─────────────────────── */
   .filters{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:14px}
   .filters button{font:inherit;font-size:var(--fs-micro);font-weight:500;border:1px solid var(--line);
     background:var(--surface-raised);color:var(--ink-soft);padding:6px 12px;border-radius:999px;cursor:pointer}
   .filters button[aria-pressed="true"]{background:var(--ink);color:var(--surface-raised);border-color:var(--ink)}
-  .act{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--r-card);
-    padding:13px 15px;box-shadow:var(--e-1);margin-bottom:7px}
-  /* A decision that took money out of an envelope wears a stripe. Not because
-     it is wrong, but because the other person should not have to hunt for it. */
-  .act.review{border-left:3px solid var(--problem)}
-  .act-top{display:flex;justify-content:space-between;gap:12px;align-items:baseline}
-  .act-who{font-size:var(--fs-ui)}
-  .act-who b{font-weight:600}
-  .act-when{font-size:var(--fs-micro);color:var(--ink-faint);white-space:nowrap}
-  .act-why{font-size:var(--fs-small);color:var(--ink-soft);margin-top:4px;font-style:italic}
-  .act-why.missing{color:var(--problem);font-style:normal}
   .gone{margin-top:10px;padding:10px 12px;background:var(--hair);border-radius:10px;font-size:var(--fs-small);
     display:flex;justify-content:space-between;gap:12px;align-items:center;flex-wrap:wrap}
   .gone .what{font-variant-numeric:tabular-nums}
@@ -584,7 +562,6 @@
   .menu-item:disabled{color:var(--ink-faint);cursor:default;background:none}
   .menu-item .sub,.menu-item .meta{display:block;font-size:var(--fs-micro);color:var(--ink-faint)}
   .menu-item .leaves{margin-left:auto;color:var(--ink-faint)}
-  .menu-item.soft{color:var(--ink-soft)}
   .menu-item.danger{color:var(--problem)}
   .menu-list [role="menuitemradio"][aria-checked="true"]{font-weight:var(--fw-semibold)}
   .menu-list [role="menuitemradio"][aria-checked="true"]::after{content:'';margin-left:auto;width:5px;height:10px;margin-right:4px;
@@ -594,7 +571,6 @@
 
   /* ── grouped lists: one surface per group, rows between hairlines ─────── */
   .list{background:var(--surface-raised);border:1px solid var(--line);border-radius:var(--r-card);box-shadow:var(--e-1);overflow:hidden}
-  .list > .act{border:none;border-radius:0;box-shadow:none;margin:0;border-top:1px solid var(--hair)}
   .list > :first-child{border-top:none}
 
   /* ── what changed, and what to do next ─────────────────────────────── */
@@ -629,9 +605,6 @@
   .body.clamped{max-height:9.5em;overflow:hidden;
     -webkit-mask-image:linear-gradient(var(--ink) 55%,transparent);mask-image:linear-gradient(var(--ink) 55%,transparent)}
   .link{font:inherit;font-size:var(--fs-small);font-weight:500;color:var(--accent-ink);background:none;border:none;padding:4px 0;cursor:pointer;text-decoration:underline}
-
-  /* ── activity, a day at a time ─────────────────────────────────────── */
-  .act.review{box-shadow:inset 3px 0 var(--problem)}
 
   /* ── import ────────────────────────────────────────────────────────── */
   .drop{display:block;cursor:pointer;padding:34px 20px;transition:border-color .15s,background .15s}
@@ -972,7 +945,6 @@
   .sec-head h2{font-size:var(--fs-ui);font-weight:var(--fw-semibold);letter-spacing:0}
   .sec-head .btn{margin-left:auto}
   .sec-head .n{font-size:var(--fs-micro);color:var(--ink-faint)}
-  .md{font-size:var(--fs-body);line-height:var(--lh-body);white-space:pre-wrap;overflow-wrap:anywhere}
   .checklist{list-style:none;margin:0;padding:0}
   .checklist li{display:flex;align-items:center;gap:var(--sp-2);border-top:var(--stroke) solid var(--hair)}
   .checklist li:first-child{border-top:0}
@@ -1991,7 +1963,7 @@ $('home-banner-done').addEventListener('click', () => {
 // ── menus ──────────────────────────────────────────────────────────────────
 //
 // Three: the household's things in the top bar, you at its end (with the
-// household's links in your menu), and a budget's settings under its name at
+// household's links in your menu), and the budget's own menu under its pill at
 // the top of Budget. Real menus, so a keyboard works: Escape closes and
 // returns focus, the arrows move, Tab leaves, and picking anything closes it.
 const menus = [];
@@ -2281,7 +2253,7 @@ $('signout').addEventListener('click', async () => {
 });
 
 // ── shared: what every screen calls ───────────────────────────────────────
-const BUILD = '0.9.2';
+const BUILD = '0.10.0';
 
 /**
  * Which household's screens these are: moved on whenever a household is left (a switch, the picker, sign-out), so a
@@ -4244,7 +4216,7 @@ function offerSettled(o, ...lines) {
 function offerButtons(card, row, o, moved) {
   row.textContent = '';
   const slot = blockSlot(card);
-  // Always available: a card that has gone stale, or whose budget has gone,
+  // Always available: a card that has gone stale, or whose envelope has gone,
   // must still be possible to turn down.
   row.appendChild(actionButton('Decline', 'btn hit', async () => {
     await api('/api/thread/decide', { offer: o.id, decision: 'declined' });
@@ -4761,7 +4733,7 @@ async function categoryWrite(c, write) {
   if (turn !== householdTurn) return;
   try { await loadBudget(); } catch (ex) { showProblem(ex); return; }
   if (turn !== householdTurn || view !== 'budget' || envelopePage) return;
-  // One another member removed meanwhile is named; the server's words name only its id.
+  // One another member removed meanwhile is named; the server no longer has its name.
   const gone = !month?.categories?.some((x) => x.id === c.id);
   if (problem) showProblem(gone ? new Error(`${c.label} has just been removed.`) : problem);
   focusCategory(c.id, Math.max(at, 0));
@@ -5368,10 +5340,10 @@ function renderEnvelopePage({ focus: asked = null } = {}) {
       } catch (ex) {
         // Back, or the form put away for another while the press was out: nothing to say it in.
         if (envelopePage !== page || !form.isConnected) return;
-        // The server names only an id for what another member has just removed: said here in words, and the
+        // The server cannot name a category another member has just removed: said here by its name, and the
         // list drawn again without it, on the envelope's own category.
         const gone = categories.find((c) => c.id === field?.value()?.category);
-        if (gone && ex.message === `no category ${gone.id}`) {
+        if (gone && ex.status === 404 && /^That category is not here\b/.test(ex.message)) {
           categories = categories.filter((c) => c.id !== gone.id);
           const fresh = categoryField(categories, e.category);
           field.el.replaceWith(fresh.el);
@@ -7254,7 +7226,7 @@ function categoryField(categories, start, typed = null) {
 }
 
 /**
- * A category another member removed while this list was open, in words: the server names only its id. Null while
+ * A category another member removed while this list was open, by its name, which the server no longer has. Null while
  * it is still in the list read last, or was never one of `known` (`{ id, label }`).
  */
 function removedWords(id, known) {
@@ -12458,7 +12430,7 @@ function restoreForm() {
     });
     const text = node('span');
     text.append(node('span', 'name', band.name), node('span', 'what', band.what));
-    label.append(cb, text, node('span', 'count', available ? `${available} events` : 'none in this file'));
+    label.append(cb, text, node('span', 'count', available ? plural(available, 'event') : 'none in this file'));
     set.appendChild(label);
   }
   box.appendChild(set);
@@ -12494,7 +12466,7 @@ function restoreForm() {
     box.appendChild(ul);
   }
   const acts = node('div', 'actions');
-  const go = textBtn(p.canApply ? `Take ${Object.values(p.selected).reduce((a, b) => a + b, 0)} events`
+  const go = textBtn(p.canApply ? `Take ${plural(Object.values(p.selected).reduce((a, b) => a + b, 0), 'event')}`
     : p.collisions.length ? 'Blocked by collisions'
     : p.missingPrerequisites.length ? 'Missing something it needs'
     : 'Nothing selected', 'btn primary', 'restore-go', async () => {
@@ -14473,7 +14445,7 @@ async function showView(next) {
   }
   $('today-date').textContent = pageWords();
   $('briefing').hidden = view !== 'today';
-  // On Budget, loadBudget shows either the envelopes or the walkthrough, whichever this budget is at.
+  // On Budget, loadBudget shows either the envelopes or the walkthrough, whichever the budget is at.
   if (view !== 'budget') { $('budget').hidden = true; $('walk').hidden = true; }
   $('import').hidden = view !== 'import';
   $('plan').hidden = view !== 'plan';
@@ -14704,12 +14676,14 @@ async function openHousehold(id) {
   if (switching) return;
   try {
     await api('/api/households/select', { household: id });
-    $('households').hidden = true;
-    await enterApp();
   } catch (ex) {
     $('hh-err').textContent = ex.message;
     $('hh-err').hidden = false;
+    return;
   }
+  $('households').hidden = true;
+  // Chosen, and then not readable (a log this build cannot replay): back on the picker, saying why, never a blank page.
+  try { await enterApp(); } catch (ex) { await pickerSaying(ex); }
 }
 
 $('hh-signout').addEventListener('click', async () => {

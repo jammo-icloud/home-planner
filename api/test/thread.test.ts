@@ -157,4 +157,11 @@ describe('the thread in the log', () => {
     assert.deepEqual(plan.take.map((e) => e.op), ['thread.note', 'proposal.offer']);
     assert.ok(plan.summary.some((l) => /2 messages and suggestions/.test(l)), plan.summary.join('|'));
   });
+
+  test("the conversation's line counts only the conversation, whatever else is taken with it", async () => {
+    const s = await household([{ op: 'category.add', category: 'food', label: 'Food' }, { op: 'category.add', category: 'home', label: 'Home' }]);
+    await s.append('alice', { op: 'thread.note', text: 'trip is paid for' });
+    const plan = planRestore((await household()).state, parseBackup(await readFile(s.path, 'utf8')), ['budget', 'thread', 'people']);
+    assert.deepEqual(plan.summary.filter((l) => /conversation/.test(l)), ['1 message or suggestion from the conversation, with what was decided']);
+  });
 });

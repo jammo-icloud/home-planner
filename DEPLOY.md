@@ -161,7 +161,7 @@ exists to solve. One person's `move` and the other's `assign` land in the same
 log, each attributed to whoever made it.
 
 Isolation is enforced at every route. Someone with a valid DSM login who is not a
-member gets `403` and nothing else — not a balance, not a category list. The
+member gets `403` and nothing else — not a balance, not an envelope list. The
 owner cannot be removed, so a household always has an administrator.
 
 The owner can remove the whole household under Settings › Household, after typing
@@ -177,7 +177,7 @@ Three gates, deliberately separate:
 | | Set where | Decides |
 |---|---|---|
 | who may sign in | Settings › This NAS, by an administrator (`ALLOWED_USERS` in `.env` until one is saved) | who may sign in at all — empty means any DSM account |
-| membership | the log, by the owner | who may use a given budget |
+| membership | the log, by the owner | who may use a given household |
 | the administrator | DSM's administrators group (`ADMIN_USER` in `.env` overrides it) | who may list households and use This NAS — never read the households |
 
 Changing who has access needs no redeploy, and leaves a record of who granted it
@@ -199,7 +199,7 @@ An administrator can do two things. They can see **that households exist**
 (owner, size on disk, last activity, and which folder each keeps its documents
 in) at `GET /api/admin/households`, and they can use This NAS. Neither is a
 way into a household. There is no route by which an admin reads another
-household's categories, receipts or balances, and being an admin does not make
+household's envelopes, receipts or balances, and being an admin does not make
 you a member.
 
 Whether someone is an administrator is decided once, at sign-in, and kept with
@@ -798,7 +798,7 @@ wrong owner are touched, so a large log is not rewritten on every start.
 
 Back up the data folder and the Team Folders your households chose. The data
 folder holds the households' logs, which are append-only, and every other piece of state —
-balances, history, categorisations, who has access, where documents live, and
+balances, history, how receipts are sorted, who has access, where documents live, and
 the conversation on Today with every decision taken in it — is a pure replay of
 them; it also holds `connectors.json`, which carries the mail password and the
 keys, so keep that copy private. The Team Folders hold what the logs point to
@@ -809,8 +809,9 @@ skipped and reported at boot rather than being fatal.
 
 ### A fresh install starts empty
 
-Sign in and the app walks you through it: create a budget, say where it is,
-open the month, record what comes in. Each step offers the next. To get back to
+Sign in and make a household, and its Budget walks you through the rest: say
+where the household is, record what comes in (which opens the month), choose
+the envelopes, and price them from local data. Each step offers the next. To get back to
 this point from a household that exists, its owner removes it under Settings ›
 Household and signs in again.
 
@@ -905,6 +906,26 @@ means the old image was reused, and step 2 was skipped. With no commit shown,
 the NAS's Docker dropped `.git` from the build despite
 `BUILDKIT_CONTEXT_KEEP_GIT_DIR` in `docker.yml`, and the build time is the
 thing to check instead.
+
+### Upgrading to 0.10.0
+
+0.10.0 keeps one budget per household and sorts receipts into envelopes. It cannot open a household's log written before it, nor restore a backup made before it: the backup is refused in words. Every household so far holds test data, so remove each one and make it again; back up first if you want the old file.
+
+What you see once the new image is running:
+
+- **Choose a household** still lists every household, the old ones too. Choosing one written before 0.10.0 comes straight back to that list, with `unknown op: budget.create` in red under its title. A household made by 0.10.0 opens as usual beside it.
+- **The container's log** (Container Manager → Container → `home-planner` → Log) names each one at start, by its folder: `<id>: could not be opened (unknown op: budget.create)`, then `<id>: could not be opened, so its folder is not carried over`, and again with the full error each time someone chooses it.
+- **A backup made before 0.10.0**, whether restored as a new household from Choose a household or taken from on the Backup page, is refused whole: "This backup was made before Home Planner 0.10.0, which keeps one budget and sorts receipts into envelopes. It cannot be restored into this version." Keep the file if you want it; this version will not read it.
+
+Such a household cannot be removed from Settings, because it cannot be opened to reach Settings. Remove its folder instead:
+
+1. **Back up, if you want the old file.** Before upgrading, each household's owner downloads its backup from Settings › Backup. After upgrading, copy its folder from File Station before step 3; the log is `events.jsonl` in it.
+2. **Stop the project.** Container Manager → Project → `home-planner` → Action → Stop.
+3. **Delete the folder.** In File Station, open `docker/home-planner/data/households` (the `data` folder from step 2 of the install). Each household is a folder there, named by the id the log printed (for example `the-house`). Delete the folder of each household made before 0.10.0, and nothing else in `data`.
+4. **Start the project.** Project → Action → Start. Choose a household no longer lists them, and anyone who had one open lands on that list.
+5. **Make each one again.** Its owner signs in, presses Start a new household, gives it a name, and its Budget walks through where the household is, the income, the envelopes and pricing. Members are added again under Settings › Members.
+
+A household made by 0.10.0 is removed the usual way, by its owner under Settings, and needs none of this.
 
 ### Upgrading to 0.9.0
 
@@ -1036,11 +1057,11 @@ openssl reads it.
 
 ---
 
-## Where a budget is
+## Where the household is
 
-A budget can carry a location, because a budget differs from another budget by
-being somewhere else — that is why electricity and property tax are priced
-separately while groceries are not. With a ZIP recorded, `look_up_local_costs`
+The budget carries where the household is, because what an envelope costs
+depends on the place — that is why electricity and property tax are priced
+from the place while groceries are not. With a ZIP recorded, `look_up_local_costs`
 reads public measured data for the place:
 
 | Source | Key | Covers |
@@ -1067,18 +1088,18 @@ and what it cannot tell you. They are measurements of a place, never predictions
 about this household. Small ZIPs are simply absent from the rent index, and the
 lookup says so rather than returning nothing and letting it read as zero.
 
-**Price it from local data** turns those figures into a proposal: it creates the
-category and envelope where they do not exist, shows the old number beside the
-new one where they do, and carries each source and caveat onto the approval
-screen. It covers only what is measured — one or two envelopes out of forty —
+**Price it from local data** turns those figures into a proposal: it sets the
+figure of each envelope here that a measured figure speaks to, shows the old
+number beside the new one, lists an estimate with no envelope to take it as not
+applied, and carries each source and caveat onto the approval screen. It covers only what is measured — one or two envelopes out of forty —
 and says so, so it never reads as having filled in a budget. With no data for
 the place it refuses rather than inventing a figure.
 
 ## What is not ready
 
-**All four screens are built** — Today, Budget, Import and Compare. A budget with
-no envelopes opens as a walkthrough of income, envelopes and pricing, and an
-envelope without a figure says No figure yet. Activity is
+**All three screens are built** — Today, Budget and Import. A budget with no
+envelopes opens as a walkthrough: where the household is, then income, envelopes
+and pricing; and an envelope without a figure says No figure yet. Activity is
 part of Today's thread now. The old
 standalone planner is preserved at `/planner.html`, but it reads `budget.jsonl`
 off disk, which the API no longer serves, so it is a historical artefact.
