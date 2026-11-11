@@ -61,11 +61,14 @@ export class ReplayError extends Error {
    * the people behind leaves such a line out by this, not by its wording.
    */
   readonly outsider: Actor | undefined;
+  /** The refusal in words, without the event it names: what a restore's preview says. */
+  readonly reason: string;
   constructor(message: string, event?: Event, outsider?: Actor) {
     super(event ? `${message} (event ${event.id}, op ${event.op})` : message);
     this.name = 'ReplayError';
     this.event = event;
     this.outsider = outsider;
+    this.reason = message;
   }
 }
 
@@ -1638,7 +1641,7 @@ function fold(d: Draft, e: Event): void {
 
     case 'documents.moved': {
       // Any member's: whoever's session moved the file says so, as plan.doc is written.
-      if (!d.members.has(e.who)) throw new ReplayError(`${e.who} is not a member of this household`, e);
+      if (!d.members.has(e.who)) throw new ReplayError(`${e.who} is not a member of this household`, e, e.who);
       const docs = d.documents;
       const key = moveKey(e.file);
       const was = docs.waiting.get(key);

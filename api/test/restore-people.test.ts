@@ -124,6 +124,73 @@ describe('a restore in place, with the people band', () => {
   });
 });
 
+/** alice's household where bob made a plan, was removed (so it became alice's), and alice asked casey to take it. */
+async function alicesAfterBobLeft(): Promise<Store> {
+  const { store } = await new Households(await dir()).create('alice', 'Theirs');
+  await store.append('alice', [{ op: 'member.add', member: 'bob', why: 'he lives here' }, { op: 'member.add', member: 'casey', why: 'she lives here' }]);
+  await store.append('bob', { op: 'plan.create', plan: 'p-gate', title: 'Gate', area: 'House' });
+  await store.append('alice', { op: 'member.remove', member: 'bob', why: 'he moved out' });
+  await store.append('alice', { op: 'plan.ask', plan: 'p-gate', to: 'casey', why: 'she has the tools' });
+  return store;
+}
+
+describe('a restore in place says no in words wherever the fold would', () => {
+  test('a plan handed on by a removal, without the people band: refused at the preview, in the fold\'s own words', async () => {
+    const target = await alicesHere();
+    await target.append('alice', [{ op: 'member.add', member: 'bob', why: 'he lives here' }, { op: 'member.add', member: 'casey', why: 'she lives here' }]);
+    const plan = planRestore(target.state, await backupOf(await alicesAfterBobLeft()), ['plans'], await target.ids());
+    assert.equal(plan.collisions.length, 1, JSON.stringify(plan.collisions));
+    assert.equal(plan.collisions[0]!.kind, 'refused');
+    assert.match(plan.collisions[0]!.why, /only the owner, bob, can ask someone to take Gate/);
+    assert.doesNotMatch(plan.collisions[0]!.why, /\(event /, 'the words, not the event id');
+    assert.throws(() => eventsToApply(plan));
+  });
+
+  test('a note on a plan by someone not a member is named as a note, not as a plan of theirs', async () => {
+    const { store: src } = await new Households(await dir()).create('alice', 'Theirs');
+    await src.append('alice', { op: 'member.add', member: 'bob', why: 'he lives here' });
+    await src.append('alice', { op: 'plan.create', plan: 'p1', title: 'Gate', area: 'House' });
+    await src.append('bob', { op: 'thread.note', plan: 'p1', text: 'the hinge is loose', budget: null });
+    const target = await alicesHere();
+    const plan = planRestore(target.state, await backupOf(src), ['plans', 'thread']);
+    const bob = plan.collisions.find((c) => c.what === 'bob');
+    assert.ok(bob, JSON.stringify(plan.collisions));
+    assert.match(bob.why, /notes or questions on plans/);
+    assert.doesNotMatch(bob.why, /plans of theirs/);
+  });
+});
+
+describe('a restore in place takes only what is not already here', () => {
+  test('the people band, then people and plans: the lines already here are left out and counted, and the rest applies', async () => {
+    const { store: src } = await new Households(await dir()).create('alice', 'Theirs');
+    await src.append('alice', { op: 'member.add', member: 'bob', why: 'he lives here' });
+    await src.append('bob', { op: 'briefing.read', upTo: 'x' } as never);
+    await src.append('bob', { op: 'plan.create', plan: 'p-bob', title: 'Fix the gate', area: 'House' });
+    const backup = await backupOf(src);
+    const target = await alicesHere();
+    await target.adopt(eventsToApply(planRestore(target.state, backup, ['people'], await target.ids())));
+
+    const again = planRestore(target.state, backup, ['people', 'plans'], await target.ids());
+    assert.deepEqual(again.collisions, []);
+    assert.deepEqual(again.take.map((e) => e.op), ['plan.create']);
+    assert.ok(again.summary.includes('2 lines from this backup are already here.'), again.summary.join(' | '));
+    await target.adopt(eventsToApply(again));
+    assert.ok(target.state.plans.has('p-bob'));
+  });
+
+  test('the same facts twice: nothing to take, and the summary says why', async () => {
+    const { store: src } = await new Households(await dir()).create('alice', 'Theirs');
+    await src.append('alice', { op: 'category.define', category: 'food', label: 'Groceries', kind: 'People' });
+    const backup = await backupOf(src);
+    const target = await alicesHere();
+    await target.adopt(eventsToApply(planRestore(target.state, backup, ['facts'], await target.ids())));
+    const again = planRestore(target.state, backup, ['facts'], await target.ids());
+    assert.deepEqual(again.collisions, []);
+    assert.deepEqual(again.take, []);
+    assert.ok(again.summary.includes('Every line selected from this backup is already here: there is nothing to restore.'), again.summary.join(' | '));
+  });
+});
+
 describe('the promise holds: a clean plan always applies', () => {
   type Build = () => Promise<Store>;
   const backups: [string, Build][] = [
@@ -159,18 +226,38 @@ describe('the promise holds: a clean plan always applies', () => {
       await store.append('bob', { op: 'guest.allow', email: 'dana@example.com', name: 'Dana', why: 'a friend' });
       return store;
     }],
+    ["alice's, after bob left and his plan was asked of casey", alicesAfterBobLeft],
+    ["alice's, with a note on a plan by bob", async () => {
+      const { store } = await new Households(await dir()).create('alice', 'Theirs');
+      await store.append('alice', { op: 'member.add', member: 'bob', why: 'he lives here' });
+      await store.append('alice', { op: 'plan.create', plan: 'p-note', title: 'Gate', area: 'House' });
+      await store.append('bob', { op: 'thread.note', plan: 'p-note', text: 'the hinge is loose', budget: null });
+      return store;
+    }],
   ];
-  const targets: [string, () => Promise<Store>][] = [
+  /** Each target is made for the backup it receives, so one can already hold part of it. */
+  const targets: [string, (backup: ParsedBackup) => Promise<Store>][] = [
     ['alice alone', alicesHere],
     ['alice with bob', async () => {
       const t = await alicesHere();
       await t.append('alice', { op: 'member.add', member: 'bob', why: 'already here' });
       return t;
     }],
+    ['alice with bob and casey', async () => {
+      const t = await alicesHere();
+      await t.append('alice', [{ op: 'member.add', member: 'bob', why: 'here' }, { op: 'member.add', member: 'casey', why: 'here' }]);
+      return t;
+    }],
     ["bob's, with alice", async () => {
       const { store } = await new Households(await dir()).create('bob', 'Bobs here');
       await store.append('bob', { op: 'member.add', member: 'alice', why: 'she lives here' });
       return store;
+    }],
+    ["alice's, holding this backup's people and facts already", async (backup) => {
+      const t = await alicesHere();
+      const first = planRestore(t.state, backup, ['people', 'facts'], await t.ids());
+      if (!first.collisions.length && !first.missingPrerequisites.length && first.take.length) await t.adopt(eventsToApply(first));
+      return t;
     }],
   ];
   const scopeSets: Scope[][] = [['people'], ['plans'], ['people', 'plans'], ['settings'], ['bookings'],
@@ -184,8 +271,8 @@ describe('the promise holds: a clean plan always applies', () => {
       for (const [tname, makeTarget] of targets) {
         for (const scopes of scopeSets) {
           const backup = await backupOf(await build());
-          const target = await makeTarget();
-          const plan = planRestore(target.state, backup, scopes);
+          const target = await makeTarget(backup);
+          const plan = planRestore(target.state, backup, scopes, await target.ids());
           const what = `${bname} into ${tname}, ${scopes.join('+')}`;
           if (plan.collisions.length || plan.missingPrerequisites.length) {
             refused++;
@@ -280,6 +367,23 @@ describe('a restore as a household of its own', () => {
     assert.ok(summary.includes('Left out 1 plan line written by bob, who is not a member here.'), summary.join(' | '));
     assert.ok(summary.includes('Left out 1 plan line asking or handing a plan to bob, who is not a member here.'), summary.join(' | '));
     assert.ok(summary.includes('Left out 1 more line that needed one of those.'), summary.join(' | '));
+  });
+
+  test("someone else's backup: a broken plan line about no plan that was left out still fails, after a drop or not", async () => {
+    // Leaving bob's plan out explains a line about bob's plan, and nothing else.
+    const { store: src } = await new Households(await dir()).create('bob', 'Bobs');
+    await src.append('bob', { op: 'member.add', member: 'alice', why: 'she lives here' });
+    await src.append('bob', { op: 'plan.create', plan: 'p-bob', title: 'Gate', area: 'House' });
+    const broken = { id: 'zz-999999', at: new Date().toISOString(), who: 'alice', op: 'plan.set', plan: 'never-existed', title: 'x' } as Event;
+    const hh = new Households(await dir());
+    const afterDrop = [...await eventsOf(src), broken];
+    await assert.rejects(() => hh.createFromLog('alice', 'Restored', afterDrop), /never-existed/);
+    assert.deepEqual(await hh.ids(), []);
+
+    const { store: own } = await new Households(await dir()).create('alice', 'Mine');
+    const noDrop = [...await eventsOf(own), broken];
+    await assert.rejects(() => hh.createFromLog('alice', 'Restored', noDrop), /never-existed/);
+    assert.deepEqual(await hh.ids(), []);
   });
 
   test('a broken backup still fails, and leaves no household behind', async () => {

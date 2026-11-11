@@ -1890,7 +1890,7 @@ export async function start(
       if (newer) throw new ToolError(newer, 400);
       const scopes = (body.scopes ?? ['facts', 'budgets', 'months']) as Scope[];
       const active = await activeStore(session, households, devStore);
-      const plan = planRestore(active.state, backup, scopes);
+      const plan = planRestore(active.state, backup, scopes, await active.ids());
       return json(res, 200, {
         from: { label: backup.label, owner: backup.owner },
         available: backup.counts,
@@ -1925,7 +1925,7 @@ export async function start(
 
       const active = await activeStore(session, households, devStore);
       const scopes = (body.scopes ?? ['facts', 'budgets', 'months']) as Scope[];
-      const plan = planRestore(active.state, backup, scopes);
+      const plan = planRestore(active.state, backup, scopes, await active.ids());
       const events = eventsToApply(plan); // throws on any collision — refuse, never merge
       // Adopted, not appended: these events already happened, and the person
       // pressing the button is not the person who spent the money.

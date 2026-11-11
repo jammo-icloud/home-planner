@@ -596,6 +596,25 @@ describe('drift on Today', () => {
     assert.deepEqual(log.filter((e: any) => e.op === 'household.claim').map((e: any) => e.who), ['alice'], 'one claim, this household\'s own');
   });
 
+  test('a backup restored in place twice: the lines already here are left out, so a yes is still a 200', async () => {
+    await household('Twice over');
+    const s = new Store({ path: join(await mkdtemp(join(tmpdir(), 'pb-restore-twice-')), 'events.jsonl') });
+    await s.load();
+    await s.append('alice', { op: 'household.claim', label: 'Elsewhere' });
+    await s.append('alice', { op: 'member.add', member: 'bob', why: 'he lives here' });
+    await s.append('bob', { op: 'plan.create', plan: 'srv-twice', title: 'Fix the gate', area: 'House' });
+    const content = await readFile(s.path, 'utf8');
+    assert.equal((await as(aliceDsm, 'POST', '/api/restore', { content, scopes: ['people'] })).status, 200);
+    const preview = await as(aliceDsm, 'POST', '/api/restore/preview', { content, scopes: ['people', 'plans'] });
+    assert.equal(preview.json.canApply, true, JSON.stringify(preview.json));
+    assert.ok(preview.json.summary.includes('1 line from this backup is already here.'), JSON.stringify(preview.json.summary));
+    const r = await as(aliceDsm, 'POST', '/api/restore', { content, scopes: ['people', 'plans'] });
+    assert.equal(r.status, 200, JSON.stringify(r.json));
+    const none = await as(aliceDsm, 'POST', '/api/restore/preview', { content, scopes: ['people', 'plans'] });
+    assert.equal(none.json.canApply, false);
+    assert.ok(none.json.summary.includes('Every line selected from this backup is already here: there is nothing to restore.'), JSON.stringify(none.json.summary));
+  });
+
   test("alice's own backup with a plan restores as a household of its own", async () => {
     const s = new Store({ path: join(await mkdtemp(join(tmpdir(), 'pb-restore-own-')), 'events.jsonl') });
     await s.load();

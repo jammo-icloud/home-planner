@@ -12107,12 +12107,15 @@ function restoreForm() {
   // is a better thing to read than a list of collisions you cannot act on.
   if (p.missingPrerequisites.length) list('needs', 'Something it needs is not selected.', p.missingPrerequisites.slice(0, 6));
   if (p.collisions.length) {
-    // Accounts that are not members here are a different problem from ids that mean something else, and are said as one.
+    // Who may write a line here is a different problem from ids that mean something else, and is said as one;
+    // a line this household would refuse for any other reason is said apart again, in the log's own words.
     const owners = p.collisions.filter((x) => x.kind === 'owner').length;
-    const clashes = p.collisions.length - owners;
+    const refused = p.collisions.filter((x) => x.kind === 'refused').length;
+    const clashes = p.collisions.length - owners - refused;
     const lead = [
       clashes ? `${clashes} thing(s) here already mean something else.` : '',
-      owners ? `${owners} account(s) with plans in the backup are not members here.` : '',
+      owners ? `${owners} thing(s) in the backup need someone to be a member, or the owner, here.` : '',
+      refused ? `${refused} line(s) in the backup would be refused here as they stand.` : '',
     ].filter(Boolean).join(' ') + ' Nothing will be taken while that is true: a wrong merge is silent, and this is not.';
     list('blocked', lead, p.collisions.slice(0, 5).map((x) => `${x.what}: ${x.why}`),
       p.collisions.length > 5 ? `and ${p.collisions.length - 5} more of the same kind` : null);

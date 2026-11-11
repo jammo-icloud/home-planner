@@ -15,7 +15,7 @@
  * refusal is merely annoying.
  */
 
-import { guestEmail, needsMember, validate } from './replay.ts';
+import { apply, guestEmail, needsMember, ReplayError, validate } from './replay.ts';
 import { goalSpelling, sameGoal, shelfGoals } from './plan-rules.ts';
 import type { ShelfView } from './plan-rules.ts';
 import { areaIndex, areaMoved, CONFIG_OPS, isGuest, SYSTEM } from './types.ts';
@@ -128,7 +128,12 @@ export function newerBackup(b: ParsedBackup): string | null {
 }
 
 export interface Collision {
-  readonly kind: 'category' | 'budget' | 'transaction' | 'envelope-category' | 'plan' | 'calendar' | 'owner';
+  /**
+   * `owner`: whose a line is, or who may write it here. `refused`: a line the
+   * fold itself would refuse here, in its own words, that none of the checks
+   * above it named first.
+   */
+  readonly kind: 'category' | 'budget' | 'transaction' | 'envelope-category' | 'plan' | 'calendar' | 'owner' | 'refused';
   readonly what: string;
   readonly why: string;
 }
@@ -156,12 +161,20 @@ export function planRestore(
   target: State,
   backup: ParsedBackup,
   scopes: readonly Scope[],
+  /** The ids already in this household's log (`Store.ids()`). */
+  existingIds: ReadonlySet<string> = new Set(),
 ): RestorePlan {
   const wanted = new Set(scopes);
   // The folder for documents is never taken from a backup: it is chosen here,
   // where the check against every other household's folder runs, and a move
   // starts only from that choice.
   let take = backup.events.filter((e) => wanted.has(scopeOf(e)) && !FOLDER_OPS.has(e.op));
+  // A line whose id is in this log already is already here: the same backup
+  // taken twice, or one band and then more. Left out, and counted, before any
+  // check reads it.
+  const selected = take.length;
+  take = take.filter((e) => !existingIds.has(e.id));
+  const alreadyHere = selected - take.length;
 
   const collisions: Collision[] = [];
   const missingPrerequisites: string[] = [];
@@ -292,19 +305,20 @@ export function planRestore(
   // and the member lines taken above, in order. Never the backup's claimer.
   {
     const now = new Set(target.members);
-    const outsiders = new Map<string, 'made' | 'asked' | 'handed' | 'kept'>();
-    const outside = (who: string, how: 'made' | 'asked' | 'handed' | 'kept') => {
+    type How = 'made' | 'noted' | 'asked' | 'handed' | 'kept';
+    const outsiders = new Map<string, How>();
+    const outside = (who: string, how: How) => {
       if (!now.has(who) && !outsiders.has(who)) outsiders.set(who, how);
     };
     for (const e of take) {
       if (e.op === 'household.claim') now.add(e.who);
       else if (e.op === 'member.add') now.add(e.member);
       else if (e.op === 'member.remove') now.delete(e.member);
-      else if (needsMember(e)) outside(e.who, scopeOf(e) === 'bookings' ? 'kept' : 'made');
+      else if (needsMember(e)) outside(e.who, scopeOf(e) === 'bookings' ? 'kept' : scopeOf(e) === 'thread' ? 'noted' : 'made');
       if (e.op === 'plan.ask') outside(e.to, 'asked');
       if (e.op === 'plan.hand') outside(e.to, 'handed');
     }
-    const theirs = { made: 'plans of theirs', asked: 'plans asked of them', handed: 'plans handed to them', kept: 'guests and stays they kept' };
+    const theirs = { made: 'plans of theirs', noted: 'notes or questions on plans from them', asked: 'plans asked of them', handed: 'plans handed to them', kept: 'guests and stays they kept' };
     for (const [who, how] of outsiders) {
       collisions.push({
         kind: 'owner', what: who,
@@ -520,10 +534,30 @@ export function planRestore(
     }
   }
 
+  // The backstop. The checks above name each refusal they know of in words a
+  // person can act on; whatever they did not foresee, the fold itself is asked,
+  // on a copy of this household, and its own words are the collision. Only
+  // when they found nothing, so a refused restore is not reported twice.
+  if (!collisions.length && !missingPrerequisites.length && take.length) {
+    try {
+      apply(target, take);
+    } catch (err) {
+      if (!(err instanceof ReplayError)) throw err;
+      const e = err.event;
+      collisions.push({
+        kind: err.outsider !== undefined ? 'owner' : 'refused',
+        what: e ? `${e.op} by ${e.who}` : 'a line of the backup',
+        why: `this household would refuse it: ${err.reason}`,
+      });
+    }
+  }
+
   const counts = { facts: 0, budgets: 0, months: 0, people: 0, thread: 0, settings: 0, plans: 0, bookings: 0 } as Record<Scope, number>;
   for (const e of take) counts[scopeOf(e)]++;
 
   const summary: string[] = [];
+  if (alreadyHere && !take.length) summary.push('Every line selected from this backup is already here: there is nothing to restore.');
+  else if (alreadyHere) summary.push(`${alreadyHere} line${alreadyHere === 1 ? ' from this backup is' : 's from this backup are'} already here.`);
   if (claimSetAside) {
     summary.push(`This household keeps its own name, ${target.label}, and its owner, ${target.owner}: the backup's claim is not taken.`);
   }

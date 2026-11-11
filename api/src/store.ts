@@ -190,14 +190,7 @@ export class Store {
 
     const run = async (): Promise<Event[]> => {
       this.#refuseIfClosed();
-      const here = new Set<string>();
-      if (existsSync(this.path)) {
-        for (const line of (await readFile(this.path, 'utf8')).split('\n')) {
-          const raw = line.trim();
-          if (!raw) continue;
-          try { here.add((JSON.parse(raw) as Event).id); } catch { /* reported by load() */ }
-        }
-      }
+      const here = await this.ids();
       for (const e of events) {
         validate(e);
         if (here.has(e.id)) throw new ReplayError(`event ${e.id} is already in this log`);
@@ -217,6 +210,21 @@ export class Store {
     const queued = this.#tail.then(run, run);
     this.#tail = queued.catch(() => undefined);
     return queued;
+  }
+
+  /**
+   * Every event id in the log on disk, as `adopt` checks a restore against.
+   * Read from the file, not kept in memory: it is asked only when restoring.
+   */
+  async ids(): Promise<ReadonlySet<string>> {
+    const here = new Set<string>();
+    if (!existsSync(this.path)) return here;
+    for (const line of (await readFile(this.path, 'utf8')).split('\n')) {
+      const raw = line.trim();
+      if (!raw) continue;
+      try { here.add((JSON.parse(raw) as Event).id); } catch { /* reported by load() */ }
+    }
+    return here;
   }
 
   /** Events since a given id, for "what changed since you last looked". */
