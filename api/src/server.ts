@@ -208,7 +208,7 @@ import { openMonths } from './envelopes.ts';
 import {
   areaIndex, ARRIVAL_MAX, DEFAULT_AREAS, GUEST_PREFIX, householdDay, isDay, isEmail, MODES, SCHEMES, SPLIT, SYSTEM, isSpend, monthOf, movesLeft, sameCalendar, zoneOf,
 } from './types.ts';
-import type { Actor, Day, Event, Mode, NewEventShape, Scheme, SplitPart, State, Txn } from './types.ts';
+import type { Actor, Day, Event, Mode, NewEventShape, Scheme, SortedInto, SplitPart, State, Txn } from './types.ts';
 import { parse, dedupeKey } from './parse.ts';
 import { thread, threadDay } from './thread.ts';
 import { isLane } from './lanes.ts';
@@ -2462,6 +2462,7 @@ export async function start(
       const seen = new Set<string>();
       for (const t of state.txns.values()) seen.add(t.dedupeKey);
 
+      const liveOrNull = (e: SortedInto | null): SortedInto | null => (isSpend(e) && !state.envelopes.has(e) ? null : e);
       const fresh: Txn[] = [];
       const withinFile = new Set<string>();
       let duplicates = 0;
@@ -2481,8 +2482,9 @@ export async function start(
           account: r.account,
           dedupeKey: key,
           // Rules first: free, exact, and they run before anything is asked of
-          // a person or a model.
-          envelope: byRule(state.rules, r),
+          // a person or a model. A rule naming an envelope that is not here
+          // sorts nothing: the receipt lands in To sort.
+          envelope: liveOrNull(byRule(state.rules, r)),
         });
       }
 

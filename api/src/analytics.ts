@@ -73,7 +73,8 @@ export interface FixedCharge {
  * the descriptor alone the second one makes the month look double-billed and
  * rent starts extrapolating again. The envelopes they are sorted into are what
  * tell them apart; two sorted into one envelope are one charge seen twice.
- * Counted by part, so a split's share is a charge of its own envelope.
+ * Only whole receipts are charges: a split receipt is skipped here, as a share
+ * of a bill is not the bill, though its parts still land and pay in `billsOf`.
  */
 /** Empty when the part cannot be a fixed charge at all. */
 export const chargeKey = (payee: string, envelope: string | null): string => {
@@ -91,13 +92,12 @@ export function fixedCharges(
   interface Charge { readonly t: Txn; readonly envelope: EnvelopeId; readonly amount: number }
   const byPayee = new Map<string, Charge[]>();
   for (const t of state.txns.values()) {
-    // transfers, income and receipts To sort holds whole are not charges
-    for (const p of partsOf(t)) {
-      if (p.amount >= 0 || !isSpend(p.envelope)) continue;
-      const key = chargeKey(t.payee, p.envelope);
-      if (!key) continue;
-      (byPayee.get(key) ?? byPayee.set(key, []).get(key)!).push({ t, envelope: p.envelope, amount: p.amount });
-    }
+    if (t.amount >= 0) continue;
+    // transfers, income, splits and unsorted rows are not charges
+    if (!isSpend(t.envelope)) continue;
+    const key = chargeKey(t.payee, t.envelope);
+    if (!key) continue;
+    (byPayee.get(key) ?? byPayee.set(key, []).get(key)!).push({ t, envelope: t.envelope, amount: t.amount });
   }
 
   const out: FixedCharge[] = [];
@@ -209,7 +209,8 @@ export function pace(view: MonthView, clock: MonthClock, state: State): Pace[] {
       if (!t) continue;
       const amount = cents(Math.abs(line.amount));
       const key = chargeKey(t.payee, e.envelope.id);
-      const sinking = state.envelopes.get(e.envelope.id)?.sinking !== undefined;
+      // The view's own envelope: a live one, or a removed one as it was when it went.
+      const sinking = e.envelope.sinking !== undefined;
       if (byKey.has(key) || sinking) {
         committed = add(committed, amount);
       } else {
@@ -429,14 +430,16 @@ export function billsOf(
   const landed = new Map<EnvelopeId, Map<string, Set<Month>>>();
   const charged = new Map<EnvelopeId, Map<string, FixedCharge>>();
   for (const t of state.txns.values()) {
-    // parts say what was charged, what landed and what was paid, each in its live envelope
+    // a whole receipt places a charge, in the live envelope it is sorted into
+    const f = isSpend(t.envelope) ? byKey.get(chargeKey(t.payee, t.envelope)) : undefined;
+    const home = f && isSpend(t.envelope) ? state.envelopes.get(t.envelope) : undefined;
+    if (f && home) (charged.get(home.id) ?? charged.set(home.id, new Map()).get(home.id)!).set(f.key, f);
+    // parts say what landed and what was paid, each in its live envelope
     for (const p of partsOf(t)) {
       if (!isSpend(p.envelope)) continue;
       const env = state.envelopes.get(p.envelope);
       if (!env) continue;
       const charge = chargeKey(t.payee, p.envelope);
-      const f = byKey.get(charge);
-      if (f) (charged.get(env.id) ?? charged.set(env.id, new Map()).get(env.id)!).set(f.key, f);
       const month = monthOf(t.date);
       (parts.get(env.id) ?? parts.set(env.id, []).get(env.id)!).push({
         txnId: t.id, day: t.date, month, amount: cents(-p.amount), payee: t.payee, charge, key: billKey(t.payee),

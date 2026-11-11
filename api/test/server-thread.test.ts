@@ -60,6 +60,8 @@ before(async () => {
     { op: 'envelope.define', envelope: 'trip', label: 'Travel', category: 'people', template: parseDollars('400.00'), order: 1 },
     { op: 'month.open', month, income: parseDollars('1000.00') },
     { op: 'rule.add', rule: 'r-bigbox', match: 'BIGBOX', envelope: '__split' },
+    // A rule naming an envelope that is not here, as a hand-written or restored log may hold.
+    { op: 'rule.add', rule: 'r-gone', match: 'GONEBOX', envelope: 'nowhere' },
   ]);
   const [kept] = await seed.append('claude', { op: 'thread.briefing', day: '2026-01-01', source: 'household',
     headline: 'Kept in Drive', doc: DOC, writtenBy: 'claude' });
@@ -216,6 +218,17 @@ describe('the thread routes', () => {
     assert.equal(c.status, 200);
     const page = await call('GET', '/api/thread');
     assert.ok(page.json.entries.some((e: any) => e.kind === 'change' && /imported 1/.test(e.what)));
+  });
+
+  test('a rule naming an envelope that is not here sorts nothing: the receipt imports into To sort', async () => {
+    const csv = 'Date,Payee,Amount\n' + `${month}-02,GONEBOX OUTLET,-12.00\n`;
+    const p = await call('POST', '/api/import/preview', { filename: 'g.csv', content: csv });
+    assert.equal(p.status, 200);
+    const row = p.json.rows[0];
+    assert.deepEqual([row.envelope, p.json.ruled, p.json.needsSorting], [null, 0, 1]);
+    const c = await call('POST', '/api/import/commit', { source: 'g.csv', rows: [row] });
+    assert.equal(c.status, 200, JSON.stringify(c.json));
+    assert.deepEqual([c.json.added, c.json.sorted], [1, 0]);
   });
 
   test('/api/match answers with no suggestions when no key is set', async () => {

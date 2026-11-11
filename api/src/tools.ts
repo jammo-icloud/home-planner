@@ -2056,6 +2056,9 @@ const makeStarterEnvelopes: Tool = {
         else {
           const starter = starterOf(given);
           if (!starter) throw new ToolError(`no category ${given}`, 404);
+          // A category typed new in an earlier row, under this id or this name, would be written twice.
+          const twice = [...typed.values()].find((c) => c.id === given || nameKey(c.label) === nameKey(starter.label));
+          if (twice) throw new ToolError(`${twice.label} is named as a new category and as the starter category ${starter.label}: choose it once`, 409);
           // A starter category whose name is here already under another id is that one.
           const same = [...state.categories.values()].find((c) => nameKey(c.label) === nameKey(starter.label));
           if (same) category = same.id;

@@ -1249,7 +1249,14 @@ function fold(d: Draft, e: Event): void {
     case 'month.close': {
       const m = d.months.get(e.month);
       if (!m) throw new ReplayError(`month ${e.month} is not open`, e);
-      if (e.closed) m.closed = true; else delete m.closed;
+      if (e.closed) m.closed = true;
+      else {
+        delete m.closed;
+        // Reopened, a month no longer keeps any removed envelope: closing it again does not bring that back.
+        for (const r of d.removedEnvelopes.values()) {
+          if (r.keptIn.includes(e.month)) d.removedEnvelopes.set(r.id, { ...r, keptIn: r.keptIn.filter((m2) => m2 !== e.month) });
+        }
+      }
       return;
     }
 
@@ -1274,7 +1281,10 @@ function fold(d: Draft, e: Event): void {
       if (d.rules.some((r) => r.envelope === env.id)) throw new ReplayError(`a rule still sorts into ${env.label}`, e);
       // "Closed" is read now: only the months closed at this moment keep it in their history.
       const keptIn = [...d.months.values()].filter((m) => m.closed).map((m) => m.month).sort();
-      d.removedEnvelopes.set(env.id, { id: env.id, label: env.label, category: env.category, keptIn });
+      d.removedEnvelopes.set(env.id, {
+        id: env.id, label: env.label, category: env.category, keptIn, rollover: env.rollover,
+        ...(env.sinking ? { sinking: env.sinking } : {}),
+      });
       d.envelopes.delete(env.id);
       for (const [slot, rec] of d.bills) if (rec.envelope === env.id) d.bills.delete(slot);
       return;

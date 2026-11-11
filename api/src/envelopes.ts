@@ -19,8 +19,9 @@ import type {
 
 /**
  * Whether a removed envelope keeps `month` in its history: the month was
- * closed when it was removed, and is closed still. Reopening it sends its
- * receipts to To sort; closing a month after the removal does not take them.
+ * closed when it was removed, and has stayed closed. Reopening it sends its
+ * receipts to To sort for good (the fold drops it from `keptIn`); closing a
+ * month after the removal does not take them.
  */
 export function keptIn(state: Pick<State, 'removedEnvelopes' | 'months'>, envelope: EnvelopeId, month: Month): boolean {
   const gone = state.removedEnvelopes.get(envelope);
@@ -97,8 +98,8 @@ export interface EnvelopeView {
   readonly lines: readonly EnvelopeLine[];
   /**
    * Only in a month that keeps a removed envelope: its `envelope` is built from
-   * the record (rollover false, template 0), and it sits after its category's
-   * live envelopes.
+   * the record (its rollover and goal as they were, template 0), and it sits
+   * after its category's live envelopes.
    */
   readonly removed?: true;
 }
@@ -194,7 +195,10 @@ function ordered(state: State, month: Month): { envelope: Envelope; removed: boo
   const gone = [...state.removedEnvelopes.values()]
     .filter((r) => keptIn(state, r.id, month))
     .map((r) => ({
-      envelope: { id: r.id, label: r.label, category: r.category, rollover: false, template: ZERO, order: 0 } as Envelope,
+      envelope: {
+        id: r.id, label: r.label, category: r.category, rollover: r.rollover, template: ZERO, order: 0,
+        ...(r.sinking ? { sinking: r.sinking } : {}),
+      } as Envelope,
       removed: true,
     }));
   return [...live, ...gone].sort((a, b) =>
@@ -219,7 +223,8 @@ export function carriedInto(
 
   const plan = state.months.get(prev);
   if (!plan) return ZERO;
-  const envelope = state.envelopes.get(env);
+  // A removed envelope carries as it did, so the months that keep it read as they did.
+  const envelope = state.envelopes.get(env) ?? state.removedEnvelopes.get(env);
   if (!envelope) return ZERO;
 
   let act = ZERO;

@@ -125,6 +125,40 @@ describe('removing an envelope', () => {
     const reopened = apply(removed(), [ev({ op: 'month.close', month: '2026-09', closed: false, why: 'a late receipt' })]);
     assert.ok(toSort(reopened).txnIds.includes('g9'));
   });
+  test('a kept month reopened and closed again keeps its receipts in To sort', () => {
+    const again = apply(removed(), [
+      ev({ op: 'month.close', month: '2026-09', closed: false, why: 'a late receipt' }),
+      ev({ op: 'month.close', month: '2026-09', closed: true, why: 'done again' }),
+    ]);
+    assert.deepEqual(again.removedEnvelopes.get('gym')!.keptIn, []);
+    assert.ok(toSort(again).txnIds.includes('g9'));
+    assert.equal(monthView(again, '2026-09')!.envelopes.some((e) => e.envelope.id === 'gym'), false);
+  });
+  test("a closed month's figures for it are the same before and after the removal", () => {
+    // Gym rolls over: August's leftover carries into September, both closed when it goes.
+    const lived = [
+      ev({ op: 'household.claim', label: 'Home' }),
+      ev({ op: 'category.add', category: 'fun', label: 'Fun' }),
+      ev({ op: 'envelope.define', envelope: 'gym', label: 'Gym', category: 'fun', template: cents(4000) }),
+      ev({ op: 'envelope.define', envelope: 'swim', label: 'Swim', category: 'fun', template: cents(1000) }),
+      ev({ op: 'month.open', month: '2026-08', income: cents(500000) }),
+      ev({ op: 'month.open', month: '2026-09', income: cents(500000) }),
+      ev({ op: 'month.open', month: '2026-10', income: cents(500000) }),
+      add(t('g8', '2026-08-05', 'EXAMPLE GYM', '-10.00')), sortTo('g8', 'gym'),
+      add(t('g9', '2026-09-05', 'EXAMPLE GYM', '-25.00')), sortTo('g9', 'gym'),
+      ev({ op: 'month.close', month: '2026-08', closed: true, why: 'done' }),
+      ev({ op: 'month.close', month: '2026-09', closed: true, why: 'done' }),
+    ];
+    const figures = (s: State, month: string) => {
+      const v = monthView(s, month)!;
+      const g = v.envelopes.find((e) => e.envelope.id === 'gym')!;
+      return [g.planned, g.funded, g.carried, g.activity, g.available, v.planned, v.funded, v.activity, v.toAssign];
+    };
+    const before = replay(lived);
+    const after = apply(before, [ev({ op: 'envelope.remove', envelope: 'gym', why: 'cancelled' })]);
+    for (const month of ['2026-08', '2026-09']) assert.deepEqual(figures(after, month), figures(before, month), month);
+    assert.deepEqual(figures(after, '2026-09').slice(2, 5), [3000, 2500, 4500], 'August left $30, carried into September');
+  });
   test('its id is reserved, and the same name takes a fresh one', () => {
     assert.throws(() => apply(removed(), [ev({ op: 'envelope.define', envelope: 'gym', label: 'Gym', category: 'fun', template: cents(0) })]), /gym was removed; a new envelope takes a new id/);
     assert.equal(envelopeIdFor(removed(), 'Gym'), 'gym-2');

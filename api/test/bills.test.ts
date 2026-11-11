@@ -12,7 +12,7 @@ import { monthView } from '../src/envelopes.ts';
 import type { Cents } from '../src/money.ts';
 import { Store } from '../src/store.ts';
 import { replay, apply } from '../src/replay.ts';
-import { billDateWords, billDatesIn, billKey, billLine, billOccurrences, billsExpected, billsOf, fixedCharges } from '../src/analytics.ts';
+import { billDateWords, billDatesIn, billKey, billLine, billOccurrences, billsExpected, billsOf, fixedCharges, monthClock, pace } from '../src/analytics.ts';
 import { describe as describeEvent, APPROVE_IN_ONE, ProposalStore, commit, toolByName, toolSchemas } from '../src/tools.ts';
 import type { Proposal, ToolContext } from '../src/tools.ts';
 import { newerBackup, parseBackup, planRestore, eventsToApply, scopeOf } from '../src/restore.ts';
@@ -220,11 +220,21 @@ describe("an envelope's bills", () => {
     assert.deepEqual([b.receipts.length, b.lastPaid?.day, b.charges[0]!.landed.has('2026-11')], [3, '2026-10-14', true]);
   });
   test('a split part is a receipt for its share', () => {
-    // A charge is counted by part too, so the share here is near the bill's usual amount.
-    const one = pay('sp', '2026-11-02', 'EXAMPLE POWER BILLP', '-200.00', 'util');
-    const cut = ev({ op: 'txn.split', txn: 'sp', parts: [{ envelope: 'util', amount: parseDollars('-140.00') }, { envelope: 'daily', amount: parseDollars('-60.00') }] });
+    const one = pay('sp', '2026-11-02', 'EXAMPLE POWER BILLP', '-146.00', 'util');
+    const cut = ev({ op: 'txn.split', txn: 'sp', parts: [{ envelope: 'util', amount: parseDollars('-100.00') }, { envelope: 'daily', amount: parseDollars('-46.00') }] });
     const b = list(house([...POWER, one], [cut]), 'util')[0]!;
-    assert.deepEqual([b.receipts.length, b.lastPaid?.amount, b.charges[0]!.landed.has('2026-11')], [4, 14000, true]);
+    assert.deepEqual([b.receipts.length, b.lastPaid?.amount, b.charges[0]!.landed.has('2026-11')], [4, 10000, true]);
+  });
+  test('a fixed charge split one month still stands, with its bill, and pace still counts it committed', () => {
+    // Three months of the $146 bill whole, then a fourth split: a split receipt is no charge, so it neither joins nor breaks one.
+    const one = pay('sp', '2026-11-02', 'EXAMPLE POWER BILLP', '-146.00', 'util');
+    const cut = ev({ op: 'txn.split', txn: 'sp', parts: [{ envelope: 'util', amount: parseDollars('-100.00') }, { envelope: 'daily', amount: parseDollars('-46.00') }] });
+    const s = house([...POWER, one], [cut]);
+    assert.deepEqual(fixedCharges(s).map((f) => [f.key, f.envelope, f.typical, f.months]),
+      [['example power billp|util', 'util', 14600, ['2026-08', '2026-09', '2026-10']]]);
+    assert.deepEqual(list(s, 'util').map((b) => [b.key, b.about, b.charges.length]), [['example power billp', 14600, 1]]);
+    const util = pace(monthView(s, '2026-11')!, monthClock('2026-11', '2026-11-12'), s).find((p) => p.envelope === 'util')!;
+    assert.deepEqual([util.committed, util.discretionary, util.stillExpected], [10000, 0, 0]);
   });
   test('a receipt goes to the longest key it contains', () => {
     const rows = ['2026-09-30', '2026-10-30'].map((d) => pay(`w${d}`, d, 'EXAMPLE WATER #4471', '-48.00', 'util'));

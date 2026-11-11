@@ -96,6 +96,13 @@ describe('make_starter_envelopes', () => {
     assert.throws(() => make(d, [{ label: 'Dining', category: 'food' }, { label: 'DINING', category: 'food' }]), /DINING is named twice/);
     assert.throws(() => make(d, [{ label: 'Dining', newCategory: ' food' }]), /There is already a category called Food\./);
     assert.throws(() => make(d, [{ label: 'Dining', category: 'food', newCategory: 'Eating' }]), /give one/);
+    const e = await fresh();
+    assert.throws(() => make(e, [{ label: 'Snacks', newCategory: 'Food' }, { label: 'Groceries', id: 'groceries', category: 'food' }]),
+      /Food is named as a new category and as the starter category Food: choose it once/);
+    assert.throws(() => make(e, [{ label: 'Snacks', newCategory: 'Home' }, { label: 'Rent', id: 'rent', category: 'home' }]), /choose it once/);
+    // The other way round, the starter category is used for the typed name: one category.add.
+    const p = make(e, [{ label: 'Groceries', id: 'groceries', category: 'food' }, { label: 'Snacks', newCategory: 'food' }]);
+    assert.deepEqual(p.events.filter((x) => x.op === 'category.add').map((x) => (x as { category: string }).category), ['food']);
     assert.equal(d.store.state.lastEventId, after);
   });
 

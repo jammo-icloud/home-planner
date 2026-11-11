@@ -163,10 +163,12 @@ export interface SinkingEstimate { readonly cost: Cents; readonly everyYears: nu
 /**
  * An envelope that was removed. Its id stays taken. `keptIn`: the months that
  * were closed when it was removed; only they keep it in their history, and
- * only while they stay closed.
+ * only while they stay closed: reopening one takes it off the list for good.
+ * `rollover` and `sinking` are what it had, so those months' figures never change.
  */
 export interface RemovedEnvelope {
   readonly id: EnvelopeId; readonly label: string; readonly category: CategoryId; readonly keptIn: readonly Month[];
+  readonly rollover: boolean; readonly sinking?: SinkingGoal;
 }
 
 /** Where the household is: enough to find a place in public data, and to say it back to a person. */
