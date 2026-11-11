@@ -12774,7 +12774,7 @@ function markList(m, limit = Infinity) {
 }
 
 const GLYPH_WORDS = { planning: 'a plan in planning', doing: 'a plan in progress', done: 'a plan done' };
-const MONEY_MARK_WORDS = { short: 'money short', due: 'a bill due', payby: 'a bill to pay by', bill: 'a bill', autopay: 'a bill on Auto Pay', paid: 'bills paid' };
+const MONEY_MARK_WORDS = { short: 'money short', due: 'a bill due', payby: 'a Pay by bill', bill: 'a bill', autopay: 'a bill on Auto Pay', paid: 'bills paid' };
 
 /** A day's accessible name: the date and every mark. */
 function marksWords(dayWords, m) {
@@ -13313,13 +13313,14 @@ function moneyBox(m) {
   let under;
   if (m.kind === 'paid') {
     top = `${m.label} · ${m.amount}`;
-    under = `paid · ${m.name}`;
+    under = `${MONEY_KIND_WORDS.paid} · ${m.name}`;
   } else if (m.kind === 'short') {
-    const w = KIND_WORDS[m.billKind].toLowerCase();
+    // The bill's own words, as the day card and every name say them: Due, Auto Pay, Pay by, Bill.
+    const w = MONEY_KIND_WORDS[m.billKind];
     top = `${m.label} · ${m.left ? `${m.left} left` : `${m.over} over`}`;
     under = `${w} ${dayShort(m.billDay)}`;
   } else {
-    const w = KIND_WORDS[m.kind].toLowerCase();
+    const w = MONEY_KIND_WORDS[m.kind];
     top = m.about ? `${m.label} · about ${m.about}` : m.label;
     under = `${w} · ${m.name}${m.noReceipt ? ' · no receipt yet' : ''}`;
   }

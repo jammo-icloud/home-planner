@@ -29,5 +29,8 @@ test('an open form adds no room under the page: the Calendar ends where its cont
   run.closeCalOpen();
   assert.deepEqual([...classes], []);
   assert.doesNotMatch(page, /cal-room/);
-  assert.doesNotMatch(page, /#calendar[^{]*\{[^}]*padding-bottom:\s*100v?h/);
+  // Any screen-sized room under the Calendar, in any viewport unit: vh, dvh, svh, lvh or vb.
+  const room = /#calendar[^{]*\{[^}]*padding-(?:bottom|block-end|block):[^;}]*\b100(?:[dsl]?vh|vb)\b/;
+  for (const unit of ['vh', 'dvh', 'svh', 'lvh', 'vb']) assert.match(`#calendar.x{padding-bottom:100${unit}}`, room, unit);
+  assert.doesNotMatch(page, room);
 });

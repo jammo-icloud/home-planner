@@ -590,7 +590,7 @@ function sendPage(res: ServerResponse, status: number, html: string): void {
 
 /** A phone's link that is spent, stale or unknown. The same page whichever, and nothing about the household. */
 const CODE_EXPIRED = guestPage('This code has expired',
-  '<p>Open Home Planner on your computer and make a new one from Set up your iPhone.</p>');
+  '<p>Open Home Planner on your computer and make a new one from Settings › You › Your iPhone and Mac.</p>');
 
 const NOT_HTTPS = 'a phone can be set up only from a page opened over https (or over http on this computer)';
 const NOT_HOME_ORIGIN = "the Home Screen link needs the page's own address, over http or https, with nothing after the host";

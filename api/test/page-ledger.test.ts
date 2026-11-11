@@ -454,7 +454,10 @@ describe('the page ledger: 0.9.2', () => {
     ['setup', 'if (done === steps.length) return null;', 'page'], ['setup', 'function backLabel(page) {', 'page'],
     ['setup', 'if (page?.from && pageFor(page.from.key, page.from.group)) {', 'page'],
     ['bill', "const MONEY_MARK_ORDER = ['due', 'payby', 'bill', 'autopay', 'paid'];", 'calendar'],
-    ['bill', "autopay: 'a bill on Auto Pay'", 'calendar'], ['bill', "payby: 'Pay by'", 'calendar'],
+    ['bill', "autopay: 'a bill on Auto Pay'", 'calendar'], ['bill', "payby: 'a Pay by bill'", 'calendar'], ['bill', "payby: 'Pay by'", 'calendar'],
+    // A desk box says the bill's kind in the words every name uses, not lowercased.
+    ['bill', 'const w = MONEY_KIND_WORDS[m.billKind];', 'calendar'], ['bill', 'const w = MONEY_KIND_WORDS[m.kind];', 'calendar'],
+    ['bill', 'under = `${MONEY_KIND_WORDS.paid} · ${m.name}`;', 'calendar'],
     ['bill', "const quietBill = (m) => m.kind === 'autopay' && !m.short;", 'calendar'],
     ['bill', '.mk-m:is(.due,.payby,.bill){color:var(--caution)}', 'css'], ['bill', '.mk-m.autopay{color:var(--ink-soft)}', 'css'],
     ['bill', '.ev.money.autopay{', 'css'], ['bill', '.erow.cal.autopay,', 'css'],
@@ -465,6 +468,8 @@ describe('the page ledger: 0.9.2', () => {
   const GONE_092: readonly Line[] = [
     ['phone', 'id="me-phone"', 'page'], ['phone', "$('me-phone')", 'page'],
     ['bill', "'Pay By'", 'page'], ['bill', "v.money.some((m) => m.kind !== 'paid') ? 'due'", 'calendar'], ['bill', "due: 'money'", 'calendar'],
+    ['bill', "'a bill to pay by'", 'calendar'], ['bill', 'KIND_WORDS[m.kind].toLowerCase()', 'calendar'],
+    ['bill', 'KIND_WORDS[m.billKind].toLowerCase()', 'calendar'], ['bill', 'under = `paid · ${m.name}`', 'calendar'],
     ['setup', "'All chosen'", 'page'],
     ['form', 'cal-room', 'page'],
     ['hit', 'overflow:hidden;text-decoration:none', 'css'],
@@ -487,9 +492,37 @@ describe('the page ledger: 0.9.2', () => {
     assert.match(groupsCode, /\]\.filter\(Boolean\)/, 'a null row is left out of the list and of the side index');
   });
   test("a step opened from Setup goes Back to Setup while it is there, else to the list at the step's own row", () => {
-    assert.match(closeCode, /if \(page\.listScroll === null \|\| page\.from\) row\?\.scrollIntoView\(\{ block: 'center' \}\)/);
+    // closePage itself, run against stubs: the list or the Setup page drawn, and the rows it scrolls and focuses.
+    const back = (setupThere: boolean) => {
+      const said: string[] = [];
+      const row = (sel: string) => ({
+        scrollIntoView: (o: { block: string }) => said.push(`scroll ${sel} ${o.block}`),
+        focus: () => said.push(`focus ${sel}`),
+      });
+      const host = { querySelector: (sel: string) => row(sel) };
+      const fn = new Function('pageFor', 'renderSettingsPage', 'renderSettingsList', 'renderNasPanel', 'onHouseholds', 'settingsHost', 'document', 'window', 'CSS', 'pageEscape',
+        `let settingsPage = null, settingsEditing = null, folderPick = null, restorePick = null;\n${closeCode}\n`
+        + 'return (page) => { settingsPage = page; closePage(); return settingsPage; };');
+      const run = fn(
+        (key: string) => (key === 'setup' && !setupThere ? null : { key }),
+        () => said.push('draw Setup'), () => said.push('draw list'), () => said.push('draw NAS'), () => false, () => host,
+        { removeEventListener() {} }, { scrollTo: (o: { top: number }) => said.push(`scrollTo ${o.top}`) }, { escape: (s: string) => s }, () => {});
+      const setup = { key: 'setup', group: 'household', listScroll: 0, returnTo: 'row-setup', from: null };
+      const now = run({ key: 'hcal', group: 'household', listScroll: 0, returnTo: 'row-hcal', from: setup });
+      return { said, now };
+    };
+    const gone = back(false);
+    assert.equal(gone.now, null, 'no page is open: the list is');
+    assert.deepEqual(gone.said, ['draw list', 'scroll [data-key="row-hcal"] center', 'focus [data-key="row-hcal"]']);
+    const there = back(true);
+    assert.equal(there.now?.key, 'setup', 'Setup is the open page again');
+    assert.deepEqual(there.said, ['draw Setup', 'focus .set-page [data-key="row-hcal"]']);
     assert.match(between(script, 'function redrawPage(', '/** A refusal in the open page'), /backLine\.textContent = backLabel\(page\)/);
     assert.match(between(script, 'function renderSettingsPage(', '/** Where the open page'), /back\.append\(icon\('back', 'i'\), backLabel\(page\)\)/);
+  });
+  test("a spent phone code's page sends the member to Settings, not to a menu item that is gone", () => {
+    assert.ok(server.includes('make a new one from Settings › You › Your iPhone and Mac.</p>'), 'KEPT');
+    assert.equal(uncommented(server).includes('make a new one from Set up your iPhone'), false, 'GONE');
   });
   test('no document sends anyone to the phone sheet through the person menu', () => {
     for (const doc of ['../../README.md', '../../DEPLOY.md']) assert.doesNotMatch(read(doc), /iPhone\*{0,2}\s+from the person menu/i, doc);

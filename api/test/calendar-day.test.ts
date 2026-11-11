@@ -104,7 +104,7 @@ describe('the marks', () => {
   test("the money mark says the bill's own kind (0.9.2)", () => {
     const say = (money: string) => f.marksWords('Saturday 14 November', { count: 0, glyph: null, money, clash: false, held: false });
     assert.deepEqual(['due', 'payby', 'autopay', 'bill'].map(say), [
-      'Saturday 14 November, a bill due', 'Saturday 14 November, a bill to pay by',
+      'Saturday 14 November, a bill due', 'Saturday 14 November, a Pay by bill',
       'Saturday 14 November, a bill on Auto Pay', 'Saturday 14 November, a bill']);
   });
 });
