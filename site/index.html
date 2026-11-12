@@ -27,7 +27,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F9FE" />
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F131A" />
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/tokens.css?v=0.10.0" />
+<link rel="stylesheet" href="/tokens.css?v=0.10.1" />
 <style>
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -130,6 +130,14 @@
   .totals .v{font-size:var(--fs-body);font-weight:600}
 
   .band{margin-top:26px}
+  /* A wide desk: the bands in two columns, down the first and then the second, none split. Everything that is not a
+     band sits outside #bands, across the page; the savings line, the one other thing in it, spans both under them.
+     The gap above a band is padding here: a margin at the top of the second column is dropped, and the two would not line up. */
+  @container page (min-width: 1040px){
+    #bands{columns:2;column-gap:var(--sp-8)}
+    #bands > .band{break-inside:avoid;margin-top:0;padding-top:26px}
+    #bands > .savings-check{column-span:all}
+  }
   .band h2{font-size:var(--fs-body);font-weight:600;letter-spacing:-.01em;margin:0 0 8px}
   .cover{margin-top:11px;padding:12px 13px;border-radius:var(--r-control);background:var(--surface-raised);
     border:1px solid var(--short-row-line)}
@@ -249,8 +257,8 @@
   .ep-done{display:grid;gap:var(--sp-3);justify-items:start}
 
   /* ── the budget walkthrough: the steps in a rail, the current one beside it ── */
-  #app:has(#walk:not([hidden])) .wrap{max-width:calc(220px + var(--sp-8) + var(--measure))}
-  .walk{margin-top:0}
+  /* Its own width, from the page's left edge: the page and the top bar keep theirs, so the tabs never move. */
+  .walk{margin-top:0;max-width:calc(220px + var(--sp-8) + var(--measure))}
   .walk-h{font-size:var(--fs-headline);letter-spacing:-.02em;margin:0 0 var(--sp-5)}
   .walk-grid{display:grid;gap:var(--sp-5);align-items:start}
   .walk-rail{display:grid;gap:var(--sp-5)}
@@ -519,9 +527,12 @@
   .tabs-top [aria-current="page"]::after{content:'';position:absolute;left:var(--sp-3);right:var(--sp-3);bottom:-1px;
     height:2px;border-radius:2px;background:var(--accent)}
   .tabs-top svg.lu{display:none}
-  /* Desk: the tabs first, the household and you at the right. */
+  /* Desk: the tabs first, the household and you at the right, the pill's edge on the bar's right edge as the
+     first tab's is on its left. */
   @container page (min-width: 760px){
     .pill.member .name{display:block}
+    .top-inner > .menu.me{margin-left:auto}
+    .pill.member{margin-right:0}
   }
   /* Phone: each tab as its icon (its label kept for a screen reader), and you,
      with the household and the day under your disc. Each target is at least 40
@@ -705,10 +716,10 @@
   .who.household{display:inline-grid;place-items:center;flex:none;width:var(--disc);height:var(--disc);border-radius:50%;
     background:var(--src-household-fill);color:var(--src-household-ink);box-shadow:inset 0 0 0 1px var(--src-household-line)}
   .who.household svg.i{width:11px;height:11px}
+  /* The days take what the rail leaves, so the two span the page edge to edge, as the bar does. */
   @container page (min-width: 1040px){
-    #app:has(#briefing:not([hidden])) .wrap{max-width:var(--page)}
-    .today{display:grid;grid-template-columns:minmax(0,var(--measure)) minmax(240px,300px);column-gap:var(--sp-8);
-      justify-content:center;align-items:start}
+    .today{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,300px);column-gap:var(--sp-8);
+      align-items:start}
     .today > .yours{display:grid;position:sticky;top:var(--sp-5);padding:0;background:none;border:0;border-radius:0}
   }
 
@@ -716,9 +727,12 @@
   /* Clipped sideways: a menu measured before keepOnScreen moves it would
      otherwise widen a phone's layout viewport for a frame and scroll the page. */
   .hp{container:page / inline-size;overflow-x:clip;background:var(--surface);color:var(--ink)}
-  /* The board, the card, the Calendar and Settings get the page's full width; every other screen keeps its reading measure. */
+  /* The board, the card, the Calendar and Settings get the page's full width at every width. */
   #app:has(#plan:not([hidden])) .wrap,#app:has(#plan-card:not([hidden])) .wrap,
   #app:has(#calendar:not([hidden])) .wrap,#app:has(#settings:not([hidden])) .wrap{max-width:var(--page)}
+  /* On the desk every screen does: its edges are the top bar's. A screen that reads better narrower (an envelope's
+     page, the walkthrough, a Settings page) sets its own width and starts from the left edge, never centred. */
+  @container page (min-width: 760px){ .hp > main.wrap{max-width:var(--page)} }
   #plan p,#plan-card p{margin:0}
   #plan h1,#plan h2,#plan-card h1,#plan-card h2{margin:0}
   .btn.small{padding:var(--sp-1) var(--sp-3);font-size:var(--fs-small)}
@@ -1146,10 +1160,11 @@
   .settings{display:grid;gap:var(--sp-7);padding-block:var(--sp-5) var(--sp-8)}
   .set-index{display:none}
   @container page (min-width: 1040px){
-    .settings{grid-template-columns:220px minmax(0,var(--measure));gap:var(--sp-8);justify-content:center}
+    /* the index on the page's left edge, the bar's, and the column its reading width beside it */
+    .settings{grid-template-columns:220px minmax(0,var(--measure));gap:var(--sp-8);justify-content:start}
     .set-index{display:grid;gap:2px;align-content:start;position:sticky;top:var(--sp-5);align-self:start}
     /* the head lines up with the index and the column it sits over */
-    #settings .page-head{max-width:calc(220px + var(--sp-8) + var(--measure));margin-inline:auto}
+    #settings .page-head{max-width:calc(220px + var(--sp-8) + var(--measure))}
   }
   .set-index .eyebrow{padding:var(--sp-3) 10px 4px}
   .set-index a{display:flex;align-items:center;min-height:36px;padding:0 10px;font-size:var(--fs-ui);color:var(--ink-soft);
@@ -1175,8 +1190,9 @@
   .set-item .set-s{min-width:0;text-align:right;color:var(--ink-faint);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
   .set-item .chev{flex:none;color:var(--ink-faint)}
   .set-item.warn .set-s{color:var(--caution)}
-  /* A page: Back to the list, the row's title, what it is, the form, the slot its errors go in, then what is set. */
-  .set-page{display:grid;gap:var(--sp-4);align-content:start;width:100%;max-width:var(--measure);margin:0 auto;
+  /* A page: Back to the list, the row's title, what it is, the form, the slot its errors go in, then what is set.
+     Its reading width from the left edge of where it sits: an envelope's page and an area's start on the bar's edge. */
+  .set-page{display:grid;gap:var(--sp-4);align-content:start;width:100%;max-width:var(--measure);margin:0;
     padding-block:0 var(--sp-8);min-width:0}
   .set-page-head{display:grid;justify-items:start;gap:var(--sp-1)}
   .set-page-head h1{font-size:var(--fs-headline);letter-spacing:-0.02em}
@@ -2251,7 +2267,7 @@ $('signout').addEventListener('click', async () => {
 });
 
 // ── shared: what every screen calls ───────────────────────────────────────
-const BUILD = '0.10.0';
+const BUILD = '0.10.1';
 
 /**
  * Which household's screens these are: moved on whenever a household is left (a switch, the picker, sign-out), so a

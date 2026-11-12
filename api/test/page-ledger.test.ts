@@ -719,3 +719,61 @@ describe('the page ledger: 0.10.0', () => {
     assert.match(open, /try \{ await enterApp\(\); \} catch \(ex\) \{ await pickerSaying\(ex\); \}/);
   });
 });
+
+// ── 0.10.1: the desk layout lines up with the bar ──
+/** The bodies of every `@container page (…)` block whose condition is `cond`, comments stripped, joined. */
+const containerBlocks = (cond: string): string => {
+  const css = REGIONS.css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const head = `@container page (${cond}){`;
+  const out: string[] = [];
+  for (let at = css.indexOf(head); at !== -1; at = css.indexOf(head, at + 1)) {
+    let depth = 1;
+    let i = at + head.length;
+    for (; i < css.length && depth; i++) depth += css[i] === '{' ? 1 : css[i] === '}' ? -1 : 0;
+    out.push(css.slice(at + head.length, i - 1));
+  }
+  return out.join('\n');
+};
+/** One rule's declarations in `text`, by its exact selector at the start of a line. */
+const ruleOf = (text: string, selector: string): string | null => {
+  const at = text.search(new RegExp(`(^|\\n)\\s*${selector.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\{`));
+  if (at === -1) return null;
+  const open = text.indexOf('{', text.indexOf(selector, at));
+  return text.slice(open + 1, text.indexOf('}', open));
+};
+describe('the page ledger: 0.10.1, the desk lines up with the bar', () => {
+  const css = REGIONS.css.replace(/\/\*[\s\S]*?\*\//g, '');
+  const desk = containerBlocks('min-width: 760px');
+  const wide = containerBlocks('min-width: 1040px');
+  test('the blocks are found', () => assert.ok(desk.length > 200 && wide.length > 200));
+  test('on the desk the person menu sits at the right of the bar, its pill on the edge; a phone keeps its own', () => {
+    assert.match(ruleOf(desk, '.top-inner > .menu.me') ?? '', /margin-left:auto/);
+    assert.match(ruleOf(desk, '.pill.member') ?? '', /margin-right:0/);
+    assert.match(ruleOf(containerBlocks('max-width: 759px'), '.top-inner > .menu.me') ?? '', /flex:1 1 0;justify-content:flex-end/);
+  });
+  test("on the desk every screen is the page wide, its edges the bar's, and the walkthrough no longer narrows the bar", () => {
+    assert.equal(ruleOf(desk, '.hp > main.wrap'), 'max-width:var(--page)');
+    assert.equal(css.includes('#app:has(#walk'), false);
+    assert.match(ruleOf(css, '.walk') ?? '', /max-width:calc\(220px \+ var\(--sp-8\) \+ var\(--measure\)\)/);
+  });
+  test("Today's days fill what the rail leaves: no reading measure, nothing centred", () => {
+    const today = ruleOf(wide, '.today') ?? '';
+    assert.match(today, /grid-template-columns:minmax\(0,1fr\) minmax\(240px,300px\)/);
+    assert.equal(/justify-content:center/.test(today), false);
+    assert.equal(css.includes('minmax(0,var(--measure)) minmax(240px,300px)'), false);
+  });
+  test("Budget's bands are two columns on a wide desk, none split, the savings line across both under them", () => {
+    assert.match(ruleOf(wide, '#bands') ?? '', /columns:2/);
+    assert.match(ruleOf(wide, '#bands > .band') ?? '', /break-inside:avoid/);
+    assert.match(ruleOf(wide, '#bands > .savings-check') ?? '', /column-span:all/);
+    // The card above, the add rows below: outside #bands, so across the page, over and under the columns.
+    const list = between(REGIONS.budgetMarkup, '<div id="budget-list">', '<section id="env-page"');
+    assert.ok(list.indexOf('id="toassign"') < list.indexOf('<div id="bands"></div>'));
+    assert.ok(list.indexOf('<div id="bands"></div>') < list.indexOf('id="env-new"'));
+  });
+  test("a page with a reading width (an envelope's, an area's, Settings) starts at the left edge, never centred", () => {
+    assert.match(ruleOf(css, '.set-page') ?? '', /max-width:var\(--measure\);margin:0;/);
+    assert.match(ruleOf(wide, '.settings') ?? '', /justify-content:start/);
+    assert.equal(/margin-inline:auto/.test(ruleOf(wide, '#settings .page-head') ?? ''), false);
+  });
+});
