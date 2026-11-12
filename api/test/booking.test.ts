@@ -6,7 +6,8 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
 import {
-  acceptSuggestion, aheadOf, aheadWords, availability, bookingAvailability, bookingConfig, bookingHousehold, bookingOffWords, bookingStatus,
+  acceptSuggestion, aheadOf, aheadWords, availability, bookingAvailability, bookingConfig, bookingHousehold, bookingMissing, bookingNeeds,
+  bookingOffWords, bookingStatus,
   cancelStay, changeStay, confirmedMail, finishSignIn,
   memberNights, mine,
   request as ask,
@@ -217,9 +218,9 @@ describe('one household at a time', () => {
       // Who can fix the NAS's side: ADMIN_USER, else the last to save on This NAS, else the NAS's administrator.
       const { BOOK_URL: _url, ...noPage } = env;
       assert.deepEqual(bookingAvailability(s.state, { env: noPage, adminUser: null }),
-        { available: false, why: "Booking is off until the NAS's administrator sets the booking address under Settings › This NAS." });
+        { available: false, why: "Booking is off until the NAS's administrator sets the booking address." });
       assert.deepEqual(bookingAvailability(s.state, { env: { ...env, BOOK_URL: 'http://book.example.com' }, adminUser: 'root' }),
-        { available: false, why: "Booking is off until root sets the booking address under Settings › This NAS." });
+        { available: false, why: 'Booking is off until root sets the booking address.' });
       await saveConnector('census', { value: 'k' }, 'carol');
       assert.deepEqual(bookingAvailability(s.state, { env: { ...env, SMTP_HOST: '' }, adminUser: null }),
         { available: false, why: 'Booking is off until carol sets up mail under Settings › This NAS.' });
@@ -238,6 +239,84 @@ describe('one household at a time', () => {
     } finally {
       resetConnectors();
     }
+  });
+
+  test('says "you" to the one who must act: the owner for the calendar, an administrator for the address and mail', async () => {
+    resetConnectors();
+    try {
+      const s = await fresh();
+      const env = { ...ENV };
+      const alice = { who: 'alice', admin: false };
+      const bob = { who: 'bob', admin: false };
+      const carol = { who: 'bob', admin: true };
+      assert.equal((bookingAvailability(s.state, { env, adminUser: null, viewer: alice }) as { why: string }).why,
+        'Booking is off until you choose the Household calendar.');
+      assert.equal((bookingAvailability(s.state, { env, adminUser: null, viewer: bob }) as { why: string }).why,
+        'Booking is off until alice chooses the Household calendar.');
+      await s.append('alice', { op: 'calendar.household', cal_id: '/alice/hh/', original_cal_id: '/alice/hh/', name: 'Household' });
+      const { BOOK_URL: _url, ...noPage } = env;
+      assert.equal((bookingAvailability(s.state, { env: noPage, adminUser: 'root', viewer: carol }) as { why: string }).why,
+        'Booking is off until you set the booking address.');
+      assert.equal((bookingAvailability(s.state, { env: noPage, adminUser: 'root', viewer: alice }) as { why: string }).why,
+        'Booking is off until root sets the booking address.');
+      assert.equal((bookingAvailability(s.state, { env: { ...env, SMTP_HOST: '' }, adminUser: 'root', viewer: carol }) as { why: string }).why,
+        'Booking is off until you set up mail under Settings › This NAS.');
+      assert.equal((bookingAvailability(s.state, { env: { ...env, SMTP_HOST: '' }, adminUser: 'root', viewer: alice }) as { why: string }).why,
+        'Booking is off until root sets up mail under Settings › This NAS.');
+    } finally {
+      resetConnectors();
+    }
+  });
+
+  test('what booking needs: each of the calendar, the address and mail, done or what is missing, and who sets it', async () => {
+    resetConnectors();
+    try {
+      const s = await fresh();
+      const owner = { who: 'alice', admin: false };
+      const member = { who: 'bob', admin: false };
+      const admin = { who: 'bob', admin: true };
+      const lines = (env: NodeJS.ProcessEnv, viewer: { who: string; admin: boolean }) =>
+        bookingNeeds(s.state, { env, viewer }).map((n) => [n.id, n.done, n.line]);
+      const { BOOK_URL: _url, SMTP_HOST: _host, ...bare } = ENV;
+      assert.deepEqual(lines(bare, owner), [
+        ['calendar', false, 'Not chosen yet.'], ['address', false, 'An administrator sets this.'], ['mail', false, 'An administrator sets this.'],
+      ]);
+      assert.deepEqual(lines(bare, member), [
+        ['calendar', false, 'alice chooses this.'], ['address', false, 'An administrator sets this.'], ['mail', false, 'An administrator sets this.'],
+      ]);
+      assert.deepEqual(lines(bare, admin), [
+        ['calendar', false, 'alice chooses this.'], ['address', false, 'Not set yet.'], ['mail', false, 'Not set up yet.'],
+      ]);
+      // An address that cannot be used, said to the one who sets it in what to type.
+      assert.equal(lines({ ...bare, BOOK_URL: 'https://planner.example.com/book' }, admin)[1]![2],
+        'The address set cannot be used. Just the address, with no path: like https://planner.example.com.');
+      assert.equal(lines({ ...bare, BOOK_URL: 'http://planner.example.com' }, admin)[1]![2],
+        'The address set starts http://. It needs https://.');
+      await s.append('alice', { op: 'calendar.household', cal_id: '/alice/hh/', original_cal_id: '/alice/hh/', name: 'Household' });
+      assert.deepEqual(lines({ ...ENV }, member), [
+        ['calendar', true, 'Household'], ['address', true, 'https://book.example.com'], ['mail', true, 'Set up'],
+      ]);
+      // Mail whose last test failed is not done, and the one who sets it reads why.
+      await recordTest('mailTest', { at: NOW, to: 'me@example.com', ok: false, words: 'refused' });
+      assert.deepEqual(lines({ ...ENV }, admin)[2], ['mail', false, 'The last test failed: refused']);
+      assert.deepEqual(lines({ ...ENV }, member)[2], ['mail', false, 'An administrator sets this.']);
+      // A calendar the app found gone is not done, until one is chosen again.
+      await s.append('system', { op: 'guests.booking', on: false, calendarGone: true });
+      assert.deepEqual(lines({ ...ENV }, owner)[0], ['calendar', false, 'The Household calendar is gone. Choose another.']);
+      assert.deepEqual(lines({ ...ENV }, member)[0], ['calendar', false, 'alice chooses this.']);
+    } finally {
+      resetConnectors();
+    }
+  });
+
+  test("what is missing, in This NAS's Booking row's words", () => {
+    assert.equal(bookingMissing('BOOK_URL'), 'the booking address is not set');
+    assert.equal(bookingMissing('BOOK_URL is not usable'), 'the booking address cannot be used');
+    assert.equal(bookingMissing('BOOK_URL must be https:// (http:// only with COOKIE_INSECURE=1)'), 'the booking address must start https://');
+    assert.equal(bookingMissing('SMTP_HOST'), 'mail is not set up');
+    assert.equal(bookingMissing('SMTP_PORT is not usable'), 'mail is not set up');
+    assert.equal(bookingMissing('no household has booking on'), 'no household has turned booking on');
+    assert.equal(bookingMissing('BOOK_HOUSEHOLD is not a household here'), 'BOOK_HOUSEHOLD is not a household here');
   });
 
   test('a failed mail test before the mail server was saved again counts nowhere, and booking can be on', async () => {

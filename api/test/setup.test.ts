@@ -30,7 +30,7 @@ const CLAIMED: Line[] = [
 
 const NAMES: Record<RowId, string> = {
   claude: 'Claude', drive: 'Synology Drive', calendar: 'Where phones reach the NAS', mail: 'Mail',
-  booking: 'Booking address', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
+  booking: 'Booking', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
 };
 const rowName = (id: RowId): string => NAMES[id];
 
@@ -128,7 +128,7 @@ describe("Today's setup notices", () => {
     assert.deepEqual(setupNotices({ ...base, state }), [{
       kind: 'booking-off',
       text: 'Booking is off: the household calendar is gone. Choose one, then turn booking on again, and 1 request waiting still stands.',
-      action: { label: 'Choose a calendar', open: 'settings', group: 'household', row: 'hcal' },
+      action: { label: 'Choose a calendar', open: 'settings', group: 'household', row: 'guests' },
     }]);
     assert.deepEqual(setupNotices({ ...base, state, who: 'bob' }), [], 'the owner only');
     // Two waiting: the verb agrees.

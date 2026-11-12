@@ -625,7 +625,7 @@ describe('attachments, kept on the NAS through File Station', () => {
     const off = { on: false, why: 'BOOK_URL', words: "Booking is off until BOOK_URL is set in Home Planner's deployment." };
     assert.deepEqual(r.json.guests, off);
     // The switch could not be turned on either, and says who sets the page's address.
-    const why = "Booking is off until the NAS's administrator sets the booking address under Settings › This NAS.";
+    const why = "Booking is off until the NAS's administrator sets the booking address.";
     assert.deepEqual([r.json.booking.on, r.json.booking.available, r.json.booking.why, r.json.booking.words], [false, false, why, why]);
   });
 

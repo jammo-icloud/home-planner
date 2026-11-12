@@ -27,7 +27,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F9FE" />
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F131A" />
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/tokens.css?v=0.10.1" />
+<link rel="stylesheet" href="/tokens.css?v=0.10.2" />
 <style>
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -2267,7 +2267,7 @@ $('signout').addEventListener('click', async () => {
 });
 
 // ── shared: what every screen calls ───────────────────────────────────────
-const BUILD = '0.10.1';
+const BUILD = '0.10.2';
 
 /**
  * Which household's screens these are: moved on whenever a household is left (a switch, the picker, sign-out), so a
@@ -10708,7 +10708,8 @@ async function loadCalendars() {
 /** The calendars have answered: the open page draws again if it reads them, or the list's lines that say so change in place. */
 function calendarsArrived() {
   const reads = ['conflicts', 'hcal', 'setup'];
-  if (settingsPage) { if (reads.includes(settingsPage.key)) redrawPage(); return; }
+  // Guests and booking reads them too, while its owner has the calendar picker open on it; its row in the list does not.
+  if (settingsPage) { if (reads.includes(settingsPage.key) || (settingsPage.key === 'guests' && editing('book-cal'))) redrawPage(); return; }
   refreshItems(reads);
 }
 
@@ -11836,7 +11837,9 @@ function bookingSwitch() {
   t.disabled = !b.on && !b.available;
   t.addEventListener('click', async () => {
     t.disabled = true;
-    if (!(await saveSettings('/api/settings/booking', { on: !b.on }, null, 'setup-booking'))) t.disabled = false;
+    if (!(await saveSettings('/api/settings/booking', { on: !b.on }, null, 'setup-booking'))) { t.disabled = false; return; }
+    // This NAS's Booking row says where booking is on: an administrator's copy is read again, for the list Back goes to.
+    if (amAdmin) connData = await api('/api/connectors').catch(() => connData);
   });
   const r = node('div', 'rowi');
   const s = node('span');
@@ -12106,7 +12109,7 @@ function hcalItem() {
  * when plans go elsewhere), then a new Household calendar to replace it with,
  * or to create when there is none. Renaming it is beneath.
  */
-function hcalForm() {
+function hcalForm({ booking = false } = {}) {
   const { household, target } = settingsData.calendar;
   if (calState !== 'ok') return [calendarsOff()];
   const after = () => loadCalendars();
@@ -12116,9 +12119,10 @@ function hcalForm() {
   const usable = calList.filter((c) => c.privilege === 'RW' && !sameCal(c, target ?? household))
     .sort((x, y) => Number(y.isHousehold) - Number(x.isHousehold));
   const options = [];
-  if (current) options.push(['current', elsewhere ? current.name : `${current.name} (the Household calendar)`]);
+  // On Guests and booking (`booking`) only what makes a Household calendar is offered: booking needs that calendar itself.
+  if (current && !booking) options.push(['current', elsewhere ? current.name : `${current.name} (the Household calendar)`]);
   if (!household) options.push(['create', 'A new Household calendar, made now']);
-  if (usable.length) {
+  if (usable.length && !booking) {
     options.push({ group: 'Use another calendar', options: usable.map((c) => [c.cal_id, c.isHousehold ? `${c.name} (the Household calendar)` : c.name]) });
   }
   if (household) options.push(['replace', 'A new Household calendar, in place of this one']);
@@ -12133,7 +12137,7 @@ function hcalForm() {
   const renaming = !!household && editing('hcal-name');
   const f = fieldsForm({
     fields: [{ name: 'cal', label: 'Plans go on', kind: 'select', options,
-      value: current ? 'current' : !household ? 'create' : usable[0]?.cal_id ?? 'replace' }],
+      value: booking ? (household ? 'replace' : 'create') : current ? 'current' : !household ? 'create' : usable[0]?.cal_id ?? 'replace' }],
     notes: [note], autofocus: !renaming,
     onSave: (v) => {
       if (v.cal === 'current') { closePage(); return true; }
@@ -12149,7 +12153,7 @@ function hcalForm() {
   say(sel.value);
 
   const s = [f];
-  if (!household) return s;
+  if (!household || booking) return s;
   const rows = node('div', 'rows');
   if (renaming) {
     rows.appendChild(fieldsForm({
@@ -12187,16 +12191,83 @@ function guestsItem() {
     key: 'guests', title: 'Guests and booking', list: true,
     status: b.on ? `On · ${plural(g.list?.length ?? 0, 'guest')}` : 'Off',
     line: 'Who may ask to stay, and the note a guest is sent once a stay is confirmed.',
-    notes: [!b.on && b.needsAddress ? 'Needs the booking address set under This NAS before it can go on.' : null],
+    // Read again as it opens: what booking needs may have changed on This NAS since Settings was read.
+    init: () => void rereadGuests(),
     body: guestsForm,
   };
 }
 
-/** The owner's booking switch, then who may ask to stay and the arrival note; with booking off, why. */
+/** What each thing booking needs is called, in the order the server sends them. */
+const BOOKING_NEEDS = { calendar: 'Household calendar', address: 'Booking page address', mail: 'Mail' };
+
+/** This NAS's Booking row as last read, for the address form; with This NAS unread, one with nothing set (the field starts at this page's address). */
+const bookingConnRow = () => connData?.rows.find((x) => x.id === 'booking') ?? { id: 'booking', form: {} };
+
+/**
+ * Guests and booking reads the settings again: as it opens, so a change made
+ * on This NAS (mail, from its link) counts on the switch at once; and once
+ * the address is saved (`force`), closing its form. Not while another form on
+ * the page is open: what is typed in it stays.
+ */
+async function rereadGuests(force = false) {
+  const page = settingsPage;
+  let st = null;
+  try { st = await api('/api/settings'); } catch { /* the page keeps what it has; a save already said its own refusal */ }
+  if (settingsPage !== page || view !== 'settings') return;
+  if (force) settingsEditing = null; else if (settingsEditing) return;
+  if (st) { settingsData = st; keepFilesFrom(st); }
+  redrawPage(force ? 'book-address' : undefined);
+}
+
+/**
+ * What booking needs, above the switch: the Household calendar, the booking
+ * page's address and mail, each with a tick once done, else what is missing.
+ * Whoever sets one sets it here: the owner chooses the calendar in place, an
+ * administrator types the address in place; mail stays on This NAS, and its
+ * link goes there and comes Back here. Anyone else reads who does.
+ */
+function bookingNeedsList() {
+  const owns = !!settingsData.setup?.youOwn;
+  const rows = node('div', 'rows');
+  for (const n of settingsData.booking?.needs ?? []) {
+    if (n.id === 'calendar' && owns && !n.done && editing('book-cal')) {
+      rows.append(...hcalForm({ booking: true }));
+      continue;
+    }
+    if (n.id === 'address' && amAdmin && editing('book-address')) {
+      rows.appendChild(connForm(bookingConnRow(), { done: () => rereadGuests(true), cancel: cancelEdit }));
+      continue;
+    }
+    const r = node('div', 'rowi');
+    const t = node('span');
+    t.append(node('b', '', BOOKING_NEEDS[n.id] ?? n.id), node('span', 'meta', n.line));
+    const end = node('span', 'end');
+    if (n.done) {
+      const done = node('span', 'state-on');
+      done.append(icon('check'), 'Done');
+      end.appendChild(done);
+    }
+    if (n.id === 'calendar' && owns && !n.done) end.appendChild(textBtn('Choose', 'btn small hit', 'book-cal', () => editRows('book-cal')));
+    if (n.id === 'address' && amAdmin) {
+      end.appendChild(textBtn(n.done ? 'Change' : 'Set it', 'btn small hit', 'book-address', () => editRows('book-address')));
+    }
+    // This NAS's Mail row, opened from here: its Back, and its Save, come back to this page.
+    if (n.id === 'mail' && amAdmin && connData && !n.done) {
+      end.appendChild(textBtn('Set up mail', 'link hit', 'book-mail', () => openPage('mail', 'nas', { from: settingsPage })));
+    }
+    r.append(t, end);
+    rows.appendChild(r);
+  }
+  const box = node('div', 'book-needs');
+  box.append(node('p', 'hint', 'What booking needs'), rows);
+  return box;
+}
+
+/** What booking needs, then the owner's booking switch, then who may ask to stay and the arrival note; with booking off, why. */
 function guestsForm() {
   const g = settingsData.guests ?? { on: false, why: '' };
   const owns = !!settingsData.setup?.youOwn;
-  const s = owns ? [bookingSwitch()] : [];
+  const s = [bookingNeedsList(), ...(owns ? [bookingSwitch()] : [])];
   if (!g.on) {
     // The owner's switch already says why it is off; anyone else is told here, in booking's own words when it cannot be yet.
     if (owns) return s;
@@ -12589,7 +12660,7 @@ function removeItem() {
 
 const CONNECTOR_NAMES = {
   claude: 'Claude', drive: 'Synology Drive', calendar: 'Where phones reach the NAS', mail: 'Mail',
-  booking: 'Booking address', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
+  booking: 'Booking', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
 };
 const CONNECTOR_STATES = { on: 'On', off: 'Off', broken: 'Broken' };
 /** Where each row saves: Pricing's two keys apiece, Drive nowhere (it says what it finds). */
@@ -12652,11 +12723,15 @@ function nasGroup() {
 function nasItem(r) {
   return {
     key: r.id, title: CONNECTOR_NAMES[r.id] ?? r.id,
-    status: CONNECTOR_STATES[r.state] ?? r.state,
+    // Booking's row is its one line, on and where, or off and what is missing: it has no page of its own in Settings.
+    status: r.id === 'booking' ? r.line : CONNECTOR_STATES[r.state] ?? r.state,
     attention: r.state === 'broken',
     line: CONNECTOR_LINES[r.id] ?? null,
     notes: nasStatus(r),
     init: r.id === 'sign-in' ? () => void loadAccounts() : null,
+    // In Settings booking is set up on Guests and booking: this row opens it, and its Back comes here. The households
+    // screen has no household's page to open, so there the row keeps a page of its own, with the same address form.
+    open: r.id === 'booking' && !onHouseholds() ? () => { if (openPage('guests', 'household')) settingsPage.returnTo = 'row-booking'; } : null,
     body: () => connForm(connData.rows.find((x) => x.id === r.id) ?? r),
   };
 }
@@ -12750,14 +12825,23 @@ const keepPlaceholder = (setOrNot, fresh) => (setOrNot === 'set' ? 'Leave empty 
 /**
  * A row's form, under its status: its fields, then Save, Turn off (not on Who may sign
  * in, which cannot be off), Use the deployment's and Cancel; Mail and Claude
- * carry their test. Drive has nothing to set: it lists the households.
+ * carry their test. Drive has nothing to set: it lists the households. On a
+ * page of its own, a save and Cancel go Back; inside another page (the
+ * booking address on Guests and booking) `o.done` runs once a save is
+ * answered and `o.cancel` closes the form. Escape is Cancel, before Back.
  */
-function connForm(r) {
+function connForm(r, o = {}) {
   const f = node('form', 'rowform conn-form');
   // The server says what is wrong with a value, in words: the browser does not stop it first.
   f.noValidate = true;
   const fm = r.form ?? {};
   const acts = node('div', 'actions');
+  const cancel = o.cancel ?? (() => closePage());
+  f.addEventListener('keydown', (e) => {
+    if (e.key !== 'Escape') return;
+    e.preventDefault();
+    cancel();
+  });
   const busy = (on) => { for (const x of f.querySelectorAll('button, input')) x.disabled = on; };
   /** Post each change in turn; each answers with the page. A refusal leaves the form as typed. */
   const post = async (changes) => {
@@ -12782,7 +12866,7 @@ function connForm(r) {
       return;
     }
     clearPageErr();
-    closePage();
+    if (o.done) await o.done(); else closePage();
   };
   const routes = CONNECTOR_ROUTES[r.id] ?? [];
   /** The changes Save posts, as [route, body] pairs; none for a form with nothing to save yet. */
@@ -12813,7 +12897,8 @@ function connForm(r) {
   } else if (r.id === 'calendar' || r.id === 'booking') {
     const [l, addr] = r.id === 'calendar'
       ? connField('The NAS’s public address', fm.address, { type: 'url', placeholder: 'https://nas.example.com:5001' })
-      : connField('The booking page’s address', fm.address, { type: 'url', placeholder: 'https://book.example.com' });
+      // With none set, it starts at this page's own address: the planner serves /book.
+      : connField('The booking page’s address', fm.address || location.origin, { type: 'url', placeholder: 'https://planner.example.com' });
     f.appendChild(l);
     // Under the field, so the field opens in the top half of a phone, clear of its keyboard.
     if (r.id === 'calendar') {
@@ -12821,7 +12906,7 @@ function connForm(r) {
       hint.append("DSM's own address from outside the house, with its port, such as ", node('code', '', 'https://nas.example.com:5001'),
         ". Not the planner's address and not the LAN one. It is the server Apple Calendar is given, and where 'Open in Synology Calendar' goes.");
       f.appendChild(hint);
-    }
+    } else f.appendChild(node('p', 'hint', 'Just the address, like https://planner.example.com'));
     changesOf = () => [[routes[0], { value: addr.value.trim() }]];
   } else if (r.id === 'mail') {
     const [lh, host] = connField('Host', fm.host, { placeholder: 'smtp.example.com' });
@@ -12896,7 +12981,7 @@ function connForm(r) {
   if (r.id !== 'sign-in') acts.appendChild(textBtn('Turn off', 'btn', null, () => void post(routes.map((x) => [x, { off: true }]))));
   acts.append(
     textBtn('Use the deployment’s', 'btn', null, () => void post(routes.map((x) => [x, { clear: true }]))),
-    textBtn('Cancel', 'btn', null, () => closePage()),
+    textBtn('Cancel', 'btn', null, cancel),
   );
   f.appendChild(acts);
   if (r.id === 'mail' || r.id === 'claude') f.appendChild(connTest(r, busy));

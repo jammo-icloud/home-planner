@@ -214,23 +214,26 @@ describe('settings on the sandbox, with no DSM behind it', () => {
       words: 'Booking is off: BOOK_HOUSEHOLD is not a household here.' });
     // The switch itself could not be turned on here: there is no Household calendar, and it says whose that is.
     assert.deepEqual([r.json.booking.on, r.json.booking.available, r.json.booking.why],
-      [false, false, 'Booking is off until tester chooses the Household calendar.']);
+      [false, false, 'Booking is off until you choose the Household calendar.']);
     assert.ok(!JSON.stringify(r.json).includes('pw'), 'no mail password reaches the browser');
     assert.equal((await call('', 'GET', '/api/settings')).status, 401, 'members only');
   });
 
-  test('the settings count no categories, and say whether booking still needs its address', async () => {
+  test('the settings count no categories, and say what booking still needs, to whoever reads them', async () => {
     const r = (await call(tester, 'GET', '/api/settings')).json;
     assert.equal('categoriesInUse' in r, false);
     assert.equal((await call(tester, 'GET', '/api/categories')).status, 404, 'the categories route is gone');
-    assert.equal(r.booking.needsAddress, false, 'BOOK_URL is set');
+    assert.equal('needsAddress' in r.booking, false, 'the needs say it now');
+    const needs = (j: any) => j.booking.needs.map((n: any) => [n.id, n.done, n.line]);
+    // tester owns the household and is no administrator: the calendar is theirs to choose, the rest an administrator's.
+    assert.deepEqual(needs(r), [['calendar', false, 'Not chosen yet.'], ['address', true, 'https://book.example.com'], ['mail', true, 'Set up']]);
     await saveConnector('bookUrl', { off: true }, 'carol');
     try {
-      assert.equal((await call(tester, 'GET', '/api/settings')).json.booking.needsAddress, true);
+      assert.deepEqual(needs((await call(tester, 'GET', '/api/settings')).json)[1], ['address', false, 'An administrator sets this.']);
     } finally {
       await saveConnector('bookUrl', { clear: true }, 'carol');
     }
-    assert.equal((await call(tester, 'GET', '/api/settings')).json.booking.needsAddress, false);
+    assert.deepEqual(needs((await call(tester, 'GET', '/api/settings')).json)[1], ['address', true, 'https://book.example.com']);
   });
 
   test('booking is on only in the household friends book with', async () => {
@@ -248,6 +251,17 @@ describe('settings on the sandbox, with no DSM behind it', () => {
     const sandbox = (await call(tester, 'GET', '/api/settings')).json;
     assert.deepEqual(sandbox.guests, other, 'nor the sandbox');
     assert.equal(sandbox.booking.on, false);
+  });
+
+  test("an administrator reads booking's address as theirs to set, in a household that does not book", async () => {
+    // alice is ADMIN_USER here, and home is not the household friends book with.
+    await saveConnector('bookUrl', { off: true }, 'carol');
+    try {
+      const home = (await call(alice, 'GET', '/api/settings')).json;
+      assert.deepEqual(home.booking.needs.find((n: any) => n.id === 'address'), { id: 'address', done: false, line: 'Not set yet.' });
+    } finally {
+      await saveConnector('bookUrl', { clear: true }, 'carol');
+    }
   });
 
   test('every calendar route needs DSM', async () => {

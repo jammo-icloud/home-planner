@@ -11,7 +11,7 @@
 
 import { claudeHealth, connectors, currentTest, sourceOf } from './connectors.ts';
 import type { Source } from './connectors.ts';
-import { bookingOffWords, dayWords } from './booking.ts';
+import { bookingMissing, dayWords } from './booking.ts';
 import type { BookingStatus } from './booking.ts';
 import { folderOf } from './folders.ts';
 import { dsmPublicUrl } from './settings.ts';
@@ -23,7 +23,7 @@ export const ROW_ORDER: readonly RowId[] = ['claude', 'drive', 'calendar', 'mail
 /** Each row's name, as This NAS heads it and an admin's Today card names it. */
 export const ROW_NAME: Readonly<Record<RowId, string>> = {
   claude: 'Claude', drive: 'Synology Drive', calendar: 'Where phones reach the NAS', mail: 'Mail',
-  booking: 'Booking address', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
+  booking: 'Booking', 'sign-in': 'Who may sign in', pricing: 'Pricing sources',
 };
 
 export interface ConnectorRow {
@@ -115,14 +115,11 @@ function mailRow(env: NodeJS.ProcessEnv): ConnectorRow {
 function bookingRow(env: NodeJS.ProcessEnv, booking: BookingStatus, label: string | null): ConnectorRow {
   const source = sourceOf('bookUrl', env);
   const form = { address: env['BOOK_URL']?.trim() || null };
-  if (!booking.on) {
-    // The off words mostly say "Booking is off" already; "Off: " only before those that do not.
-    const words = bookingOffWords(booking.why);
-    return { id: 'booking', state: 'off', source, line: words.startsWith('Booking is off') ? words : `Off: ${words}`, form };
-  }
+  // One line: on, where and for which household; off, and what is missing. It is set up on Guests and booking.
+  if (!booking.on) return { id: 'booking', state: 'off', source, line: `Off: ${bookingMissing(booking.why)}`, form };
   return {
     id: 'booking', state: 'on', source, form,
-    line: `On for ${label ?? booking.config.household} at ${booking.config.url}/book`,
+    line: `On at ${booking.config.url}/book for ${label ?? booking.config.household}`,
   };
 }
 

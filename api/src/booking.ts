@@ -192,27 +192,90 @@ export const aheadWords = (a: { requests: number; stays: number }): string => [
 /** What booking says once the app found the Household calendar gone, until one is chosen again. */
 export const CALENDAR_GONE = 'Booking is off: the household calendar is gone. Choose one, then turn booking on again.';
 
+/** Who is reading booking's words: the one who must act is told "you". */
+export interface Viewer { readonly who: string; readonly admin: boolean }
+
+/** Mail that can send: all of it set and usable, and its last test (if one still counts) not failed. */
+const mailWorks = (env: NodeJS.ProcessEnv): boolean => !('off' in smtpConfig(env)) && currentTest('mailTest')?.ok !== false;
+
 /**
  * Whether this household could turn booking on, and if not, why, naming who
  * can fix it: its owner for the calendar; for the page and mail, ADMIN_USER,
  * else the last admin to save on This NAS, else the NAS's administrator.
- * A calendar the app found gone is no calendar (the log still names it until
- * one is chosen again). Mail whose last test failed is not working mail.
+ * Whoever reads it and is the one to act is told "you": the owner for the
+ * calendar, any administrator for the address and mail. A calendar the app
+ * found gone is no calendar (the log still names it until one is chosen
+ * again). Mail whose last test failed is not working mail.
  */
-export function bookingAvailability(state: State, o: { env: NodeJS.ProcessEnv; adminUser: string | null }):
+export function bookingAvailability(state: State, o: { env: NodeJS.ProcessEnv; adminUser: string | null; viewer?: Viewer }):
   { available: true } | { available: false; why: string } {
   if (state.settings.booking?.calendarGone) return { available: false, why: CALENDAR_GONE };
   if (!state.calendar.household) {
-    return { available: false, why: `Booking is off until ${state.owner ?? 'the owner'} chooses the Household calendar.` };
+    return {
+      available: false,
+      why: o.viewer?.who === state.owner ? 'Booking is off until you choose the Household calendar.'
+        : `Booking is off until ${state.owner ?? 'the owner'} chooses the Household calendar.`,
+    };
   }
+  const you = o.viewer?.admin === true;
   const fixer = o.adminUser || lastSavedBy() || "the NAS's administrator";
   if (typeof bookUrl(o.env) !== 'string') {
-    return { available: false, why: `Booking is off until ${fixer} sets the booking address under Settings › This NAS.` };
+    return { available: false, why: you ? 'Booking is off until you set the booking address.' : `Booking is off until ${fixer} sets the booking address.` };
   }
-  if ('off' in smtpConfig(o.env) || currentTest('mailTest')?.ok === false) {
-    return { available: false, why: `Booking is off until ${fixer} sets up mail under Settings › This NAS.` };
+  if (!mailWorks(o.env)) {
+    return {
+      available: false,
+      why: you ? 'Booking is off until you set up mail under Settings › This NAS.' : `Booking is off until ${fixer} sets up mail under Settings › This NAS.`,
+    };
   }
   return { available: true };
+}
+
+/** What a member who cannot set the booking address or mail reads in its place. */
+export const ADMIN_SETS = 'An administrator sets this.';
+
+export type BookingNeedId = 'calendar' | 'address' | 'mail';
+/** One thing booking needs: done, and the line Guests and booking says beside it. */
+export interface BookingNeed { readonly id: BookingNeedId; readonly done: boolean; readonly line: string }
+
+/**
+ * What booking needs, in the order Guests and booking lists them: the
+ * Household calendar (the owner's), the booking page's address and working
+ * mail (an administrator's). Done, each line says what is set; not, it says
+ * what is missing to the one who sets it, and who sets it to anyone else.
+ */
+export function bookingNeeds(state: State, o: { env: NodeJS.ProcessEnv; viewer: Viewer }): BookingNeed[] {
+  const gone = state.settings.booking?.calendarGone === true;
+  const cal = gone ? null : state.calendar.household;
+  const calendarLine = cal ? cal.name
+    : o.viewer.who !== state.owner ? `${state.owner ?? 'The owner'} chooses this.`
+    : gone ? 'The Household calendar is gone. Choose another.' : 'Not chosen yet.';
+  const url = bookUrl(o.env);
+  const addressLine = typeof url === 'string' ? url
+    : !o.viewer.admin ? ADMIN_SETS
+    : url.off === 'BOOK_URL' ? 'Not set yet.'
+    : url.off === HTTPS_ONLY ? 'The address set starts http://. It needs https://.'
+    : 'The address set cannot be used. Just the address, with no path: like https://planner.example.com.';
+  const mail = mailWorks(o.env);
+  const test = currentTest('mailTest');
+  const mailLine = mail ? 'Set up'
+    : !o.viewer.admin ? ADMIN_SETS
+    : !('off' in smtpConfig(o.env)) && test && !test.ok ? `The last test failed: ${test.words}` : 'Not set up yet.';
+  return [
+    { id: 'calendar', done: cal !== null, line: calendarLine },
+    { id: 'address', done: typeof url === 'string', line: addressLine },
+    { id: 'mail', done: mail, line: mailLine },
+  ];
+}
+
+/** Why booking is off on this NAS, as This NAS's Booking row says what is missing after "Off: ". */
+export function bookingMissing(why: string): string {
+  if (why === 'BOOK_URL') return 'the booking address is not set';
+  if (why === HTTPS_ONLY) return 'the booking address must start https://';
+  if (why.startsWith('BOOK_URL')) return 'the booking address cannot be used';
+  if (why.startsWith('SMTP_')) return 'mail is not set up';
+  if (why === NO_BOOKING_HOUSEHOLD) return 'no household has turned booking on';
+  return why;
 }
 
 // ─── signing a guest in ──────────────────────────────────────────────────────

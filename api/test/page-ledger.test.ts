@@ -794,3 +794,118 @@ describe('the page ledger: 0.10.1, the desk lines up with the bar', () => {
     assert.equal(/margin-inline:auto/.test(ruleOf(wide, '#settings .page-head') ?? ''), false);
   });
 });
+
+// ── 0.10.2: booking is set up in one place. Every element of Guests and booking, This NAS's Booking row and form, and Setup's
+// Booking step, with its fate. G: Guests and booking; C: This NAS; S: Setup and Today; N: what is new; W: the server's words. ──
+describe('the page ledger: 0.10.2, booking is set up in one place', () => {
+  const R = {
+    guests: between(script, 'const bookingOffWords = ', 'function documentsItem('),
+    switch: between(script, 'function bookingSwitch(', 'function modelItem('),
+    hcal: between(script, 'function hcalItem(', 'const bookingOffWords = '),
+    nas: between(script, 'const CONNECTOR_NAMES = {', '// ── Household apps'),
+    setupPage: between(script, "const SETUP_ORDER = ['folder'", '/** Whether Universal Search reads'),
+    arrived: between(script, 'function calendarsArrived(', '/**\n * Post a settings route'),
+    bookingSrc: read('../src/booking.ts'),
+    setupSrc: read('../src/setup.ts'),
+    viewSrc: read('../src/connectors-view.ts'),
+    server,
+  } as const;
+  type R = keyof typeof R;
+  const KEPT: readonly (readonly [row: string, text: string, region: R])[] = [
+    ['G1', "key: 'guests', title: 'Guests and booking', list: true,", 'guests'],
+    ['G2', "status: b.on ? `On · ${plural(g.list?.length ?? 0, 'guest')}` : 'Off',", 'guests'],
+    ['G3', "line: 'Who may ask to stay, and the note a guest is sent once a stay is confirmed.',", 'guests'],
+    ['G5', "t.setAttribute('role', 'switch');", 'switch'], ['G5', "t.setAttribute('aria-label', 'Booking');", 'switch'],
+    ['G5', "t.dataset.key = 'setup-booking';", 'switch'], ['G5', 't.disabled = !b.on && !b.available;', 'switch'],
+    ['G5', "saveSettings('/api/settings/booking', { on: !b.on }, null, 'setup-booking')", 'switch'],
+    ['G6', "g.on ? `Booking is on, at ${g.url}` : 'Booking is on', aheadLine(b.ahead)", 'switch'],
+    ['G7', 'b.calendarGone && !b.available ? BOOKING_CALENDAR_GONE : bookingOffWords(b)', 'switch'],
+    ['G8', 'const why = b.calendarGone && !b.available ? BOOKING_CALENDAR_GONE : !b.available && b.why ? b.why : bookingOffWords(g);', 'guests'],
+    ['G8', "p.append(icon('lock', 'i'), node('span', '', why));", 'guests'],
+    ['G9', 'Who can ask to stay. Only these addresses are sent a link; anyone else is told the same thing and sent nothing.', 'guests'],
+    ['G10', "on.append(icon('check'), 'Booking is on');", 'guests'], ['G10', "node('span', 't-small faint', `at ${g.url}`)", 'guests'],
+    ['G11', 'Why ${x.name} is coming off the list', 'guests'],
+    ['G11', "textBtn('Remove', 'btn bare small danger', `guest-remove-${i}`, () => editRows('guest-remove', i))", 'guests'],
+    ['G12', 'Nobody yet. Add the friends and family who may ask to stay.', 'guests'],
+    ['G13', "addRow('Add a guest', 'guest-add', () => editRows('guest', -1))", 'guests'],
+    ['G13', "{ name: 'why', label: 'How you know them', placeholder: 'The neighbours' }", 'guests'],
+    ['G13', "saveSettings('/api/guests', v, null, 'guest-add')", 'guests'],
+    ['G14', "label: 'Arrival note'", 'guests'], ['G14', 'None yet. Guests are told you will send the address and how to get in.', 'guests'],
+    ['G14', "saveSettings('/api/guests/arrival', { text: v.text }, null, 'guest-arrival')", 'guests'],
+    ['G15', "'Booking is off until an administrator sets it up under Settings › This NAS.'", 'guests'],
+    ['C2', "booking: 'Where guests open the booking page.',", 'nas'],
+    ['C3', 'notes: nasStatus(r),', 'nas'], ['C3', 'body: () => connForm(connData.rows.find((x) => x.id === r.id) ?? r),', 'nas'],
+    ['C4', "connField('The booking page’s address', ", 'nas'],
+    ['C5', "acts.appendChild(textBtn('Turn off', 'btn', null, () => void post(routes.map((x) => [x, { off: true }]))));", 'nas'],
+    ['C5', "textBtn('Use the deployment’s', 'btn', null, () => void post(routes.map((x) => [x, { clear: true }]))),", 'nas'],
+    ['C6', "booking: ['book-url']", 'nas'],
+    ['C8', "if (got.off.includes('https://'))", 'server'],
+    ['S1', "const SETUP_ORDER = ['folder', 'zone', 'calendar', 'booking', 'model'];", 'setupPage'], ['S1', "booking: 'Booking',", 'setupPage'],
+    ['S2', "const STEP_ROW = { folder: 'documents', zone: 'zone', calendar: 'hcal', booking: 'guests', model: 'model' };", 'setupPage'],
+    ['S2', "{ folder: 'documents', zone: 'zone', calendar: 'hcal', booking: 'guests', model: 'model' };", 'setupSrc'],
+    ['S3', "{ id: 'booking', done: true, source: null },", 'setupSrc'],
+    ['S5', "const b = settingItem(row, 'household', () => openPage(it.key, 'household', { from }));", 'setupPage'],
+  ];
+  const ADDED: readonly (readonly [row: string, text: string, region: R])[] = [
+    ['N1', "const BOOKING_NEEDS = { calendar: 'Household calendar', address: 'Booking page address', mail: 'Mail' };", 'guests'],
+    ['N1', 'function bookingNeedsList() {', 'guests'], ['N1', "node('p', 'hint', 'What booking needs')", 'guests'],
+    ['N1', 'const s = [bookingNeedsList(), ...(owns ? [bookingSwitch()] : [])];', 'guests'],
+    ['N1', "done.append(icon('check'), 'Done');", 'guests'],
+    ['N2', "textBtn('Choose', 'btn small hit', 'book-cal', () => editRows('book-cal'))", 'guests'],
+    ['N2', 'rows.append(...hcalForm({ booking: true }));', 'guests'],
+    ['N2', 'function hcalForm({ booking = false } = {}) {', 'hcal'], ['N2', 'if (current && !booking)', 'hcal'],
+    ['N2', 'if (usable.length && !booking)', 'hcal'], ['N2', 'if (!household || booking) return s;', 'hcal'],
+    ['N3', "textBtn(n.done ? 'Change' : 'Set it', 'btn small hit', 'book-address', () => editRows('book-address'))", 'guests'],
+    ['N3', 'rows.appendChild(connForm(bookingConnRow(), { done: () => rereadGuests(true), cancel: cancelEdit }));', 'guests'],
+    ['N3', "'Just the address, like https://planner.example.com'", 'nas'], ['N3', 'fm.address || location.origin', 'nas'],
+    ['N3', "placeholder: 'https://planner.example.com'", 'nas'],
+    ['N4', "textBtn('Set up mail', 'link hit', 'book-mail', () => openPage('mail', 'nas', { from: settingsPage }))", 'guests'],
+    ['N5', 'init: () => void rereadGuests(),', 'guests'], ['N5', 'async function rereadGuests(force = false) {', 'guests'],
+    ['N6', "(settingsPage.key === 'guests' && editing('book-cal'))) redrawPage();", 'arrived'],
+    ['N7', "if (e.key !== 'Escape') return;", 'nas'], ['N7', 'const cancel = o.cancel ?? (() => closePage());', 'nas'],
+    ['N7', 'if (o.done) await o.done(); else closePage();', 'nas'],
+    ['N8', "open: r.id === 'booking' && !onHouseholds() ? () => { if (openPage('guests', 'household')) settingsPage.returnTo = 'row-booking'; } : null,", 'nas'],
+    ['N8', "status: r.id === 'booking' ? r.line : CONNECTOR_STATES[r.state] ?? r.state,", 'nas'],
+    ['N8', "if (amAdmin) connData = await api('/api/connectors').catch(() => connData);", 'switch'],
+    ['C1', "booking: 'Booking', 'sign-in': 'Who may sign in'", 'nas'], ['C1', "booking: 'Booking', 'sign-in': 'Who may sign in'", 'viewSrc'],
+    ['C7', 'line: `On at ${booking.config.url}/book for ${label ?? booking.config.household}`,', 'viewSrc'],
+    ['C7', 'line: `Off: ${bookingMissing(booking.why)}`', 'viewSrc'],
+    ['S4', "action: { label: 'Choose a calendar', open: 'settings', group: 'household', row: STEP_ROW.booking },", 'setupSrc'],
+    ['W1', 'export function bookingNeeds(', 'bookingSrc'], ['W1', "export const ADMIN_SETS = 'An administrator sets this.';", 'bookingSrc'],
+    ['W2', "'Booking is off until you choose the Household calendar.'", 'bookingSrc'],
+    ['W3', "'Just the address, with no path: like https://planner.example.com'", 'server'],
+    ['W3', "'Start it with https://, like https://planner.example.com (http:// only with COOKIE_INSECURE=1)'", 'server'],
+    ['W4', 'needs: bookingNeeds(state, { env: resolvedEnv(), viewer: { who, admin } }),', 'server'],
+  ];
+  const GONE: readonly (readonly [row: string, text: string, region: R])[] = [
+    ['G4', 'Needs the booking address set under This NAS before it can go on.', 'guests'], ['G4', 'needsAddress', 'guests'],
+    ['G4', 'needsAddress', 'server'],
+    ['C1', "booking: 'Booking address'", 'nas'], ['C1', "booking: 'Booking address'", 'viewSrc'],
+    ['C4', "'https://book.example.com'", 'nas'],
+    ['C7', 'line: `On for ${', 'viewSrc'], ['C7', "words.startsWith('Booking is off') ? words : `Off: ${words}`", 'viewSrc'],
+    ['S4', "group: 'household', row: STEP_ROW.calendar }", 'setupSrc'],
+    ['W2', 'sets the booking address under Settings › This NAS', 'bookingSrc'],
+    ['W3', 'an address such as https://book.example.com, with nothing after the port', 'server'],
+    ['W3', "the booking page's address must be https://", 'server'],
+  ];
+  const miss = (list: readonly (readonly [string, string, R])[], want: boolean) => list
+    .filter(([, text, region]) => (want ? R[region] : uncommented(R[region])).includes(text) !== want)
+    .map(([row, text, region]) => `${row} (${region}): ${text}`);
+  test('the regions are found', () => {
+    for (const [name, text] of Object.entries(R)) assert.ok(text.length > 100, name);
+  });
+  test('what 0.10.2 keeps, adds and takes away', () => {
+    assert.deepEqual(miss(KEPT, true), []);
+    assert.deepEqual(miss(ADDED, true), []);
+    assert.deepEqual(miss(GONE, false), []);
+  });
+  test('every row of the ledger is pinned', () => {
+    const rows = new Set([...KEPT, ...ADDED, ...GONE].map(([r]) => r));
+    const want = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${i + 1}`);
+    assert.deepEqual([...want('G', 15), ...want('C', 8), ...want('S', 5), ...want('N', 8), ...want('W', 4)].filter((r) => !rows.has(r)), []);
+  });
+  test('the booking address form is one form, posted through its route as This NAS posts it', () => {
+    assert.equal((script.match(/connField\('The booking page’s address'/g) ?? []).length, 1);
+    assert.equal(script.includes('/api/connectors/book-url'), false, 'never a second way to post it: CONNECTOR_ROUTES names book-url');
+  });
+});

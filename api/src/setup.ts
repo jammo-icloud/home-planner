@@ -135,7 +135,8 @@ export function setupNotices(o: {
       kind: 'booking-off',
       // CALENDAR_GONE's own words, its full stop moved past what still stands.
       text: ahead ? `${CALENDAR_GONE.slice(0, -1)}, and ${ahead} still ${verb}.` : CALENDAR_GONE,
-      action: { label: 'Choose a calendar', open: 'settings', group: 'household', row: STEP_ROW.calendar },
+      // Guests and booking, where booking is set up: its calendar picker is there.
+      action: { label: 'Choose a calendar', open: 'settings', group: 'household', row: STEP_ROW.booking },
     });
   }
 

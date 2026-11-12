@@ -39,7 +39,7 @@ for (const name of ['ADMIN_USER', 'DEV_USER', 'ANTHROPIC_API_KEY', 'ANTHROPIC_AU
 const { start } = await import('../src/server.ts');
 const { Households } = await import('../src/households.ts');
 const { connectors, resolvedEnv } = await import('../src/connectors.ts');
-const { needsAdmin } = await import('../src/connectors-view.ts');
+const { connectorsView, needsAdmin } = await import('../src/connectors-view.ts');
 type Mail = import('../src/mail.ts').Mail;
 type ConnectorRow = import('../src/connectors-view.ts').ConnectorRow;
 
@@ -284,14 +284,16 @@ describe('Connectors', () => {
 
   test("the booking page's address is an https origin, as booking reads it", async () => {
     const plain = await call(carol, 'POST', '/api/connectors/book-url', { value: 'http://book.example.com' });
-    assert.deepEqual([plain.status, plain.json.error], [400, "the booking page's address must be https:// (http:// only with COOKIE_INSECURE=1)"]);
-    assert.equal((await call(carol, 'POST', '/api/connectors/book-url', { value: 'https://book.example.com/book' })).status, 400);
+    assert.deepEqual([plain.status, plain.json.error], [400, 'Start it with https://, like https://planner.example.com (http:// only with COOKIE_INSECURE=1)']);
+    // A path is refused in words that say what to type.
+    const path = await call(carol, 'POST', '/api/connectors/book-url', { value: 'https://book.example.com/book' });
+    assert.deepEqual([path.status, path.json.error], [400, 'Just the address, with no path: like https://planner.example.com']);
     const r = await call(carol, 'POST', '/api/connectors/book-url', { value: ' https://book.example.com/ ' });
     assert.equal(r.status, 200);
     const row = rowOf(r, 'booking');
     assert.deepEqual([row.state, row.source, row.form.address], ['off', 'saved', 'https://book.example.com']);
-    // The off words already say "Booking is off": no "Off: " before them.
-    assert.equal(row.line, 'Booking is off here: no household has booking on.');
+    // One line: off, and what is missing.
+    assert.equal(row.line, 'Off: no household has turned booking on');
     await call(carol, 'POST', '/api/connectors/book-url', { clear: true });
   });
 
@@ -305,6 +307,19 @@ describe('Connectors', () => {
       const r = await call(alice, method, path, method === 'POST' ? { clear: true } : undefined);
       assert.deepEqual([r.status, r.json.error], [403, 'not an administrator'], `${method} ${path}`);
     }
+  });
+});
+
+describe("This NAS's Booking row", () => {
+  test('one line: on, where and for which household; or off and what is missing', () => {
+    const view = (booking: Parameters<typeof connectorsView>[0]['booking'], bookingLabel: string | null) =>
+      connectorsView({ env: {}, households: [], driveReachable: null, booking, bookingLabel, adminRule: 'group' })
+        .rows.find((r) => r.id === 'booking')!;
+    const smtp = { host: 'h', port: 587, user: 'u', pass: 'p', from: 'house@example.com' };
+    const on = view({ on: true, config: { url: 'https://planner.example.com', household: 'example', smtp } }, 'Example');
+    assert.deepEqual([on.state, on.line], ['on', 'On at https://planner.example.com/book for Example']);
+    assert.deepEqual([view({ on: false, why: 'BOOK_URL' }, null).line, view({ on: false, why: 'SMTP_HOST' }, null).line],
+      ['Off: the booking address is not set', 'Off: mail is not set up']);
   });
 });
 

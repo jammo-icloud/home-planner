@@ -101,11 +101,11 @@ describe('booking, switched in Settings', () => {
   test('unavailable without a calendar, saying who can fix it', async () => {
     const r = await call(bob, 'POST', '/api/settings/booking', { on: true });
     assert.equal(r.status, 409);
-    assert.equal(r.json.error, 'Booking is off until bob chooses the Household calendar.');
+    assert.equal(r.json.error, 'Booking is off until you choose the Household calendar.');
     const s = (await call(bob, 'GET', '/api/settings')).json.booking;
     assert.equal(s.on, false);
     assert.equal(s.available, false);
-    assert.equal(s.why, 'Booking is off until bob chooses the Household calendar.');
+    assert.equal(s.why, 'Booking is off until you choose the Household calendar.');
     // Home has its calendar, and the NAS's side is set: it could be turned on.
     const home = (await call(alice, 'GET', '/api/settings')).json.booking;
     assert.deepEqual([home.on, home.available, home.calendarGone, home.ahead], [false, true, false, { requests: 0, stays: 0 }]);

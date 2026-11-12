@@ -247,11 +247,11 @@ import { todayEvents, weekEvents, weekWindow } from './calendar-view.ts';
 import { addDays } from './calendar.ts';
 import { calendarMoney } from './calendar-money.ts';
 import {
-  acceptSuggestion, aheadOf, aheadWords, allowGuest, availability, blockNights, bookingAvailability, bookUrl, bookingHousehold, bookingOffWords, bookingStatus,
+  acceptSuggestion, aheadOf, aheadWords, allowGuest, availability, blockNights, bookingAvailability, bookUrl, bookingHousehold, bookingNeeds, bookingOffWords, bookingStatus,
   cancelStay, changeStay, finishSignIn, guestList, memberNights, NO_BOOKING_HOUSEHOLD,
   GUEST_CANCEL_WHY, mailWhileOff, mine, raiseReleaseCards, request, revokeGuest, SIGN_IN_MESSAGE, signInFloor, startSignIn, suggest, unblockNights,
 } from './booking.ts';
-import type { BookingMail, BookingStatus } from './booking.ts';
+import type { BookingMail, BookingStatus, Viewer } from './booking.ts';
 import { sendMail } from './mail.ts';
 import { Limiter } from './limiter.ts';
 import { softwareVersion, STALE } from './version.ts';
@@ -430,8 +430,9 @@ function connectorChange(key: SavedKey, change: ReturnType<typeof connectorChang
       // As booking reads it: https, or http with COOKIE_INSECURE=1.
       const got = typeof change.value === 'string' ? bookUrl({ ...resolvedEnv(), BOOK_URL: change.value }) : { off: 'BOOK_URL' };
       if (typeof got === 'string') return { value: got };
-      if (got.off.includes('https://')) throw new ToolError("the booking page's address must be https:// (http:// only with COOKIE_INSECURE=1)");
-      throw new ToolError('an address such as https://book.example.com, with nothing after the port');
+      // Said as what to type: the page shows these words under the field.
+      if (got.off.includes('https://')) throw new ToolError('Start it with https://, like https://planner.example.com (http:// only with COOKIE_INSECURE=1)');
+      throw new ToolError('Just the address, with no path: like https://planner.example.com');
     }
     case 'mail': {
       const saved = connectors().mail;
@@ -1000,8 +1001,8 @@ const onOrOff = (booking: BookingStatus, household: string | null):
  * name who can fix it. Then whether the app turned it off because the
  * Household calendar was gone, and what is ahead here, which holds the switch.
  */
-const bookingView = (state: State, booking: BookingStatus, household: string | null) => {
-  const can = bookingAvailability(state, { env: resolvedEnv(), adminUser: ADMIN_USER || null });
+const bookingView = (state: State, booking: BookingStatus, household: string | null, viewer: Viewer) => {
+  const can = bookingAvailability(state, { env: resolvedEnv(), adminUser: ADMIN_USER || null, viewer });
   const about = {
     available: can.available, calendarGone: state.settings.booking?.calendarGone ?? false,
     ahead: aheadOf(state, todayInTz(zoneOf(state))),
@@ -1109,11 +1110,11 @@ async function movingView(store: Store) {
   };
 }
 
-const settingsView = async (store: Store, who: string, booking: BookingStatus, household: string | null) => {
+const settingsView = async (store: Store, who: string, booking: BookingStatus, household: string | null, admin: boolean) => {
   const moving = await movingView(store);
   // Per request, so a certificate copied in or run out shows on the next look.
   const signing = (await loadSigner(profileCertDir())).status;
-  return settingsOf(store.state, who, booking, household, moving, signing);
+  return settingsOf(store.state, who, booking, household, moving, signing, admin);
 };
 
 /** Where a member's calendars are on the NAS from outside, typed into a phone by hand; null while the address is not set. */
@@ -1124,7 +1125,7 @@ const caldavAddress = (who: string): string | null => {
 
 const settingsOf = (
   state: State, who: string, booking: BookingStatus, household: string | null, moving: Awaited<ReturnType<typeof movingView>>,
-  signing: SigningStatus,
+  signing: SigningStatus, admin: boolean,
 ) => ({
   savings: savingsSettings(state),
   areas: state.settings.areas,
@@ -1187,10 +1188,14 @@ const settingsOf = (
   },
   /**
    * Whether friends can book here, and if not, why; whether the owner could
-   * switch it on, what holds it, and whether a lost calendar turned it off.
-   * Members only, like the rest of this; a guest is never told why.
+   * switch it on, what holds it, and whether a lost calendar turned it off;
+   * and what booking needs, each said to this member as the one who sets it
+   * or not. Members only, like the rest of this; a guest is never told why.
    */
-  booking: { ...bookingView(state, booking, household), needsAddress: typeof bookUrl(resolvedEnv()) !== 'string' },
+  booking: {
+    ...bookingView(state, booking, household, { who, admin }),
+    needs: bookingNeeds(state, { env: resolvedEnv(), viewer: { who, admin } }),
+  },
 });
 
 /**
@@ -1414,13 +1419,14 @@ export async function start(
    * are signed out. Off is refused while anything is ahead here; done, this
    * household's guests are signed out.
    */
-  async function switchBooking(store: Store, here: string, who: Actor, on: boolean): Promise<void> {
+  async function switchBooking(store: Store, here: string, viewer: Viewer, on: boolean): Promise<void> {
+    const who = viewer.who;
     await oneAtATime(BOOKING_TURN, async () => {
       // Read after the wait: a switch just before this one may have moved it.
       const env = resolvedEnv();
       const current = bookingHousehold(await bookingLogs(), env);
       if (on) {
-        const can = bookingAvailability(store.state, { env, adminUser: ADMIN_USER || null });
+        const can = bookingAvailability(store.state, { env, adminUser: ADMIN_USER || null, viewer });
         if (!can.available) throw new ToolError(can.why, 409);
         if (current !== null && current !== here) {
           const other = await households.open(current);
@@ -2052,7 +2058,7 @@ export async function start(
         } else {
           await ensureHouseholdCalendar(calCtx, [...store.state.members]);
         }
-        return json(res, 200, await settingsView(store, who, await bookingNow(), openHousehold(session)));
+        return json(res, 200, await settingsView(store, who, await bookingNow(), openHousehold(session), session.admin));
       }
 
       if (path === '/api/calendars/household/name' && req.method === 'POST') {
@@ -2076,7 +2082,7 @@ export async function start(
           throw err;
         }
         if (name !== household.name) await store.append(who, { op: 'calendar.household.rename', name });
-        return json(res, 200, await settingsView(store, who, await bookingNow(), openHousehold(session)));
+        return json(res, 200, await settingsView(store, who, await bookingNow(), openHousehold(session), session.admin));
       }
 
       if (path === '/api/calendars/target' && req.method === 'POST') {
@@ -2089,7 +2095,7 @@ export async function start(
           await sharedWithEveryone(sid, chosen, who, [...store.state.members]);
         }
         await store.append(who, { op: 'calendar.target', cal_id: chosen.cal_id, original_cal_id: chosen.original_cal_id });
-        return json(res, 200, await settingsView(store, who, await bookingNow(), openHousehold(session)));
+        return json(res, 200, await settingsView(store, who, await bookingNow(), openHousehold(session), session.admin));
       }
 
       if (path === '/api/calendars/conflicts' && req.method === 'POST') {
@@ -2102,7 +2108,7 @@ export async function start(
           return [c.cal_id, { cal_id: c.cal_id, original_cal_id: c.original_cal_id, label: c.displayname }] as const;
         })).values()];
         await store.append(who, { op: 'calendar.conflicts', calendars });
-        return json(res, 200, await settingsView(store, who, await bookingNow(), openHousehold(session)));
+        return json(res, 200, await settingsView(store, who, await bookingNow(), openHousehold(session), session.admin));
       }
 
       throw new ToolError(`no route for ${req.method} ${path}`, 404);
@@ -2195,7 +2201,7 @@ export async function start(
     if (path === '/api/guests' && req.method === 'POST') {
       if (!booksHere) throw new ToolError('not available', 404);
       await allowGuest(ctx, await bodyOf(req));
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     if (path === '/api/guests/arrival' && req.method === 'POST') {
@@ -2204,7 +2210,7 @@ export async function start(
       if (typeof text !== 'string') throw new ToolError('the arrival note is text');
       if (text.trim().length > ARRIVAL_MAX) throw new ToolError('keep the arrival note under 1,000 characters');
       await active.append(who, { op: 'guests.arrival', text: text.trim() });
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     const guestPath = /^\/api\/guests\/([^/]+)$/.exec(path);
@@ -2214,7 +2220,7 @@ export async function start(
       const key = await revokeGuest(ctx, segment(guestPath[1]!, 'that address is not on the list'), body['why']);
       // Off the list is signed out, everywhere, now: not only at their next request.
       guests.revokeEmail(key);
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     if (path === '/api/bookings/nights' && req.method === 'GET') {
@@ -2272,7 +2278,7 @@ export async function start(
         return json(res, 200, await checkFolder(sid, clean, { household, members: [...active.state.members] }));
       }
       await chooseFolder({ ...ctx, household }, clean);
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     // ── settings: the household's, and your own appearance ───────────────────
@@ -2282,7 +2288,7 @@ export async function start(
     if (path === '/api/settings' && req.method === 'GET') {
       await askIndexed(ctx, active.state, openHousehold(session));
       return json(res, 200, {
-        ...await settingsView(active, who, await bookingNow(), openHousehold(session)),
+        ...await settingsView(active, who, await bookingNow(), openHousehold(session), session.admin),
         documents: await documentsStatus(ctx),
         // Shown at the foot of your own settings: which build this is.
         software: softwareVersion(),
@@ -2298,7 +2304,7 @@ export async function start(
       if (areas.some((a) => !a)) throw new ToolError('every area needs a name');
       if (new Set(areas.map((a) => a.toLowerCase())).size !== areas.length) throw new ToolError('two areas have the same name');
       await active.append(who, { op: 'areas.set', areas });
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     if (path === '/api/settings/areas/rename' && req.method === 'POST') {
@@ -2314,7 +2320,7 @@ export async function start(
         if (err instanceof ReplayError) throw new ToolError(err.message.replace(/ \(event .*\)$/, ''), 400);
         throw err;
       }
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     if (/^\/api\/settings\/areas\/(add|remove|move)$/.test(path) && req.method === 'POST') {
@@ -2367,7 +2373,7 @@ export async function start(
         return { label, url };
       });
       await active.append(who, { op: 'links.set', links });
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     // The savings account, chosen from those imports have seen; null for none.
@@ -2379,7 +2385,7 @@ export async function start(
         throw new ToolError(`no import has seen an account ${account}: import its statement first`);
       }
       await active.append(who, { op: 'savings.account', account });
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     // What Savings shows, typed off the bank's page: today, unless a day gone by is given.
@@ -2393,7 +2399,7 @@ export async function start(
       if (!isDay(asOf) || asOf > ctx.today) throw new ToolError('a balance is for today or a day gone by, YYYY-MM-DD');
       const written = await active.append(who, { op: 'account.balance', account, cents: cents(amount), asOf, source: 'typed' });
       await raiseSavingsCardFor(ctx, written);
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     if (path === '/api/settings/appearance' && req.method === 'POST') {
@@ -2407,7 +2413,7 @@ export async function start(
         throw new ToolError(`mode must be one of ${[...MODES].join(', ')}`);
       }
       await active.append(who, { op: 'scheme.set', scheme: scheme as Scheme, mode: mode as Mode });
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     // The zone the household's days are read in: the owner's choice, and only a name ICU knows.
@@ -2421,7 +2427,7 @@ export async function start(
         throw new ToolError(`${zone.trim()} is not a time zone this server knows`);
       }
       await active.append(who, { op: 'household.zone', zone: zone.trim() });
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     // Booking: the owner's switch, on for one household at a time and held while guests are waiting or staying.
@@ -2431,8 +2437,8 @@ export async function start(
       if (typeof on !== 'boolean') throw new ToolError('booking is on or off: send { on: true } or { on: false }');
       const here = openHousehold(session);
       if (here === null) throw new ToolError('friends book with a household, not the sandbox', 409);
-      await switchBooking(active, here, who, on);
-      return json(res, 200, await settingsView(active, who, await bookingNow(), here));
+      await switchBooking(active, here, { who, admin: session.admin }, on);
+      return json(res, 200, await settingsView(active, who, await bookingNow(), here, session.admin));
     }
 
     // The model that suggests envelopes: the owner's choice, from the list Settings offers; null for the deployment's, else the default.
@@ -2443,7 +2449,7 @@ export async function start(
         throw new ToolError('choose one of the models offered');
       }
       await active.append(who, { op: 'envelopes.model', model });
-      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session)));
+      return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
     if (path === '/api/whoami' && req.method === 'GET') {
