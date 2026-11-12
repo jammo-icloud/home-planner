@@ -258,7 +258,7 @@ export function bookingNeeds(state: State, o: { env: NodeJS.ProcessEnv; viewer: 
     : 'The address set cannot be used. Just the address, with no path: like https://planner.example.com.';
   const mail = mailWorks(o.env);
   const test = currentTest('mailTest');
-  const mailLine = mail ? 'Set up'
+  const mailLine = mail ? 'Set up.'
     : !o.viewer.admin ? ADMIN_SETS
     : !('off' in smtpConfig(o.env)) && test && !test.ok ? `The last test failed: ${test.words}` : 'Not set up yet.';
   return [
@@ -275,6 +275,8 @@ export function bookingMissing(why: string): string {
   if (why.startsWith('BOOK_URL')) return 'the booking address cannot be used';
   if (why.startsWith('SMTP_')) return 'mail is not set up';
   if (why === NO_BOOKING_HOUSEHOLD) return 'no household has turned booking on';
+  // BOOK_HOUSEHOLD naming a household this server does not have: said without the variable's name.
+  if (why.startsWith('BOOK_HOUSEHOLD')) return 'the deployment names a household that is not here';
   return why;
 }
 

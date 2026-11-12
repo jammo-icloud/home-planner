@@ -226,7 +226,7 @@ describe('settings on the sandbox, with no DSM behind it', () => {
     assert.equal('needsAddress' in r.booking, false, 'the needs say it now');
     const needs = (j: any) => j.booking.needs.map((n: any) => [n.id, n.done, n.line]);
     // tester owns the household and is no administrator: the calendar is theirs to choose, the rest an administrator's.
-    assert.deepEqual(needs(r), [['calendar', false, 'Not chosen yet.'], ['address', true, 'https://book.example.com'], ['mail', true, 'Set up']]);
+    assert.deepEqual(needs(r), [['calendar', false, 'Not chosen yet.'], ['address', true, 'https://book.example.com'], ['mail', true, 'Set up.']]);
     await saveConnector('bookUrl', { off: true }, 'carol');
     try {
       assert.deepEqual(needs((await call(tester, 'GET', '/api/settings')).json)[1], ['address', false, 'An administrator sets this.']);

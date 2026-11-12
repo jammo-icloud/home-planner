@@ -294,7 +294,7 @@ describe('one household at a time', () => {
         'The address set starts http://. It needs https://.');
       await s.append('alice', { op: 'calendar.household', cal_id: '/alice/hh/', original_cal_id: '/alice/hh/', name: 'Household' });
       assert.deepEqual(lines({ ...ENV }, member), [
-        ['calendar', true, 'Household'], ['address', true, 'https://book.example.com'], ['mail', true, 'Set up'],
+        ['calendar', true, 'Household'], ['address', true, 'https://book.example.com'], ['mail', true, 'Set up.'],
       ]);
       // Mail whose last test failed is not done, and the one who sets it reads why.
       await recordTest('mailTest', { at: NOW, to: 'me@example.com', ok: false, words: 'refused' });
@@ -316,7 +316,7 @@ describe('one household at a time', () => {
     assert.equal(bookingMissing('SMTP_HOST'), 'mail is not set up');
     assert.equal(bookingMissing('SMTP_PORT is not usable'), 'mail is not set up');
     assert.equal(bookingMissing('no household has booking on'), 'no household has turned booking on');
-    assert.equal(bookingMissing('BOOK_HOUSEHOLD is not a household here'), 'BOOK_HOUSEHOLD is not a household here');
+    assert.equal(bookingMissing('BOOK_HOUSEHOLD is not a household here'), 'the deployment names a household that is not here');
   });
 
   test('a failed mail test before the mail server was saved again counts nowhere, and booking can be on', async () => {

@@ -284,7 +284,7 @@ describe('Connectors', () => {
 
   test("the booking page's address is an https origin, as booking reads it", async () => {
     const plain = await call(carol, 'POST', '/api/connectors/book-url', { value: 'http://book.example.com' });
-    assert.deepEqual([plain.status, plain.json.error], [400, 'Start it with https://, like https://planner.example.com (http:// only with COOKIE_INSECURE=1)']);
+    assert.deepEqual([plain.status, plain.json.error], [400, 'Start it with https://, like https://planner.example.com']);
     // A path is refused in words that say what to type.
     const path = await call(carol, 'POST', '/api/connectors/book-url', { value: 'https://book.example.com/book' });
     assert.deepEqual([path.status, path.json.error], [400, 'Just the address, with no path: like https://planner.example.com']);

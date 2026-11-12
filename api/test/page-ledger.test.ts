@@ -834,6 +834,9 @@ describe('the page ledger: 0.10.2, booking is set up in one place', () => {
     ['G14', "saveSettings('/api/guests/arrival', { text: v.text }, null, 'guest-arrival')", 'guests'],
     ['G15', "'Booking is off until an administrator sets it up under Settings › This NAS.'", 'guests'],
     ['C2', "booking: 'Where guests open the booking page.',", 'nas'],
+    // C3, the row's own page (its status, its source, its form): KEPT on the households screen only, where no household is open.
+    // In Settings the row has no page: it opens Guests and booking, whose address form shows the source in a note (F3), and
+    // whose need line says on or off; the row's status in the list is its one line (N8).
     ['C3', 'notes: nasStatus(r),', 'nas'], ['C3', 'body: () => connForm(connData.rows.find((x) => x.id === r.id) ?? r),', 'nas'],
     ['C4', "connField('The booking page’s address', ", 'nas'],
     ['C5', "acts.appendChild(textBtn('Turn off', 'btn', null, () => void post(routes.map((x) => [x, { off: true }]))));", 'nas'],
@@ -852,16 +855,29 @@ describe('the page ledger: 0.10.2, booking is set up in one place', () => {
     ['N1', 'const s = [bookingNeedsList(), ...(owns ? [bookingSwitch()] : [])];', 'guests'],
     ['N1', "done.append(icon('check'), 'Done');", 'guests'],
     ['N2', "textBtn('Choose', 'btn small hit', 'book-cal', () => editRows('book-cal'))", 'guests'],
-    ['N2', 'rows.append(...hcalForm({ booking: true }));', 'guests'],
-    ['N2', 'function hcalForm({ booking = false } = {}) {', 'hcal'], ['N2', 'if (current && !booking)', 'hcal'],
+    ['N2', 'rows.append(...hcalForm({ booking: true, focus: nextBookingStep() }));', 'guests'],
+    ['N2', 'function hcalForm({ booking = false, focus } = {}) {', 'hcal'], ['N2', 'if (current && !booking)', 'hcal'],
     ['N2', 'if (usable.length && !booking)', 'hcal'], ['N2', 'if (!household || booking) return s;', 'hcal'],
     ['N3', "textBtn(n.done ? 'Change' : 'Set it', 'btn small hit', 'book-address', () => editRows('book-address'))", 'guests'],
-    ['N3', 'rows.appendChild(connForm(bookingConnRow(), { done: () => rereadGuests(true), cancel: cancelEdit }));', 'guests'],
-    ['N3', "'Just the address, like https://planner.example.com'", 'nas'], ['N3', 'fm.address || location.origin', 'nas'],
+    ['N3', 'rows.appendChild(connForm(bookingConnRow(n), { done: () => rereadGuests(true), cancel: cancelEdit }));', 'guests'],
+    ['N3', "'Just the address, like https://planner.example.com'", 'nas'], ['N3', 'fm.address ?? location.origin', 'nas'],
     ['N3', "placeholder: 'https://planner.example.com'", 'nas'],
-    ['N4', "textBtn('Set up mail', 'link hit', 'book-mail', () => openPage('mail', 'nas', { from: settingsPage }))", 'guests'],
+    ['N4', "textBtn('Set up mail', 'link hit', 'book-mail', () => {", 'guests'],
+    ['N4', "if (openPage('mail', 'nas', { from: settingsPage })) settingsPage.returnTo = 'book-mail';", 'guests'],
     ['N5', 'init: () => void rereadGuests(),', 'guests'], ['N5', 'async function rereadGuests(force = false) {', 'guests'],
-    ['N6', "(settingsPage.key === 'guests' && editing('book-cal'))) redrawPage();", 'arrived'],
+    ['N6', "(settingsPage.key === 'guests' && (editing('book-cal') || !settingsEditing))) redrawPage();", 'arrived'],
+    // Fix round 1. F1: Choose only once the calendars are read, the row kept and its line saying why. F2: focus after Mail's Back and
+    // after the calendar is chosen. F3: the address form says where the address comes from. F4: This NAS unread is said, and no
+    // origin is put over an address that is set. F5: the words.
+    ['F1', 'const calsRead = calState === \'ok\';', 'guests'],
+    ['F1', "if (n.id === 'calendar' && owns && !n.done && !calsRead) line = calendarsOffWords();", 'guests'],
+    ['F2', 'function nextBookingStep() {', 'guests'], ['F2', "from === 'book-mail' && mailDone ? 'setup-booking' : undefined", 'guests'],
+    ['F2', "saveSettings('/api/calendars/household', {}, after, focus)", 'hcal'],
+    ['F3', 'const BOOK_URL_SOURCE = {', 'nas'], ['F3', 'r.unread ? nasUnreadWords() : BOOK_URL_SOURCE[r.source] ?? r.source', 'nas'],
+    ['F4', "if (n.id === 'mail' && amAdmin && !connData && !n.done) line = nasUnreadWords();", 'guests'],
+    ['F4', "{ id: 'booking', form: { address: n.done ? n.line : '' }, unread: true }", 'guests'],
+    ['F5', "'Start it with https://, like https://planner.example.com'", 'server'], ['F5', "const mailLine = mail ? 'Set up.'", 'bookingSrc'],
+    ['F5', "return 'the deployment names a household that is not here';", 'bookingSrc'],
     ['N7', "if (e.key !== 'Escape') return;", 'nas'], ['N7', 'const cancel = o.cancel ?? (() => closePage());', 'nas'],
     ['N7', 'if (o.done) await o.done(); else closePage();', 'nas'],
     ['N8', "open: r.id === 'booking' && !onHouseholds() ? () => { if (openPage('guests', 'household')) settingsPage.returnTo = 'row-booking'; } : null,", 'nas'],
@@ -874,7 +890,7 @@ describe('the page ledger: 0.10.2, booking is set up in one place', () => {
     ['W1', 'export function bookingNeeds(', 'bookingSrc'], ['W1', "export const ADMIN_SETS = 'An administrator sets this.';", 'bookingSrc'],
     ['W2', "'Booking is off until you choose the Household calendar.'", 'bookingSrc'],
     ['W3', "'Just the address, with no path: like https://planner.example.com'", 'server'],
-    ['W3', "'Start it with https://, like https://planner.example.com (http:// only with COOKIE_INSECURE=1)'", 'server'],
+    ['W3', "'Start it with https://, like https://planner.example.com'", 'server'],
     ['W4', 'needs: bookingNeeds(state, { env: resolvedEnv(), viewer: { who, admin } }),', 'server'],
   ];
   const GONE: readonly (readonly [row: string, text: string, region: R])[] = [
@@ -887,6 +903,7 @@ describe('the page ledger: 0.10.2, booking is set up in one place', () => {
     ['W2', 'sets the booking address under Settings › This NAS', 'bookingSrc'],
     ['W3', 'an address such as https://book.example.com, with nothing after the port', 'server'],
     ['W3', "the booking page's address must be https://", 'server'],
+    ['F5', 'like https://planner.example.com (http://', 'server'],
   ];
   const miss = (list: readonly (readonly [string, string, R])[], want: boolean) => list
     .filter(([, text, region]) => (want ? R[region] : uncommented(R[region])).includes(text) !== want)
@@ -902,7 +919,7 @@ describe('the page ledger: 0.10.2, booking is set up in one place', () => {
   test('every row of the ledger is pinned', () => {
     const rows = new Set([...KEPT, ...ADDED, ...GONE].map(([r]) => r));
     const want = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${i + 1}`);
-    assert.deepEqual([...want('G', 15), ...want('C', 8), ...want('S', 5), ...want('N', 8), ...want('W', 4)].filter((r) => !rows.has(r)), []);
+    assert.deepEqual([...want('G', 15), ...want('C', 8), ...want('S', 5), ...want('N', 8), ...want('W', 4), ...want('F', 5)].filter((r) => !rows.has(r)), []);
   });
   test('the booking address form is one form, posted through its route as This NAS posts it', () => {
     assert.equal((script.match(/connField\('The booking page’s address'/g) ?? []).length, 1);

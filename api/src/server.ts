@@ -431,7 +431,7 @@ function connectorChange(key: SavedKey, change: ReturnType<typeof connectorChang
       const got = typeof change.value === 'string' ? bookUrl({ ...resolvedEnv(), BOOK_URL: change.value }) : { off: 'BOOK_URL' };
       if (typeof got === 'string') return { value: got };
       // Said as what to type: the page shows these words under the field.
-      if (got.off.includes('https://')) throw new ToolError('Start it with https://, like https://planner.example.com (http:// only with COOKIE_INSECURE=1)');
+      if (got.off.includes('https://')) throw new ToolError('Start it with https://, like https://planner.example.com');
       throw new ToolError('Just the address, with no path: like https://planner.example.com');
     }
     case 'mail': {
