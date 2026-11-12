@@ -751,10 +751,19 @@ describe('the page ledger: 0.10.1, the desk lines up with the bar', () => {
     assert.match(ruleOf(desk, '.pill.member') ?? '', /margin-right:0/);
     assert.match(ruleOf(containerBlocks('max-width: 759px'), '.top-inner > .menu.me') ?? '', /flex:1 1 0;justify-content:flex-end/);
   });
-  test("on the desk every screen is the page wide, its edges the bar's, and the walkthrough no longer narrows the bar", () => {
-    assert.equal(ruleOf(desk, '.hp > main.wrap'), 'max-width:var(--page)');
+  test("every screen is the page wide at every width, its edges the bar's, and the walkthrough no longer narrows the bar", () => {
+    assert.equal(ruleOf(css, '.hp > main.wrap'), 'max-width:var(--page)');
+    assert.equal(desk.includes('main.wrap'), false, 'not only on the desk');
     assert.equal(css.includes('#app:has(#walk'), false);
     assert.match(ruleOf(css, '.walk') ?? '', /max-width:calc\(220px \+ var\(--sp-8\) \+ var\(--measure\)\)/);
+  });
+  test('the cascade: the bar keeps the page width, and nothing after the screens\' rule narrows a .wrap again', () => {
+    assert.equal(ruleOf(css, '.top > .wrap'), 'max-width:var(--page)');
+    const after = css.slice(css.indexOf('.hp > main.wrap{') + '.hp > main.wrap{'.length);
+    const narrowing = [...after.matchAll(/([^{}]+)\{([^{}]*)\}/g)]
+      .filter(([, sel = '', body = '']) => /(^|[\s,>+~])(main)?\.wrap(?![\w-])/.test(sel) && /max-width/.test(body))
+      .map(([, sel = '']) => sel.trim());
+    assert.deepEqual(narrowing, []);
   });
   test("Today's days fill what the rail leaves: no reading measure, nothing centred", () => {
     const today = ruleOf(wide, '.today') ?? '';
@@ -762,14 +771,22 @@ describe('the page ledger: 0.10.1, the desk lines up with the bar', () => {
     assert.equal(/justify-content:center/.test(today), false);
     assert.equal(css.includes('minmax(0,var(--measure)) minmax(240px,300px)'), false);
   });
-  test("Budget's bands are two columns on a wide desk, none split, the savings line across both under them", () => {
-    assert.match(ruleOf(wide, '#bands') ?? '', /columns:2/);
-    assert.match(ruleOf(wide, '#bands > .band') ?? '', /break-inside:avoid/);
-    assert.match(ruleOf(wide, '#bands > .savings-check') ?? '', /column-span:all/);
+  test("Budget's bands are two to a row on a wide desk, in a grid (a menu is never split across columns), the savings line across both under them", () => {
+    assert.match(ruleOf(wide, '#bands') ?? '', /display:grid;grid-template-columns:repeat\(2,minmax\(0,1fr\)\);column-gap:var\(--sp-8\);align-items:start/);
+    assert.equal(/(^|[;{\s])columns:/.test(css), false, 'no CSS columns anywhere: an open menu would split');
+    assert.match(ruleOf(wide, '#bands > .savings-check') ?? '', /grid-column:1 \/ -1/);
+    // Each band keeps the gap above it, and nothing on the wide desk takes it away.
+    assert.equal(ruleOf(css, '.band'), 'margin-top:26px');
+    assert.equal(/margin-top/.test(ruleOf(wide, '#bands > .band') ?? ''), false);
+    // The savings line is appended to #bands itself, so it is one of the grid's own items.
+    assert.ok(REGIONS.budget.includes("if (result.savings) $('bands').appendChild(savingsCheckLine(result.savings));"));
     // The card above, the add rows below: outside #bands, so across the page, over and under the columns.
     const list = between(REGIONS.budgetMarkup, '<div id="budget-list">', '<section id="env-page"');
     assert.ok(list.indexOf('id="toassign"') < list.indexOf('<div id="bands"></div>'));
     assert.ok(list.indexOf('<div id="bands"></div>') < list.indexOf('id="env-new"'));
+  });
+  test("Today's cards take the column, the words in them the reading measure", () => {
+    assert.equal(ruleOf(css, '.day .briefing :is(.headline,.body),.ent-text,.ent-answer .body'), 'max-width:var(--measure)');
   });
   test("a page with a reading width (an envelope's, an area's, Settings) starts at the left edge, never centred", () => {
     assert.match(ruleOf(css, '.set-page') ?? '', /max-width:var\(--measure\);margin:0;/);
