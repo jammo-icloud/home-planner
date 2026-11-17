@@ -11,8 +11,6 @@
  */
 
 import { createHash, randomBytes, timingSafeEqual } from 'node:crypto';
-import { mkdirSync, readFileSync, renameSync, writeFileSync } from 'node:fs';
-import { dirname } from 'node:path';
 
 export const DSM_URL = process.env['DSM_URL'] ?? 'http://host.docker.internal:5000';
 /** The SYNO.API.Auth version signing in and out asks for; the check compares it with the NAS's range. */
@@ -36,16 +34,13 @@ export interface Session {
   /**
    * The DSM session this person signed in with, for calling the NAS as them.
    *
-   * Memory only: never written to the sessions file, so a session carried
-   * across a restart has none, and a local-bypass session never has one.
+   * Memory only, like every session. A member's session always has one: one
+   * without is no session (`Sessions.get`). A local-bypass session never has one.
    */
   readonly sid: string | null;
   /**
    * Whether this person is an administrator, decided once at sign-in (DSM's
    * administrators group, or ADMIN_USER) and kept here only.
-   *
-   * Memory only, like the sid: never written to the sessions file, so a
-   * session carried across a restart is not an admin until they sign in again.
    */
   readonly admin: boolean;
 }
@@ -65,34 +60,24 @@ export class OtpRequired extends Error {
 }
 
 /**
- * Kept on disk as hashes, so a deploy does not sign the phones out.
+ * Who is signed in, in memory only, filed under the SHA-256 of each token.
  *
- * Session tokens are bearer credentials, and a file of them on the same volume
- * as the budget would be a permanent key next to the thing it unlocks. So the
- * file never holds a token: each session is filed under the SHA-256 of its
- * token, and the token itself exists only in the cookie. A token is 32 random
- * bytes, so the hash cannot be turned back into one, and presented as a cookie
- * a hash opens nothing. Reading the file tells you who is signed in until
- * when — not how to be them.
+ * Nothing is written to disk, so every restart or rebuild signs everyone out.
+ * That is deliberate: what makes a member's session useful is the DSM sign-in
+ * behind it, which lives in memory and is gone after a restart, so a session
+ * carried across one could only fail softly everywhere the NAS is reached. A
+ * member's session with no DSM sign-in behind it is therefore no session at
+ * all. The local bypass is the exception: it never has one, by design.
  *
- * Bypass sessions stay in memory. Their sandbox is discarded on restart, so a
- * bypass session that outlived it would point at nothing.
- *
- * Writes are synchronous: issue() hands back a token there and then, and this
- * changes a few times a week — at sign-in, sign-out and switching household.
- * A file that cannot be read costs everyone a sign-in, never the boot; one that
- * cannot be written is reported and sessions carry on in memory, which is how
- * this always worked.
+ * Filed under the hash rather than the token, so a token is never kept even
+ * here: it exists only in the cookie.
  */
 export class Sessions {
   #byHash = new Map<string, Session>();
   #now: () => number;
-  #path: string | null;
 
-  constructor(opts: { path?: string; now?: () => number } = {}) {
+  constructor(opts: { now?: () => number } = {}) {
     this.#now = opts.now ?? Date.now;
-    this.#path = opts.path ?? null;
-    this.#load();
   }
 
   issue(
@@ -105,7 +90,6 @@ export class Sessions {
       who, expiresAt: this.#now() + SESSION_TTL_MS, local: opts.local === true,
       household: opts.household ?? null, sid: opts.sid ?? null, admin: opts.admin === true,
     });
-    if (opts.local !== true) this.#save();
     return token;
   }
 
@@ -114,7 +98,6 @@ export class Sessions {
     const s = this.get(token);
     if (!s || s.household === household) return;
     s.household = household;
-    if (!s.local) this.#save();
   }
 
   /**
@@ -130,76 +113,33 @@ export class Sessions {
       s.household = null;
       cleared++;
     }
-    if (cleared) this.#save();
     return cleared;
   }
 
+  /**
+   * The live session this token names, or null: none, expired, or a member's
+   * with no DSM sign-in behind it, which can reach nothing of the NAS and so is
+   * signed out here rather than failing softly on every screen.
+   */
   get(token: string | undefined): Session | null {
     if (!token) return null;
     const key = hash(token);
     const s = this.#byHash.get(key);
     if (!s) return null;
-    if (s.expiresAt < this.#now()) { this.#byHash.delete(key); this.#save(); return null; }
+    if (s.expiresAt < this.#now()) { this.#byHash.delete(key); return null; }
+    if (!s.local && s.sid === null) { this.#byHash.delete(key); return null; }
     return s;
   }
 
   revoke(token: string | undefined): void {
-    if (token && this.#byHash.delete(hash(token))) this.#save();
+    if (token) this.#byHash.delete(hash(token));
   }
 
   get size(): number { this.#sweep(); return this.#byHash.size; }
 
   #sweep(): void {
     const now = this.#now();
-    let dropped = false;
-    for (const [h, s] of this.#byHash) if (s.expiresAt < now) { this.#byHash.delete(h); dropped = true; }
-    if (dropped) this.#save();
-  }
-
-  #load(): void {
-    if (!this.#path) return;
-    let text: string;
-    try {
-      text = readFileSync(this.#path, 'utf8');
-    } catch (err) {
-      if ((err as NodeJS.ErrnoException).code === 'ENOENT') return;
-      console.warn(`[budget] cannot read ${this.#path} (${(err as Error).message}) — everyone signs in again`);
-      return;
-    }
-    try {
-      const parsed = JSON.parse(text) as { sessions?: Stored[] };
-      const now = this.#now();
-      for (const x of parsed.sessions ?? []) {
-        if (typeof x.hash !== 'string' || typeof x.who !== 'string' || typeof x.expiresAt !== 'number') continue;
-        if (x.expiresAt < now) continue;
-        this.#byHash.set(x.hash, {
-          who: x.who, expiresAt: x.expiresAt, local: false,
-          household: typeof x.household === 'string' ? x.household : null,
-          sid: null, admin: false,
-        });
-      }
-    } catch (err) {
-      console.warn(`[budget] ${this.#path} is damaged (${(err as Error).message}) — everyone signs in again`);
-    }
-  }
-
-  #save(): void {
-    if (!this.#path) return;
-    const sessions: Stored[] = [];
-    for (const [h, s] of this.#byHash) {
-      if (!s.local) sessions.push({ hash: h, who: s.who, expiresAt: s.expiresAt, household: s.household });
-    }
-    // Whole file, written aside and renamed over, so a crash mid-write leaves
-    // the previous version rather than half of this one.
-    const tmp = `${this.#path}.tmp`;
-    try {
-      mkdirSync(dirname(this.#path), { recursive: true });
-      writeFileSync(tmp, JSON.stringify({ sessions }) + '\n', { encoding: 'utf8', mode: 0o600 });
-      renameSync(tmp, this.#path);
-    } catch (err) {
-      console.warn(`[budget] cannot write ${this.#path} (${(err as Error).message}) — `
-        + 'sessions are in memory only until this is fixed, and a restart will sign everyone out');
-    }
+    for (const [h, s] of this.#byHash) if (s.expiresAt < now) this.#byHash.delete(h);
   }
 }
 
@@ -265,9 +205,6 @@ export class GuestSessions {
     for (const [h, g] of this.#byHash) if (g.expiresAt < now) this.#byHash.delete(h);
   }
 }
-
-/** What is on disk for a session: never the token, only its hash. */
-interface Stored { hash: string; who: string; expiresAt: number; household: string | null }
 
 const hash = (token: string): string => createHash('sha256').update(token).digest('hex');
 

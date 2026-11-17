@@ -67,11 +67,7 @@ ENV LOG_PATH=/data/events.jsonl
 # households would fail to write, or quietly disappear on the next deploy.
 ENV HOUSEHOLDS_DIR=/data/households
 
-# Who is signed in, on the volume so a redeploy does not sign everyone out.
-# Hashes of session tokens, never the tokens: nothing in it works as a cookie.
-ENV SESSIONS_PATH=/data/sessions.json
-
-# The NAS's connections (Connectors), beside the sessions and outside
+# The NAS's connections (Connectors), beside the logs and outside
 # HOUSEHOLDS_DIR. Holds secrets, so the app keeps it mode 0600. The default is
 # relative to /app, which is inside the image and not writable by the app's user.
 ENV CONNECTORS_PATH=/data/connectors.json

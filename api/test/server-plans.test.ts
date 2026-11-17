@@ -12,17 +12,18 @@ import { chooseFolderIn } from './folder.ts';
 // the modules from src/ imported after. Three real accounts: alice owns the
 // Home household and has added bob; carol has a household of her own and a
 // session pointed at alice's, which she is not in. Their sessions are issued
-// without DSM, as a restart leaves them; alice also signs in through a fake
-// DSM, on a free port, for the routes that reach the NAS (files, contacts).
+// here and handed to the server, each with a DSM sign-in from a fake DSM on a
+// free port; alice also signs in through the server, for the routes that reach
+// the NAS (files, contacts).
 const dir = await mkdtemp(join(tmpdir(), 'pb-plans-server-'));
 const nas = await startFakeDsm({
   port: 0, root: join(dir, 'nas'), log: () => {},
-  accounts: { alice: { password: 'correct-horse' }, bob: { password: 'battery-staple' } },
+  accounts: { alice: { password: 'correct-horse' }, bob: { password: 'battery-staple' }, carol: { password: 'tulip-lamp' } },
 });
 Object.assign(process.env, {
   PORT: '0', TZ: 'UTC', DSM_URL: `http://127.0.0.1:${nas.port}`, PLANNER_ROOT: '/Planner',
   DEV_LOG_PATH: join(dir, 'dev.jsonl'), HOUSEHOLDS_DIR: join(dir, 'households'),
-  SESSIONS_PATH: join(dir, 'sessions.json'), CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
+  CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
 });
 delete process.env['DEV_USER'];
 delete process.env['ANTHROPIC_API_KEY'];
@@ -60,9 +61,21 @@ const make = async (title: string, extra: Record<string, unknown> = {}): Promise
   return r.json.plan.id;
 };
 
-/** The log as alice can download it, for the ids the routes do not return. */
-const log = async (): Promise<any[]> =>
-  ((await call('alice', 'GET', '/api/backup')).json as string).trim().split('\n').map((l) => JSON.parse(l));
+/** Every member here has a NAS session, so a plan's page follows each change once the answer is sent: wait for it. */
+const pagesSettled = async (): Promise<void> => {
+  await new Promise((r) => setTimeout(r, 10));
+  await pagesIdle(homeStore.path);
+};
+
+/**
+ * The log as alice can download it, for the ids the routes do not return, once the pages have followed. A page's
+ * own line (`plan.doc`) is the pages' bookkeeping, written whenever a page lands: left out unless asked for.
+ */
+const log = async (opts: { pages?: boolean } = {}): Promise<any[]> => {
+  await pagesSettled();
+  const all = ((await call('alice', 'GET', '/api/backup')).json as string).trim().split('\n').map((l) => JSON.parse(l));
+  return opts.pages ? all : all.filter((e) => e.op !== 'plan.doc');
+};
 
 /** An ask as 0.6.0 left one in a log: the ask by alice, then the card for the member asked, naming it. */
 const seedAsk = async (plan: string, to: string, why: string): Promise<void> => {
@@ -90,17 +103,21 @@ before(async () => {
   ]);
   await households.create('carol', 'Elsewhere', { id: 'elsewhere' });
 
-  // Issued before the server starts, so it carries them over from the file.
-  const sessions = new Sessions({ path: process.env['SESSIONS_PATH']! });
+  // Each signed in to the fake DSM, and handed to the server pointed at Home.
+  const sessions = new Sessions();
+  const passwords: Record<string, string> = { alice: 'correct-horse', bob: 'battery-staple', carol: 'tulip-lamp' };
   for (const who of ['alice', 'bob', 'carol']) {
-    cookies[who] = `${COOKIE}=${sessions.issue(who, { household: 'home' })}`;
+    const { sid } = await checkWithDsm(who, passwords[who]!, undefined);
+    cookies[who] = `${COOKIE}=${sessions.issue(who, { household: 'home', sid })}`;
   }
+  // A member's session with no DSM sign-in behind it, as 0.10.2 carried one across a restart: it is nobody.
+  cookies['aliceNoNas'] = `${COOKIE}=${sessions.issue('alice', { household: 'home' })}`;
 
   const { start } = await import('../src/server.ts');
   const { log: said, warn } = console;
   console.log = console.warn = (...a: unknown[]) => { booted.push(a.map(String).join(' ')); };
   let server: Awaited<ReturnType<typeof start>>;
-  try { server = await start({ households }); } finally { Object.assign(console, { log: said, warn }); }
+  try { server = await start({ households, sessions }); } finally { Object.assign(console, { log: said, warn }); }
   base = `http://127.0.0.1:${server.port}`;
   close = server.close;
 
@@ -540,25 +557,26 @@ describe('dates on the Household calendar', () => {
     await assert.rejects(getEvent(await sid(), link));
   });
 
-  test('without a NAS session a date is still set, with no event, and the answer says to sign in again', async () => {
+  test('a member session with no DSM sign-in behind it is signed out: nothing is set, and it is asked to sign in', async () => {
     const id = await make('Sweep the chimney');
-    let r = await call('alice', 'POST', `/api/plans/${id}/due`, { due: '2026-11-07' });
-    assert.equal(r.status, 200);
-    assert.equal(r.json.plan.due, '2026-11-07');
-    assert.equal(r.json.calendar, 'sign in again');
-    r = await call('alice', 'POST', `/api/plans/${id}/block`, { start: '2026-11-07T16:00:00.000Z', end: '2026-11-07T17:00:00.000Z' });
-    assert.equal(r.json.calendar, 'sign in again');
-    assert.deepEqual((await calendarLines(id)).map((e) => e.op), ['plan.due', 'plan.block']);
+    const r = await call('aliceNoNas', 'POST', `/api/plans/${id}/due`, { due: '2026-11-07' });
+    assert.deepEqual([r.status, r.json.error], [401, 'please sign in']);
+    assert.deepEqual(await calendarLines(id), []);
+  });
+
+  test('dates a log kept with no event (set without a NAS session before 0.10.3) are put on the calendar from the card', async () => {
+    const id = await make('Sweep the chimney again');
+    await homeStore.append('alice', [
+      { op: 'plan.due', plan: id, due: '2026-11-07' },
+      { op: 'plan.block', plan: id, block: 'b1', start: '2026-11-07T16:00:00.000Z', end: '2026-11-07T17:00:00.000Z' },
+    ]);
     // The card reads it from the plan, so it says so after any reload.
     const card = await call('alice', 'GET', `/api/plans/${id}`);
     assert.equal(card.json.notOnCalendar.due, true);
     assert.equal(card.json.notOnCalendar.blocks.length, 1);
 
     // "Put it on the calendar" needs the NAS; with it, both go there.
-    r = await call('alice', 'POST', `/api/plans/${id}/calendar`, {});
-    assert.equal(r.status, 409);
-    assert.match(r.json.error, /sign in again/);
-    r = await call('aliceDsm', 'POST', `/api/plans/${id}/calendar`, {});
+    let r = await call('aliceDsm', 'POST', `/api/plans/${id}/calendar`, {});
     assert.equal(r.status, 200, JSON.stringify(r.json));
     assert.deepEqual(r.json.plan.notOnCalendar ?? null, null, 'the route answers with the plan as stored');
     assert.deepEqual(r.json.plan.links.map((l: any) => l.kind).sort(), ['block', 'due']);
@@ -591,7 +609,7 @@ describe('dates on the Household calendar', () => {
     assert.equal(onNas[0]!.evt_id, links[0].evt_id);
   });
 
-  test('without a NAS session an event already on the calendar is not left behind: sign in again, and nothing changes', async () => {
+  test('without a NAS session an event already on the calendar is not left behind: signed out, and nothing changes', async () => {
     const id = await make('Service the boiler');
     await call('aliceDsm', 'POST', `/api/plans/${id}/due`, { due: '2026-11-07' });
     const before = (await calendarLines(id)).length;
@@ -599,9 +617,8 @@ describe('dates on the Household calendar', () => {
       ['POST', `/api/plans/${id}/due`, { due: null }],
       ['DELETE', `/api/plans/${id}`, { why: 'sold the house' }],
     ] as const) {
-      const r = await call('alice', method, path, body);
-      assert.equal(r.status, 409, `${method} ${path}`);
-      assert.match(r.json.error, /sign in again/);
+      const r = await call('aliceNoNas', method, path, body);
+      assert.deepEqual([r.status, r.json.error], [401, 'please sign in'], `${method} ${path}`);
     }
     assert.equal((await calendarLines(id)).length, before);
   });
@@ -718,11 +735,10 @@ describe('attachments, kept on the NAS through File Station', () => {
     assert.match(res.headers.get('content-security-policy') ?? '', /sandbox/);
   });
 
-  test('a session with no DSM behind it is told to sign in again, before the body is read', async () => {
+  test('a session with no DSM behind it is signed out, before the body is read', async () => {
     const id = await make('Measure the closet');
-    const up = await upload('alice', id, 'closet.png', png);
-    assert.equal(up.status, 409);
-    assert.match(up.json.error, /sign in again/);
+    const up = await upload('aliceNoNas', id, 'closet.png', png);
+    assert.deepEqual([up.status, up.json.error], [401, 'please sign in']);
     assert.equal((await call('alice', 'GET', `/api/plans/${id}`)).json.attachments.length, 0);
   });
 
@@ -806,11 +822,10 @@ describe('people on a card, from Synology Contacts', () => {
     assert.equal((await call('aliceDsm', 'GET', '/api/contacts/abc')).status, 400);
   });
 
-  test('a session with no DSM behind it is told to sign in again', async () => {
-    const r = await call('alice', 'GET', '/api/contacts?q=sand');
-    assert.equal(r.status, 409);
-    assert.match(r.json.error, /sign in again/);
-    assert.equal((await call('alice', 'GET', `/api/contacts/${sandoval.id}`)).status, 409);
+  test('a session with no DSM behind it is signed out', async () => {
+    const r = await call('aliceNoNas', 'GET', '/api/contacts?q=sand');
+    assert.deepEqual([r.status, r.json.error], [401, 'please sign in']);
+    assert.equal((await call('aliceNoNas', 'GET', `/api/contacts/${sandoval.id}`)).status, 401);
   });
 
   test('a contact found is linked to a card, and the card shows it; unlinking takes it off', async () => {
@@ -835,10 +850,9 @@ describe('people on a card, from Synology Contacts', () => {
     assert.equal(r.json.proposal.summary, 'Add Example Gas to Contacts');
     assert.deepEqual(r.json.proposal.events, []);
     assert.equal((await call('aliceDsm', 'GET', '/api/contacts')).json.contacts.length, before);
-    // With no DSM session behind the sign-in there is no address book to add to.
-    const bypass = await call('alice', 'POST', '/api/contacts', { full_name: 'Example Gas' });
-    assert.equal(bypass.status, 409);
-    assert.match(bypass.json.error, /sign in again/);
+    // With no DSM session behind the sign-in there is no address book to add to, and no session.
+    const bypass = await call('aliceNoNas', 'POST', '/api/contacts', { full_name: 'Example Gas' });
+    assert.deepEqual([bypass.status, bypass.json.error], [401, 'please sign in']);
     assert.equal((await call('aliceDsm', 'POST', '/api/contacts', {})).status, 400);
   });
 
@@ -861,18 +875,19 @@ describe("a plan's page in Drive follows every change", () => {
     const home = await households.open('home');
     const p = home.state.plans.get(id)!;
     assert.equal(p.page?.event, p.pageEvent, 'the log says the page shows the latest change');
-    const doc = (await log()).filter((e) => e.op === 'plan.doc' && e.plan === id).at(-1);
+    const doc = (await log({ pages: true })).filter((e) => e.op === 'plan.doc' && e.plan === id).at(-1);
     assert.equal(doc.who, 'alice');
     assert.equal(doc.doc.path, `/team-folders/Planner/home/${id}/plan.md`);
   });
 
   test("opening a plan's card writes its page when it is behind", async () => {
-    // Written by a session with no NAS behind it: nothing is asked of Drive then.
+    // Changed with nothing asked of Drive (a page Drive refused, or a log written elsewhere): the page is behind.
     const id = await make('Oil the hinges');
     const storePath = (await households.open('home')).path;
-    assert.equal((await call('alice', 'POST', `/api/plans/${id}`, { notes: 'the squeak' })).status, 200);
     await pagesIdle(storePath);
-    assert.equal((await households.open('home')).state.plans.get(id)!.page, null, 'no session, no page');
+    await homeStore.append('alice', { op: 'plan.set', plan: id, notes: 'the squeak' });
+    const p = (await households.open('home')).state.plans.get(id)!;
+    assert.notEqual(p.page?.event, p.pageEvent, 'the page is behind the plan');
     assert.equal((await call('aliceDsm', 'GET', `/api/plans/${id}`)).status, 200);
     await pagesIdle(storePath);
     assert.match(await readFile(join(nas.root, `Planner/home/${id}/plan.md`), 'utf8'), /the squeak/);

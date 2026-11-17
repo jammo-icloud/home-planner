@@ -14,7 +14,7 @@ import {
   householdFolder, inHousehold, readDoc, renderAnswerPage, renderBriefingPage, teamFolderKnown, writeDoc,
 } from '../src/docs.ts';
 import type { DriveFile } from '../src/drive.ts';
-import { NeedsDsm } from '../src/synology.ts';
+import { NeedsDsm, SessionLost } from '../src/synology.ts';
 import { fakeNas } from './fake-nas.ts';
 import type { FakeNas } from './fake-nas.ts';
 import { chooseFolderIn } from './folder.ts';
@@ -219,13 +219,12 @@ describe('writing and reading documents', () => {
     assert.equal(teamFolderKnown(sid, 'Planner'), true, 'and for no other');
   });
 
-  test('a session that ended is a sign-in, not Drive not answering', async () => {
+  test('a session that ended is passed on as itself, to sign the member out, not read as Drive not answering', async () => {
     const isTeamFolders = (_m: string, p: string): boolean => p.endsWith('/team-folder');
     try {
       nas.fail(isTeamFolders, 119);
-      const ended = await documentsStatus({ sid: await nas.signIn('bob'), household: 'h1', store: home }, nas.via);
-      assert.equal(ended.on, false);
-      assert.match(ended.why!, /^Sign in again/);
+      await assert.rejects(documentsStatus({ sid: await nas.signIn('bob'), household: 'h1', store: home }, nas.via),
+        (e: unknown) => e instanceof SessionLost);
       nas.ok();
       nas.fail(isTeamFolders, 1000);
       const down = await documentsStatus({ sid: await nas.signIn('carol'), household: 'h1', store: home }, nas.via);

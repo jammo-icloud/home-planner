@@ -9,16 +9,16 @@ import { start as startFakeDsm } from '../tools/fake-dsm/server.ts';
 // The New event form's routes, against the fake DSM, with no Claude key: a
 // member's Save is the decision, so nothing here is a proposal. alice owns the
 // Home household and has added bob; both are signed in through the fake DSM.
-// carol is signed in with no NAS behind her session, as a restart leaves one.
+// carol, who is not in it, has a session pointed at it, handed to the server.
 const dir = await mkdtemp(join(tmpdir(), 'pb-calendar-events-'));
 const nas = await startFakeDsm({
   port: 0, root: join(dir, 'nas'), log: () => {},
-  accounts: { alice: { password: 'correct-horse' }, bob: { password: 'battery-staple' } },
+  accounts: { alice: { password: 'correct-horse' }, bob: { password: 'battery-staple' }, carol: { password: 'tulip-lamp' } },
 });
 Object.assign(process.env, {
   PORT: '0', TZ: 'UTC', DSM_URL: `http://127.0.0.1:${nas.port}`,
   DEV_LOG_PATH: join(dir, 'dev.jsonl'), HOUSEHOLDS_DIR: join(dir, 'households'),
-  SESSIONS_PATH: join(dir, 'sessions.json'), CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
+  CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
 });
 delete process.env['DEV_USER'];
 delete process.env['ANTHROPIC_API_KEY'];
@@ -79,14 +79,17 @@ before(async () => {
     { op: 'plan.remove', plan: 'gone', why: 'not needed' },
   ]);
   await households.create('carol', 'Elsewhere', { id: 'elsewhere' });
-  const sessions = new Sessions({ path: process.env['SESSIONS_PATH']! });
-  cookies['carol'] = `${COOKIE}=${sessions.issue('carol', { household: 'home' })}`;
+  const sessions = new Sessions();
+  const { sid: carolSid } = await checkWithDsm('carol', 'tulip-lamp', undefined);
+  cookies['carol'] = `${COOKIE}=${sessions.issue('carol', { household: 'home', sid: carolSid })}`;
+  // A member's session with no DSM sign-in behind it, as 0.10.2 carried one across a restart: it is nobody.
+  cookies['aliceNoNas'] = `${COOKIE}=${sessions.issue('alice', { household: 'home' })}`;
 
   const { start } = await import('../src/server.ts');
   const { log: said, warn } = console;
   console.log = console.warn = () => {};
   let server: Awaited<ReturnType<typeof start>>;
-  try { server = await start({ households }); } finally { Object.assign(console, { log: said, warn }); }
+  try { server = await start({ households, sessions }); } finally { Object.assign(console, { log: said, warn }); }
   base = `http://127.0.0.1:${server.port}`;
   close = server.close;
   aliceSid = await signIn('alice', 'correct-horse');
@@ -472,11 +475,13 @@ describe('POST /api/calendar/conflicts: what the form shows under the times', ()
     assert.equal((await call('alice', 'POST', '/api/calendar/conflicts', { ...q, except: id })).json.clashes.length, 0);
   });
 
-  test('a time that cannot be read is a 400, and a session with no NAS behind it says to sign in again', async () => {
+  test('a time that cannot be read is a 400, a stranger a 403, and a session with no NAS behind it is signed out', async () => {
     const bad = await call('alice', 'POST', '/api/calendar/conflicts', { start: 'soon', end: 'later', allDay: false, on: 'mine' });
     assert.equal(bad.status, 400);
-    const bare = await call('carol', 'POST', '/api/calendar/conflicts', { start: `${day(1)}T10:00`, end: `${day(1)}T11:00`, allDay: false, on: 'mine' });
-    assert.ok(bare.status === 403 || bare.status === 409);
+    const q = { start: `${day(1)}T10:00`, end: `${day(1)}T11:00`, allDay: false, on: 'mine' };
+    assert.equal((await call('carol', 'POST', '/api/calendar/conflicts', q)).status, 403);
+    const bare = await call('aliceNoNas', 'POST', '/api/calendar/conflicts', q);
+    assert.deepEqual([bare.status, bare.json.error], [401, 'please sign in']);
   });
 });
 

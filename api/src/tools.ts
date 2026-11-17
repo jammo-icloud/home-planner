@@ -36,7 +36,7 @@ import {
 import { ToolError } from './errors.ts';
 import type { Bill } from './analytics.ts';
 import { resolvedEnv } from './connectors.ts';
-import { SynologyError, createContact, listAddressbooks, requireSid } from './synology.ts';
+import { SessionLost, SynologyError, createContact, listAddressbooks, requireSid } from './synology.ts';
 import { syncBlock, syncDue, syncNames, undoMade, unsyncAll } from './calendar.ts';
 import { oneAtATime, planKey } from './settings.ts';
 import { afterPageSettled, driftWords, pageDriftWords, raiseDriftCards, settleDrift, settlePageDrift } from './drift.ts';
@@ -3205,7 +3205,8 @@ const proposeEvent: Tool = {
     try {
       seen = await conflictsFor(ctx, a.dtstart, a.dtend, { allDay: a.allDay, on: a.on, asker: a.asker });
     } catch (e) {
-      if (e instanceof SynologyError) throw new ToolError(e.message, 502);
+      // A sign-in that ended is passed on as itself: in a request it signs the member out (server.ts).
+      if (e instanceof SynologyError && !(e instanceof SessionLost)) throw new ToolError(e.message, 502);
       throw e;
     }
     const { summary, effects } = appointmentWords(a, seen, ctx.today, zoneOf(ctx.store.state));
@@ -3556,9 +3557,10 @@ export const toolSchemas = () =>
 
 /**
  * Run a tool's effect, if it has one, and hand back the events it adds. A DSM
- * refusal reaches the person with the status it carries: a session that ended
- * is the 409 that says sign in again, an account not allowed a 403, anything
- * else the NAS said a 502. A ToolError keeps its status.
+ * refusal reaches the person with the status it carries: an account not
+ * allowed a 403, anything else the NAS said a 502. A session that ended is
+ * passed on as itself, and signs the member out (server.ts). A ToolError keeps
+ * its status.
  */
 export async function runEffect(
   tool: Tool, args: Record<string, unknown>, ctx: ToolContext, events: readonly NewEvent[] = [], card?: string,
@@ -3567,7 +3569,7 @@ export async function runEffect(
   try {
     return await tool.effect(args, ctx, events, card);
   } catch (e) {
-    if (e instanceof SynologyError) throw new ToolError(e.message, e.status);
+    if (e instanceof SynologyError && !(e instanceof SessionLost)) throw new ToolError(e.message, e.status);
     throw e;
   }
 }

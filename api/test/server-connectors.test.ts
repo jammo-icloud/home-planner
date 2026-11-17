@@ -24,7 +24,7 @@ const nas = await startFakeDsm({
 });
 Object.assign(process.env, {
   PORT: '0', TZ: 'UTC', DSM_URL: `http://127.0.0.1:${nas.port}`,
-  HOUSEHOLDS_DIR: join(dir, 'households'), SESSIONS_PATH: join(dir, 'sessions.json'),
+  HOUSEHOLDS_DIR: join(dir, 'households'),
   CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
 });
 // Claude's requests go to a fake; nothing about mail, booking, sign-in or pricing comes from the deployment.

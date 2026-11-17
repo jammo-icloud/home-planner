@@ -165,8 +165,8 @@ export async function setChecklist(
 
 /**
  * Set only when a date or a block was kept on the plan but could not go on
- * the calendar: this sign-in has no DSM session (the local sandbox, or one
- * carried over a restart). What the card says afterwards is read from the
+ * the calendar: this sign-in has no DSM session (the local sandbox; a member's
+ * always has one). What the card says afterwards is read from the
  * plan itself (`notOnCalendar`), so it survives a reload.
  */
 export interface CalendarNote { calendar?: 'sign in again' }

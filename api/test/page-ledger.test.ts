@@ -926,3 +926,74 @@ describe('the page ledger: 0.10.2, booking is set up in one place', () => {
     assert.equal(script.includes('/api/connectors/book-url'), false, 'never a second way to post it: CONNECTOR_ROUTES names book-url');
   });
 });
+
+// ── 0.10.3: a session that cannot reach the NAS is a signed-out session. What changed on the sign-in screen and around it.
+// R: the request helper; L: the sign-in screen; P: where the person was; X: what the server no longer keeps. ──
+describe('the page ledger: 0.10.3, a session that ended goes to sign-in', () => {
+  const R = {
+    api: between(script, 'async function api(', '// ── a session that ended'),
+    ended: between(script, '// ── a session that ended', '// ── sign in'),
+    form: between(script, "$('signin-form').addEventListener('submit'", '// ── your households'),
+    boot: script.slice(script.indexOf('// A live session means straight in')),
+    upload: between(script, 'const send = async (files) =>', 'void send([...input.files])'),
+    signout: between(script, "$('signout').addEventListener", '// ── shared'),
+    hhSignout: between(script, "$('hh-signout').addEventListener", "$('hh-new').addEventListener"),
+    showView: between(script, 'async function showView(', "$('tabs-top').addEventListener"),
+    enter: between(script, 'async function enterApp(', '// A live session means straight in'),
+    problem: between(script, 'function showProblem(', 'const budgetWords = '),
+    server,
+    auth: read('../src/auth.ts'),
+  } as const;
+  type R = keyof typeof R;
+  const ADDED: readonly (readonly [row: string, text: string, region: R])[] = [
+    // R: any 401 but the sign-in's own sends the page to sign-in, once however many requests meet it.
+    ['R1', "if (res.status === 401 && path !== '/api/auth/login') sessionEnded(placeNow());", 'api'],
+    ['R2', 'if (sessionEnding) return;', 'ended'],
+    ['R2', 'sessionEnding = true;', 'ended'],
+    ['R3', 'if (res?.status === 401) { sessionEnded(placeNow()); return; }', 'upload'],
+    // Once signed out nothing more is asked, and nothing is said under the sign-in screen.
+    ['R4', "if (sessionEnding && path !== '/api/auth/login') throw Object.assign(new Error('please sign in'), { status: 401 });", 'api'],
+    ['R5', 'if (ex.status === 401) return;', 'problem'],
+    // L: the sign-in screen as a fresh load shows it, the name filled in and one line saying why.
+    ['L1', "$('app').hidden = true;", 'ended'], ['L1', "$('households').hidden = true;", 'ended'], ['L1', "$('login').hidden = false;", 'ended'],
+    ['L2', "const SESSION_ENDED = 'Your session ended. Sign in again.';", 'ended'],
+    ['L2', "$('login-err').textContent = SESSION_ENDED;", 'ended'],
+    ['L3', "$('u').value = place?.who || myName || '';", 'ended'],
+    ['L3', "($('u').value ? $('p') : $('u')).focus();", 'ended'],
+    ['L4', "$('otp-field').hidden = true;", 'ended'],
+    ['L5', 'sessionEnding = false;', 'form'], ['L5', 'if (back && await backTo(back, out)) return;', 'form'],
+    // P: where the person was, kept for this tab, and gone back to after signing in.
+    ['P1', 'sessionStorage.setItem(PLACE, JSON.stringify(placeNow()))', 'ended'],
+    ['P2', 'rememberPlace();', 'showView'], ['P2', 'rememberPlace();', 'enter'],
+    ['P3', "await api('/api/households/select', { household: place.household });", 'ended'],
+    ['P3', "if (place.view !== 'today') await showView(place.view);", 'ended'],
+    ['P4', 'const kept = keptPlace();', 'boot'], ['P4', 'if (kept) { sessionEnded(kept); return; }', 'boot'],
+    ['P5', 'forgetPlace();', 'signout'], ['P5', 'forgetPlace();', 'hhSignout'],
+    // X: the server signs out a member session with no DSM sign-in, and one DSM says has ended.
+    ['X1', 'if (!s.local && s.sid === null) { this.#byHash.delete(key); return null; }', 'auth'],
+    ['X2', "if (err instanceof SessionLost && path.startsWith('/api/')) {", 'server'],
+    ['X2', 'sessions.revoke(readCookie(req.headers.cookie, COOKIE));', 'server'],
+  ];
+  const GONE: readonly (readonly [row: string, text: string, region: R])[] = [
+    ['X3', 'SESSIONS_PATH', 'server'], ['X3', 'carried over from', 'server'],
+    ['X4', 'readFileSync', 'auth'], ['X4', 'writeFileSync', 'auth'],
+  ];
+  const miss = (list: readonly (readonly [string, string, R])[], want: boolean) => list
+    .filter(([, text, region]) => (want ? R[region] : uncommented(R[region])).includes(text) !== want)
+    .map(([row, text, region]) => `${row} (${region}): ${text}`);
+  test('the regions are found', () => {
+    for (const [name, text] of Object.entries(R)) assert.ok(text.length > 100, name);
+  });
+  test('what 0.10.3 adds and takes away', () => {
+    assert.deepEqual(miss(ADDED, true), []);
+    assert.deepEqual(miss(GONE, false), []);
+  });
+  test('every row of the ledger is pinned', () => {
+    const rows = new Set([...ADDED, ...GONE].map(([r]) => r));
+    const want = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${i + 1}`);
+    assert.deepEqual([...want('R', 5), ...want('L', 5), ...want('P', 5), ...want('X', 4)].filter((r) => !rows.has(r)), []);
+  });
+  test('a 401 from the sign-in itself is a wrong password, said on the form, never a session that ended', () => {
+    assert.match(R.form, /err\.textContent = ex\.message;/);
+  });
+});

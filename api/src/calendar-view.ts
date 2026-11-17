@@ -126,9 +126,10 @@ export interface TodayCalendar {
 
 /**
  * The viewer's events today and tomorrow, where the household is. An event
- * running into both days is in both. A sign-in with no NAS session, or one
- * that ended, is asked to sign in again; any other refusal from the NAS is
- * its reason, in a line; neither is ever a failure of Today.
+ * running into both days is in both. The sandbox, which has no NAS session, is
+ * asked to sign in again; any other refusal from the NAS is its reason, in a
+ * line; neither is ever a failure of Today. A member's session that DSM says
+ * has ended is passed on as itself: it signs them out (server.ts).
  */
 export async function todayEvents(ctx: ToolContext, f?: DsmFetch): Promise<TodayCalendar> {
   const tz = zoneOf(ctx.store.state);
@@ -140,8 +141,8 @@ export async function todayEvents(ctx: ToolContext, f?: DsmFetch): Promise<Today
     ({ events, missed } = await viewerEvents(ctx, { from: t0, to: t2 }, f));
   } catch (err) {
     const none = { today: [], tomorrow: [] };
-    if (err instanceof NeedsDsm || err instanceof SessionLost) return { ...none, unavailable: 'sign in again to see your calendars' };
-    if (!(err instanceof SynologyError)) throw err;
+    if (err instanceof NeedsDsm) return { ...none, unavailable: 'sign in again to see your calendars' };
+    if (!(err instanceof SynologyError) || err instanceof SessionLost) throw err;
     logDsm('could not read the calendars for Today', err);
     return { ...none, unavailable: err.message };
   }
@@ -259,8 +260,9 @@ export async function weekEvents(ctx: ToolContext, window: { start: Day; end: Da
   try {
     ({ events: seen, missed, mine } = await viewerEvents(ctx, { from, to }, f));
   } catch (err) {
-    if (err instanceof NeedsDsm || err instanceof SessionLost) unavailable = 'sign in again to see your calendars';
-    else if (err instanceof SynologyError) {
+    // The sandbox has no NAS session; a member's that ended is passed on, and signs them out (server.ts).
+    if (err instanceof NeedsDsm) unavailable = 'sign in again to see your calendars';
+    else if (err instanceof SynologyError && !(err instanceof SessionLost)) {
       logDsm('could not read the calendars for the week', err);
       unavailable = err.message;
     } else throw err;

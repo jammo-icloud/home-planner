@@ -249,9 +249,9 @@ export async function documentsStatus(a: DocAccess, f?: DsmFetch): Promise<{ on:
   try {
     names = await listTeamFolders(a.sid, f);
   } catch (err) {
-    if (!(err instanceof SynologyError || err instanceof ToolError)) throw err;
-    // The session ended on the NAS: it is the member who must sign in again, not Drive that is down.
-    if (err instanceof SessionLost) return { on: false, why: SIGN_IN_AGAIN };
+    // The session ended on the NAS: it is the member who must sign in again, not Drive that is down. Passed on as
+    // itself, so the request signs them out (server.ts).
+    if (!(err instanceof SynologyError || err instanceof ToolError) || err instanceof SessionLost) throw err;
     return { on: false, why: `Synology Drive did not answer (${err.message}); briefings and answers are kept in the log until it does.` };
   }
   if (!names.includes(home.team)) {

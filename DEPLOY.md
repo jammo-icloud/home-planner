@@ -203,9 +203,8 @@ household's envelopes, receipts or balances, and being an admin does not make
 you a member.
 
 Whether someone is an administrator is decided once, at sign-in, and kept with
-their DSM session in memory only. A sign-in carried over a restart has no DSM
-session, so it is not an administrator's until they **sign in again**: Settings › This NAS
-is closed to them until then.
+their DSM session in memory only. A restart signs everyone out, so it is decided
+again at the next sign-in.
 
 One exception, and it is a migration rather than a power: on the very first boot
 after upgrading from a single-log install, the old log is adopted as a household
@@ -248,7 +247,7 @@ saved value counts from the next request, with no restart and no rebuild.
 | `PLANNER_ROOT` | unset | Only for an install from before folders were chosen in Settings: the share its files were kept in, such as `/Planner`. A household whose log already names files under it has that folder carried over, once; and it is the first Team Folder the picker suggests. It is never where a new household's documents or files go. See *Documents in Synology Drive*. |
 | `LOG_PATH` | `/data/events.jsonl` | The volume. Only the old single log is read from here, once, to be adopted as a household. |
 | `HOUSEHOLDS_DIR` | `/data/households` | One directory per household. **Must be under `/data`** — anywhere else is inside the image and is lost on redeploy. |
-| `CONNECTORS_PATH` | `/data/connectors.json` | What the administrators save under Settings › This NAS: the mail password and the keys are in it. On the volume, beside `sessions.json` and outside `HOUSEHOLDS_DIR`. Run outside the image, the default is `data/connectors.json`. See [Settings › This NAS](#settings--this-nas). |
+| `CONNECTORS_PATH` | `/data/connectors.json` | What the administrators save under Settings › This NAS: the mail password and the keys are in it. On the volume, beside the logs and outside `HOUSEHOLDS_DIR`. Run outside the image, the default is `data/connectors.json`. See [Settings › This NAS](#settings--this-nas). |
 | `ALLOWED_USERS` | unset | *A default.* Set it under Settings › This NAS (Who may sign in). Unset or empty means any DSM account may sign in, each getting its own household. |
 | `ADMIN_USER` | unset | Optional: the administrators group decides, unless this names one account. Then only that account is an administrator. See *The administrator*. |
 | `COOKIE_INSECURE` | unset | Set to `1` for plain HTTP on the LAN. **Unset it once TLS is in front**, so the session cookie is `Secure`. |
@@ -258,7 +257,6 @@ saved value counts from the next request, with no restart and no rebuild.
 | `CLAUDE_MATCH_MODEL` | `claude-haiku-5-5` | *A default.* Each household's owner chooses the model in Settings. Leave empty for the default. Suggests envelopes for imported receipts no rule caught. Sent payee names and envelope names only. |
 | `CENSUS_API_KEY` | — | *A default.* Set it under Settings › This NAS (Pricing sources). Free. Without it, county rent and property-tax figures are unavailable. |
 | `EIA_API_KEY` | — | *A default.* Set it under Settings › This NAS (Pricing sources). Free. Without it, the average electricity bill is unavailable. |
-| `SESSIONS_PATH` | `/data/sessions.json` | Who is signed in, as token hashes. On the volume so a redeploy keeps everyone signed in (to the budget, not to the NAS: see below). |
 | `DEV_USER` | — | The local bypass. Sandbox only, but leave it unset in production. |
 | `BOOK_URL` | unset | *A default.* Set it under Settings › This NAS (Booking address). The booking page's public origin, e.g. `https://book.example.com`. No path. See Booking. |
 | `BOOK_HOUSEHOLD` | unset | *A default,* and only a fallback: each household's owner turns booking on in Settings. See Booking. |
@@ -271,24 +269,14 @@ saved value counts from the next request, with no restart and no rebuild.
 the Contacts API to call, the first time Contacts is used, and keeps the answer
 in `connectors.json`. Boot says so if it is still set.
 
-Sessions last seven days and survive a redeploy. They are kept in
-`/data/sessions.json` as **hashes** of their tokens, never the tokens, so the
-file says who is signed in until when and nothing in it works as a cookie — a
-bearer token still never sits on the same volume as the thing it unlocks. It
-does not need backing up; losing it costs a sign-in.
-
-What does not survive a redeploy or restart is the DSM session behind each
-sign-in, which is kept in memory only. The budget itself keeps working, but
-Calendar, Contacts and Files answer "sign in again to use this" until the
-member signs out and signs in again; that is expected after every redeploy,
-not a fault. The same goes for being an administrator: This NAS is closed to
-an administrator whose sign-in was carried over, until they sign in again.
-
-Because a restart no longer signs anyone out, this is how to:
-
-```bash
-docker compose stop budget-api && rm api/data/sessions.json && docker compose start budget-api
-```
+**Every restart or rebuild signs everyone out: sign in again.** Sessions are
+kept in memory only, with the DSM session behind each, and last seven days at
+most. A session is also ended when the NAS ends the DSM sign-in behind it (it
+timed out, or the NAS restarted): the next thing that reaches the NAS goes to
+the sign-in screen, which says "Your session ended. Sign in again.", and
+signing in returns to the screen that was open. Restarting the container is how
+to sign everyone out. A `sessions.json` left in the data folder by 0.10.2 or
+earlier is not read, and can be deleted.
 
 ## Settings › This NAS
 
@@ -320,8 +308,8 @@ any DSM account is let in again, when `.env` has no list of its own.
 the container; `CONNECTORS_PATH` moves it). The file is mode `0600`, is written
 whole and renamed over, and holds the mail password and the keys, so **never
 commit it** (the data folder is ignored) and keep any copy as private as `.env`. It
-sits on the volume beside `sessions.json`, so a copy of the data folder takes it
-along with the logs: back it up with them. Losing it costs re-entering what was
+sits on the volume beside the logs, so a copy of the data folder takes it
+along with them: back it up with them. Losing it costs re-entering what was
 saved there, and every row goes back to its `.env` value. A secret is never
 written to a household's log, and none comes back to the browser: the page and
 every answer say only `set` or `not set` of the mail password, the Claude key
@@ -427,10 +415,10 @@ their phone", with three choices: *Move the plan too*, *Put the calendar back*,
 never overwrites an event someone changed. Appointments are not drift-checked
 yet, linked to a plan or not.
 
-**A date set without a NAS session** (after a redeploy, before signing in
-again) is kept on the plan and shown as *not on the calendar*; the next look by
-anyone signed in to the NAS puts it there, or the card's *Put it on the
-calendar* does it at once.
+**A date set without a NAS session** (in the local sandbox, or by 0.10.2 or
+earlier after a redeploy) is kept on the plan and shown as *not on the
+calendar*; the next look by anyone signed in to the NAS puts it there, or the
+card's *Put it on the calendar* does it at once.
 
 **Calendars on a phone and a Mac.** Synology Calendar is a CalDAV server, so a
 member who adds their NAS account to Apple Calendar gets the Household calendar
@@ -560,9 +548,8 @@ the NAS, in the original's folder: copy them into the copy's folder in File
 Station (same plan folders beneath) to bring them back. A restore into the same
 household changes none of this.
 
-A sign-in carried over a redeploy has no DSM session (see Environment), so it
-can read the list of files and nothing more until the member signs in again.
-The local bypass never has one.
+The local bypass has no DSM session, so it can read the list of files and
+nothing more.
 
 ## Documents in Synology Drive: choosing a folder in Settings
 
@@ -789,8 +776,8 @@ request under `/book`.
 ## The volume
 
 The data folder (`data` beside `docker.yml` on the NAS, `api/data` on a laptop,
-`/data` inside the container) holds `events.jsonl`, `households/`,
-`sessions.json` and `connectors.json`. The app runs as the image's unprivileged `node` user, and
+`/data` inside the container) holds `events.jsonl`, `households/` and
+`connectors.json`. The app runs as the image's unprivileged `node` user, and
 the container starts by giving `/data` to that user wherever it is owned by
 anyone else, so a folder made in DSM's File Station, or one Docker creates on
 first start, works without changing its owner by hand. Only files with the
@@ -922,7 +909,7 @@ Such a household cannot be removed from Settings, because it cannot be opened to
 
 1. **Back up, if you want the old file.** Before upgrading, each household's owner downloads its backup from Settings › Backup. After upgrading, copy its folder from File Station before step 3; the log is `events.jsonl` in it.
 2. **Stop the project.** Container Manager → Project → `home-planner` → Action → Stop.
-3. **Delete the folders.** In File Station, open `docker/home-planner/data/households` (the `data` folder from step 2 of the install). Each household is a folder there, named by the id the log printed (for example `the-house`). Delete the folder of each household made before 0.10.0. Then, in `data` itself, delete or move away `events.jsonl` if it is there: it is the old single log, not a household. Leave `sessions.json` and `connectors.json` alone.
+3. **Delete the folders.** In File Station, open `docker/home-planner/data/households` (the `data` folder from step 2 of the install). Each household is a folder there, named by the id the log printed (for example `the-house`). Delete the folder of each household made before 0.10.0. Then, in `data` itself, delete or move away `events.jsonl` if it is there: it is the old single log, not a household. Leave `connectors.json` alone.
 4. **Start the project.** Project → Action → Start. Choose a household no longer lists them, and anyone who had one open lands on that list.
 5. **Make each one again, all of it.** The whole household goes with its folder, not only its budget: its plans and their cards; its Settings (the areas, the links in the menu, the documents folder it chose, the Household calendar it linked, the time zone); its guests and their stays; and the conversation on Today. None of it can come back from the old backup, because that file is refused. What lives outside the app stays where it is: the files in the Team Folder, and the events on the NAS's calendars. So its owner signs in, presses Start a new household and gives it a name; its Budget walks through where the household is, the income, the envelopes and pricing; and then, in Settings, adds the members again under Members, chooses the documents folder again under Documents, links the Household calendar again under Household calendar, and sets the Time zone, Links in your menu and Guests and booking again as they were wanted; the areas are made again on Plan.
 

@@ -1,6 +1,6 @@
 import { test, describe } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtemp, readFile, stat, writeFile } from 'node:fs/promises';
+import { mkdtemp } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -122,129 +122,66 @@ describe('checking credentials against DSM', () => {
 });
 
 describe('sessions', () => {
+  /** What DSM hands back at sign-in; the tests only need one to be there. */
+  const sid = 'a-dsm-session';
+
   test('tokens are long, random and unique', () => {
     const s = new Sessions();
-    const a = s.issue('alice');
-    const b = s.issue('alice');
+    const a = s.issue('alice', { sid });
+    const b = s.issue('alice', { sid });
     assert.notEqual(a, b);
     assert.equal(a.length, 64);
   });
 
-  test('a session expires, and expiry is not a lookup that still works', () => {
+  test('a session expires after seven days, and expiry is not a lookup that still works', () => {
     let now = 1_000_000;
     const s = new Sessions({ now: () => now });
-    const token = s.issue('alice');
+    const token = s.issue('alice', { sid });
     assert.equal(s.get(token)?.who, 'alice');
-    now += 8 * 24 * 60 * 60 * 1000;
+    now += 6 * 24 * 60 * 60 * 1000;
+    assert.equal(s.get(token)?.who, 'alice', 'six days on it is still there');
+    now += 2 * 24 * 60 * 60 * 1000;
     assert.equal(s.get(token), null);
     assert.equal(s.size, 0, 'and it is dropped, not merely hidden');
   });
 
   test('logging out invalidates the token immediately', () => {
     const s = new Sessions();
-    const token = s.issue('bob');
+    const token = s.issue('bob', { sid });
     s.revoke(token);
     assert.equal(s.get(token), null);
   });
 
   test('a bypass session is marked as one, so it can be kept away from real data', () => {
     const s = new Sessions();
-    assert.equal(s.get(s.issue('local', { local: true }))?.local, true);
-    assert.equal(s.get(s.issue('alice'))?.local, false);
-  });
-});
-
-describe('sessions across a restart', () => {
-  const file = async (): Promise<string> => join(await mkdtemp(join(tmpdir(), 'pb-sessions-')), 'sessions.json');
-
-  test('a session survives a restart, so a deploy does not sign the phones out', async () => {
-    const path = await file();
-    const token = new Sessions({ path }).issue('alice', { household: 'home' });
-    const after = new Sessions({ path }).get(token);
-    assert.equal(after?.who, 'alice');
-    assert.equal(after?.household, 'home');
-    assert.equal(after?.local, false);
+    assert.equal(s.get(s.issue('bob', { local: true }))?.local, true);
+    assert.equal(s.get(s.issue('alice', { sid }))?.local, false);
   });
 
-  test('the file holds nothing that works as a cookie', async () => {
-    // The reason sessions were in memory: a token on the volume would be a key
-    // kept next to the thing it unlocks. What is written is its hash, and a
-    // hash presented as a token opens nothing.
-    const path = await file();
-    const token = new Sessions({ path }).issue('alice');
-    const text = await readFile(path, 'utf8');
-    assert.doesNotMatch(text, new RegExp(token));
-    const written = (JSON.parse(text) as { sessions: { hash: string }[] }).sessions.map((x) => x.hash);
-    assert.equal(written.length, 1);
-    assert.equal(new Sessions({ path }).get(written[0]), null);
-  });
-
-  test('the sid lives in memory and never reaches the sessions file', async () => {
-    const dir = await mkdtemp(join(tmpdir(), 'pb-sess-'));
-    const path = join(dir, 'sessions.json');
-    const s = new Sessions({ path });
-    const token = s.issue('alice', { sid: 'secret-sid' });
-    assert.equal(s.get(token)?.sid, 'secret-sid');
-    const onDisk = await readFile(path, 'utf8');
-    assert.doesNotMatch(onDisk, /secret-sid/);
-    const again = new Sessions({ path });
-    assert.equal(again.get(token)?.sid, null, 'a session carried across a restart has no sid');
-  });
-
-  test('switching household survives a restart', async () => {
-    const path = await file();
-    const s = new Sessions({ path });
-    const token = s.issue('alice', { household: 'home' });
-    s.select(token, 'cabin');
-    assert.equal(new Sessions({ path }).get(token)?.household, 'cabin');
-  });
-
-  test('logging out survives a restart', async () => {
-    const path = await file();
-    const s = new Sessions({ path });
-    const token = s.issue('bob');
-    s.revoke(token);
-    assert.equal(new Sessions({ path }).get(token), null);
-  });
-
-  test('a restart does not bring an expired session back', async () => {
-    const path = await file();
-    let now = 1_000_000;
-    const token = new Sessions({ path, now: () => now }).issue('alice');
-    now += 8 * 24 * 60 * 60 * 1000;
-    const after = new Sessions({ path, now: () => now });
-    assert.equal(after.get(token), null);
-    assert.equal(after.size, 0);
-  });
-
-  test('a bypass session is never written, because its sandbox does not survive either', async () => {
-    const path = await file();
-    const s = new Sessions({ path });
-    const local = s.issue('local', { local: true, household: 'sandbox' });
-    const real = s.issue('alice');
-    const after = new Sessions({ path });
-    assert.equal(after.get(local), null);
-    assert.equal(after.get(real)?.who, 'alice');
-  });
-
-  test('a damaged file costs a sign-in, never the boot', async () => {
-    const path = await file();
-    await writeFile(path, '{"sessions": [ this is not json', 'utf8');
-    const s = new Sessions({ path });
-    assert.equal(s.size, 0);
-    const token = s.issue('alice');
-    assert.equal(new Sessions({ path }).get(token)?.who, 'alice', 'and the next write repairs it');
-  });
-
-  test('the file is readable by the server alone', async () => {
-    const path = await file();
-    new Sessions({ path }).issue('alice');
-    assert.equal((await stat(path)).mode & 0o777, 0o600);
-  });
-
-  test('with no path, nothing touches the disk', () => {
+  test('a member session with no DSM sign-in behind it is no session, and is dropped', () => {
     const s = new Sessions();
-    assert.equal(s.get(s.issue('alice'))?.who, 'alice');
+    const token = s.issue('alice', { household: 'home' });
+    assert.equal(s.get(token), null);
+    assert.equal(s.size, 0);
+  });
+
+  test('the local sandbox never has a DSM sign-in, and is a session all the same', () => {
+    const s = new Sessions();
+    const token = s.issue('bob', { local: true, household: 'sandbox' });
+    assert.equal(s.get(token)?.who, 'bob');
+    assert.equal(s.get(token)?.sid, null);
+  });
+
+  test('the sid and the admin flag are kept on the session, in memory', () => {
+    const s = new Sessions();
+    const token = s.issue('alice', { sid: 'secret-sid', admin: true });
+    assert.equal(s.get(token)?.sid, 'secret-sid');
+    assert.equal(s.get(token)?.admin, true);
+  });
+
+  test("a second Sessions, as after a restart, knows none of the first one's", () => {
+    const token = new Sessions().issue('alice', { sid, household: 'home' });
+    assert.equal(new Sessions().get(token), null);
   });
 });
 
@@ -377,11 +314,3 @@ describe('the household: who owns it, who is in it', () => {
   });
 });
 
-test('the admin flag is kept in memory and never in the sessions file', async () => {
-  const path = join(await mkdtemp(join(tmpdir(), 'pb-admin-')), 'sessions.json');
-  const s = new Sessions({ path });
-  const token = s.issue('carol', { sid: 'S', admin: true });
-  assert.equal(s.get(token)!.admin, true);
-  assert.doesNotMatch(await readFile(path, 'utf8'), /admin/);
-  assert.equal(new Sessions({ path }).get(token)!.admin, false, 'after a restart, sign in again for Connectors');
-});

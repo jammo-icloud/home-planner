@@ -28,7 +28,7 @@ const nas = await startFakeDsm({
 Object.assign(process.env, {
   PORT: '0', TZ: 'UTC', DEV_USER: 'tester', ADMIN_USER: 'alice', DSM_URL: `http://127.0.0.1:${nas.port}`,
   DEV_LOG_PATH: join(dir, 'dev.jsonl'), HOUSEHOLDS_DIR: join(dir, 'households'),
-  SESSIONS_PATH: join(dir, 'sessions.json'), CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
+  CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
   // Everything booking needs, naming a household this server does not have.
   BOOK_URL: 'https://book.example.com', BOOK_HOUSEHOLD: 'elsewhere',
   SMTP_HOST: 'mail.example.com', SMTP_PORT: '587', SMTP_USER: 'robot', SMTP_PASS: 'pw', SMTP_FROM: 'house@example.com',
@@ -518,28 +518,21 @@ describe('calendars, through the fake DSM', () => {
       { calendars: [{ cal_id: '/nobody/', original_cal_id: '/nobody/' }] })).status, 400);
   });
 
-  test('a session restored after a restart has no DSM: sign in again, before any household question', async () => {
-    // carol has no household, so a route that asked about one first would say
-    // "no household is open" (also a 409) instead.
+  test('a restart signs everyone out: the old cookie is nobody, before any calendar or household question', async () => {
     const carol = await signIn('carol', 'c');
-    // A second server reading the same sessions file is the restart: the
-    // sessions carry over, their sids do not.
+    // A second server over the same data is the restart: no session carries over.
     const restarted = await start();
     const at = `http://127.0.0.1:${restarted.port}`;
     try {
       const check = await fetch(`${at}/api/auth/check`, { headers: { cookie: carol } });
-      assert.equal((await check.json() as any).authenticated, true, 'carol carried over');
+      assert.deepEqual(await check.json(), { authenticated: false });
       for (const [method, path] of [['GET', '/api/calendars'], ['POST', '/api/calendars/household'],
-        ['POST', '/api/calendars/target'], ['POST', '/api/calendars/conflicts']] as const) {
+        ['POST', '/api/calendars/target'], ['POST', '/api/calendars/conflicts'], ['GET', '/api/settings']] as const) {
         const res = await fetch(at + path, { method, headers: { cookie: carol, 'content-type': 'application/json' },
           ...(method === 'POST' ? { body: '{}' } : {}) });
-        assert.equal(res.status, 409, `${method} ${path}`);
-        assert.match((await res.json() as any).error, /sign in again/);
+        assert.equal(res.status, 401, `${method} ${path}`);
+        assert.equal((await res.json() as any).error, 'please sign in');
       }
-      // Settings are the household's, so there the household question comes first.
-      const s = await fetch(`${at}/api/settings`, { headers: { cookie: carol } });
-      assert.equal(s.status, 409);
-      assert.match((await s.json() as any).error, /no household is open/);
     } finally {
       await restarted.close();
     }

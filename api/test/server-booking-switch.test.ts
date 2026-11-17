@@ -19,7 +19,7 @@ const nas = await fakeNas();
 Object.assign(process.env, {
   PORT: '0', TZ: 'UTC', DSM_URL: `http://127.0.0.1:${nas.nas.port}`,
   DEV_LOG_PATH: join(dir, 'dev.jsonl'), HOUSEHOLDS_DIR: join(dir, 'households'),
-  SESSIONS_PATH: join(dir, 'sessions.json'), CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
+  CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
 });
 // Booking's page and mail come from Settings › This NAS here, and no household is named by the deployment.
 for (const v of ['BOOK_URL', 'BOOK_HOUSEHOLD', 'SMTP_HOST', 'SMTP_PORT', 'SMTP_USER', 'SMTP_PASS', 'SMTP_FROM', 'SMTP_PLAIN_AUTH',

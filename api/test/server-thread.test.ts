@@ -18,7 +18,7 @@ const nas = await startFakeDsm({
 Object.assign(process.env, {
   PORT: '0', TZ: 'UTC', DEV_USER: 'tester', DSM_URL: `http://127.0.0.1:${nas.port}`,
   DEV_LOG_PATH: join(dir, 'dev.jsonl'), HOUSEHOLDS_DIR: join(dir, 'households'),
-  SESSIONS_PATH: join(dir, 'sessions.json'), CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
+  CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
 });
 delete process.env['ANTHROPIC_API_KEY'];
 delete process.env['ANTHROPIC_AUTH_TOKEN'];

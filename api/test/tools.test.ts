@@ -1162,9 +1162,9 @@ describe('an effect the NAS refuses', () => {
   const failing = (err: Error) => ({ ...toolByName.get('set_plan_due')!, effect: async () => { throw err; } });
   const ctx = {} as ToolContext;
 
-  test('keeps the status the refusal carries: a session that ended is a 409 that says sign in again', async () => {
+  test('keeps the status the refusal carries; a session that ended is passed on as itself, to sign the member out', async () => {
     await assert.rejects(runEffect(failing(new SessionLost('SYNO.Cal.Event', 119)), {}, ctx),
-      (e: unknown) => e instanceof ToolError && e.status === 409 && /sign in again/.test(e.message));
+      (e: unknown) => e instanceof SessionLost);
     await assert.rejects(runEffect(failing(new NotAllowed('SYNO.Cal.Event', 105)), {}, ctx),
       (e: unknown) => e instanceof ToolError && e.status === 403);
     await assert.rejects(runEffect(failing(new SynologyError('the NAS refused it', 'SYNO.Cal.Event', 9017)), {}, ctx),

@@ -33,7 +33,7 @@
  *   POST /api/plans/:id/checklist   the whole checklist
  *   POST /api/plans/:id/due         a due date, or null; on the calendar as an all-day event
  *   POST /api/plans/:id/block       set time aside, as a timed event;  DELETE …/block/:block lets it go
- *                                   (without a DSM session a new one is kept with `calendar: 'sign in again'`)
+ *                                   (in the sandbox, with no DSM session, a new one is kept with `calendar: 'sign in again'`)
  *   POST /api/plans/:id/calendar    put its dates that have no event on the calendar now (needs the NAS)
  *   POST /api/plans/:id/contact     put a contact on it;  DELETE …/contact/:contact_id
  *   POST /api/plans/:id/note        a note between the members, on its card
@@ -329,13 +329,7 @@ const allowedUsers = (): string[] => (resolvedEnv()['ALLOWED_USERS'] ?? '')
  * DSM gives you a working app and none of the household's money.
  */
 const DEV_LOG_PATH = process.env['DEV_LOG_PATH'] ?? 'data/dev-events.jsonl';
-/**
- * Who is signed in, as hashes of their tokens, so a redeploy does not sign
- * everyone out. Beside the logs, not inside HOUSEHOLDS_DIR, where every entry
- * is taken to be a household.
- */
-const SESSIONS_PATH = process.env['SESSIONS_PATH'] ?? 'data/sessions.json';
-/** The NAS's connections, beside sessions.json and outside HOUSEHOLDS_DIR, where every entry is taken to be a household. */
+/** The NAS's connections, beside the logs and outside HOUSEHOLDS_DIR, where every entry is taken to be a household. */
 const CONNECTORS_PATH = process.env['CONNECTORS_PATH'] ?? 'data/connectors.json';
 // Note the default is deliberately NOT under the household volume.
 
@@ -1254,7 +1248,7 @@ async function sharedWithEveryone(sid: string, chosen: CalendarInfo, who: Actor,
 const todayInTz = (tz: string): string => householdDay(tz);
 
 export async function start(
-  opts: { send?: typeof sendMail; households?: Households; phoneCodes?: PhoneCodes } = {},
+  opts: { send?: typeof sendMail; households?: Households; phoneCodes?: PhoneCodes; sessions?: Sessions } = {},
 ): Promise<{ port: number; close: () => Promise<void> }> {
   // The NAS's connections first: everything below reads them when it is used.
   for (const problem of loadConnectors(CONNECTORS_PATH).problems) {
@@ -1265,7 +1259,11 @@ export async function start(
   const proposals = new ProposalStore();
   /** Stores whose waiting move this process has picked up again since it started, by path. */
   const resumed = new Set<string>();
-  const sessions = new Sessions({ path: SESSIONS_PATH });
+  /**
+   * Who is signed in: memory only, so every restart signs everyone out (auth.ts, `Sessions`). A test hands in its
+   * own, to sign someone in as a fixture needs them.
+   */
+  const sessions = opts.sessions ?? new Sessions();
   /** Friends signed in to /book: memory only, apart from members' sessions. */
   const guests = new GuestSessions();
   const send = opts.send ?? sendMail;
@@ -1297,7 +1295,6 @@ export async function start(
 
   const all = await households.list();
   console.log(`[budget] ${all.length} household${all.length === 1 ? '' : 's'} in ${households.dir}`);
-  console.log(`[budget] ${sessions.size} session${sessions.size === 1 ? '' : 's'} carried over from ${SESSIONS_PATH}`);
   // Every household's folder is known before anything is asked of it: the registry
   // refuses a folder another household holds without opening any other log. A
   // household that already writes files under the deployment's folder keeps them
@@ -1384,8 +1381,10 @@ export async function start(
       try {
         await teamFolders(sid);
         driveReachable = true;
-      } catch {
-        // Whatever stopped it, Drive did not answer this session: the row says so.
+      } catch (err) {
+        // The administrator's own sign-in ended on the NAS: that signs them out (`handle`'s caller), not a Drive fault.
+        if (err instanceof SessionLost) throw err;
+        // Whatever else stopped it, Drive did not answer this session: the row says so.
         driveReachable = false;
       }
     }
@@ -1703,6 +1702,18 @@ export async function start(
 
   const server = createServer((req, res) => {
     void handle(req, res).catch((err: unknown) => {
+      // DSM says the sign-in behind this member's session has ended (timed out, signed in elsewhere, the NAS
+      // restarted): so does this session. The one place a lost DSM sign-in ends a session, for a page's request
+      // only: the guest page has its own cookie and its own 401s, and work that runs after the answer is sent (the
+      // pages, the moves) or beside it (the briefing, the look for drift) keeps its own soft handling and never
+      // reaches here. Answered as the gate answers no session, so the page goes to sign-in.
+      const path = new URL(req.url ?? '/', 'http://localhost').pathname;
+      if (err instanceof SessionLost && path.startsWith('/api/')) {
+        sessions.revoke(readCookie(req.headers.cookie, COOKIE));
+        if (res.headersSent) { res.end(); return; }
+        res.setHeader('set-cookie', clearedCookie());
+        return json(res, 401, { error: 'please sign in' });
+      }
       const status = err instanceof ToolError || err instanceof SynologyError ? err.status : 500;
       if (status >= 500) console.error('[budget]', err);
       json(res, status, { error: (err as Error).message ?? 'internal error' });
@@ -2006,9 +2017,9 @@ export async function start(
     // ── calendars: the NAS first, the household second ───────────────────────
     //
     // The sid is checked before anything asks which household is open. A
-    // session with no DSM behind it (the sandbox, or one carried across a
-    // restart) can do one useful thing, sign in again, and that is what it is
-    // told, rather than "no household is open".
+    // session with no DSM behind it (the sandbox: a member's always has one)
+    // can do one useful thing, sign in again, and that is what it is told,
+    // rather than "no household is open".
     if (path === '/api/calendars' || path.startsWith('/api/calendars/')) {
       const sid = requireSid(session);
 
@@ -2895,7 +2906,7 @@ export async function start(
     //
     // Read with the member's own DSM session, and only after membership is
     // checked: a stranger is a 403, and a session with no DSM behind it (the
-    // sandbox, or one carried over a restart) is told to sign in again.
+    // sandbox) is told to sign in again.
     if (path === '/api/contacts' && req.method === 'GET') {
       const sid = requireSid(ctx);
       const found = await searchContacts(sid, url.searchParams.get('q') ?? '');

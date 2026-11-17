@@ -18,7 +18,7 @@ import { ToolError } from './errors.ts';
 import { writePlan } from './plan-edits.ts';
 import { appointmentAsked } from './tools.ts';
 import type { ToolContext } from './tools.ts';
-import { deleteEvent, getEvent, requireSid, setEvent, SynologyError } from './synology.ts';
+import { deleteEvent, getEvent, requireSid, SessionLost, setEvent, SynologyError } from './synology.ts';
 import type { CalEvent, DsmFetch } from './synology.ts';
 import type { NewEvent } from './store.ts';
 import { sameCalendar, zoneOf } from './types.ts';
@@ -178,7 +178,8 @@ export async function formConflicts(ctx: ToolContext, body: unknown, f?: DsmFetc
   try {
     seen = await conflictsFor(ctx, t.dtstart, t.dtend, { allDay: t.allDay, on, ...(f ? { f } : {}) });
   } catch (err) {
-    if (err instanceof SynologyError) throw new ToolError(err.message, 502);
+    // A sign-in that ended is passed on as itself: it signs the member out (server.ts).
+    if (err instanceof SynologyError && !(err instanceof SessionLost)) throw new ToolError(err.message, 502);
     throw err;
   }
   const clashes = seen.clashes.filter((c) => c.evt_id !== b['except']);

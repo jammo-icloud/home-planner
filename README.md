@@ -231,8 +231,8 @@ it.
 
 ## Data is not code
 
-This repository holds no household's data. The logs, `sessions.json` and
-`connectors.json` live in the data folder (`data` beside the compose file on the
+This repository holds no household's data. The logs and `connectors.json`
+live in the data folder (`data` beside the compose file on the
 NAS, `api/data` on a laptop), which is gitignored along with `.env` and
 any bank exports, so a fresh clone starts empty. Back up that folder and the Team
 Folders your households chose: the logs hold everything the households decided,

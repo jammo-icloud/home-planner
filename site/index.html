@@ -27,7 +27,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F9FE" />
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F131A" />
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/tokens.css?v=0.10.2" />
+<link rel="stylesheet" href="/tokens.css?v=0.10.3" />
 <style>
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -2058,6 +2058,8 @@ setupMenu('me-menu-btn', 'me-menu', () => { $('me-main').hidden = false; $('me-s
 const monthLong = (m) => new Date(`${m}-01T12:00:00`).toLocaleDateString(undefined, { month: 'long' });
 
 async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
+  // Signed out already: nothing more is asked of the server until the person signs in again.
+  if (sessionEnding && path !== '/api/auth/login') throw Object.assign(new Error('please sign in'), { status: 401 });
   const res = await fetch(path, {
     method,
     headers: { 'x-hp-build': BUILD, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
@@ -2065,11 +2067,85 @@ async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
     credentials: 'same-origin',
   });
   const data = await res.json().catch(() => ({}));
+  // No session any more (a restart, the seven days, or the NAS ended the sign-in behind it): to sign-in, once.
+  // The sign-in's own 401 is a wrong password, said on the form.
+  if (res.status === 401 && path !== '/api/auth/login') sessionEnded(placeNow());
   // The household this page had open is gone (its owner removed it): the server has
   // already cleared it from this session, so show the picker rather than a stack of errors.
   if (res.status === 409 && /^no household is open/.test(data.error ?? '') && !$('app').hidden && !leaving) void backToPicker();
   if (!res.ok) throw Object.assign(new Error(data.error || `request failed (${res.status})`), { status: res.status, stale: data.stale === true });
   return data;
+}
+
+// ── a session that ended ──────────────────────────────────────────────────
+//
+// A session ends with the server's restart, after seven days, or when the NAS ends the sign-in behind it; the next
+// request is a 401. The page goes to the sign-in screen as a fresh load shows it, with the name filled in and one
+// line saying why, and once signed in goes back to the household and screen it was on. Where that is, and who, is
+// kept for this tab (sessionStorage), so a reload after a restart knows it too; signing out forgets it.
+const SESSION_ENDED = 'Your session ended. Sign in again.';
+const PLACE = 'hp.place';
+const PLACE_VIEWS = ['today', 'budget', 'import', 'plan', 'calendar', 'settings'];
+/** Several requests in flight can all meet the same 401; only the first sends the page to sign-in. */
+let sessionEnding = false;
+/** Where to go back to once signed in again, or null. */
+let returnTo = null;
+
+/** Where this person is: the screen (a card's board for a card), the household open, and who. */
+const placeNow = () => ({
+  view: $('app').hidden ? 'today' : view === 'plan-card' ? 'plan' : view,
+  household: $('app').hidden ? null : myHouseholdId,
+  who: myName || me?.who || '',
+});
+function rememberPlace() {
+  try { sessionStorage.setItem(PLACE, JSON.stringify(placeNow())); } catch { /* storage blocked */ }
+}
+function forgetPlace() {
+  try { sessionStorage.removeItem(PLACE); } catch { /* storage blocked */ }
+}
+/** The place this tab was on when it was last drawn signed in, or null. */
+function keptPlace() {
+  try {
+    const p = JSON.parse(sessionStorage.getItem(PLACE) || 'null');
+    return p && PLACE_VIEWS.includes(p.view) ? { view: p.view, household: typeof p.household === 'string' ? p.household : null, who: typeof p.who === 'string' ? p.who : '' } : null;
+  } catch { return null; }
+}
+
+/** The sign-in screen, because the session ended: nothing of the household left drawn, the name in, back to `place` after. */
+function sessionEnded(place) {
+  if (sessionEnding) return;
+  sessionEnding = true;
+  returnTo = place;
+  pressPerson(null);
+  onlyToday();
+  closeMenus();
+  $('app-err').hidden = true;
+  $('app').hidden = true;
+  $('households').hidden = true;
+  $('login').hidden = false;
+  document.title = 'Today';
+  otpNeeded = false;
+  $('otp-field').hidden = true;
+  $('otp').value = '';
+  $('login-note').textContent = '';
+  $('login-err').textContent = SESSION_ENDED;
+  $('login-err').hidden = false;
+  $('u').value = place?.who || myName || '';
+  $('p').value = '';
+  ($('u').value ? $('p') : $('u')).focus();
+}
+
+/** Signed in again: the household and screen the session ended on, when that household is still this person's; false if not. */
+async function backTo(place, out) {
+  const here = place.household !== null
+    && (out.household === place.household || (out.households ?? []).some((h) => h.id === place.household));
+  if (!here) return false;
+  if (out.household !== place.household) {
+    try { await api('/api/households/select', { household: place.household }); } catch { return false; }
+  }
+  await enterApp();
+  if (place.view !== 'today') await showView(place.view);
+  return true;
 }
 
 // ── sign in ────────────────────────────────────────────────────────────────
@@ -2098,6 +2174,11 @@ $('signin-form').addEventListener('submit', async (e) => {
     }
     // A person pressed before the session ran out is not carried into the new one.
     pressPerson(null);
+    // Signed in again after a session ended: back where it ended, when it can be.
+    const back = returnTo;
+    returnTo = null;
+    sessionEnding = false;
+    if (back && await backTo(back, out)) return;
     // One household opens straight into it; none or several ask first.
     if (out.household) await enterApp(); else showHouseholds(out);
   } catch (ex) {
@@ -2262,12 +2343,14 @@ $('signout').addEventListener('click', async () => {
   pressPerson(null);
   // Nothing of this household stays drawn, nor answers into the page, while the sign-out and the reload go out.
   onlyToday();
+  // Signed out on purpose: the reload is a fresh sign-in, not a session that ended.
+  forgetPlace();
   await api('/api/auth/logout', {});
   location.reload();
 });
 
 // ── shared: what every screen calls ───────────────────────────────────────
-const BUILD = '0.10.2';
+const BUILD = '0.10.3';
 
 /**
  * Which household's screens these are: moved on whenever a household is left (a switch, the picker, sign-out), so a
@@ -6613,6 +6696,8 @@ function showProblem(ex) {
   }
   // The picker is already on its way (see api()); an error box under it would only confuse.
   if (/^no household is open/.test(ex.message)) return;
+  // So is the sign-in screen, for a session that ended (see api()): nothing is said under it.
+  if (ex.status === 401) return;
   // "Not started" and "no open month" are Today's and Budget's to say: the
   // Plan board and the Calendar have nothing to do with either.
   const budgetWords = /not started yet|no open month|no months are open/i;
@@ -10065,8 +10150,9 @@ function dropZone(v, msg) {
       form.append('file', f, f.name);
       const res = await fetch(planPath(v.id, '/attach'), { method: 'POST', body: form, credentials: 'same-origin' }).catch(() => null);
       const data = res ? await res.json().catch(() => ({})) : {};
+      if (res?.status === 401) { sessionEnded(placeNow()); return; }
       if (!res?.ok) {
-        // No NAS session behind this sign-in (carried over a restart): say so quietly, in place of the zone.
+        // No NAS session behind this sign-in (the sandbox): say so quietly, in place of the zone.
         if (res?.status === 409 && /sign in again/i.test(data.error ?? '')) { zone.replaceWith(noFilesHere()); return; }
         if (sent) await loadCard();
         else { zone.classList.remove('busy'); say.textContent = 'Drop files here, or choose them · up to 25 MB, kept on the NAS'; }
@@ -14591,6 +14677,7 @@ async function showView(next) {
   // A key pressed on the last screen (an envelope page's change or approve) is not this one's.
   pressedKey = null;
   view = next;
+  rememberPlace();
   markTabs();
   closeMenus();
   // One error box serves every screen, so a problem on the last one must not
@@ -14848,6 +14935,7 @@ async function openHousehold(id) {
 $('hh-signout').addEventListener('click', async () => {
   pressPerson(null);
   onlyToday();
+  forgetPlace();
   await api('/api/auth/logout', {});
   location.reload();
 });
@@ -15047,6 +15135,7 @@ async function enterApp() {
   inSandbox = who.sandbox === true;
   $('login').hidden = true;
   $('app').hidden = false;
+  rememberPlace();
   homeBanner();
   await loadThread();
   if (turn !== householdTurn) return null;
@@ -15079,6 +15168,9 @@ async function enterApp() {
     showHouseholds(check);
     return;
   }
+  // This tab was signed in when it was last drawn, and that session is gone (a restart, or its seven days): say so.
+  const kept = keptPlace();
+  if (kept) { sessionEnded(kept); return; }
   $('u').focus();
 })();
 </script>

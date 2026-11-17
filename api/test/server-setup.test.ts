@@ -21,7 +21,7 @@ const nas = await startFakeDsm({
 Object.assign(process.env, {
   PORT: '0', DEV_USER: 'tester', ADMIN_USER: 'alice', DSM_URL: `http://127.0.0.1:${nas.port}`,
   DEV_LOG_PATH: join(dir, 'dev.jsonl'), HOUSEHOLDS_DIR: join(dir, 'households'),
-  SESSIONS_PATH: join(dir, 'sessions.json'), CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
+  CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
 });
 delete process.env['TZ'];
 delete process.env['ANTHROPIC_API_KEY'];
@@ -313,6 +313,9 @@ describe('changing the folder', () => {
     }
     base = `http://127.0.0.1:${server.port}`;
     assert.ok(said.mock.calls.some((c) => / 1 files left to move$/.test(String(c.arguments[0]))), 'boot says what is left');
+    // A restart signs everyone out: alice's cookie is nobody now, until she signs in again.
+    assert.equal((await call(alice, 'GET', '/api/settings')).status, 401);
+    alice = await signIn('alice', 'correct-horse');
     // Filled at boot: the folder being left is still taken.
     const carolAgain = await signIn('carol', 'c');
     assert.deepEqual((await call(carolAgain, 'POST', '/api/drive/folder-check', { team: 'Planner', folder: 'home' })).json.problems, [TAKEN]);
