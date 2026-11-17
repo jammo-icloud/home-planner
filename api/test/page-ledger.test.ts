@@ -941,23 +941,34 @@ describe('the page ledger: 0.10.3, a session that ended goes to sign-in', () => 
     showView: between(script, 'async function showView(', "$('tabs-top').addEventListener"),
     enter: between(script, 'async function enterApp(', '// A live session means straight in'),
     problem: between(script, 'function showProblem(', 'const budgetWords = '),
+    signinMarkup: markup.slice(markup.indexOf('<div id="login">'), markup.indexOf('<div id="households"')),
+    css: REGIONS.css,
+    lost: between(server, "if (err instanceof SessionLost && path.startsWith('/api/')) {", 'const status = err instanceof ToolError'),
     server,
     auth: read('../src/auth.ts'),
   } as const;
   type R = keyof typeof R;
   const ADDED: readonly (readonly [row: string, text: string, region: R])[] = [
     // R: any 401 but the sign-in's own sends the page to sign-in, once however many requests meet it.
-    ['R1', "if (res.status === 401 && path !== '/api/auth/login') sessionEnded(placeNow());", 'api'],
+    ['R1', "if (res.status === 401 && path !== '/api/auth/login' && since === signIns) sessionEnded(placeNow());", 'api'],
     ['R2', 'if (sessionEnding) return;', 'ended'],
     ['R2', 'sessionEnding = true;', 'ended'],
-    ['R3', 'if (res?.status === 401) { sessionEnded(placeNow()); return; }', 'upload'],
+    ['R3', 'if (res?.status === 401) { if (since === signIns) sessionEnded(placeNow()); return; }', 'upload'],
     // Once signed out nothing more is asked, and nothing is said under the sign-in screen.
     ['R4', "if (sessionEnding && path !== '/api/auth/login') throw Object.assign(new Error('please sign in'), { status: 401 });", 'api'],
     ['R5', 'if (ex.status === 401) return;', 'problem'],
+    // A 401 from a request that started before the latest sign-in is that old session's, never this one's.
+    ['R6', 'let signIns = 0;', 'ended'], ['R6', 'const since = signIns;', 'api'], ['R6', 'const since = signIns;', 'upload'],
+    ['R6', 'signIns++;', 'form'],
     // L: the sign-in screen as a fresh load shows it, the name filled in and one line saying why.
     ['L1', "$('app').hidden = true;", 'ended'], ['L1', "$('households').hidden = true;", 'ended'], ['L1', "$('login').hidden = false;", 'ended'],
     ['L2', "const SESSION_ENDED = 'Your session ended. Sign in again.';", 'ended'],
-    ['L2', "$('login-err').textContent = SESSION_ENDED;", 'ended'],
+    ['L2', "$('login-notice').textContent = SESSION_ENDED;", 'ended'],
+    ['L2', "$('login-notice').hidden = false;", 'ended'], ['L2', "$('login-err').hidden = true;", 'ended'],
+    // The notice is a plain note in the card, not the red error box, which stays for real errors.
+    ['L6', '<p class="notice" id="login-notice" role="status" hidden></p>', 'signinMarkup'],
+    ['L6', '.signin .notice{background:var(--surface-sunken);border:1px solid var(--line);color:var(--ink-soft);', 'css'],
+    ['L6', "$('login-notice').hidden = true;", 'form'],
     ['L3', "$('u').value = place?.who || myName || '';", 'ended'],
     ['L3', "($('u').value ? $('p') : $('u')).focus();", 'ended'],
     ['L4', "$('otp-field').hidden = true;", 'ended'],
@@ -977,6 +988,9 @@ describe('the page ledger: 0.10.3, a session that ended goes to sign-in', () => 
   const GONE: readonly (readonly [row: string, text: string, region: R])[] = [
     ['X3', 'SESSIONS_PATH', 'server'], ['X3', 'carried over from', 'server'],
     ['X4', 'readFileSync', 'auth'], ['X4', 'writeFileSync', 'auth'],
+    // A 401 for a lost DSM sign-in clears no cookie: a late one would clear a newer sign-in's.
+    ['X5', 'clearedCookie', 'lost'],
+    ['L7', "$('login-err').textContent = SESSION_ENDED;", 'ended'],
   ];
   const miss = (list: readonly (readonly [string, string, R])[], want: boolean) => list
     .filter(([, text, region]) => (want ? R[region] : uncommented(R[region])).includes(text) !== want)
@@ -991,7 +1005,13 @@ describe('the page ledger: 0.10.3, a session that ended goes to sign-in', () => 
   test('every row of the ledger is pinned', () => {
     const rows = new Set([...ADDED, ...GONE].map(([r]) => r));
     const want = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${i + 1}`);
-    assert.deepEqual([...want('R', 5), ...want('L', 5), ...want('P', 5), ...want('X', 4)].filter((r) => !rows.has(r)), []);
+    assert.deepEqual([...want('R', 6), ...want('L', 7), ...want('P', 5), ...want('X', 5)].filter((r) => !rows.has(r)), []);
+  });
+  test('the notice uses no opacity, and the error box is still the one for real errors', () => {
+    const rule = REGIONS.css.slice(REGIONS.css.indexOf('.signin .notice{'), REGIONS.css.indexOf('}', REGIONS.css.indexOf('.signin .notice{')));
+    assert.ok(rule.length > 20, 'the rule is found');
+    assert.equal(/opacity/.test(rule), false);
+    assert.match(R.signinMarkup, /<div class="err" id="login-err" hidden><\/div>/);
   });
   test('a 401 from the sign-in itself is a wrong password, said on the form, never a session that ended', () => {
     assert.match(R.form, /err\.textContent = ex\.message;/);

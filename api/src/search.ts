@@ -27,7 +27,7 @@ import { search } from './drive.ts';
 import type { DriveFile } from './drive.ts';
 import { ToolError } from './errors.ts';
 import { PAGE_NAME } from './pages.ts';
-import { SynologyError } from './synology.ts';
+import { SessionLost, SynologyError } from './synology.ts';
 import type { DsmFetch } from './synology.ts';
 import type { ToolContext } from './tools.ts';
 import { visibleTo } from './types.ts';
@@ -161,7 +161,9 @@ async function fromDrive(
   try {
     items = await search(ctx.sid, { keyword: words, location: home, limit: DRIVE_LIMIT }, f);
   } catch (err) {
-    if (err instanceof SynologyError || err instanceof ToolError) return null;
+    // A sign-in the NAS has ended is passed on: in a request it signs the member out (server.ts). Asked by Claude,
+    // its tool loop answers it as a tool that failed.
+    if ((err instanceof SynologyError && !(err instanceof SessionLost)) || err instanceof ToolError) return null;
     throw err;
   }
   const prefix = `${home}/`;

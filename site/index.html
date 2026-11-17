@@ -78,6 +78,9 @@
   #login .btn{width:100%;margin-top:6px;padding:11px}
   .err{background:var(--problem-tint);border:1px solid var(--problem-line);color:var(--problem);font-size:var(--fs-small);
     padding:9px 12px;border-radius:10px;margin-bottom:14px}
+  /* Why the sign-in screen is showing (a session that ended): a plain note, not an error. */
+  .signin .notice{background:var(--surface-sunken);border:1px solid var(--line);color:var(--ink-soft);font-size:var(--fs-small);
+    padding:var(--sp-2) var(--sp-3);border-radius:var(--r-control);margin:0 0 var(--sp-3)}
   .note{font-size:var(--fs-micro);color:var(--ink-faint);margin-top:16px;text-align:center}
 
   /* ── today ─────────────────────────────────────────────────────────── */
@@ -1607,6 +1610,7 @@
     <div class="eyebrow">Home Planner</div>
     <h1>Sign in</h1>
     <p class="sub">Use your Synology account — the same one as the NAS.</p>
+    <p class="notice" id="login-notice" role="status" hidden></p>
     <div class="err" id="login-err" hidden></div>
     <div class="field">
       <label for="u">Username</label>
@@ -2060,6 +2064,8 @@ const monthLong = (m) => new Date(`${m}-01T12:00:00`).toLocaleDateString(undefin
 async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
   // Signed out already: nothing more is asked of the server until the person signs in again.
   if (sessionEnding && path !== '/api/auth/login') throw Object.assign(new Error('please sign in'), { status: 401 });
+  // Which sign-in this request belongs to: a 401 that comes back after a newer one is the old session's.
+  const since = signIns;
   const res = await fetch(path, {
     method,
     headers: { 'x-hp-build': BUILD, ...(body === undefined ? {} : { 'content-type': 'application/json' }) },
@@ -2069,7 +2075,7 @@ async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
   const data = await res.json().catch(() => ({}));
   // No session any more (a restart, the seven days, or the NAS ended the sign-in behind it): to sign-in, once.
   // The sign-in's own 401 is a wrong password, said on the form.
-  if (res.status === 401 && path !== '/api/auth/login') sessionEnded(placeNow());
+  if (res.status === 401 && path !== '/api/auth/login' && since === signIns) sessionEnded(placeNow());
   // The household this page had open is gone (its owner removed it): the server has
   // already cleared it from this session, so show the picker rather than a stack of errors.
   if (res.status === 409 && /^no household is open/.test(data.error ?? '') && !$('app').hidden && !leaving) void backToPicker();
@@ -2088,6 +2094,8 @@ const PLACE = 'hp.place';
 const PLACE_VIEWS = ['today', 'budget', 'import', 'plan', 'calendar', 'settings'];
 /** Several requests in flight can all meet the same 401; only the first sends the page to sign-in. */
 let sessionEnding = false;
+/** How many times this page has signed in: a 401 to a request started before the latest is not this session's. */
+let signIns = 0;
 /** Where to go back to once signed in again, or null. */
 let returnTo = null;
 
@@ -2128,8 +2136,9 @@ function sessionEnded(place) {
   $('otp-field').hidden = true;
   $('otp').value = '';
   $('login-note').textContent = '';
-  $('login-err').textContent = SESSION_ENDED;
-  $('login-err').hidden = false;
+  $('login-err').hidden = true;
+  $('login-notice').textContent = SESSION_ENDED;
+  $('login-notice').hidden = false;
   $('u').value = place?.who || myName || '';
   $('p').value = '';
   ($('u').value ? $('p') : $('u')).focus();
@@ -2157,6 +2166,7 @@ $('signin-form').addEventListener('submit', async (e) => {
   const err = $('login-err');
   btn.disabled = true;
   err.hidden = true;
+  $('login-notice').hidden = true;
   try {
     const out = await api('/api/auth/login', {
       username: $('u').value.trim(),
@@ -2175,6 +2185,7 @@ $('signin-form').addEventListener('submit', async (e) => {
     // A person pressed before the session ran out is not carried into the new one.
     pressPerson(null);
     // Signed in again after a session ended: back where it ended, when it can be.
+    signIns++;
     const back = returnTo;
     returnTo = null;
     sessionEnding = false;
@@ -10148,9 +10159,10 @@ function dropZone(v, msg) {
       say.textContent = `Putting ${f.name} on the NAS…`;
       const form = new FormData();
       form.append('file', f, f.name);
+      const since = signIns;
       const res = await fetch(planPath(v.id, '/attach'), { method: 'POST', body: form, credentials: 'same-origin' }).catch(() => null);
       const data = res ? await res.json().catch(() => ({})) : {};
-      if (res?.status === 401) { sessionEnded(placeNow()); return; }
+      if (res?.status === 401) { if (since === signIns) sessionEnded(placeNow()); return; }
       if (!res?.ok) {
         // No NAS session behind this sign-in (the sandbox): say so quietly, in place of the zone.
         if (res?.status === 409 && /sign in again/i.test(data.error ?? '')) { zone.replaceWith(noFilesHere()); return; }

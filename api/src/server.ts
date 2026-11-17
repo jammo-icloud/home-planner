@@ -242,7 +242,7 @@ import {
 import type { CalendarInfo, UserShare } from './synology.ts';
 import { currentPublicUrl, ensureHouseholdCalendar, oneAtATime, replaceHouseholdCalendar, reshareHousehold } from './settings.ts';
 import { changeEvent, formConflicts, removeEvent, saveNewEvent } from './appointment-edits.ts';
-import { checkDrift, checkDriftNowAndThen, checkPagesNowAndThen } from './drift.ts';
+import { checkDriftNow, checkDriftNowAndThen, checkPagesNowAndThen } from './drift.ts';
 import { todayEvents, weekEvents, weekWindow } from './calendar-view.ts';
 import { addDays } from './calendar.ts';
 import { calendarMoney } from './calendar-money.ts';
@@ -1704,14 +1704,16 @@ export async function start(
     void handle(req, res).catch((err: unknown) => {
       // DSM says the sign-in behind this member's session has ended (timed out, signed in elsewhere, the NAS
       // restarted): so does this session. The one place a lost DSM sign-in ends a session, for a page's request
-      // only: the guest page has its own cookie and its own 401s, and work that runs after the answer is sent (the
-      // pages, the moves) or beside it (the briefing, the look for drift) keeps its own soft handling and never
-      // reaches here. Answered as the gate answers no session, so the page goes to sign-in.
+      // only: the guest page has its own cookie and its own 401s (and reaches no DSM today), and work that runs
+      // after the answer is sent (the pages, the moves) or for Claude (Ask Claude's tools and the day's documents
+      // it reads) keeps its own soft handling and never reaches here. Answered as the gate answers no session, so
+      // the page goes to sign-in. No cookie is cleared: the session is gone here, so the old cookie opens nothing,
+      // and a 401 answered late must not clear the cookie of a sign-in made since.
       const path = new URL(req.url ?? '/', 'http://localhost').pathname;
       if (err instanceof SessionLost && path.startsWith('/api/')) {
         sessions.revoke(readCookie(req.headers.cookie, COOKIE));
+        // No route writes its headers before it reaches the NAS, so this is a guard, not a path a request takes.
         if (res.headersSent) { res.end(); return; }
-        res.setHeader('set-cookie', clearedCookie());
         return json(res, 401, { error: 'please sign in' });
       }
       const status = err instanceof ToolError || err instanceof SynologyError ? err.status : 500;
@@ -2743,6 +2745,9 @@ export async function start(
         try {
           await ensureHousehold(active, { who, today: ctx.today, sid: ctx.sid, tz, ...(ctx.household !== undefined ? { household: ctx.household } : {}) });
         } catch (err) {
+          // The NAS ended this member's sign-in while the calendar was read: no briefing is written for the day,
+          // and the request signs them out (`handle`'s caller). Signed in again, the next look writes it whole.
+          if (err instanceof SessionLost) throw err;
           console.warn(`[briefing] the household's briefing was not written: ${(err as Error).message}`);
           // A refusal is Claude's answer for the day; asking it again for the budget would only be refused again.
           if (active.state.months.has(ctx.today.slice(0, 7)) && !(err instanceof ClaudeRefused)) {
@@ -2867,7 +2872,7 @@ export async function start(
     // Look now, without waiting for Today's ten minutes: needs a NAS session.
     if (path === '/api/calendar/check' && req.method === 'POST') {
       requireSid(ctx);
-      const found = await checkDrift(ctx);
+      const found = await checkDriftNow(ctx);
       return json(res, 200, { drifts: found.filter((e) => e.op === 'calendar.drift').map((e) => e.id) });
     }
 

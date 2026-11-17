@@ -49,7 +49,9 @@ export const DRIFT_EVERY_MS = 10 * 60 * 1000;
 /** When each household's calendar was last looked at, by store path. In memory: a restart looks again. */
 const lastLooked = new Map<string, number>();
 /** A look in progress, by store path: a second caller waits for it rather than asking the NAS twice. */
-const looking = new Map<string, Promise<Event[]>>();
+const looking = new Map<string, Promise<Look>>();
+/** What a look wrote, and the sign-in the NAS said had ended if that is what stopped it. */
+interface Look { events: Event[]; lost: SessionLost | null }
 
 const openDriftFor = (state: State, evt_id: number): boolean =>
   [...state.drifts.values()].some((d) => d.evt_id === evt_id && d.resolved === null);
@@ -75,19 +77,34 @@ const openDriftFor = (state: State, evt_id: number): boolean =>
  * all the way through: one that stopped looks again on the next load.
  */
 export async function checkDrift(ctx: ToolContext, f?: DsmFetch): Promise<Event[]> {
-  if (!ctx.sid) return [];
+  return (await look(ctx, f)).events;
+}
+
+/**
+ * `checkDrift` for a member who asked to look now (Calendar): the same look,
+ * but a sign-in the NAS has ended is passed on, so the request signs them out
+ * (server.ts). Today's look, beside the page, keeps `checkDrift`'s quiet.
+ */
+export async function checkDriftNow(ctx: ToolContext, f?: DsmFetch): Promise<Event[]> {
+  const { events, lost } = await look(ctx, f);
+  if (lost) throw lost;
+  return events;
+}
+
+function look(ctx: ToolContext, f?: DsmFetch): Promise<Look> {
+  if (!ctx.sid) return Promise.resolve({ events: [], lost: null });
   const key = ctx.store.path;
   const running = looking.get(key);
   if (running) return running;
   const started = Date.now();
-  const look = lookForDrift(ctx, ctx.sid, f)
-    .then(({ events, stopped }) => {
+  const run = lookForDrift(ctx, ctx.sid, f)
+    .then(({ events, stopped, lost }) => {
       if (!stopped) lastLooked.set(key, started);
-      return events;
+      return { events, lost };
     })
     .finally(() => looking.delete(key));
-  looking.set(key, look);
-  return look;
+  looking.set(key, run);
+  return run;
 }
 
 /** Today's way in: `checkDrift`, at most once per household per `DRIFT_EVERY_MS`. */
@@ -102,9 +119,10 @@ export async function checkDriftNowAndThen(ctx: ToolContext, f?: DsmFetch): Prom
 const stopsTheLook = (err: SynologyError): boolean => err instanceof SessionLost || err.code === 0;
 
 
-async function lookForDrift(ctx: ToolContext, sid: string, f?: DsmFetch): Promise<{ events: Event[]; stopped: boolean }> {
+async function lookForDrift(ctx: ToolContext, sid: string, f?: DsmFetch): Promise<{ events: Event[]; stopped: boolean; lost: SessionLost | null }> {
   const out: Event[] = [];
   let stopped = false;
+  let lost: SessionLost | null = null;
   try {
     out.push(...await askAboutUnasked(ctx, 'calendar'));
     const links = [...ctx.store.state.plans.values()]
@@ -153,9 +171,10 @@ async function lookForDrift(ctx: ToolContext, sid: string, f?: DsmFetch): Promis
   } catch (err) {
     if (!(err instanceof SynologyError)) throw err;
     stopped = true;
+    if (err instanceof SessionLost) lost = err;
     logDsm('stopped looking for changes on the calendar', err);
   }
-  return { events: out, stopped };
+  return { events: out, stopped, lost };
 }
 
 /**

@@ -25,7 +25,7 @@ import { cardLane } from './lanes.ts';
 import { offer, stirred } from './offers.ts';
 import { board } from './plans.ts';
 import type { BoardCard } from './plans.ts';
-import { listEvents, SynologyError } from './synology.ts';
+import { listEvents, SessionLost, SynologyError } from './synology.ts';
 import type { CalEvent, DsmFetch } from './synology.ts';
 import { briefingFile, renderBriefingPage, writeDoc } from './docs.ts';
 import type { DocAccess } from './docs.ts';
@@ -586,10 +586,13 @@ const saysUnread = (body: string): boolean => /calendar[^.]*(?:\bnot\b|n['\u2019
  * day after it, where the household is. Only that calendar: never anyone's
  * own, nor one the household chose for plans or for checking clashes.
  *
- * It never fails the briefing. Without a NAS session, or when the NAS says
- * no, the block says the calendar was not read for this briefing, in words
- * that are the briefing's and not the looker's: every member reads it. Why is
- * kept for `missing` and the server's log.
+ * Without a NAS session, or when the NAS says no, the block says the calendar
+ * was not read for this briefing, in words that are the briefing's and not the
+ * looker's: every member reads it. Why is kept for `missing` and the server's
+ * log. The one failure it passes on is a sign-in the NAS has ended: the day's
+ * briefing is then not written at all, rather than written without the
+ * calendar for every member all day, and the request signs the looker out
+ * (server.ts); the next look, signed in again, writes it with the calendar.
  */
 async function calendarBlock(state: State, o: HouseholdOptions, tz: string): Promise<Gathered['calendar']> {
   const cal = state.calendar.household;
@@ -613,6 +616,7 @@ async function calendarBlock(state: State, o: HouseholdOptions, tz: string): Pro
         }, o.f);
       }
     } catch (err) {
+      if (err instanceof SessionLost) throw err;
       // Never the sid: a SynologyError's message names the call, not the session.
       unread = err instanceof SynologyError ? err.message : 'the NAS did not answer';
       console.warn(`[briefing] reading the Household calendar failed: ${(err as Error).message}`);

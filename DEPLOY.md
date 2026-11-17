@@ -272,10 +272,16 @@ in `connectors.json`. Boot says so if it is still set.
 **Every restart or rebuild signs everyone out: sign in again.** Sessions are
 kept in memory only, with the DSM session behind each, and last seven days at
 most. A session is also ended when the NAS ends the DSM sign-in behind it (it
-timed out, or the NAS restarted): the next thing that reaches the NAS goes to
+timed out, or the NAS restarted). The next screen or action that reaches the
+NAS directly (Today, which also writes the day's briefing, Calendar and its
+look for changes, Search, Contacts, files, Settings, approving a card) goes to
 the sign-in screen, which says "Your session ended. Sign in again.", and
-signing in returns to the screen that was open. Restarting the container is how
-to sign everyone out. A `sessions.json` left in the data folder by 0.10.2 or
+signing in returns to the screen that was open. Ask Claude is the exception: it
+still answers, without what it could not read from the NAS, and
+the next of those direct actions signs out. Work that runs after an answer is
+sent (a plan's page in Drive, files being moved) waits for the next sign-in
+and never signs anyone out. Restarting the container is how to sign everyone
+out. A `sessions.json` left in the data folder by 0.10.2 or
 earlier is not read, and can be deleted.
 
 ## Settings › This NAS

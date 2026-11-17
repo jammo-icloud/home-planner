@@ -161,7 +161,9 @@ describe('a lost DSM sign-in ends the session', () => {
   const signedOut = (r: Awaited<ReturnType<typeof whenForgotten>>, what: string) => {
     assert.equal(r.status, 401, `${what}: ${JSON.stringify(r.json)}`);
     assert.equal(r.json.error, 'please sign in', what);
-    assert.match(r.cookie ?? '', new RegExp(`^${COOKIE}=;.*Max-Age=0`), `${what}: the cookie is cleared`);
+    // No cookie is sent: the session is gone on the server, so the old cookie opens nothing, and a late 401
+    // must not clear the cookie of a sign-in made since.
+    assert.equal(r.cookie, null, `${what}: no Set-Cookie`);
     assert.deepEqual(r.after, { authenticated: false }, `${what}: the session is gone`);
   };
 
@@ -186,18 +188,57 @@ describe('a lost DSM sign-in ends the session', () => {
     const tool = { name: 'x', kind: 'write', effect: async () => { throw new SessionLost('SYNO.Cal.Event', 119); } } as any;
     await assert.rejects(runEffect(tool, {}, {} as any), (e: unknown) => e instanceof SessionLost);
   });
-  test('the guest page is not a member route: its 401s are its own and a member cookie there is left alone', async () => {
+  test('Search, whose Drive half was quietly left out before, signs her out', async () => {
+    signedOut(await whenForgotten('GET', '/api/search?q=gate'), 'GET /api/search');
+  });
+  test("Calendar's look-now for changes, which stopped quietly before, signs her out", async () => {
+    // A plan with a date on the Household calendar, so the look has an event to ask the NAS about.
     const alice = await signIn('alice', 'correct-horse');
+    assert.equal((await call(alice, 'POST', '/api/calendars/household', {})).status, 200);
+    const plan = (await call(alice, 'POST', '/api/plans', { title: 'Sweep the chimney', area: 'House' })).json.plan.id;
+    const due = await call(alice, 'POST', `/api/plans/${plan}/due`, { due: day(3) });
+    assert.equal(due.status, 200, JSON.stringify(due.json));
+    await quietly(async () => { await new Promise((r) => setTimeout(r, 20)); await pagesIdle(homePath); });
+    signedOut(await quietly(() => whenForgotten('POST', '/api/calendar/check')), 'POST /api/calendar/check');
+  });
+});
+
+describe("Today's briefing and a lost sign-in", () => {
+  const briefingsToday = async () => (await (await households.open('home')).since(null))
+    .filter((e) => e.op === 'thread.briefing' && e.day === day(0));
+  /** The words of a briefing, from the log or from Drive. */
+  const wordsOf = async (cookie: string, e: any): Promise<string> =>
+    e.body ?? (await call(cookie, 'GET', `/api/docs/${e.id}`)).json.text;
+
+  test('opening Today with a dead sign-in signs out and records no briefing; signed in again, the briefing has the calendar', async () => {
+    let alice = await signIn('alice', 'correct-horse');
+    assert.equal((await call(alice, 'POST', '/api/calendars/household', {})).status, 200);
+    const made = await call(alice, 'POST', '/api/calendar/events',
+      { summary: 'Dentist', start: `${day(1)}T10:00`, end: `${day(1)}T11:00`, allDay: false, on: 'household' });
+    assert.equal(made.status, 200, JSON.stringify(made.json));
+    assert.deepEqual(await briefingsToday(), [], 'no briefing yet today');
+
     forgotten = true;
     try {
-      await call(alice, 'GET', '/book/home');
+      const thread = await quietly(() => call(alice, 'GET', '/api/thread'));
+      assert.deepEqual([thread.status, thread.json.error], [401, 'please sign in']);
     } finally { forgotten = false; }
-    assert.equal((await check(alice)).authenticated, true);
+    assert.deepEqual(await check(alice), { authenticated: false });
+    assert.deepEqual(await briefingsToday(), [], 'no briefing missing the calendar is recorded for the day');
+
+    alice = await signIn('alice', 'correct-horse');
+    const again = await quietly(() => call(alice, 'GET', '/api/thread'));
+    assert.equal(again.status, 200, JSON.stringify(again.json));
+    const written = await briefingsToday();
+    assert.equal(written.length, 1);
+    const words = await wordsOf(alice, written[0]);
+    assert.match(words, /Dentist/);
+    assert.doesNotMatch(words, /was not read/);
   });
 });
 
 describe('background work that meets a lost sign-in leaves the session alone', () => {
-  test("a plan's page written after the answer is sent is refused softly; the briefing and the drift look too", async () => {
+  test("a plan's page written after the answer is sent is refused softly", async () => {
     const alice = await signIn('alice', 'correct-horse');
     forgotten = true;
     try {
@@ -208,10 +249,6 @@ describe('background work that meets a lost sign-in leaves the session alone', (
       await quietly(async () => { await new Promise((r) => setTimeout(r, 20)); await pagesIdle(homePath); });
       assert.ok(refused > 0, 'the page lane did reach the NAS and was refused');
       assert.equal((await check(alice)).authenticated, true, 'the page lane did not end the session');
-      // Today's thread writes the briefing and looks for drift: both keep their soft handling.
-      const thread = await quietly(() => call(alice, 'GET', '/api/thread'));
-      assert.equal(thread.status, 200, JSON.stringify(thread.json));
-      assert.equal((await check(alice)).authenticated, true, 'the briefing and the drift look did not end it either');
     } finally { forgotten = false; }
   });
 });
