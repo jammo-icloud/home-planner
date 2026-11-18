@@ -2232,9 +2232,10 @@ export async function start(
       return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
     }
 
-    // A request to be added, answered from Today or Settings: { email, answer: 'add' | 'decline' }. Any member, in any
-    // household that has one waiting (booking may have moved on since); the Add's email goes only while it books here.
+    // A request to be added, answered from Today or Settings: { email, answer: 'add' | 'decline' }. Any member, in the
+    // household friends book with, while they do; with booking off its requests wait, unseen, and come back with it.
     if (path === '/api/guests/asks' && req.method === 'POST') {
+      if (!booksHere) throw new ToolError('not available', 404);
       const answered = await answerGuestAsk(ctx, await bodyOf(req));
       return json(res, 200, { ...(await settingsView(active, who, bookingHere, openHousehold(session), session.admin)), answered });
     }
@@ -2751,7 +2752,7 @@ export async function start(
       const started = firstRun(active.state, ctx.today).started;
       // Opening a day by its date or an id it holds reads the record and writes nothing: no briefing, no drift check.
       if (q.day !== undefined || q.at !== undefined) {
-        const found = await threadDay(active, { who, today: ctx.today, ...q.base, ...(q.day !== undefined ? { day: q.day } : {}), ...(q.at !== undefined ? { at: q.at } : {}) });
+        const found = await threadDay(active, { who, today: ctx.today, asks: booksHere, ...q.base, ...(q.day !== undefined ? { day: q.day } : {}), ...(q.at !== undefined ? { at: q.at } : {}) });
         if (!found) throw new ToolError('no day shows that', 404);
         return json(res, 200, found);
       }
@@ -2804,7 +2805,7 @@ export async function start(
       return json(res, 200, {
         ...(started ? {} : { notStarted: true }),
         ...(noOpenMonth ? { noOpenMonth: true } : {}),
-        ...await thread(active, { who, today: ctx.today, ...q.base,
+        ...await thread(active, { who, today: ctx.today, asks: booksHere, ...q.base,
           ...(q.through !== undefined ? { through: q.through } : {}),
           ...(q.open !== undefined ? { open: q.open } : {}) }),
       });

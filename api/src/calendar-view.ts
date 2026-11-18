@@ -15,6 +15,7 @@ import type { CalEvent, DsmFetch } from './synology.ts';
 import type { ToolContext } from './tools.ts';
 import { goalsOf } from './plans.ts';
 import { build, daysOf, ordered } from './thread.ts';
+import { asksHere } from './booking.ts';
 import type { DayRow } from './thread.ts';
 import { isDay, sameCalendar, visibleTo, zoneOf } from './types.ts';
 import type { Actor, CalendarLink, CalendarRef, Day, EventId, Plan, PlanId, PlanState, State } from './types.ts';
@@ -381,7 +382,7 @@ export async function weekEvents(ctx: ToolContext, window: { start: Day; end: Da
   return {
     events, ...(unavailable !== undefined ? {} : { mine }), ...(unavailable !== undefined ? { unavailable } : {}),
     ...(missed.length ? { missed } : {}), goals: goalsOf(state),
-    thread: daysOf(ordered(build(await ctx.store.since(null), state, ctx.who)), state, ctx.who, { from: window.start, to: addDays(window.end, -1) })
+    thread: daysOf(ordered(build(await ctx.store.since(null), state, ctx.who, { today: ctx.today, asks: asksHere(ctx) })), state, ctx.who, { from: window.start, to: addDays(window.end, -1) })
       .map((r) => ({ day: r.day, entries: r.total, by: r.by, waiting: r.waiting })),
   };
 }

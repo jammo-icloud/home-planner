@@ -146,6 +146,8 @@ export interface ThreadOptions {
   readonly open?: readonly Day[];
   readonly lane?: Lane;
   readonly person?: Actor | 'everyone';
+  /** Whether requests to be a guest wait on the viewer: only while friends book with this household. */
+  readonly asks?: boolean;
 }
 
 /**
@@ -193,7 +195,11 @@ export function ordered(entries: readonly ThreadEntry[]): ThreadEntry[] {
 }
 
 /** Every entry, in the log's order, before any filter. */
-export function build(events: readonly Event[], state: State, who: Actor): ThreadEntry[] {
+export function build(
+  events: readonly Event[], state: State, who: Actor,
+  /** The household's day, for what waits; and whether requests to be a guest do (ThreadOptions.asks). */
+  o: { today?: Day; asks?: boolean } = {},
+): ThreadEntry[] {
   const tz = zoneOf(state);
   const byId = new Map(events.map((e) => [e.id, e]));
   // A section that was replaced later that day hands its cards to its replacement.
@@ -423,7 +429,7 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
 
   // What waits on the viewer: an offer by its id, a flag by its change or, through the card that made it, the card.
   const waitsOn = new Set<EventId>();
-  for (const w of waiting(state, who, events)) {
+  for (const w of waiting(state, who, events, o.today ?? householdDay(tz), o.asks ?? true)) {
     if (w.kind === 'offer') waitsOn.add(w.offer.id);
     else if (w.kind === 'flag') waitsOn.add(appliedBy.get(w.event) ?? w.event);
     else if (w.kind === 'guest') waitsOn.add(w.ask.id);
@@ -501,7 +507,7 @@ const zeroRow = (day: Day): DayRow => ({ day, count: 0, total: 0, waiting: 0, fr
 /** What waits on the viewer, each with the lane, author and title its list needs, and whether the pressed kind and person show it. */
 function waitingItems(
   events: readonly Event[], state: State, who: Actor, entries: readonly ThreadEntry[],
-  lane: Lane | undefined, person: Actor | 'everyone', today: Day,
+  lane: Lane | undefined, person: Actor | 'everyone', today: Day, asks: boolean,
 ): WaitingItem[] {
   const tz = zoneOf(state);
   const byId = new Map(events.map((e) => [e.id, e]));
@@ -511,7 +517,7 @@ function waitingItems(
     if (e.kind === 'card') for (const f of e.flags ?? []) rowOf.set(f.event, e);
   }
   const items: WaitingItem[] = [];
-  for (const w of waiting(state, who, events, today)) {
+  for (const w of waiting(state, who, events, today, asks)) {
     if (w.kind === 'guest') {
       // The app's line, so no author: the asker's name is carried for the row's words and disc.
       const row = rowOf.get(w.ask.id);
@@ -555,7 +561,7 @@ function waitingItems(
 export async function thread(store: Store, o: ThreadOptions): Promise<ThreadPage> {
   const events = await store.since(null);
   const state = store.state;
-  const all = ordered(build(events, state, o.who));
+  const all = ordered(build(events, state, o.who, { today: o.today, asks: o.asks ?? true }));
   const lane = o.lane;
   const from = `${o.through ?? o.today.slice(0, 7)}-01`;
   const window = { from, to: '9999-12-31', ...(lane ? { lane } : {}) };
@@ -584,7 +590,7 @@ export async function thread(store: Store, o: ThreadOptions): Promise<ThreadPage
   }
   return {
     today: o.today, who: person, days, entries,
-    waiting: waitingItems(events, state, o.who, all, lane, person, o.today),
+    waiting: waitingItems(events, state, o.who, all, lane, person, o.today, o.asks ?? true),
     newSince: state.readCursor.get(o.who) ?? null, before, last,
   };
 }
@@ -592,11 +598,11 @@ export async function thread(store: Store, o: ThreadOptions): Promise<ThreadPage
 /** One day's row and entries, found by its date or by an id it holds; null when no day shows that id. */
 export async function threadDay(
   store: Store,
-  o: { who: Actor; today: Day; day?: Day; at?: string; lane?: Lane; person?: Actor | 'everyone' },
+  o: { who: Actor; today: Day; day?: Day; at?: string; lane?: Lane; person?: Actor | 'everyone'; asks?: boolean },
 ): Promise<{ today: Day; days: DayRow[]; entries: ThreadEntry[] } | null> {
   const events = await store.since(null);
   const state = store.state;
-  const all = ordered(build(events, state, o.who));
+  const all = ordered(build(events, state, o.who, { today: o.today, asks: o.asks ?? true }));
   let day = o.day;
   if (day === undefined) {
     const at = o.at;

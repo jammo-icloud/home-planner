@@ -49,13 +49,17 @@
   .btn:disabled { opacity: .5; cursor: default; }
   .btn.primary { background: var(--accent-fill); color: var(--on-accent); border-color: var(--accent-fill); }
   .btn.primary:hover:not(:disabled) { background: var(--accent-fill-hover); border-color: var(--accent-fill-hover); }
-  .btn.small { min-height: 32px; padding: 0 var(--sp-3); font-size: var(--fs-small); }
+  /* Every button here is a thumb high (--tap, 44px), at a desk's width too: the app's rule for what a guest presses. */
+  .btn.small { min-height: var(--tap); padding: 0 var(--sp-3); font-size: var(--fs-small); }
   .btn.bare { background: none; border-color: transparent; color: var(--accent-ink); padding-inline: var(--sp-2); }
-  @container page (min-width: 760px) { .btn { min-height: 38px; } .btn.small { min-height: 30px; } }
   .actions { display: flex; flex-wrap: wrap; gap: var(--sp-2); align-items: center; }
   .link { color: var(--accent-ink); text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
     text-decoration-color: var(--accent-line); background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
   .link:hover { text-decoration-color: currentColor; }
+  /* A text link is pressed across a thumb's height, centred on its words, as the app's .hit does. */
+  .link { position: relative; }
+  .link::after { content: ''; position: absolute; top: 50%; left: 50%; width: 100%; height: 100%;
+    min-width: var(--tap); min-height: var(--tap); transform: translate(-50%, -50%); }
   .field { display: flex; flex-direction: column; gap: 6px; }
   .field > label { font-size: var(--fs-small); font-weight: var(--fw-medium); color: var(--ink-soft); }
   .input { width: 100%; min-height: var(--tap); font: inherit; font-size: var(--fs-input); color: var(--ink);
@@ -789,9 +793,12 @@ function leaveAddMe() {
 
 $('addme-open').addEventListener('click', showAddMe);
 $('addme-back').addEventListener('click', leaveAddMe);
-$('f-addme').addEventListener('keydown', (e) => {
+// Escape leaves the request from anywhere in it: its fields, its button, or "‹ Back" itself.
+const escapeAddMe = (e) => {
   if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); leaveAddMe(); }
-});
+};
+$('f-addme').addEventListener('keydown', escapeAddMe);
+$('addme-back').addEventListener('keydown', escapeAddMe);
 
 $('f-addme').addEventListener('submit', async (e) => {
   e.preventDefault();

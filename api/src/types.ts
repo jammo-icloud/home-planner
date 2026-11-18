@@ -669,8 +669,8 @@ export type Event = Meta &
      * proof of anything. It waits until a member answers, or for ASK_DAYS.
      */
     | { op: 'guest.ask'; email: string; name: string; how: string }
-    /** A member turning a request down. The asker is never told. */
-    | { op: 'guest.ask.decline'; email: string; why?: string }
+    /** A member turning a request down, with the name it was asked under, for the record. The asker is never told. */
+    | { op: 'guest.ask.decline'; email: string; name: string; why?: string }
     /** Nights kept for the household, from (inclusive) to (exclusive). Guests see them as taken. */
     | { op: 'booking.block'; from: Day; to: Day; why: string }
     | { op: 'booking.unblock'; block: EventId; why: string }

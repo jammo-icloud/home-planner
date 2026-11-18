@@ -21,6 +21,7 @@
 
 import { currentDoc, householdFolder } from './docs.ts';
 import { build, counted, daysOf, ordered } from './thread.ts';
+import { asksHere } from './booking.ts';
 import type { DayRow, ThreadEntry } from './thread.ts';
 import type { Lane } from './lanes.ts';
 import { search } from './drive.ts';
@@ -299,7 +300,7 @@ export async function searchRecord(
   const asked = searchWords(words);
   const events = await ctx.store.since(null);
   const state = ctx.store.state;
-  const all = ordered(build(events, state, ctx.who));
+  const all = ordered(build(events, state, ctx.who, { today: ctx.today, asks: asksHere(ctx) }));
   const drive = await fromDrive(ctx, asked, events, f);
 
   const passages = new Map<EventId, string>();

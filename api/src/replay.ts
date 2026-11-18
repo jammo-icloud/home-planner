@@ -1012,6 +1012,7 @@ function validateBooking(e: Event): void {
       return;
     case 'guest.ask.decline':
       email(e.email);
+      if (!named(e.name)) throw refuse("a declined request names who asked");
       return;
     case 'booking.block':
       nights(e.from, e.to, 'from', 'to');
@@ -2119,8 +2120,9 @@ function fold(d: Draft, e: Event): void {
     case 'guest.ask': {
       // A later request from the same address takes the place of the last, answered or not:
       // the booking page writes one only when none waits, and the fold has no clock to say one has.
+      // For someone already on the list (a restore can bring one) it asks nothing, and is let be.
       const email = emailKey(e.email);
-      if (d.guests.has(email)) throw new ReplayError(`${email} is already on the list`, e);
+      if (d.guests.has(email)) return;
       d.guestAsks.set(email, { id: e.id, at: e.at, name: e.name.trim(), how: e.how.trim(), answer: null });
       return;
     }

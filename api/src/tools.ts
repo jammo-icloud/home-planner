@@ -623,7 +623,8 @@ const getActivity: Tool = {
     const limit = Math.min(args['limit'] ? num(args['limit'], 'limit') : 50, 500);
     const since = (args['sinceEventId'] as string | undefined) ?? null;
     const read = await ctx.store.since(since);
-    let events = read;
+    // A stranger's request to be a guest is their own words from a public page: not Claude's to read.
+    let events = read.filter((e) => e.op !== 'guest.ask');
     const envelope = args['envelope'] as string | undefined;
     if (envelope) {
       events = events.filter((e) =>
@@ -637,9 +638,20 @@ const getActivity: Tool = {
       total: events.length,
       showing: tail.length,
       lastEventId: events.at(-1)?.id ?? null,
-      events: tail.map((e) => describe(e, ctx.store.state, befores.get(e.id))),
+      events: tail.map((e) => {
+        const line = describe(e, ctx.store.state, befores.get(e.id));
+        // An add that answered a request has how the stranger knows the household as its reason: left out too.
+        return fromAsk(e, ctx.store.state) ? { ...line, why: null } : line;
+      }),
     };
   },
+};
+
+/** A guest.allow that put someone on the list from their own request (the request's answer is this line). */
+const fromAsk = (e: Event, state: State): boolean => {
+  if (e.op !== 'guest.allow') return false;
+  const answer = state.guestAsks.get(e.email.trim().toLowerCase())?.answer;
+  return answer?.kind === 'added' && answer.at === e.at && answer.by === e.who;
 };
 
 /** One human sentence per event. The Activity screen renders these directly. */
@@ -876,9 +888,11 @@ export function describe(
     case 'guest.revoke': what = `took ${e.email.trim().toLowerCase()} off the guest list`; break;
     // The app's line, so it says who asked: the asker is the subject, not the author.
     case 'guest.ask': what = `${e.name.trim()} asked to be a guest`; break;
+    // The name it was asked under, as the line keeps it: a later request may give another.
+    // A line the fold refused (read back from the file) may lack it: the address stands in.
     case 'guest.ask.decline': {
-      const email = e.email.trim().toLowerCase();
-      what = `declined ${state?.guestAsks.get(email)?.name ?? email}'s request`;
+      const name = typeof e.name === 'string' ? e.name.trim() : '';
+      what = `declined ${name || e.email.trim().toLowerCase()}'s request`;
       break;
     }
     case 'booking.block': what = `kept ${dayRange(e.from, e.to)} for the household`; break;

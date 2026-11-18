@@ -34,6 +34,7 @@ const { start } = await import('../src/server.ts');
 const { Store } = await import('../src/store.ts');
 const { Households } = await import('../src/households.ts');
 const { MailError } = await import('../src/mail.ts');
+const { asksSettled } = await import('../src/booking.ts');
 const households = new Households(join(dir, 'households'));
 type Mail = import('../src/mail.ts').Mail;
 
@@ -69,7 +70,12 @@ const cookieOf = (h: Headers) => (h.get('set-cookie') ?? '').split(';')[0]!;
 
 let ipSeq = 0;
 const SAM = { name: 'Sam Rivera', email: 'sam@example.com', how: "Alex's college roommate" };
-const askFor = (body: Record<string, unknown>, ip = `10.9.0.${++ipSeq}`) => call('POST', '/book/ask', { body, ip });
+/** Ask from the booking page, then wait for the line it may write: the answer does not wait for it. */
+async function askFor(body: Record<string, unknown>, ip = `10.9.0.${++ipSeq}`) {
+  const r = await call('POST', '/book/ask', { body, ip });
+  await asksSettled();
+  return r;
+}
 const asksIn = async () => (await (await households.open('home')).since(null)).filter((e) => e.op === 'guest.ask');
 
 before(async () => {
@@ -166,41 +172,41 @@ describe('with booking on', () => {
   });
 
   test("a member sees it on Today and in Settings; Add puts them on the list and sends one plain email", async () => {
-    await askFor({ name: 'Kim Lee', email: 'kim@example.com', how: 'Neighbours on Camino Real' });
+    await askFor({ name: 'Casey Rivera', email: 'casey@example.com', how: 'Neighbours' });
     const page = await call('GET', '/api/thread?quiet=1', { cookie: bob });
     assert.equal(page.status, 200, page.text);
-    const w = page.json.waiting.find((x: any) => x.kind === 'guest' && x.ask.email === 'kim@example.com');
+    const w = page.json.waiting.find((x: any) => x.kind === 'guest' && x.ask.email === 'casey@example.com');
     assert.ok(w, JSON.stringify(page.json.waiting));
-    assert.equal(w.title, 'Kim Lee asks to be a guest');
-    assert.equal(w.ask.how, 'Neighbours on Camino Real');
+    assert.equal(w.title, 'Casey Rivera asks to be a guest');
+    assert.equal(w.ask.how, 'Neighbours');
     const st = await call('GET', '/api/settings', { cookie: bob });
-    assert.ok(st.json.guests.asks.some((a: any) => a.email === 'kim@example.com' && a.name === 'Kim Lee'));
+    assert.ok(st.json.guests.asks.some((a: any) => a.email === 'casey@example.com' && a.name === 'Casey Rivera'));
 
     const before = sent.length;
-    const r = await call('POST', '/api/guests/asks', { cookie: bob, body: { email: 'kim@example.com', answer: 'add' } });
+    const r = await call('POST', '/api/guests/asks', { cookie: bob, body: { email: 'casey@example.com', answer: 'add' } });
     assert.equal(r.status, 200, r.text);
-    assert.deepEqual(r.json.answered, { answer: 'added', email: 'kim@example.com', name: 'Kim Lee', mailed: true });
-    assert.ok(r.json.guests.list.some((g: any) => g.email === 'kim@example.com' && g.allowedBy === 'bob'));
-    assert.ok(!r.json.guests.asks.some((a: any) => a.email === 'kim@example.com'));
+    assert.deepEqual(r.json.answered, { answer: 'added', email: 'casey@example.com', name: 'Casey Rivera', mailed: true });
+    assert.ok(r.json.guests.list.some((g: any) => g.email === 'casey@example.com' && g.allowedBy === 'bob'));
+    assert.ok(!r.json.guests.asks.some((a: any) => a.email === 'casey@example.com'));
     assert.equal(sent.length, before + 1);
     const m = sent.at(-1)!;
-    assert.equal(m.to, 'kim@example.com');
+    assert.equal(m.to, 'casey@example.com');
     assert.equal(m.subject, "You're on the list");
     assert.deepEqual(m.text.match(/https?:\/\/\S+/g), ['https://planner.example.com/book']);
     assert.doesNotMatch(m.text, /\/book\/open|token|\d{6}/);
     // They sign in as every guest does: the address is on the list now.
-    const link = await call('POST', '/book/start', { body: { email: 'kim@example.com' }, ip: '10.9.3.1' });
+    const link = await call('POST', '/book/start', { body: { email: 'casey@example.com' }, ip: '10.9.3.1' });
     assert.equal(link.status, 200);
     assert.equal(sent.length, before + 2);
     assert.match(sent.at(-1)!.text, /\/book\/open\?token=/);
   });
 
   test('two members answering at once: one settles it, the other is told who did', async () => {
-    await askFor({ name: 'Lee Park', email: 'lee@example.com', how: 'Work' });
+    await askFor({ name: 'Alex Rivera', email: 'alex@example.com', how: 'From work' });
     const before = sent.length;
     const [a, b] = await Promise.all([
-      call('POST', '/api/guests/asks', { cookie: alice, body: { email: 'lee@example.com', answer: 'add' } }),
-      call('POST', '/api/guests/asks', { cookie: bob, body: { email: 'lee@example.com', answer: 'decline' } }),
+      call('POST', '/api/guests/asks', { cookie: alice, body: { email: 'alex@example.com', answer: 'add' } }),
+      call('POST', '/api/guests/asks', { cookie: bob, body: { email: 'alex@example.com', answer: 'decline' } }),
     ]);
     const statuses = [a.status, b.status].sort();
     assert.deepEqual(statuses, [200, 409]);
@@ -211,22 +217,41 @@ describe('with booking on', () => {
   });
 
   test('a mail that fails: still on the list, and the answer says the email did not go', async () => {
-    await askFor({ name: 'Ana Ruiz', email: 'ana@example.com', how: 'Book club' });
+    await askFor({ name: 'Dana Rivera', email: 'dana@example.com', how: 'Book club' });
     failing = true;
     let r;
     const warn = console.warn;
     console.warn = () => {};
     try {
-      r = await call('POST', '/api/guests/asks', { cookie: alice, body: { email: 'ana@example.com', answer: 'add' } });
+      r = await call('POST', '/api/guests/asks', { cookie: alice, body: { email: 'dana@example.com', answer: 'add' } });
     } finally { failing = false; console.warn = warn; }
     assert.equal(r.status, 200, r.text);
     assert.equal(r.json.answered.mailed, false);
-    assert.ok(r.json.guests.list.some((g: any) => g.email === 'ana@example.com'));
+    assert.ok(r.json.guests.list.some((g: any) => g.email === 'dana@example.com'));
     assert.doesNotMatch(r.text, /451|mail\.example\.com|SMTP/);
   });
 
   test('an answer that is neither, or no such request', async () => {
     assert.equal((await call('POST', '/api/guests/asks', { cookie: alice, body: { email: 'nobody@example.com', answer: 'add' } })).status, 404);
     assert.equal((await call('POST', '/api/guests/asks', { cookie: alice, body: { email: SAM.email, answer: 'later' } })).status, 400);
+  });
+
+  test("with booking off, a request is neither on Today nor answerable; it is all there again once booking is back on", async () => {
+    await askFor({ name: 'Sam Rivera Jr.', email: 'junior@example.com', how: 'Family' });
+    const home = await households.open('home');
+    await home.append('alice', { op: 'guests.booking', on: false });
+    try {
+      const page = await call('GET', '/api/thread?quiet=1', { cookie: alice });
+      assert.equal(page.status, 200, page.text);
+      assert.equal(page.json.waiting.some((x: any) => x.kind === 'guest'), false);
+      const r = await call('POST', '/api/guests/asks', { cookie: alice, body: { email: 'junior@example.com', answer: 'add' } });
+      assert.equal(r.status, 404);
+      assert.deepEqual(r.json, { error: 'not available' });
+      assert.equal(home.state.guests.has('junior@example.com'), false);
+    } finally {
+      await home.append('alice', { op: 'guests.booking', on: true });
+    }
+    const back = await call('GET', '/api/thread?quiet=1', { cookie: alice });
+    assert.ok(back.json.waiting.some((x: any) => x.kind === 'guest' && x.ask.email === 'junior@example.com'));
   });
 });

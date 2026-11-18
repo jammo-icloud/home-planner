@@ -12,7 +12,7 @@ import { mkdtemp, readFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
-import { answerGuestAsk, askToBeAdded } from '../src/booking.ts';
+import { answerGuestAsk, askToBeAdded, asksSettled } from '../src/booking.ts';
 import { Households } from '../src/households.ts';
 import { laneOf } from '../src/lanes.ts';
 import { MailError } from '../src/mail.ts';
@@ -22,7 +22,7 @@ import { replay, ReplayError, needsMember } from '../src/replay.ts';
 import { eventsToApply, parseBackup, planRestore, scopeOf } from '../src/restore.ts';
 import { Store } from '../src/store.ts';
 import { build, thread } from '../src/thread.ts';
-import { describe as describeEvent, ProposalStore } from '../src/tools.ts';
+import { describe as describeEvent, ProposalStore, toolByName } from '../src/tools.ts';
 import type { ToolContext } from '../src/tools.ts';
 import { ToolError } from '../src/errors.ts';
 import { ASK_DAYS, openAsks, SYSTEM } from '../src/types.ts';
@@ -74,8 +74,11 @@ const nextIp = () => `198.51.100.${++ipSeq}`;
  */
 let clock = Date.parse(NOW);
 beforeEach(() => { clock += 2 * 86_400_000; });
-const ask = (store: Store, body: Record<string, unknown>, ip = nextIp(), today = TODAY) =>
-  askToBeAdded({ store, now: () => clock, ip, today }, body);
+/** Ask, and wait for the line it may write: the answer itself does not wait for it. */
+async function ask(store: Store, body: Record<string, unknown>, ip = nextIp(), today = TODAY): Promise<void> {
+  await askToBeAdded({ store, now: () => clock, ip, today }, body);
+  await asksSettled();
+}
 
 const asks = (s: Store) => s.since(null).then((all) => all.filter((e) => e.op === 'guest.ask'));
 
@@ -111,10 +114,36 @@ describe('a request to be a guest, in the log', () => {
     await s.append(SYSTEM, { op: 'guest.ask', ...SAM, name: 'x'.repeat(60), how: 'y'.repeat(120) });
   });
 
-  test('someone already on the list is not asked for again', async () => {
+  test('a request for someone already on the list is let be: nothing waits, and the line is not refused (a restore may bring one)', async () => {
     const s = await fresh();
     await s.append('alice', { op: 'guest.allow', email: SAM.email, name: 'Sam', why: 'friends' });
-    await assert.rejects(s.append(SYSTEM, { op: 'guest.ask', ...SAM }), refused(/already on the list/));
+    await s.append(SYSTEM, { op: 'guest.ask', ...SAM });
+    assert.equal(s.state.guestAsks.has(SAM.email), false);
+    assert.deepEqual(openAsks(s.state, TODAY), []);
+  });
+
+  test('a decline keeps the name it was about, whatever a later request is called', async () => {
+    const s = await fresh();
+    await s.append(SYSTEM, { op: 'guest.ask', ...SAM });
+    const [d] = await s.append('alice', { op: 'guest.ask.decline', email: SAM.email, name: SAM.name });
+    await s.append(SYSTEM, { op: 'guest.ask', ...SAM, name: 'S. Rivera' });
+    assert.equal(describeEvent(d!, s.state).what, "declined Sam Rivera's request");
+    await assert.rejects(s.append('alice', { op: 'guest.ask.decline', email: SAM.email, name: ' ' }), refused(/name/));
+    // A line the fold refused, read back from the file without one, says the address rather than failing.
+    assert.equal(describeEvent({ id: 'x', at: NOW, who: 'alice', op: 'guest.ask.decline', email: SAM.email } as unknown as Event).what,
+      "declined sam@example.com's request");
+  });
+
+  test('with booking off here, nothing waits on Today; it waits again once booking is back, its 30 days still counting', async () => {
+    const s = await fresh();
+    await s.append(SYSTEM, { op: 'guest.ask', ...SAM });
+    const events = await s.since(null);
+    assert.equal(waiting(s.state, 'alice', events, TODAY, false).filter((w) => w.kind === 'guest').length, 0);
+    assert.equal(waiting(s.state, 'alice', events, TODAY, true).filter((w) => w.kind === 'guest').length, 1);
+    const off = await thread(s, { who: 'alice', today: TODAY, asks: false });
+    assert.equal(off.waiting.some((w) => w.kind === 'guest'), false);
+    assert.equal(off.entries.some((e) => e.waits), false, 'its line in the day does not wait either');
+    assert.equal(waiting(s.state, 'alice', events, '2026-12-18', true).filter((w) => w.kind === 'guest').length, 0);
   });
 
   test('putting them on the list closes the request, as added by whoever did', async () => {
@@ -128,19 +157,19 @@ describe('a request to be a guest, in the log', () => {
 
   test('a member declines it; only a waiting request can be declined, and only by a member', async () => {
     const s = await fresh();
-    await assert.rejects(s.append('alice', { op: 'guest.ask.decline', email: SAM.email }), refused(/no longer waiting/));
+    await assert.rejects(s.append('alice', { op: 'guest.ask.decline', email: SAM.email, name: SAM.name }), refused(/no longer waiting/));
     await s.append(SYSTEM, { op: 'guest.ask', ...SAM });
-    await assert.rejects(s.append(SYSTEM, { op: 'guest.ask.decline', email: SAM.email }), refused(/not a member/));
-    await assert.rejects(s.append('claude', { op: 'guest.ask.decline', email: SAM.email }), (e: unknown) => e instanceof ReplayError);
-    await s.append('alice', { op: 'guest.ask.decline', email: SAM.email });
+    await assert.rejects(s.append(SYSTEM, { op: 'guest.ask.decline', email: SAM.email, name: SAM.name }), refused(/not a member/));
+    await assert.rejects(s.append('claude', { op: 'guest.ask.decline', email: SAM.email, name: SAM.name }), (e: unknown) => e instanceof ReplayError);
+    await s.append('alice', { op: 'guest.ask.decline', email: SAM.email, name: SAM.name });
     assert.deepEqual(s.state.guestAsks.get(SAM.email)?.answer?.kind, 'declined');
-    await assert.rejects(s.append('bob', { op: 'guest.ask.decline', email: SAM.email }), refused(/no longer waiting/));
+    await assert.rejects(s.append('bob', { op: 'guest.ask.decline', email: SAM.email, name: SAM.name }), refused(/no longer waiting/));
   });
 
   test('asking again after a decline opens a new request', async () => {
     const s = await fresh();
     const [first] = await s.append(SYSTEM, { op: 'guest.ask', ...SAM });
-    await s.append('alice', { op: 'guest.ask.decline', email: SAM.email });
+    await s.append('alice', { op: 'guest.ask.decline', email: SAM.email, name: SAM.name });
     const [again] = await s.append(SYSTEM, { op: 'guest.ask', ...SAM, how: 'We met at the reunion' });
     const a = s.state.guestAsks.get(SAM.email)!;
     assert.notEqual(first!.id, again!.id);
@@ -180,7 +209,7 @@ describe('a request, in words and in its band', () => {
     const [a] = await s.append(SYSTEM, { op: 'guest.ask', ...SAM });
     assert.equal(describeEvent(a!, s.state).what, 'Sam Rivera asked to be a guest');
     assert.equal(describeEvent(a!).what, 'Sam Rivera asked to be a guest');
-    const [d] = await s.append('alice', { op: 'guest.ask.decline', email: SAM.email });
+    const [d] = await s.append('alice', { op: 'guest.ask.decline', email: SAM.email, name: SAM.name });
     assert.equal(describeEvent(d!, s.state).what, "declined Sam Rivera's request");
     await s.append(SYSTEM, { op: 'guest.ask', ...SAM });
     const [y] = await s.append('bob', { op: 'guest.allow', email: SAM.email, name: SAM.name, why: SAM.how });
@@ -190,7 +219,7 @@ describe('a request, in words and in its band', () => {
   test('on Today: the request is the app\'s line, saying who asked; the answers are the member\'s', async () => {
     const s = await fresh();
     const [a] = await s.append(SYSTEM, { op: 'guest.ask', ...SAM });
-    const [d] = await s.append('alice', { op: 'guest.ask.decline', email: SAM.email });
+    const [d] = await s.append('alice', { op: 'guest.ask.decline', email: SAM.email, name: SAM.name });
     const rows = build(await s.since(null), s.state, 'bob');
     const asked = rows.find((r) => r.id === a!.id);
     assert.ok(asked && asked.kind === 'change');
@@ -218,7 +247,7 @@ describe('a request, in words and in its band', () => {
   test('both lines are in the bookings band, the calendar lane, and the request needs no member', () => {
     const at = { id: 'i', at: NOW };
     const asked = { ...at, who: SYSTEM, op: 'guest.ask', ...SAM } as Event;
-    const no = { ...at, who: 'alice', op: 'guest.ask.decline', email: SAM.email } as Event;
+    const no = { ...at, who: 'alice', op: 'guest.ask.decline', email: SAM.email, name: SAM.name } as Event;
     assert.equal(scopeOf(asked), 'bookings');
     assert.equal(scopeOf(no), 'bookings');
     assert.equal(laneOf(asked, { pageDrifts: new Map() }), 'calendar');
@@ -230,8 +259,8 @@ describe('a request, in words and in its band', () => {
   test('a backup brings them back: a waiting request waits again, a declined one stays declined', async () => {
     const src = await fresh();
     await src.append(SYSTEM, { op: 'guest.ask', ...SAM });
-    await src.append(SYSTEM, { op: 'guest.ask', email: 'kim@example.com', name: 'Kim', how: 'neighbours' });
-    await src.append('alice', { op: 'guest.ask.decline', email: 'kim@example.com' });
+    await src.append(SYSTEM, { op: 'guest.ask', email: 'dana@example.com', name: 'Dana', how: 'Neighbours' });
+    await src.append('alice', { op: 'guest.ask.decline', email: 'dana@example.com', name: 'Dana' });
     const backup = parseBackup(await readFile(src.path, 'utf8'));
     assert.equal(backup.counts.bookings, 3);
     assert.deepEqual(backup.unknown, []);
@@ -243,7 +272,7 @@ describe('a request, in words and in its band', () => {
     assert.deepEqual(plan.collisions, []);
     const after = replay([...(await target.since(null)), ...eventsToApply(plan)]);
     assert.equal(after.guestAsks.get(SAM.email)?.answer, null);
-    assert.equal(after.guestAsks.get('kim@example.com')?.answer?.kind, 'declined');
+    assert.equal(after.guestAsks.get('dana@example.com')?.answer?.kind, 'declined');
   });
 });
 
@@ -267,7 +296,7 @@ describe('asking, from the booking page', () => {
     await ask(s, SAM);
     await ask(s, { ...SAM, how: 'twice' });
     assert.equal((await asks(s)).length, 1, 'asked already: nothing more written');
-    await s.append('alice', { op: 'guest.ask.decline', email: SAM.email });
+    await s.append('alice', { op: 'guest.ask.decline', email: SAM.email, name: SAM.name });
     await ask(s, SAM);
     assert.equal((await asks(s)).length, 2, 'declined before: a new request');
   });
@@ -306,6 +335,93 @@ describe('asking, from the booking page', () => {
     for (let i = 0; i < 3; i++) await ask(s, { ...SAM, email: 'busy@example.com' });
     await assert.rejects(ask(s, { ...SAM, email: 'Busy@Example.com' }), toolRefused(429, /too many requests for that address/));
   });
+
+  test("a stranger's words carry no link and no hidden character into an email or onto Today", async () => {
+    const s = await fresh();
+    const refusals: [Record<string, unknown>, RegExp][] = [
+      [{ ...SAM, name: 'Sam\nVisit https://evil.example.net now' }, /^your name can't contain hidden characters$/],
+      [{ ...SAM, name: 'Sam https://evil.example.net' }, /^names can't contain links$/],
+      [{ ...SAM, name: 'Sam evil.example.net' }, /^names can't contain links$/],
+      [{ ...SAM, name: 'Sam www.evil' }, /^names can't contain links$/],
+      [{ ...SAM, name: '‮tsil eht no ma I' }, /^your name can't contain hidden characters$/],
+      [{ ...SAM, name: 'Sam​Rivera' }, /^your name can't contain hidden characters$/],
+      [{ ...SAM, how: 'see evil.example.net' }, /^how you know them can't contain links$/],
+      [{ ...SAM, how: 'see http://x' }, /^how you know them can't contain links$/],
+      [{ ...SAM, how: 'college⁦ roommate' }, /^how you know them can't contain hidden characters$/],
+      [{ ...SAM, how: 'line\rbreak' }, /^how you know them can't contain hidden characters$/],
+      // A Cyrillic "е" in the domain, a zero-width space, and an address outside printable ASCII.
+      [{ ...SAM, email: 'sam@еxample.com' }, /^that is not an email address$/],
+      [{ ...SAM, email: 'sam@exa​mple.com' }, /^that is not an email address$/],
+      [{ ...SAM, email: 'sám@example.com' }, /^that is not an email address$/],
+    ];
+    for (const [body, words] of refusals) await assert.rejects(ask(s, body), toolRefused(400, words), JSON.stringify(body));
+    assert.equal((await asks(s)).length, 0);
+    // Ordinary names and words still go: initials, an apostrophe, a hyphen, an accent, "Jr." and "St. Louis" style dots.
+    await ask(s, { name: "Sam O'Rivera-Núñez Jr.", email: 'sam@example.com', how: "Alex's roommate at St. Mary's, years ago" });
+    assert.equal((await asks(s)).length, 1);
+  });
+
+  test('at most 20 requests wait at once in a household: past that nothing is written, and the answer is the same', async () => {
+    const s = await fresh();
+    for (let i = 0; i < 20; i++) await s.append(SYSTEM, { op: 'guest.ask', ...SAM, email: `full${i}@example.com` });
+    assert.equal(await ask(s, { ...SAM, email: 'one-more@example.com' }), undefined);
+    assert.equal(s.state.guestAsks.has('one-more@example.com'), false);
+    assert.equal((await asks(s)).length, 20);
+  });
+
+  test('at most 50 written in a household in a day, answered or not: past that nothing is written, and the answer is the same', async () => {
+    const s = await fresh();
+    let n = 0;
+    for (const batch of [15, 15, 15, 5]) {
+      const emails = Array.from({ length: batch }, () => `day${n++}@example.com`);
+      await Promise.all(emails.map((email) => ask(s, { ...SAM, email })));
+      for (const email of emails) await s.append('alice', { op: 'guest.ask.decline', email, name: SAM.name });
+    }
+    assert.equal((await asks(s)).length, 50);
+    assert.equal(await ask(s, { ...SAM, email: 'day50@example.com' }), undefined);
+    assert.equal((await asks(s)).length, 50);
+    assert.equal(s.state.guestAsks.has('day50@example.com'), false);
+  });
+
+  test('a new address and a known one take the same path: the answer comes after the floor, never after the write', async () => {
+    const s = await fresh();
+    await s.append('alice', { op: 'guest.allow', email: 'known@example.com', name: 'Known', why: 'friends' });
+    // A log that takes its time: the write is held until the test lets it go.
+    const append = s.append.bind(s);
+    let release!: () => void;
+    const held = new Promise<void>((r) => { release = r; });
+    s.append = (async (...a: Parameters<Store['append']>) => { await held; return append(...a); }) as Store['append'];
+    const timed = async (email: string): Promise<number> => {
+      const t0 = Date.now();
+      const done = askToBeAdded({ store: s, now: () => clock, ip: nextIp(), today: TODAY }, { ...SAM, email });
+      const late = new Promise<'late'>((r) => setTimeout(() => r('late'), 2000));
+      assert.equal(await Promise.race([done, late]), undefined, `${email} is answered without waiting for the log`);
+      return Date.now() - t0;
+    };
+    const fresh1 = await timed('new@example.com');
+    const known = await timed('known@example.com');
+    for (const ms of [fresh1, known]) assert.ok(ms >= 95 && ms < 1000, `${ms}ms`);
+    assert.equal((await asks(s)).length, 0, 'not written yet');
+    release();
+    await asksSettled();
+    assert.deepEqual((await asks(s)).map((e) => (e as Extract<Event, { op: 'guest.ask' }>).email), ['new@example.com']);
+  });
+});
+
+describe('what Claude reads', () => {
+  test("the activity Claude reads leaves out a stranger's request, and an add from one carries no reason in the stranger's words", async () => {
+    const s = await fresh();
+    await ask(s, SAM);
+    await answerGuestAsk(member(s, 'alice', []), { email: SAM.email, answer: 'add' });
+    await s.append('bob', { op: 'guest.allow', email: 'dana@example.com', name: 'Dana', why: 'the neighbours' });
+    const out = await toolByName.get('get_activity')!.run({}, member(s, 'alice', [])) as { events: { what: string; why: string | null }[] };
+    assert.equal(out.events.some((e) => /asked to be a guest/.test(e.what)), false);
+    const added = out.events.find((e) => e.what === 'added Sam Rivera to the guest list');
+    assert.ok(added);
+    assert.equal(added.why, null);
+    assert.equal(out.events.find((e) => e.what === 'added Dana to the guest list')?.why, 'the neighbours', 'a member\'s own reason stays');
+    assert.equal(JSON.stringify(out).includes(SAM.how), false);
+  });
 });
 
 // ─── answering, on Today or in Settings ───────────────────────────────────────
@@ -332,7 +448,7 @@ describe('answering a request', () => {
   test('a mail that fails, or no mail set up: still added, and said so', async () => {
     const s = await fresh();
     await ask(s, SAM);
-    await ask(s, { ...SAM, email: 'kim@example.com', name: 'Kim' });
+    await ask(s, { ...SAM, email: 'dana@example.com', name: 'Dana' });
     const warn = console.warn;
     const said: string[] = [];
     console.warn = (...a: unknown[]) => { said.push(a.map(String).join(' ')); };
@@ -344,9 +460,9 @@ describe('answering a request', () => {
     // The log line says it failed, never to whom or what it said.
     assert.equal(said.length, 1);
     assert.doesNotMatch(said[0]!, /sam@example\.com|Sam Rivera|planner\.example\.com|pw/);
-    const none = await answerGuestAsk(member(s, 'bob', [], { mail: false }), { email: 'kim@example.com', answer: 'add' });
-    assert.deepEqual(none, { answer: 'added', email: 'kim@example.com', name: 'Kim', mailed: false });
-    assert.ok(s.state.guests.has('kim@example.com'));
+    const none = await answerGuestAsk(member(s, 'bob', [], { mail: false }), { email: 'dana@example.com', answer: 'add' });
+    assert.deepEqual(none, { answer: 'added', email: 'dana@example.com', name: 'Dana', mailed: false });
+    assert.ok(s.state.guests.has('dana@example.com'));
   });
 
   test('Decline: closed, not added, and nothing sent', async () => {

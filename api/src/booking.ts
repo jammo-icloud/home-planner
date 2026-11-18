@@ -11,7 +11,7 @@
 
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 
-import { ASK_DAYS, ASK_HOW_MAX, ASK_NAME_MAX, askWaits, emailKey, isDay, isEmail, isGuest, MONTHS_SHORT, SYSTEM, zoneOf } from './types.ts';
+import { ASK_DAYS, ASK_HOW_MAX, ASK_NAME_MAX, askWaits, emailKey, openAsks, isDay, isEmail, isGuest, MONTHS_SHORT, SYSTEM, zoneOf } from './types.ts';
 import type { Actor, Day, Event, EventId, Offer, State, Stay } from './types.ts';
 import { ToolError } from './errors.ts';
 import { Limiter } from './limiter.ts';
@@ -1503,29 +1503,55 @@ export async function revokeGuest(ctx: MemberCtx, email: string, why: unknown): 
 const ASKS_PER_IP_PER_HOUR = 5;
 /** Requests naming one address in a day, from anywhere, written or not. */
 const ASKS_PER_EMAIL_PER_DAY = 3;
+/** Requests waiting at once in one household: past this a new one is not written, and the asker is told the same. */
+export const OPEN_ASKS_MAX = 20;
+/** Requests written in one household in a day, answered or not: the same past this. */
+const ASKS_PER_HOUSEHOLD_PER_DAY = 50;
 const asksPerIp = new Limiter(ASKS_PER_IP_PER_HOUR, HOUR);
 const asksPerEmail = new Limiter(ASKS_PER_EMAIL_PER_DAY, 24 * HOUR);
+const asksPerHousehold = new Limiter(ASKS_PER_HOUSEHOLD_PER_DAY, 24 * HOUR);
 
 /** What the booking page sends, checked: the address (lowercased), the name, how they know the household. */
 export interface AskAsked { email: string; name: string; how: string }
 
-/** The request's fields, trimmed, or a 400 in the asker's own terms. */
+/** A control character, or an invisible one (a zero-width space, a direction override): never in a stranger's words. */
+const HIDDEN = /[\p{Cc}\p{Cf}]/u;
+/** What reads as a link in an email or on Today: a scheme, "www.", or a dot then two letters (a bare domain). */
+const LINKISH = /:\/\/|www\.|\.\p{L}{2}/iu;
+/** An address asked for is plain printable ASCII: a look-alike letter in its domain is not an address we will mail. */
+const PRINTABLE_ASCII = /^[\x21-\x7e]+$/;
+
+/**
+ * The request's fields, trimmed, or a 400 in the asker's own terms. Whatever
+ * a stranger types reaches a member's Today and, as a name, an email: so no
+ * hidden character and nothing that reads as a link, and an address in plain
+ * ASCII.
+ */
 export function askAsked(o: Record<string, unknown>): AskAsked {
   const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
   const name = text(o['name']);
   if (!name) throw new ToolError('give your name');
   if (name.length > ASK_NAME_MAX) throw new ToolError(`keep your name under ${ASK_NAME_MAX} characters`);
-  if (!isEmail(o['email'])) throw new ToolError('that is not an email address');
+  if (HIDDEN.test(name)) throw new ToolError("your name can't contain hidden characters");
+  if (LINKISH.test(name)) throw new ToolError("names can't contain links");
+  const email = text(o['email']);
+  if (!PRINTABLE_ASCII.test(email) || !isEmail(email)) throw new ToolError('that is not an email address');
   const how = text(o['how']);
   if (!how) throw new ToolError('say how you know them');
   if (how.length > ASK_HOW_MAX) throw new ToolError(`keep how you know them under ${ASK_HOW_MAX} characters`);
-  return { email: emailKey(o['email']), name, how };
+  if (HIDDEN.test(how)) throw new ToolError("how you know them can't contain hidden characters");
+  if (LINKISH.test(how)) throw new ToolError("how you know them can't contain links");
+  return { email: emailKey(email), name, how };
 }
 
-/** Work on one address's request, one at a time per household: a second answer waits for the first, then reads what it did. */
+/**
+ * Requests in one household, written or answered, one at a time: a second
+ * answer waits for the first and then reads what it did, and the caps below
+ * count what is really there.
+ */
 const askTurns = new Map<string, Promise<unknown>>();
-function inAskTurn<T>(store: Store, email: string, work: () => Promise<T>): Promise<T> {
-  const key = `${store.path}|${email}`;
+function inAskTurn<T>(store: Store, work: () => Promise<T>): Promise<T> {
+  const key = store.path;
   const run = (askTurns.get(key) ?? Promise.resolve()).then(work, work);
   const tail = run.catch(() => undefined);
   askTurns.set(key, tail);
@@ -1533,14 +1559,27 @@ function inAskTurn<T>(store: Store, email: string, work: () => Promise<T>): Prom
   return run;
 }
 
+/** Whether friends book with this context's household now (its mail has a page): only then do requests wait on Today. */
+export const asksHere = (ctx: Pick<ToolContext, 'mail'>): boolean => !!ctx.mail && !ctx.mail.off && !!ctx.mail.url;
+
+/** Writes of requests still under way: the answer never waits for them. */
+const asksWriting = new Set<Promise<void>>();
+/** Resolves once every request asked so far is written, or was not to be. For tests; nothing in the app waits on it. */
+export async function asksSettled(): Promise<void> {
+  while (asksWriting.size) await Promise.all([...asksWriting]);
+}
+
 /** Any address in something about to be logged, as <address>: the log is no place for who asked. */
 const noAddresses = (text: string): string => text.replace(/[^\s<>"'(),;:]+@[^\s<>"'(),;:]+/g, '<address>');
 
 /**
- * Ask to be put on the guest list. Resolves to nothing, after the same floor
- * whatever was written, so the caller answers the same `{ ok: true }` every
- * time; refuses only what says nothing about the list: a field that is wrong
- * (400, before anything is counted) or too many requests (429).
+ * Ask to be put on the guest list. Resolves to nothing after the floor, and
+ * only the floor: whether a line is written (an address that is new, in a
+ * household under its caps) is decided and written after the answer, as a
+ * sign-in's mail is sent, so nothing about the list reaches the page, not even
+ * by how long the answer took. Refuses only what says nothing about the list:
+ * a field that is wrong (400, before anything is counted) or too many
+ * requests from here or for that address (429).
  */
 export async function askToBeAdded(
   ctx: { store: Store; now: () => number; ip: string; today: Day },
@@ -1550,20 +1589,26 @@ export async function askToBeAdded(
   const now = ctx.now();
   asksPerIp.sweep(now);
   asksPerEmail.sweep(now);
+  asksPerHousehold.sweep(now);
   if (!asksPerIp.take(ctx.ip, now)) throw new ToolError('too many requests from here: try again in an hour', 429);
   if (!asksPerEmail.take(asked.email, now)) throw new ToolError('too many requests for that address today: try again tomorrow', 429);
   const floor = signInFloor();
-  const write = inAskTurn(ctx.store, asked.email, async () => {
+  const write: Promise<void> = inAskTurn(ctx.store, async () => {
     const state = ctx.store.state;
     if (state.guests.has(asked.email)) return;
     const was = state.guestAsks.get(asked.email);
     if (was && askWaits(was, ctx.today, zoneOf(state))) return;
+    // A household flooded: nothing more is written until a request is answered, or the day is out.
+    if (openAsks(state, ctx.today).length >= OPEN_ASKS_MAX) return;
+    if (!asksPerHousehold.take(ctx.store.path, now)) return;
     await ctx.store.append(SYSTEM, { op: 'guest.ask', ...asked });
   }).catch((err: unknown) => {
     // The asker is told the same either way; the owner reads why in the log, without the address.
     console.warn(`[budget] a request to be a guest was not written: ${noAddresses((err as Error)?.message ?? String(err))}`);
   });
-  await Promise.all([floor, write]);
+  asksWriting.add(write);
+  void write.then(() => asksWriting.delete(write));
+  await floor;
 }
 
 /** The one email a request ever causes: they are on the list, and where to sign in. A plain link; nothing in it expires. */
@@ -1600,14 +1645,14 @@ export async function answerGuestAsk(ctx: ToolContext, o: Record<string, unknown
   if (answer !== 'add' && answer !== 'decline') throw new ToolError('answer add or decline');
   if (!isEmail(o['email'])) throw new ToolError('there is no such request', 404);
   const email = emailKey(o['email']);
-  return inAskTurn(ctx.store, email, async () => {
+  return inAskTurn(ctx.store, async () => {
     const state = ctx.store.state;
     const a = state.guestAsks.get(email);
     if (!a) throw new ToolError('there is no such request', 404);
     if (a.answer) throw new ToolError(a.answer.by === ctx.who ? 'you already answered it' : `already answered by ${a.answer.by}`, 409);
     if (!askWaits(a, ctx.today, zoneOf(state))) throw new ToolError(`that request is more than ${ASK_DAYS} days old, and no longer waits`, 409);
     if (answer === 'decline') {
-      await ctx.store.append(ctx.who, { op: 'guest.ask.decline', email });
+      await ctx.store.append(ctx.who, { op: 'guest.ask.decline', email, name: a.name });
       return { answer: 'declined', email, name: a.name };
     }
     await ctx.store.append(ctx.who, { op: 'guest.allow', email, name: a.name, why: a.how });

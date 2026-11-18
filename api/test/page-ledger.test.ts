@@ -1142,6 +1142,7 @@ describe('the page ledger: 0.11.0, a guest can ask to be added', () => {
     ['F9', "await call('/book/ask', { name: $('am-name').value.trim(), email, how: $('am-how').value.trim() });", 'addme'],
     ['F10', '<form class="stack" id="f-addme" novalidate hidden>', 'bookMarkup'], ['F10', 'showErr(ex);', 'addme'],
     ['F11', "if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); leaveAddMe(); }", 'addme'],
+    ['F11', "$('f-addme').addEventListener('keydown', escapeAddMe);", 'addme'], ['F11', "$('addme-back').addEventListener('keydown', escapeAddMe);", 'addme'],
     ['F12', "$('addme-open').focus();", 'addme'], ['F12', "$('am-name').focus();", 'addme'],
     // S: the same words whatever happened, so the page never tells a stranger who is on the list.
     ['S1', '<h2 id="addme-sent-h" tabindex="-1">Sent</h2>', 'bookMarkup'],
@@ -1152,7 +1153,8 @@ describe('the page ledger: 0.11.0, a guest can ask to be added', () => {
     ['S5', "$('addme-sent-h').focus();", 'addme'],
     // T: Today's waiting row, answered on the row; then one line in its place, and Today read again.
     ['T1', "if (w.kind === 'guest') { box.appendChild(guestAskRow(w)); continue; }", 'waiting'],
-    ['T2', 'memberDisc(w.ask.name)', 'askRow'],
+    // A neutral disc for whoever asks: never letters from a name a stranger typed.
+    ['T2', 'row.append(guestDisc(), text, acts, err);', 'askRow'], ['T2', "const d = node('span', 'who guest');", 'page'],
     ['T3', "node('span', 'meta', `“${w.ask.how}”`)", 'askRow'],
     ['T4', "node('span', 'meta', `${w.ask.email} · asked ${waitingWhen(w)}`)", 'askRow'],
     ['T5', "textBtn('Decline', 'btn hit', null, () => void answer('decline'))", 'askRow'],
@@ -1160,6 +1162,9 @@ describe('the page ledger: 0.11.0, a guest can ask to be added', () => {
     ['T7', "await api('/api/guests/asks', { email: w.ask.email, answer: kind });", 'askRow'],
     ['T8', '`Added ${a.name} to the guest list. An email with a link to the booking page is on its way to them.`', 'askRow'],
     ['T9', '`Added ${a.name} to the guest list. The email to them could not be sent: let them know they can now sign in on the booking page.`', 'askRow'],
+    // With booking off a request is neither on Today nor answerable; it waits, unseen, and comes back with booking.
+    ['T9', "if (path === '/api/guests/asks' && req.method === 'POST') {\n      if (!booksHere) throw new ToolError('not available', 404);", 'server'],
+    ['T9', '...await thread(active, { who, today: ctx.today, asks: booksHere,', 'server'],
     ['T10', "`Declined ${a.name}'s request. ${a.name} isn't added and isn't told.`", 'askRow'],
     ['T11', 'if (ex.status === 409 || ex.status === 404) guestAnswered(null, ex.message);', 'askRow'],
     ['T12', 'void loadThread({ quiet: true }).then(() => {', 'askRow'], ['T12', "$('t-waiting').querySelector('.asked-line:last-child')?.focus({ preventScroll: true });", 'askRow'],
@@ -1168,20 +1173,39 @@ describe('the page ledger: 0.11.0, a guest can ask to be added', () => {
     ['T15', 'else if (e.app) text.append(e.what);', 'entry'],
     ['T16', 'if (!opts.quiet) guestAnswers.lines = [];', 'load'],
     // G: Settings › Guests and booking lists who asked, under the guest list, with the same two answers.
-    ['G1', "s.push(node('p', 'hint', 'Asked to be added'));", 'guests'],
+    ['G1', "s.push(node('h2', 'set-sub', 'Asked to be added'));", 'guests'],
     ['G2', '(g.asks ?? []).forEach((x, i) => {', 'guests'],
-    ['G3', "textBtn('Decline', 'btn small hit', `ask-no-${i}`, () => saveSettings('/api/guests/asks', { email: x.email, answer: 'decline' }, null, 'guest-add'))", 'guests'],
-    ['G4', "textBtn('Add to the guest list', 'btn small primary hit', `ask-yes-${i}`, () => saveSettings('/api/guests/asks', { email: x.email, answer: 'add' }, null, 'guest-add'))", 'guests'],
+    ['G3', "textBtn('Decline', 'btn small hit', `ask-no-${i}`, () => void answerAskHere(x.email, 'decline', [no, yes]))", 'guests'],
+    ['G4', "textBtn('Add to the guest list', 'btn small primary hit', `ask-yes-${i}`, () => void answerAskHere(x.email, 'add', [no, yes]))", 'guests'],
+    ['G4', 'r.append(guestDisc(), t, end);', 'guests'],
+    // Both buttons off while the answer is out; someone first, or gone: the settings read again, and the calm line.
+    ['G6', 'for (const b of buttons) b.disabled = true;', 'guests'],
+    ['G6', "const fresh = await api('/api/settings').catch(() => settingsData);", 'guests'],
+    ['G6', 'st = { ...fresh, answered: calmLine(ex.message) };', 'guests'],
     ['G5', 'if (settingsData.answered) asked.appendChild(askedLine(settingsData.answered));', 'guests'],
     // W: the doors, and the one email.
     ['W1', "if (path === '/book/ask' && req.method === 'POST') {", 'server'],
     ['W2', "if (path === '/api/guests/asks' && req.method === 'POST') {", 'server'],
     ['W3', 'subject: "You\'re on the list",', 'bookingSrc'],
     ['W4', 'const ASKS_PER_IP_PER_HOUR = 5;', 'bookingSrc'], ['W4', 'const ASKS_PER_EMAIL_PER_DAY = 3;', 'bookingSrc'],
+    // A household's own caps: past them nothing is written, and the asker is told the same.
+    ['W5', 'export const OPEN_ASKS_MAX = 20;', 'bookingSrc'], ['W5', 'const ASKS_PER_HOUSEHOLD_PER_DAY = 50;', 'bookingSrc'],
+    // No link and no hidden character from a stranger; an address in plain ASCII.
+    ['W6', 'const HIDDEN = /[\\p{Cc}\\p{Cf}]/u;', 'bookingSrc'], ['W6', "if (LINKISH.test(name)) throw new ToolError(\"names can't contain links\");", 'bookingSrc'],
+    ['W6', "if (!PRINTABLE_ASCII.test(email) || !isEmail(email)) throw new ToolError('that is not an email address');", 'bookingSrc'],
+    // The answer waits for the floor only; the line is written after it.
+    ['W7', 'asksWriting.add(write);', 'bookingSrc'],
+    // B: every control on the booking page a thumb high, at a desk's width too.
+    ['B1', '.btn.small { min-height: var(--tap);', 'bookCss'],
+    ['B1', '.link::after { content: \'\'; position: absolute; top: 50%; left: 50%; width: 100%; height: 100%;', 'bookCss'],
     ['V1', '"version": "0.11.0"', 'pkg'], ['V1', "const BUILD = '0.11.0';", 'page'], ['V1', 'href="/tokens.css?v=0.11.0"', 'page'],
   ];
   const GONE: readonly (readonly [row: string, text: string, region: R])[] = [
     ['V2', "const BUILD = '0.10.3';", 'page'], ['V2', '"version": "0.10.3"', 'pkg'],
+    ['T2', 'memberDisc(w.ask.name)', 'askRow'], ['G4', 'memberDisc', 'guests'],
+    ['B2', '.btn { min-height: 38px; }', 'bookCss'], ['B2', 'min-height: 30px', 'bookCss'], ['B2', 'min-height: 32px', 'bookCss'],
+    // The write is not awaited before the answer.
+    ['W7', 'await Promise.all([floor, write]);', 'bookingSrc'],
   ];
   const miss = (list: readonly (readonly [string, string, R])[], want: boolean) => list
     .filter(([, text, region]) => (want ? R[region] : uncommented(R[region])).includes(text) !== want)
@@ -1221,7 +1245,7 @@ describe('the page ledger: 0.11.0, a guest can ask to be added', () => {
   test('every row of the ledger is pinned', () => {
     const rows = new Set([...ADDED, ...GONE].map(([r]) => r));
     const want = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${i + 1}`);
-    assert.deepEqual([...want('A', 6), ...want('F', 12), ...want('S', 5), ...want('T', 16), ...want('G', 5), ...want('W', 4), ...want('V', 2)]
+    assert.deepEqual([...want('A', 6), ...want('F', 12), ...want('S', 5), ...want('T', 16), ...want('G', 6), ...want('W', 7), ...want('V', 2), ...want('B', 2)]
       .filter((r) => !rows.has(r)), []);
   });
 });

@@ -308,7 +308,11 @@ export type Waiting =
  * left to act on, so it stops waiting. Requests to be a guest wait on every
  * member until one answers, or for ASK_DAYS by `today`, the household's day.
  */
-export function waiting(state: State, who: Actor, events: readonly Event[], today: Day = householdDay(zoneOf(state))): Waiting[] {
+export function waiting(
+  state: State, who: Actor, events: readonly Event[], today: Day = householdDay(zoneOf(state)),
+  /** False while friends do not book with this household: its requests wait again once booking is back on. */
+  asks = true,
+): Waiting[] {
   const out: Waiting[] = [];
   for (const o of state.thread.offers.values()) {
     if (o.status !== 'open' && o.status !== 'snoozed') continue;
@@ -331,7 +335,7 @@ export function waiting(state: State, who: Actor, events: readonly Event[], toda
     if (state.txns.has(e.txn)) continue; // put back since
     out.push({ kind: 'flag', event: e.id });
   }
-  for (const a of openAsks(state, today)) {
+  for (const a of asks ? openAsks(state, today) : []) {
     out.push({ kind: 'guest', ask: { id: a.id, at: a.at, email: a.email, name: a.name, how: a.how } });
   }
   const u = toSort(state);

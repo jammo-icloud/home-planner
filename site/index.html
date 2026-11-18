@@ -722,6 +722,10 @@
   .who.household{display:inline-grid;place-items:center;flex:none;width:var(--disc);height:var(--disc);border-radius:50%;
     background:var(--src-household-fill);color:var(--src-household-ink);box-shadow:inset 0 0 0 1px var(--src-household-line)}
   .who.household svg.i{width:11px;height:11px}
+  /* someone outside the household asking to be a guest: a plain ring with a person, the same for everyone who asks */
+  .who.guest{display:inline-grid;place-items:center;flex:none;width:var(--disc);height:var(--disc);border-radius:50%;
+    background:var(--surface-sunken);color:var(--ink-soft);box-shadow:inset 0 0 0 1px var(--line-strong)}
+  .who.guest svg.i{width:13px;height:13px}
   /* The days take what the rail leaves, so the two span the page edge to edge, as the bar does. */
   @container page (min-width: 1040px){
     .today{display:grid;grid-template-columns:minmax(0,1fr) minmax(240px,300px);column-gap:var(--sp-8);
@@ -1239,7 +1243,7 @@
   .rowi .end{margin-left:auto;display:flex;gap:var(--sp-1);align-items:center;flex:none}
   /* A request to be a guest in Settings: its two answers go under the words when the row is too narrow for both. */
   .rowi.ask-set{flex-wrap:wrap}
-  .rowi.ask-set > span:not(.end){flex:1 1 calc(var(--tap) * 5)}
+  .rowi.ask-set > span:not(.end):not(.who){flex:1 1 calc(var(--tap) * 5)}
   .rowi.ask-set .end{gap:var(--sp-2)}
   /* An on/off switch: a track with a knob, the knob at the end it is set to. */
   .switch{position:relative;width:44px;height:26px;flex:none;padding:0;cursor:pointer;border-radius:13px;
@@ -2430,6 +2434,8 @@ const ICONS = {
   plus: '<path d="M8 3v10M3 8h10"/>',
   more: '<circle cx="3" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="8" cy="8" r="1.3" fill="currentColor" stroke="none"/><circle cx="13" cy="8" r="1.3" fill="currentColor" stroke="none"/>',
   alert: '<circle cx="8" cy="8" r="6"/><path d="M8 5v3.5M8 11h.01"/>',
+  // someone outside the household: a head and shoulders
+  person: '<circle cx="8" cy="5.5" r="2.5"/><path d="M3 13.5c.6-2.6 2.6-4 5-4s4.4 1.4 5 4"/>',
 };
 function icon(name, cls = 'i sm') {
   const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
@@ -2489,6 +2495,17 @@ function claudeDisc() {
   d.setAttribute('role', 'img');
   d.setAttribute('aria-label', 'Claude');
   d.appendChild(icon('mark', 'mark'));
+  return d;
+}
+
+/**
+ * Someone outside the household who asked to be a guest: one neutral disc for all of them, never letters from a name
+ * a stranger typed, which could pass for a member's.
+ */
+function guestDisc() {
+  const d = node('span', 'who guest');
+  d.appendChild(icon('person'));
+  d.setAttribute('aria-hidden', 'true');
   return d;
 }
 
@@ -3687,10 +3704,11 @@ function guestAnswerWords(a) {
 /** Keep an answer's line for Today: the answer itself, or (`refused`) the server's words when someone else answered first. */
 function guestAnswered(a, refused) {
   if (guestAnswers.turn !== householdTurn) guestAnswers = { turn: householdTurn, lines: [] };
-  const said = refused === undefined ? guestAnswerWords(a)
-    : { tone: 'quiet', text: `${refused.charAt(0).toUpperCase()}${refused.slice(1)}.` };
-  guestAnswers.lines.push(said);
+  guestAnswers.lines.push(refused === undefined ? guestAnswerWords(a) : calmLine(refused));
 }
+
+/** Someone answered first, or the request ran out: the server's words, said quietly as a line. */
+const calmLine = (words) => ({ tone: 'quiet', text: `${words.charAt(0).toUpperCase()}${words.slice(1)}.` });
 
 /** One line saying what became of a request. */
 function askedLine(a) {
@@ -3713,7 +3731,7 @@ function guestAskRow(w) {
   const no = textBtn('Decline', 'btn hit', null, () => void answer('decline'));
   const yes = textBtn('Add to the guest list', 'btn primary hit', null, () => void answer('add'));
   acts.append(no, yes);
-  row.append(memberDisc(w.ask.name), text, acts, err);
+  row.append(guestDisc(), text, acts, err);
   async function answer(kind) {
     no.disabled = yes.disabled = true;
     err.textContent = '';
@@ -12502,6 +12520,35 @@ function bookingNeedsList() {
   return box;
 }
 
+/**
+ * A request answered in Settings, its two buttons off while the answer is out. Answered: the settings it sends back,
+ * with the answer's line. Someone answered first (409), or it is gone (404): the settings read again and a calm line,
+ * as Today says it. Anything else: said in the page's error slot, and the buttons back.
+ */
+async function answerAskHere(email, answer, buttons) {
+  const page = settingsPage;
+  for (const b of buttons) b.disabled = true;
+  let st;
+  try {
+    st = await api('/api/guests/asks', { email, answer });
+  } catch (ex) {
+    if (ex.signedOut) return;
+    if (ex.status !== 409 && ex.status !== 404) {
+      for (const b of buttons) b.disabled = false;
+      if (settingsPage === page) pageErr(ex);
+      return;
+    }
+    const fresh = await api('/api/settings').catch(() => settingsData);
+    st = { ...fresh, answered: calmLine(ex.message) };
+  }
+  settingsData = st;
+  keepFilesFrom(st);
+  if (!page || settingsPage !== page || view !== 'settings') return;
+  settingsEditing = null;
+  clearPageErr();
+  redrawPage('guest-add');
+}
+
 /** What booking needs, then the owner's booking switch, then who may ask to stay and the arrival note; with booking off, why. */
 function guestsForm() {
   const g = settingsData.guests ?? { on: false, why: '' };
@@ -12568,15 +12615,14 @@ function guestsForm() {
     const on = new Date(x.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
     t.append(node('span', 'meta', `${x.email} · “${x.how}”`), node('span', 'meta', `Asked ${on}`));
     const end = node('span', 'end');
-    end.append(
-      textBtn('Decline', 'btn small hit', `ask-no-${i}`, () => saveSettings('/api/guests/asks', { email: x.email, answer: 'decline' }, null, 'guest-add')),
-      textBtn('Add to the guest list', 'btn small primary hit', `ask-yes-${i}`, () => saveSettings('/api/guests/asks', { email: x.email, answer: 'add' }, null, 'guest-add')),
-    );
-    r.append(t, end);
+    const no = textBtn('Decline', 'btn small hit', `ask-no-${i}`, () => void answerAskHere(x.email, 'decline', [no, yes]));
+    const yes = textBtn('Add to the guest list', 'btn small primary hit', `ask-yes-${i}`, () => void answerAskHere(x.email, 'add', [no, yes]));
+    end.append(no, yes);
+    r.append(guestDisc(), t, end);
     asked.appendChild(r);
   });
   if (asked.childNodes.length) {
-    s.push(node('p', 'hint', 'Asked to be added'));
+    s.push(node('h2', 'set-sub', 'Asked to be added'));
     s.push(asked);
   }
 
