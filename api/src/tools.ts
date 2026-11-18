@@ -638,20 +638,10 @@ const getActivity: Tool = {
       total: events.length,
       showing: tail.length,
       lastEventId: events.at(-1)?.id ?? null,
-      events: tail.map((e) => {
-        const line = describe(e, ctx.store.state, befores.get(e.id));
-        // An add that answered a request has how the stranger knows the household as its reason: left out too.
-        return fromAsk(e, ctx.store.state) ? { ...line, why: null } : line;
-      }),
+      // An add from a request goes on the list under the app's reason (booking.ts, ASKED_WHY), never the stranger's words.
+      events: tail.map((e) => describe(e, ctx.store.state, befores.get(e.id))),
     };
   },
-};
-
-/** A guest.allow that put someone on the list from their own request (the request's answer is this line). */
-const fromAsk = (e: Event, state: State): boolean => {
-  if (e.op !== 'guest.allow') return false;
-  const answer = state.guestAsks.get(e.email.trim().toLowerCase())?.answer;
-  return answer?.kind === 'added' && answer.at === e.at && answer.by === e.who;
 };
 
 /** One human sentence per event. The Activity screen renders these directly. */

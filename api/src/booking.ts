@@ -1516,8 +1516,18 @@ export interface AskAsked { email: string; name: string; how: string }
 
 /** A control character, or an invisible one (a zero-width space, a direction override): never in a stranger's words. */
 const HIDDEN = /[\p{Cc}\p{Cf}]/u;
-/** What reads as a link in an email or on Today: a scheme, "www.", or a dot then two letters (a bare domain). */
-const LINKISH = /:\/\/|www\.|\.\p{L}{2}/iu;
+/**
+ * What reads as a link in an email or on Today: a scheme, "www.", or a full stop then two letters (a bare domain).
+ * A full stop is ASCII's or one a mail reader takes for it: the ideographic, the fullwidth and the halfwidth.
+ */
+const LINKISH = /:\/\/|www[.\u3002\uFF0E\uFF61]|[.\u3002\uFF0E\uFF61]\p{L}{2}/iu;
+/**
+ * The joiners a name may carry, taken out before HIDDEN looks: the zero-width non-joiner anywhere (Persian names are
+ * written with it), and the zero-width joiner between two letters or two parts of an emoji ("a family", joined).
+ */
+const NAME_JOINERS = /\u200C|(?<=[\p{L}\p{M}\p{Extended_Pictographic}\p{Emoji_Modifier}])\u200D(?=[\p{L}\p{M}\p{Extended_Pictographic}])/gu;
+/** What a link refusal says: what to do about it, not only what is wrong. */
+const linkWords = (where: string): string => `in ${where}, put a space after each full stop; otherwise it reads as a link`;
 /** An address asked for is plain printable ASCII: a look-alike letter in its domain is not an address we will mail. */
 const PRINTABLE_ASCII = /^[\x21-\x7e]+$/;
 
@@ -1532,15 +1542,15 @@ export function askAsked(o: Record<string, unknown>): AskAsked {
   const name = text(o['name']);
   if (!name) throw new ToolError('give your name');
   if (name.length > ASK_NAME_MAX) throw new ToolError(`keep your name under ${ASK_NAME_MAX} characters`);
-  if (HIDDEN.test(name)) throw new ToolError("your name can't contain hidden characters");
-  if (LINKISH.test(name)) throw new ToolError("names can't contain links");
+  if (HIDDEN.test(name.replace(NAME_JOINERS, ''))) throw new ToolError("your name can't contain hidden characters");
+  if (LINKISH.test(name)) throw new ToolError(linkWords('your name'));
   const email = text(o['email']);
   if (!PRINTABLE_ASCII.test(email) || !isEmail(email)) throw new ToolError('that is not an email address');
   const how = text(o['how']);
   if (!how) throw new ToolError('say how you know them');
   if (how.length > ASK_HOW_MAX) throw new ToolError(`keep how you know them under ${ASK_HOW_MAX} characters`);
   if (HIDDEN.test(how)) throw new ToolError("how you know them can't contain hidden characters");
-  if (LINKISH.test(how)) throw new ToolError("how you know them can't contain links");
+  if (LINKISH.test(how)) throw new ToolError(linkWords('how you know them'));
   return { email: emailKey(email), name, how };
 }
 
@@ -1598,9 +1608,18 @@ export async function askToBeAdded(
     if (state.guests.has(asked.email)) return;
     const was = state.guestAsks.get(asked.email);
     if (was && askWaits(was, ctx.today, zoneOf(state))) return;
-    // A household flooded: nothing more is written until a request is answered, or the day is out.
-    if (openAsks(state, ctx.today).length >= OPEN_ASKS_MAX) return;
-    if (!asksPerHousehold.take(ctx.store.path, now)) return;
+    // A household flooded: nothing more is written until a request is answered, or the day is out. The owner
+    // reads why in the log, as counts: never the address or the name.
+    const waiting = openAsks(state, ctx.today).length;
+    if (waiting >= OPEN_ASKS_MAX) {
+      console.warn(`[budget] a request to be a guest was not written: ${waiting} wait in this household, at most ${OPEN_ASKS_MAX} at once`);
+      return;
+    }
+    if (!asksPerHousehold.take(ctx.store.path, now)) {
+      console.warn(`[budget] a request to be a guest was not written: ${ASKS_PER_HOUSEHOLD_PER_DAY} written in this household today, `
+        + `at most ${ASKS_PER_HOUSEHOLD_PER_DAY} a day`);
+      return;
+    }
     await ctx.store.append(SYSTEM, { op: 'guest.ask', ...asked });
   }).catch((err: unknown) => {
     // The asker is told the same either way; the owner reads why in the log, without the address.
@@ -1634,18 +1653,25 @@ export type AskAnswered =
   | { answer: 'declined'; email: string; name: string };
 
 /**
- * A member answers a request: `add` puts them on the list (with how they know
- * the household as the reason) and sends the one email; `decline` closes it,
- * and nobody outside is told. Whoever answers first settles it: the second is
- * a 409 naming who did. An Add whose email could not go (no mail here, or the
- * server refused it) still adds, and says so.
+ * The reason an add from a request goes on the list under: the app's words. The stranger's own (how they know the
+ * household) stay on the request, shown while it waits, and never become the list's reason or reach Claude.
+ */
+export const ASKED_WHY = 'asked to be added';
+
+/**
+ * A member answers a request: `add` puts them on the list (under ASKED_WHY)
+ * and sends the one email; `decline` closes it, and nobody outside is told.
+ * Whoever answers first settles it: the second is a 409 naming who did. The
+ * answer is written in the household's turn and the email sent after it, so
+ * a slow or dead mail server holds no other answer. An Add whose email could
+ * not go (no mail here, or the server refused it) still adds, and says so.
  */
 export async function answerGuestAsk(ctx: ToolContext, o: Record<string, unknown>): Promise<AskAnswered> {
   const answer = o['answer'];
   if (answer !== 'add' && answer !== 'decline') throw new ToolError('answer add or decline');
   if (!isEmail(o['email'])) throw new ToolError('there is no such request', 404);
   const email = emailKey(o['email']);
-  return inAskTurn(ctx.store, async () => {
+  const done = await inAskTurn(ctx.store, async (): Promise<{ answer: 'added' | 'declined'; name: string }> => {
     const state = ctx.store.state;
     const a = state.guestAsks.get(email);
     if (!a) throw new ToolError('there is no such request', 404);
@@ -1653,11 +1679,13 @@ export async function answerGuestAsk(ctx: ToolContext, o: Record<string, unknown
     if (!askWaits(a, ctx.today, zoneOf(state))) throw new ToolError(`that request is more than ${ASK_DAYS} days old, and no longer waits`, 409);
     if (answer === 'decline') {
       await ctx.store.append(ctx.who, { op: 'guest.ask.decline', email, name: a.name });
-      return { answer: 'declined', email, name: a.name };
+      return { answer: 'declined', name: a.name };
     }
-    await ctx.store.append(ctx.who, { op: 'guest.allow', email, name: a.name, why: a.how });
-    return { answer: 'added', email, name: a.name, mailed: await mailAdded(ctx, email, a.name) };
+    await ctx.store.append(ctx.who, { op: 'guest.allow', email, name: a.name, why: ASKED_WHY });
+    return { answer: 'added', name: a.name };
   });
+  if (done.answer === 'declined') return { answer: 'declined', email, name: done.name };
+  return { answer: 'added', email, name: done.name, mailed: await mailAdded(ctx, email, done.name) };
 }
 
 /** The Add's email, through booking's mail while booking is on here; false when there is none, or it did not go. */

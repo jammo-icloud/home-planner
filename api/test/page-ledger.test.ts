@@ -1120,6 +1120,7 @@ describe('the page ledger: 0.11.0, a guest can ask to be added', () => {
     server,
     page,
     pkg: read('../package.json'),
+    toolsSrc: tools,
   } as const;
   type R = keyof typeof R;
   const ADDED: readonly (readonly [row: string, text: string, region: R])[] = [
@@ -1191,7 +1192,14 @@ describe('the page ledger: 0.11.0, a guest can ask to be added', () => {
     // A household's own caps: past them nothing is written, and the asker is told the same.
     ['W5', 'export const OPEN_ASKS_MAX = 20;', 'bookingSrc'], ['W5', 'const ASKS_PER_HOUSEHOLD_PER_DAY = 50;', 'bookingSrc'],
     // No link and no hidden character from a stranger; an address in plain ASCII.
-    ['W6', 'const HIDDEN = /[\\p{Cc}\\p{Cf}]/u;', 'bookingSrc'], ['W6', "if (LINKISH.test(name)) throw new ToolError(\"names can't contain links\");", 'bookingSrc'],
+    ['W6', 'const HIDDEN = /[\\p{Cc}\\p{Cf}]/u;', 'bookingSrc'], ['W6', "if (LINKISH.test(name)) throw new ToolError(linkWords('your name'));", 'bookingSrc'],
+    // The link refusal says how to fix it; every full stop a mail reader takes for one counts; a name may carry the joiners.
+    ['W6', '`in ${where}, put a space after each full stop; otherwise it reads as a link`', 'bookingSrc'],
+    ['W6', 'if (HIDDEN.test(name.replace(NAME_JOINERS, \'\'))) throw', 'bookingSrc'],
+    // An add from a request goes on the list under the app's reason, never the stranger's words; its mail after the turn.
+    ['W8', "export const ASKED_WHY = 'asked to be added';", 'bookingSrc'],
+    ['W8', "await ctx.store.append(ctx.who, { op: 'guest.allow', email, name: a.name, why: ASKED_WHY });", 'bookingSrc'],
+    ['W8', 'return { answer: \'added\', email, name: done.name, mailed: await mailAdded(ctx, email, done.name) };', 'bookingSrc'],
     ['W6', "if (!PRINTABLE_ASCII.test(email) || !isEmail(email)) throw new ToolError('that is not an email address');", 'bookingSrc'],
     // The answer waits for the floor only; the line is written after it.
     ['W7', 'asksWriting.add(write);', 'bookingSrc'],
@@ -1205,7 +1213,7 @@ describe('the page ledger: 0.11.0, a guest can ask to be added', () => {
     ['T2', 'memberDisc(w.ask.name)', 'askRow'], ['G4', 'memberDisc', 'guests'],
     ['B2', '.btn { min-height: 38px; }', 'bookCss'], ['B2', 'min-height: 30px', 'bookCss'], ['B2', 'min-height: 32px', 'bookCss'],
     // The write is not awaited before the answer.
-    ['W7', 'await Promise.all([floor, write]);', 'bookingSrc'],
+    ['W7', 'await Promise.all([floor, write]);', 'bookingSrc'], ['W8', 'why: a.how', 'bookingSrc'], ['W8', 'fromAsk', 'toolsSrc'],
   ];
   const miss = (list: readonly (readonly [string, string, R])[], want: boolean) => list
     .filter(([, text, region]) => (want ? R[region] : uncommented(R[region])).includes(text) !== want)
@@ -1245,7 +1253,7 @@ describe('the page ledger: 0.11.0, a guest can ask to be added', () => {
   test('every row of the ledger is pinned', () => {
     const rows = new Set([...ADDED, ...GONE].map(([r]) => r));
     const want = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${i + 1}`);
-    assert.deepEqual([...want('A', 6), ...want('F', 12), ...want('S', 5), ...want('T', 16), ...want('G', 6), ...want('W', 7), ...want('V', 2), ...want('B', 2)]
+    assert.deepEqual([...want('A', 6), ...want('F', 12), ...want('S', 5), ...want('T', 16), ...want('G', 6), ...want('W', 8), ...want('V', 2), ...want('B', 2)]
       .filter((r) => !rows.has(r)), []);
   });
 });

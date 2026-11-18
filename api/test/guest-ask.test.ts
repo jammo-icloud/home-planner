@@ -50,13 +50,14 @@ const refused = (re: RegExp) => (e: unknown) => e instanceof ReplayError && re.t
 const toolRefused = (status: number, re: RegExp) => (e: unknown) => e instanceof ToolError && e.status === status && re.test(e.message);
 
 /** A member's context, with booking's mail on it as the server puts it there while booking is on here. */
-function member(store: Store, who: string, sent: Mail[], o: { fail?: boolean; mail?: false; today?: string } = {}): ToolContext {
+function member(store: Store, who: string, sent: Mail[], o: { fail?: boolean; mail?: false; today?: string; hold?: Promise<void> } = {}): ToolContext {
   return {
     store, who, today: o.today ?? TODAY, proposals: new ProposalStore(), sid: null,
     ...(o.mail === false ? {} : {
       mail: {
         smtp: SMTP, url: 'https://planner.example.com',
         send: async (_cfg: SmtpConfig, m: Mail) => {
+          if (o.hold) await o.hold;
           if (o.fail) throw new MailError('550 mailbox unavailable');
           sent.push(m);
         },
@@ -78,6 +79,15 @@ beforeEach(() => { clock += 2 * 86_400_000; });
 async function ask(store: Store, body: Record<string, unknown>, ip = nextIp(), today = TODAY): Promise<void> {
   await askToBeAdded({ store, now: () => clock, ip, today }, body);
   await asksSettled();
+}
+
+/** What `work` said with console.warn, each line once; nothing reaches the test's own output. */
+async function warned(work: () => Promise<unknown>): Promise<string[]> {
+  const warn = console.warn;
+  const said: string[] = [];
+  console.warn = (...a: unknown[]) => { said.push(a.map(String).join(' ')); };
+  try { await work(); } finally { console.warn = warn; }
+  return said;
 }
 
 const asks = (s: Store) => s.since(null).then((all) => all.filter((e) => e.op === 'guest.ask'));
@@ -336,37 +346,55 @@ describe('asking, from the booking page', () => {
     await assert.rejects(ask(s, { ...SAM, email: 'Busy@Example.com' }), toolRefused(429, /too many requests for that address/));
   });
 
-  test("a stranger's words carry no link and no hidden character into an email or onto Today", async () => {
+  test("a stranger's words carry no link and no hidden character into an email or onto Today, and the words say how to fix it", async () => {
     const s = await fresh();
+    const LINK_NAME = /^in your name, put a space after each full stop; otherwise it reads as a link$/;
+    const LINK_HOW = /^in how you know them, put a space after each full stop; otherwise it reads as a link$/;
     const refusals: [Record<string, unknown>, RegExp][] = [
       [{ ...SAM, name: 'Sam\nVisit https://evil.example.net now' }, /^your name can't contain hidden characters$/],
-      [{ ...SAM, name: 'Sam https://evil.example.net' }, /^names can't contain links$/],
-      [{ ...SAM, name: 'Sam evil.example.net' }, /^names can't contain links$/],
-      [{ ...SAM, name: 'Sam www.evil' }, /^names can't contain links$/],
-      [{ ...SAM, name: '‮tsil eht no ma I' }, /^your name can't contain hidden characters$/],
-      [{ ...SAM, name: 'Sam​Rivera' }, /^your name can't contain hidden characters$/],
-      [{ ...SAM, how: 'see evil.example.net' }, /^how you know them can't contain links$/],
-      [{ ...SAM, how: 'see http://x' }, /^how you know them can't contain links$/],
-      [{ ...SAM, how: 'college⁦ roommate' }, /^how you know them can't contain hidden characters$/],
+      [{ ...SAM, name: 'Sam https://evil.example.net' }, LINK_NAME],
+      [{ ...SAM, name: 'Sam evil.example.net' }, LINK_NAME],
+      [{ ...SAM, name: 'Sam www.evil' }, LINK_NAME],
+      // Full stops that are not ASCII's: the ideographic, the fullwidth and the halfwidth.
+      [{ ...SAM, name: 'Sam evil\u3002example\u3002net' }, LINK_NAME],
+      [{ ...SAM, name: 'Sam evil\uFF0Eexample\uFF0Enet' }, LINK_NAME],
+      [{ ...SAM, name: 'Sam www\uFF61evil' }, LINK_NAME],
+      [{ ...SAM, name: '\u202Etsil eht no ma I' }, /^your name can't contain hidden characters$/],
+      [{ ...SAM, name: 'Sam\u200BRivera' }, /^your name can't contain hidden characters$/],
+      // A joiner only between two letters (or the parts of an emoji), never on its own.
+      [{ ...SAM, name: 'Sam\u200D' }, /^your name can't contain hidden characters$/],
+      [{ ...SAM, name: 'Sam \u200DRivera' }, /^your name can't contain hidden characters$/],
+      [{ ...SAM, how: 'see evil.example.net' }, LINK_HOW],
+      [{ ...SAM, how: 'see evil\u3002example\u3002net' }, LINK_HOW],
+      [{ ...SAM, how: 'see evil\uFF0Eexample\uFF0Enet' }, LINK_HOW],
+      [{ ...SAM, how: 'see http://x' }, LINK_HOW],
+      [{ ...SAM, how: 'college\u2066 roommate' }, /^how you know them can't contain hidden characters$/],
       [{ ...SAM, how: 'line\rbreak' }, /^how you know them can't contain hidden characters$/],
-      // A Cyrillic "е" in the domain, a zero-width space, and an address outside printable ASCII.
-      [{ ...SAM, email: 'sam@еxample.com' }, /^that is not an email address$/],
-      [{ ...SAM, email: 'sam@exa​mple.com' }, /^that is not an email address$/],
-      [{ ...SAM, email: 'sám@example.com' }, /^that is not an email address$/],
+      // The non-joiner is for names: in how they know the household it is refused as before.
+      [{ ...SAM, how: 'college\u200Croommate' }, /^how you know them can't contain hidden characters$/],
+      // A Cyrillic "\u0435" in the domain, a zero-width space, and an address outside printable ASCII.
+      [{ ...SAM, email: 'sam@\u0435xample.com' }, /^that is not an email address$/],
+      [{ ...SAM, email: 'sam@exa\u200Bmple.com' }, /^that is not an email address$/],
+      [{ ...SAM, email: 's\u00E1m@example.com' }, /^that is not an email address$/],
     ];
     for (const [body, words] of refusals) await assert.rejects(ask(s, body), toolRefused(400, words), JSON.stringify(body));
     assert.equal((await asks(s)).length, 0);
     // Ordinary names and words still go: initials, an apostrophe, a hyphen, an accent, "Jr." and "St. Louis" style dots.
-    await ask(s, { name: "Sam O'Rivera-Núñez Jr.", email: 'sam@example.com', how: "Alex's roommate at St. Mary's, years ago" });
-    assert.equal((await asks(s)).length, 1);
+    await ask(s, { name: "Sam O'Rivera-N\u00FA\u00F1ez Jr.", email: 'sam@example.com', how: "Alex's roommate at St. Mary's, years ago" });
+    // A Persian name written with the zero-width non-joiner, and a joined emoji (a family: three people and two joiners).
+    await ask(s, { name: '\u0641\u0627\u0637\u0645\u0647\u200C\u0632\u0647\u0631\u0627', email: 'sam2@example.com', how: 'Family' });
+    await ask(s, { name: 'Sam \u{1F469}\u200D\u{1F469}\u200D\u{1F467}', email: 'sam3@example.com', how: 'Family' });
+    assert.equal((await asks(s)).length, 3);
+    assert.equal(s.state.guestAsks.get('sam2@example.com')?.name, '\u0641\u0627\u0637\u0645\u0647\u200C\u0632\u0647\u0631\u0627');
   });
 
-  test('at most 20 requests wait at once in a household: past that nothing is written, and the answer is the same', async () => {
+  test('at most 20 requests wait at once in a household: past that nothing is written, the answer is the same, and the log says so with no address or name', async () => {
     const s = await fresh();
     for (let i = 0; i < 20; i++) await s.append(SYSTEM, { op: 'guest.ask', ...SAM, email: `full${i}@example.com` });
-    assert.equal(await ask(s, { ...SAM, email: 'one-more@example.com' }), undefined);
+    const said = await warned(() => ask(s, { ...SAM, email: 'one-more@example.com' }));
     assert.equal(s.state.guestAsks.has('one-more@example.com'), false);
     assert.equal((await asks(s)).length, 20);
+    assert.deepEqual(said, ['[budget] a request to be a guest was not written: 20 wait in this household, at most 20 at once']);
   });
 
   test('at most 50 written in a household in a day, answered or not: past that nothing is written, and the answer is the same', async () => {
@@ -378,7 +406,8 @@ describe('asking, from the booking page', () => {
       for (const email of emails) await s.append('alice', { op: 'guest.ask.decline', email, name: SAM.name });
     }
     assert.equal((await asks(s)).length, 50);
-    assert.equal(await ask(s, { ...SAM, email: 'day50@example.com' }), undefined);
+    const said = await warned(() => ask(s, { ...SAM, email: 'day50@example.com' }));
+    assert.deepEqual(said, ['[budget] a request to be a guest was not written: 50 written in this household today, at most 50 a day']);
     assert.equal((await asks(s)).length, 50);
     assert.equal(s.state.guestAsks.has('day50@example.com'), false);
   });
@@ -409,6 +438,18 @@ describe('asking, from the booking page', () => {
 });
 
 describe('what Claude reads', () => {
+  test("ask, add, take off the list, ask again: the first request's words never reach Claude", async () => {
+    const s = await fresh();
+    await ask(s, { ...SAM, how: 'first words, the stranger\'s own' });
+    await answerGuestAsk(member(s, 'alice', []), { email: SAM.email, answer: 'add' });
+    await s.append('alice', { op: 'guest.revoke', email: SAM.email, why: 'moved away' });
+    await ask(s, { ...SAM, how: 'second words' });
+    const out = await toolByName.get('get_activity')!.run({}, member(s, 'alice', []));
+    assert.equal(JSON.stringify(out).includes('first words'), false);
+    assert.equal(JSON.stringify(out).includes('second words'), false);
+    assert.equal(s.state.guestAsks.get(SAM.email)?.how, 'second words', 'the request keeps its own words, for Today and Settings');
+  });
+
   test("the activity Claude reads leaves out a stranger's request, and an add from one carries no reason in the stranger's words", async () => {
     const s = await fresh();
     await ask(s, SAM);
@@ -418,7 +459,7 @@ describe('what Claude reads', () => {
     assert.equal(out.events.some((e) => /asked to be a guest/.test(e.what)), false);
     const added = out.events.find((e) => e.what === 'added Sam Rivera to the guest list');
     assert.ok(added);
-    assert.equal(added.why, null);
+    assert.equal(added.why, 'asked to be added');
     assert.equal(out.events.find((e) => e.what === 'added Dana to the guest list')?.why, 'the neighbours', 'a member\'s own reason stays');
     assert.equal(JSON.stringify(out).includes(SAM.how), false);
   });
@@ -433,7 +474,7 @@ describe('answering a request', () => {
     const sent: Mail[] = [];
     const r = await answerGuestAsk(member(s, 'alice', sent), { email: SAM.email, answer: 'add' });
     assert.deepEqual(r, { answer: 'added', email: SAM.email, name: SAM.name, mailed: true });
-    assert.deepEqual(s.state.guests.get(SAM.email), { name: SAM.name, why: SAM.how, allowedBy: 'alice', at: NOW });
+    assert.deepEqual(s.state.guests.get(SAM.email), { name: SAM.name, why: 'asked to be added', allowedBy: 'alice', at: NOW });
     assert.equal(s.state.guestAsks.get(SAM.email)?.answer?.kind, 'added');
     assert.equal(sent.length, 1);
     const m = sent[0]!;
@@ -474,6 +515,29 @@ describe('answering a request', () => {
     assert.equal(s.state.guests.has(SAM.email), false);
     assert.equal(s.state.guestAsks.get(SAM.email)?.answer?.kind, 'declined');
     assert.equal(sent.length, 0);
+  });
+
+  test('a slow mail server holds nobody else: another answer goes while the first add is still mailing', async () => {
+    const s = await fresh();
+    await ask(s, SAM);
+    await ask(s, { ...SAM, email: 'dana@example.com', name: 'Dana' });
+    let release!: () => void;
+    const hold = new Promise<void>((r) => { release = r; });
+    const sent: Mail[] = [];
+    const slow = answerGuestAsk(member(s, 'alice', sent, { hold }), { email: SAM.email, answer: 'add' });
+    // The add is written before its mail: the list has them already.
+    await new Promise((r) => setTimeout(r, 20));
+    assert.ok(s.state.guests.has(SAM.email));
+    const other = answerGuestAsk(member(s, 'bob', []), { email: 'dana@example.com', answer: 'decline' });
+    const late = new Promise<'late'>((r) => setTimeout(() => r('late'), 2000));
+    assert.deepEqual(await Promise.race([other, late]), { answer: 'declined', email: 'dana@example.com', name: 'Dana' });
+    // A second answer to the one being mailed is told who answered first, without waiting for that mail either.
+    await assert.rejects(Promise.race([answerGuestAsk(member(s, 'bob', []), { email: SAM.email, answer: 'decline' }), late]),
+      toolRefused(409, /^already answered by alice$/));
+    assert.equal(sent.length, 0);
+    release();
+    assert.deepEqual(await slow, { answer: 'added', email: SAM.email, name: SAM.name, mailed: true });
+    assert.equal(sent.length, 1);
   });
 
   test('whoever answers first settles it; the other is told who did', async () => {
