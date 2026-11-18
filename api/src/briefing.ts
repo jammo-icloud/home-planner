@@ -728,8 +728,10 @@ export interface Section {
   readonly writtenBy: 'claude' | 'fallback';
 }
 
+/** A draft under way, and the NAS session it runs under (null for none). */
+interface Running { readonly work: Promise<Section>; readonly sid: string | null }
 /** One draft at a time a day, so two members opening at once write one section. */
-const inFlight = new Map<string, Promise<Section>>();
+const inFlight = new Map<string, Running>();
 /**
  * When Claude was last tried for a day that has only the fallback. The thread
  * reloads after every note and decision; during an outage each of those must
@@ -737,7 +739,7 @@ const inFlight = new Map<string, Promise<Section>>();
  */
 const lastTried = new Map<string, number>();
 /** The same two for the household's briefing, kept apart from the budget's. */
-const householdInFlight = new Map<string, Promise<Section>>();
+const householdInFlight = new Map<string, Running>();
 const householdTried = new Map<string, number>();
 const RETRY_EVERY = 10 * 60 * 1000;
 
@@ -751,7 +753,7 @@ const RETRY_EVERY = 10 * 60 * 1000;
  */
 export function ensureSection(store: Store, o: BriefingOptions): Promise<Section> {
   const key = `${store.path}|budget|${o.today}`;
-  return once(inFlight, key, () => record(store, {
+  return once(inFlight, key, null, () => record(store, {
     key, tried: lastTried, of: BUDGET, who: o.who, today: o.today,
     ...(o.retryEvery !== undefined ? { retryEvery: o.retryEvery } : {}),
     draft: () => brief(store, o),
@@ -765,7 +767,7 @@ export function ensureSection(store: Store, o: BriefingOptions): Promise<Section
  */
 export function ensureHousehold(store: Store, o: HouseholdOptions): Promise<Section> {
   const key = `${store.path}|household|${o.today}`;
-  return once(householdInFlight, key, () => record(store, {
+  return once(householdInFlight, key, o.sid, () => record(store, {
     key, tried: householdTried, of: HOUSEHOLD, who: o.who, today: o.today, canReadCalendar: !!o.sid,
     access: { sid: o.sid, store, ...(o.household !== undefined ? { household: o.household } : {}) },
     ...(o.f ? { f: o.f } : {}),
@@ -774,11 +776,24 @@ export function ensureHousehold(store: Store, o: HouseholdOptions): Promise<Sect
   }));
 }
 
-function once(running: Map<string, Promise<Section>>, key: string, run: () => Promise<Section>): Promise<Section> {
+/**
+ * The draft under way for this key, or a new one under `sid`. A draft joined
+ * from another member's sign-in that fails because the NAS ended *that*
+ * sign-in is tried once more under the joiner's own: the loss is the
+ * starter's, and must not sign the joiner out (server.ts).
+ */
+function once(running: Map<string, Running>, key: string, sid: string | null, run: () => Promise<Section>,
+              retry = true): Promise<Section> {
   const now = running.get(key);
-  if (now) return now;
+  if (now) {
+    if (!retry || now.sid === sid) return now.work;
+    return now.work.catch((err: unknown) => {
+      if (!(err instanceof SessionLost)) throw err;
+      return once(running, key, sid, run, false);
+    });
+  }
   const work = run().finally(() => running.delete(key));
-  running.set(key, work);
+  running.set(key, { work, sid });
   return work;
 }
 

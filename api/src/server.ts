@@ -2789,8 +2789,9 @@ export async function start(
     }
 
     // Yours, beside the shared thread: what the briefing was written from, as
-    // each member has it. The calendar part never fails the page; a session
-    // with no NAS behind it is asked to sign in again, in the rail.
+    // each member has it. A refusal from the NAS is a line in the rail, never a
+    // failed page, and the sandbox, with no NAS, is asked to sign in again there;
+    // a member's sign-in the NAS has ended signs them out (`handle`'s caller).
     if (path === '/api/today' && req.method === 'GET') {
       // Asks Drive whether the Team Folder is one, for this session, so what follows writes or stays inline.
       if (ctx.sid) await documentsStatus(ctx);
@@ -2861,8 +2862,9 @@ export async function start(
       return json(res, 200, { ok: true });
     }
 
-    // The Calendar screen's week. Like Today's rail, the NAS never fails it:
-    // a session without one still sees the plans' due dates, and a line saying why.
+    // The Calendar screen's week. Like Today's rail, a refusal from the NAS is a
+    // line, never a failed page, and the sandbox, with no NAS, still sees the
+    // plans' due dates; a member's sign-in the NAS has ended signs them out.
     if (path === '/api/calendar' && req.method === 'GET') {
       const window = weekWindow(url.searchParams.get('start'), url.searchParams.get('end'));
       const week = await weekEvents(ctx, window);
@@ -2900,7 +2902,8 @@ export async function start(
 
     // One search over the household: Drive for its documents, with the
     // member's own session, and the log for the rest. Drive not answering is
-    // `documents: 'not searched'`, never a failure.
+    // `documents: 'not searched'`, never a failure; a sign-in the NAS has ended
+    // signs the member out.
     if (path === '/api/search' && req.method === 'GET') {
       const words = searchWords(url.searchParams.get('q'));
       const q = threadQuery(url, active.state);

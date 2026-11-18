@@ -9,19 +9,19 @@ import { start as startFakeDsm } from '../tools/fake-dsm/server.ts';
 import { chooseFolderIn } from './folder.ts';
 
 // 0.10.3: a session that cannot reach the NAS is a signed-out session. alice
-// signs in through a fake DSM; bob is the local sandbox (DEV_USER), which never
+// and bob sign in through a fake DSM; "local" is the sandbox (DEV_USER), which never
 // has a DSM sign-in. SESSIONS_PATH is set as 0.10.2 read it, so a build that
 // still kept sessions on disk would carry alice's over a restart; 0.10.3 reads
 // nothing there, and a stale file left in the data folder is ignored.
 const dir = await mkdtemp(join(tmpdir(), 'pb-signin-'));
 const nas = await startFakeDsm({
   port: 0, root: join(dir, 'nas'), log: () => {},
-  accounts: { alice: { password: 'correct-horse' } },
+  accounts: { alice: { password: 'correct-horse' }, bob: { password: 'battery-staple' } },
 });
 const sessionsFile = join(dir, 'sessions.json');
 Object.assign(process.env, {
   PORT: '0', TZ: 'UTC', DSM_URL: `http://127.0.0.1:${nas.port}`, PLANNER_ROOT: '/Planner', ADMIN_USER: 'alice',
-  DEV_USER: 'bob', DEV_LOG_PATH: join(dir, 'dev.jsonl'), HOUSEHOLDS_DIR: join(dir, 'households'),
+  DEV_USER: 'local', DEV_LOG_PATH: join(dir, 'dev.jsonl'), HOUSEHOLDS_DIR: join(dir, 'households'),
   SESSIONS_PATH: sessionsFile, CONNECTORS_PATH: join(dir, 'connectors.json'), LOG_PATH: join(dir, 'none.jsonl'),
 });
 delete process.env['ANTHROPIC_API_KEY'];
@@ -46,7 +46,28 @@ let homePath = '';
  */
 let forgotten = false;
 let refused = 0;
+/**
+ * Sids the NAS has forgotten one by one, answered slowly so a second member's request can join work still in flight
+ * under one of them; and the sid of the last call, so a test can learn the one behind a member's session.
+ */
+const dead = new Set<string>();
+let lastSid: string | null = null;
+const sidOf = (init?: RequestInit): string | null => {
+  const body = init?.body;
+  const inBody = typeof body === 'string' ? new URLSearchParams(body).get('_sid')
+    : body instanceof FormData ? (body.get('_sid') as string | null) : null;
+  if (inBody) return inBody;
+  const cookie = (init?.headers as Record<string, string> | undefined)?.['cookie'] ?? '';
+  return /(?:^|;\s*)id=([^;]+)/.exec(cookie)?.[1] ?? null;
+};
 setDsmFetch((async (url: string | URL | Request, init?: RequestInit) => {
+  const sid = sidOf(init);
+  if (sid) lastSid = sid;
+  if (sid && dead.has(sid)) {
+    refused++;
+    await new Promise((r) => setTimeout(r, 200));
+    return Response.json({ success: false, error: { code: 119 } });
+  }
   if (!forgotten) return fetch(url, init);
   refused++;
   return Response.json({ success: false, error: { code: 119 } });
@@ -134,8 +155,8 @@ describe('a restart signs everyone out', () => {
 });
 
 describe('the local sandbox has no DSM sign-in, and is still a session', () => {
-  test('bob signs in without DSM and the app is open to him', async () => {
-    const bob = await signIn('bob', 'anything');
+  test('the sandbox user signs in without DSM and the app is open to them', async () => {
+    const bob = await signIn('local', 'anything');
     const seen = await check(bob);
     assert.equal(seen.authenticated, true);
     assert.equal(seen.local, true);
@@ -250,5 +271,55 @@ describe('background work that meets a lost sign-in leaves the session alone', (
       assert.ok(refused > 0, 'the page lane did reach the NAS and was refused');
       assert.equal((await check(alice)).authenticated, true, 'the page lane did not end the session');
     } finally { forgotten = false; }
+  });
+});
+
+describe('work shared between members signs out only the member whose sign-in ended', () => {
+  /** alice and bob in a household of their own, its Household calendar made while both sign-ins work. */
+  const cabin = async () => {
+    const alice = await signIn('alice', 'correct-horse');
+    const made = await call(alice, 'POST', '/api/households', { label: `Cabin ${Date.now()}` });
+    assert.equal(made.status, 200, JSON.stringify(made.json));
+    await (await households.open(made.json.id)).append('alice', { op: 'member.add', member: 'bob', why: 'my partner' });
+    assert.equal((await call(alice, 'POST', '/api/calendars/household', {})).status, 200);
+    // The sid behind alice's session, as the NAS sees it.
+    await call(alice, 'GET', '/api/contacts?q=x');
+    const aliceSid = lastSid!;
+    const bob = await signIn('bob', 'battery-staple');
+    const sel = await call(bob, 'POST', '/api/households/select', { household: made.json.id });
+    assert.equal(sel.status, 200, JSON.stringify(sel.json));
+    return { alice, aliceSid, bob, id: made.json.id as string };
+  };
+
+  test("bob joining the day's briefing alice started with a dead sign-in gets his own answer and stays signed in", async () => {
+    const { alice, aliceSid, bob } = await cabin();
+    dead.add(aliceSid);
+    try {
+      const [a, b] = await quietly(() => Promise.all([
+        call(alice, 'GET', '/api/thread'),
+        new Promise((r) => setTimeout(r, 40)).then(() => call(bob, 'GET', '/api/thread')),
+      ]));
+      assert.deepEqual([a.status, a.json.error], [401, 'please sign in'], 'alice is signed out');
+      assert.equal(b.status, 200, `bob: ${JSON.stringify(b.json)}`);
+    } finally { dead.delete(aliceSid); }
+    assert.deepEqual(await check(alice), { authenticated: false });
+    assert.equal((await check(bob)).authenticated, true, 'bob is still signed in');
+  });
+
+  test("bob joining Calendar's look for changes that alice started with a dead sign-in gets his own answer", async () => {
+    const { alice, aliceSid, bob } = await cabin();
+    const plan = (await call(alice, 'POST', '/api/plans', { title: 'Split the logs', area: 'House' })).json.plan.id;
+    assert.equal((await call(alice, 'POST', `/api/plans/${plan}/due`, { due: day(2) })).status, 200);
+    await quietly(async () => { await new Promise((r) => setTimeout(r, 20)); await pagesIdle((await households.open((await check(alice)).household)).path); });
+    dead.add(aliceSid);
+    try {
+      const [a, b] = await quietly(() => Promise.all([
+        call(alice, 'POST', '/api/calendar/check'),
+        new Promise((r) => setTimeout(r, 40)).then(() => call(bob, 'POST', '/api/calendar/check')),
+      ]));
+      assert.deepEqual([a.status, a.json.error], [401, 'please sign in'], 'alice is signed out');
+      assert.equal(b.status, 200, `bob: ${JSON.stringify(b.json)}`);
+    } finally { dead.delete(aliceSid); }
+    assert.equal((await check(bob)).authenticated, true, 'bob is still signed in');
   });
 });

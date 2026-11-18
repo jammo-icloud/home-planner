@@ -2,7 +2,8 @@
  * Its one job: what is on the viewer's calendars, as the screens draw it.
  * Today's rail (today and tomorrow) and the Calendar screen's week, with the
  * plans' due dates and the open appointment cards beside what the NAS has.
- * Reads only; the NAS's refusals are a line, never a failure.
+ * Reads only; the NAS's refusals are a line, never a failure, except a
+ * member's sign-in the NAS has ended, which is passed on and signs them out.
  */
 
 import { ToolError } from './errors.ts';
@@ -246,7 +247,8 @@ export function weekWindow(start: unknown, end: unknown): { start: Day; end: Day
  * household's, or for the viewer's own that they asked for. One for the
  * another member's own calendar is theirs, and not drawn. An open drift and a
  * clash between two timed events are marked. In time order. The NAS's
- * refusals are a line, as on Today, never a failure.
+ * refusals are a line, as on Today, never a failure; a sign-in it has ended
+ * is passed on.
  */
 export async function weekEvents(ctx: ToolContext, window: { start: Day; end: Day }, f?: DsmFetch): Promise<WeekCalendar> {
   const tz = zoneOf(ctx.store.state);

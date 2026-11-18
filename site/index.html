@@ -81,6 +81,9 @@
   /* Why the sign-in screen is showing (a session that ended): a plain note, not an error. */
   .signin .notice{background:var(--surface-sunken);border:1px solid var(--line);color:var(--ink-soft);font-size:var(--fs-small);
     padding:var(--sp-2) var(--sp-3);border-radius:var(--r-control);margin:0 0 var(--sp-3)}
+  /* Empty, it stays in the tree as a status (so its words are announced when set) but takes no room and shows nothing. */
+  .signin .notice:empty{position:absolute;width:1px;height:1px;overflow:hidden;clip-path:inset(50%);white-space:nowrap;
+    padding:0;border:0;margin:0}
   .note{font-size:var(--fs-micro);color:var(--ink-faint);margin-top:16px;text-align:center}
 
   /* ── today ─────────────────────────────────────────────────────────── */
@@ -1610,15 +1613,15 @@
     <div class="eyebrow">Home Planner</div>
     <h1>Sign in</h1>
     <p class="sub">Use your Synology account — the same one as the NAS.</p>
-    <p class="notice" id="login-notice" role="status" hidden></p>
+    <p class="notice" id="login-notice" role="status"></p>
     <div class="err" id="login-err" hidden></div>
     <div class="field">
       <label for="u">Username</label>
-      <input id="u" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required />
+      <input id="u" name="username" aria-describedby="login-notice" autocomplete="username" autocapitalize="none" spellcheck="false" required />
     </div>
     <div class="field">
       <label for="p">Password</label>
-      <input id="p" name="password" type="password" autocomplete="current-password" required />
+      <input id="p" name="password" type="password" aria-describedby="login-notice" autocomplete="current-password" required />
     </div>
     <div class="field" id="otp-field" hidden>
       <label for="otp">Verification code</label>
@@ -1795,11 +1798,11 @@
         <div class="ta-main">
           <div class="v" id="ta-v"></div>
           <p class="ta-line" id="ta-line"></p>
-          <button type="button" class="btn ta-next" id="ta-next" hidden>Go to the next one</button>
+          <button type="button" class="btn ta-next hit" id="ta-next" hidden>Go to the next one</button>
           <p class="ta-green" id="ta-green"></p>
         </div>
         <div class="totals">
-          <button type="button" class="tot inc-toggle" id="inc-toggle" aria-expanded="false" aria-controls="income-sec">
+          <button type="button" class="tot inc-toggle hit" id="inc-toggle" aria-expanded="false" aria-controls="income-sec">
             <span class="k">Income</span><span class="v" id="t-income"></span>
           </button>
           <div class="tot"><span class="k">Planned</span><span class="v" id="t-funded"></span></div>
@@ -2062,7 +2065,7 @@ const monthLong = (m) => new Date(`${m}-01T12:00:00`).toLocaleDateString(undefin
 
 async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
   // Signed out already: nothing more is asked of the server until the person signs in again.
-  if (sessionEnding && path !== '/api/auth/login') throw Object.assign(new Error('please sign in'), { status: 401 });
+  if (sessionEnding && path !== '/api/auth/login') throw Object.assign(new Error('please sign in'), { status: 401, signedOut: true });
   // Which sign-in this request belongs to: a 401 that comes back after a newer one is the old session's.
   const since = signIns;
   const res = await fetch(path, {
@@ -2078,7 +2081,13 @@ async function api(path, body, method = body === undefined ? 'GET' : 'POST') {
   // The household this page had open is gone (its owner removed it): the server has
   // already cleared it from this session, so show the picker rather than a stack of errors.
   if (res.status === 409 && /^no household is open/.test(data.error ?? '') && !$('app').hidden && !leaving) void backToPicker();
-  if (!res.ok) throw Object.assign(new Error(data.error || `request failed (${res.status})`), { status: res.status, stale: data.stale === true });
+  // A 401 is said by the sign-in screen, or, for a request started before the latest sign-in, by nothing: marked so
+  // that what shows a refusal (showProblem, Settings, a page's slot) says none.
+  if (!res.ok) {
+    throw Object.assign(new Error(data.error || `request failed (${res.status})`), {
+      status: res.status, stale: data.stale === true, signedOut: res.status === 401 && path !== '/api/auth/login',
+    });
+  }
   return data;
 }
 
@@ -2136,8 +2145,9 @@ function sessionEnded(place) {
   $('otp').value = '';
   $('login-note').textContent = '';
   $('login-err').hidden = true;
-  $('login-notice').textContent = SESSION_ENDED;
-  $('login-notice').hidden = false;
+  // Its words are set once the screen is drawn, so the status is in the tree before it changes and is announced.
+  $('login-notice').textContent = '';
+  setTimeout(() => { if (sessionEnding) $('login-notice').textContent = SESSION_ENDED; }, 100);
   $('u').value = place?.who || myName || '';
   $('p').value = '';
   ($('u').value ? $('p') : $('u')).focus();
@@ -2165,7 +2175,7 @@ $('signin-form').addEventListener('submit', async (e) => {
   const err = $('login-err');
   btn.disabled = true;
   err.hidden = true;
-  $('login-notice').hidden = true;
+  $('login-notice').textContent = '';
   try {
     const out = await api('/api/auth/login', {
       username: $('u').value.trim(),
@@ -6712,8 +6722,8 @@ function showProblem(ex) {
   }
   // The picker is already on its way (see api()); an error box under it would only confuse.
   if (/^no household is open/.test(ex.message)) return;
-  // So is the sign-in screen, for a session that ended (see api()): nothing is said under it.
-  if (ex.status === 401) return;
+  // So is the sign-in screen, for a session that ended, and a late 401 is the old session's (see api()): neither is said.
+  if (ex.signedOut) return;
   // "Not started" and "no open month" are Today's and Budget's to say: the
   // Plan board and the Calendar have nothing to do with either.
   const budgetWords = /not started yet|no open month|no months are open/i;
@@ -10743,8 +10753,9 @@ matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
 
 /** Why Settings could not be read, drawn where the list would be: Settings never writes to the screen's error box. */
 function settingsFailed(ex) {
-  // The picker is already on its way (see api()).
+  // The picker is already on its way (see api()), or the sign-in screen is.
   if (/^no household is open/.test(ex.message)) return;
+  if (ex.signedOut) return;
   const box = $('settings');
   box.textContent = '';
   box.append(settingsHead(), node('p', 'err set-err', `Settings could not be read: ${ex.message}`));
@@ -11163,6 +11174,8 @@ function redrawPage(want, { auto = false } = {}) {
 
 /** A refusal in the open page's slot, in the server's words. False when no page is open to say it. */
 function pageErr(ex, { focus = true } = {}) {
+  // A 401 is the sign-in screen's to say, or nobody's (see api()): taken as said.
+  if (ex?.signedOut) return true;
   const err = settingsHost().querySelector('.set-page .set-err');
   if (!err) return false;
   err.textContent = ex?.message ?? String(ex);

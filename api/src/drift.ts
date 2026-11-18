@@ -49,7 +49,7 @@ export const DRIFT_EVERY_MS = 10 * 60 * 1000;
 /** When each household's calendar was last looked at, by store path. In memory: a restart looks again. */
 const lastLooked = new Map<string, number>();
 /** A look in progress, by store path: a second caller waits for it rather than asking the NAS twice. */
-const looking = new Map<string, Promise<Look>>();
+const looking = new Map<string, { run: Promise<Look>; sid: string }>();
 /** What a look wrote, and the sign-in the NAS said had ended if that is what stopped it. */
 interface Look { events: Event[]; lost: SessionLost | null }
 
@@ -91,19 +91,29 @@ export async function checkDriftNow(ctx: ToolContext, f?: DsmFetch): Promise<Eve
   return events;
 }
 
-function look(ctx: ToolContext, f?: DsmFetch): Promise<Look> {
+/**
+ * The look under way for this household, or a new one under this member's
+ * sid. One joined from another member's sign-in that the NAS ended is looked
+ * again, once, under this member's own: the loss is the starter's, and must
+ * not sign this member out (`checkDriftNow`).
+ */
+function look(ctx: ToolContext, f?: DsmFetch, retry = true): Promise<Look> {
   if (!ctx.sid) return Promise.resolve({ events: [], lost: null });
+  const sid = ctx.sid;
   const key = ctx.store.path;
   const running = looking.get(key);
-  if (running) return running;
+  if (running) {
+    if (!retry || running.sid === sid) return running.run;
+    return running.run.then((r) => (r.lost ? look(ctx, f, false) : r));
+  }
   const started = Date.now();
-  const run = lookForDrift(ctx, ctx.sid, f)
+  const run = lookForDrift(ctx, sid, f)
     .then(({ events, stopped, lost }) => {
       if (!stopped) lastLooked.set(key, started);
       return { events, lost };
     })
     .finally(() => looking.delete(key));
-  looking.set(key, run);
+  looking.set(key, { run, sid });
   return run;
 }
 
