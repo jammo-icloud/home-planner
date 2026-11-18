@@ -28,7 +28,7 @@ export function laneOf(e: Event | NewEventShape, state: Pick<State, 'pageDrifts'
       return 'budget';
     case 'calendar.appointment': case 'calendar.appointment.remove': case 'calendar.appointment.change':
     case 'calendar.household': case 'calendar.household.rename': case 'calendar.target':
-    case 'guest.allow': case 'guest.revoke': case 'guests.arrival': case 'guests.booking':
+    case 'guest.allow': case 'guest.revoke': case 'guest.ask': case 'guest.ask.decline': case 'guests.arrival': case 'guests.booking':
     case 'booking.block': case 'booking.unblock': case 'booking.confirm': case 'booking.cancel':
     case 'booking.suggest': case 'booking.release':
       return 'calendar';

@@ -11,7 +11,7 @@
 
 import { randomBytes, randomInt, timingSafeEqual } from 'node:crypto';
 
-import { emailKey, isDay, isEmail, isGuest, MONTHS_SHORT, zoneOf } from './types.ts';
+import { ASK_DAYS, ASK_HOW_MAX, ASK_NAME_MAX, askWaits, emailKey, isDay, isEmail, isGuest, MONTHS_SHORT, SYSTEM, zoneOf } from './types.ts';
 import type { Actor, Day, Event, EventId, Offer, State, Stay } from './types.ts';
 import { ToolError } from './errors.ts';
 import { Limiter } from './limiter.ts';
@@ -1486,4 +1486,146 @@ export async function revokeGuest(ctx: MemberCtx, email: string, why: unknown): 
   const reason = reasonOf(why, 'say why they are coming off the list');
   await ctx.store.append(ctx.who, { op: 'guest.revoke', email: key, why: reason });
   return key;
+}
+
+// ─── asking to be added ──────────────────────────────────────────────────────
+//
+// Someone not on the list asks from the booking page, signed out. The answer
+// is the same whatever is true of the address (new, on the list, asked
+// already, declined before), after the same floor as a sign-in, so the page
+// never tells a stranger who is on the list. A request is written, as
+// `system`, only for an address that is not on the list and has none waiting;
+// nothing is ever mailed to the asker for asking. A member's Add puts them on
+// the list and sends one email with a plain link to the booking page (no
+// token, no code: it may be read days later); a Decline sends nothing, ever.
+
+/** Requests from one client address (its /64 for IPv6) in an hour, written or not. */
+const ASKS_PER_IP_PER_HOUR = 5;
+/** Requests naming one address in a day, from anywhere, written or not. */
+const ASKS_PER_EMAIL_PER_DAY = 3;
+const asksPerIp = new Limiter(ASKS_PER_IP_PER_HOUR, HOUR);
+const asksPerEmail = new Limiter(ASKS_PER_EMAIL_PER_DAY, 24 * HOUR);
+
+/** What the booking page sends, checked: the address (lowercased), the name, how they know the household. */
+export interface AskAsked { email: string; name: string; how: string }
+
+/** The request's fields, trimmed, or a 400 in the asker's own terms. */
+export function askAsked(o: Record<string, unknown>): AskAsked {
+  const text = (v: unknown): string => (typeof v === 'string' ? v.trim() : '');
+  const name = text(o['name']);
+  if (!name) throw new ToolError('give your name');
+  if (name.length > ASK_NAME_MAX) throw new ToolError(`keep your name under ${ASK_NAME_MAX} characters`);
+  if (!isEmail(o['email'])) throw new ToolError('that is not an email address');
+  const how = text(o['how']);
+  if (!how) throw new ToolError('say how you know them');
+  if (how.length > ASK_HOW_MAX) throw new ToolError(`keep how you know them under ${ASK_HOW_MAX} characters`);
+  return { email: emailKey(o['email']), name, how };
+}
+
+/** Work on one address's request, one at a time per household: a second answer waits for the first, then reads what it did. */
+const askTurns = new Map<string, Promise<unknown>>();
+function inAskTurn<T>(store: Store, email: string, work: () => Promise<T>): Promise<T> {
+  const key = `${store.path}|${email}`;
+  const run = (askTurns.get(key) ?? Promise.resolve()).then(work, work);
+  const tail = run.catch(() => undefined);
+  askTurns.set(key, tail);
+  void tail.then(() => { if (askTurns.get(key) === tail) askTurns.delete(key); });
+  return run;
+}
+
+/** Any address in something about to be logged, as <address>: the log is no place for who asked. */
+const noAddresses = (text: string): string => text.replace(/[^\s<>"'(),;:]+@[^\s<>"'(),;:]+/g, '<address>');
+
+/**
+ * Ask to be put on the guest list. Resolves to nothing, after the same floor
+ * whatever was written, so the caller answers the same `{ ok: true }` every
+ * time; refuses only what says nothing about the list: a field that is wrong
+ * (400, before anything is counted) or too many requests (429).
+ */
+export async function askToBeAdded(
+  ctx: { store: Store; now: () => number; ip: string; today: Day },
+  o: Record<string, unknown>,
+): Promise<void> {
+  const asked = askAsked(o);
+  const now = ctx.now();
+  asksPerIp.sweep(now);
+  asksPerEmail.sweep(now);
+  if (!asksPerIp.take(ctx.ip, now)) throw new ToolError('too many requests from here: try again in an hour', 429);
+  if (!asksPerEmail.take(asked.email, now)) throw new ToolError('too many requests for that address today: try again tomorrow', 429);
+  const floor = signInFloor();
+  const write = inAskTurn(ctx.store, asked.email, async () => {
+    const state = ctx.store.state;
+    if (state.guests.has(asked.email)) return;
+    const was = state.guestAsks.get(asked.email);
+    if (was && askWaits(was, ctx.today, zoneOf(state))) return;
+    await ctx.store.append(SYSTEM, { op: 'guest.ask', ...asked });
+  }).catch((err: unknown) => {
+    // The asker is told the same either way; the owner reads why in the log, without the address.
+    console.warn(`[budget] a request to be a guest was not written: ${noAddresses((err as Error)?.message ?? String(err))}`);
+  });
+  await Promise.all([floor, write]);
+}
+
+/** The one email a request ever causes: they are on the list, and where to sign in. A plain link; nothing in it expires. */
+export function addedMail(o: { label: string; name: string; email: string; url: string }): Omit<Mail, 'to'> {
+  return {
+    subject: "You're on the list",
+    text: [
+      `Hello ${o.name},`,
+      '',
+      `You're on ${o.label}'s guest list. You can now ask for nights with them.`,
+      '',
+      `Open the booking page, type this email address (${o.email}) and press "Send me a link":`,
+      '',
+      `${o.url}/book`,
+      '',
+    ].join('\n'),
+  };
+}
+
+/** How a request was answered: who, and for an Add whether its email went. */
+export type AskAnswered =
+  | { answer: 'added'; email: string; name: string; mailed: boolean }
+  | { answer: 'declined'; email: string; name: string };
+
+/**
+ * A member answers a request: `add` puts them on the list (with how they know
+ * the household as the reason) and sends the one email; `decline` closes it,
+ * and nobody outside is told. Whoever answers first settles it: the second is
+ * a 409 naming who did. An Add whose email could not go (no mail here, or the
+ * server refused it) still adds, and says so.
+ */
+export async function answerGuestAsk(ctx: ToolContext, o: Record<string, unknown>): Promise<AskAnswered> {
+  const answer = o['answer'];
+  if (answer !== 'add' && answer !== 'decline') throw new ToolError('answer add or decline');
+  if (!isEmail(o['email'])) throw new ToolError('there is no such request', 404);
+  const email = emailKey(o['email']);
+  return inAskTurn(ctx.store, email, async () => {
+    const state = ctx.store.state;
+    const a = state.guestAsks.get(email);
+    if (!a) throw new ToolError('there is no such request', 404);
+    if (a.answer) throw new ToolError(a.answer.by === ctx.who ? 'you already answered it' : `already answered by ${a.answer.by}`, 409);
+    if (!askWaits(a, ctx.today, zoneOf(state))) throw new ToolError(`that request is more than ${ASK_DAYS} days old, and no longer waits`, 409);
+    if (answer === 'decline') {
+      await ctx.store.append(ctx.who, { op: 'guest.ask.decline', email });
+      return { answer: 'declined', email, name: a.name };
+    }
+    await ctx.store.append(ctx.who, { op: 'guest.allow', email, name: a.name, why: a.how });
+    return { answer: 'added', email, name: a.name, mailed: await mailAdded(ctx, email, a.name) };
+  });
+}
+
+/** The Add's email, through booking's mail while booking is on here; false when there is none, or it did not go. */
+async function mailAdded(ctx: ToolContext, email: string, name: string): Promise<boolean> {
+  const m = ctx.mail;
+  if (!m || m.off || !m.smtp || !m.url) return false;
+  const label = ctx.store.state.label;
+  try {
+    await m.send(m.smtp, { to: email, ...addedMail({ label, name, email, url: m.url }) }, label);
+    return true;
+  } catch (err) {
+    const why = err instanceof MailError ? err.reply : (err as Error)?.message ?? String(err);
+    console.warn(`[budget] the email to a guest just added was not sent: ${noAddresses(why)}`);
+    return false;
+  }
 }

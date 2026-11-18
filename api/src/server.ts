@@ -122,6 +122,8 @@
  *   GET  /api/guests                { guests }: who may ask to stay, by name, address and how you know them
  *   POST /api/guests                { email, name, why }: put someone on the list; answers with the settings
  *   DELETE /api/guests/:email       { why }: take them off it, and end their sessions; their stays stand
+ *   POST /api/guests/asks           { email, answer: add | decline }: answer someone who asked to be added; the settings,
+ *                                   and `answered` (for an add, whether its email went); 409 naming who answered first
  *   POST /api/guests/arrival        { text }: how a guest gets in, sent in each confirmation ('' for none; at most 1000)
  *                                   (these three and the two above: 404 in any household but the one friends book with)
  *   POST /api/phone-setup/code      { origin }: a one-time link for a phone to set up its calendar, ten minutes,
@@ -142,6 +144,8 @@
  *   GET  /book/tokens.css           the shared tokens, under the one path the proxy exposes
  *   GET  /book/favicon.ico, /book/icon.svg, /book/icon-180.png   the page's icons, under the same path
  *   POST /book/start                { email }: one sentence back, always; a code and link by email if it is on the list
+ *   POST /book/ask                  { name, email, how }: ask to be put on the list; { ok: true }, the same whoever asks,
+ *                                   and nothing mailed (5 an hour per client address, 3 a day per address asked for)
  *   GET  /book/open?token=          the emailed link: a page with one Continue button, and no side effects,
  *                                   so a mail scanner that fetches the link spends nothing
  *   POST /book/open                 { token } (the button's form): same-origin only; a guest session, and back to /book
@@ -206,7 +210,7 @@ import type { Proposal, ToolContext } from './tools.ts';
 import { firstRun } from './first-run.ts';
 import { openMonths } from './envelopes.ts';
 import {
-  areaIndex, ARRIVAL_MAX, DEFAULT_AREAS, GUEST_PREFIX, householdDay, isDay, isEmail, MODES, SCHEMES, SPLIT, SYSTEM, isSpend, monthOf, movesLeft, sameCalendar, zoneOf,
+  areaIndex, ARRIVAL_MAX, DEFAULT_AREAS, GUEST_PREFIX, householdDay, isDay, isEmail, MODES, openAsks, SCHEMES, SPLIT, SYSTEM, isSpend, monthOf, movesLeft, sameCalendar, zoneOf,
 } from './types.ts';
 import type { Actor, Day, Event, Mode, NewEventShape, Scheme, SortedInto, SplitPart, State, Txn } from './types.ts';
 import { parse, dedupeKey } from './parse.ts';
@@ -247,7 +251,7 @@ import { todayEvents, weekEvents, weekWindow } from './calendar-view.ts';
 import { addDays } from './calendar.ts';
 import { calendarMoney } from './calendar-money.ts';
 import {
-  acceptSuggestion, aheadOf, aheadWords, allowGuest, availability, blockNights, bookingAvailability, bookUrl, bookingHousehold, bookingNeeds, bookingOffWords, bookingStatus,
+  acceptSuggestion, aheadOf, aheadWords, allowGuest, answerGuestAsk, askToBeAdded, availability, blockNights, bookingAvailability, bookUrl, bookingHousehold, bookingNeeds, bookingOffWords, bookingStatus,
   cancelStay, changeStay, finishSignIn, guestList, memberNights, NO_BOOKING_HOUSEHOLD,
   GUEST_CANCEL_WHY, mailWhileOff, mine, raiseReleaseCards, request, revokeGuest, SIGN_IN_MESSAGE, signInFloor, startSignIn, suggest, unblockNights,
 } from './booking.ts';
@@ -1009,7 +1013,11 @@ const bookingView = (state: State, booking: BookingStatus, household: string | n
 const guestsView = (state: State, booking: BookingStatus, household: string | null) => {
   const view = onOrOff(booking, household);
   return view.on && booking.on
-    ? { on: true as const, url: `${booking.config.url}/book`, list: guestList(state), arrival: state.settings.arrival }
+    ? {
+        on: true as const, url: `${booking.config.url}/book`, list: guestList(state), arrival: state.settings.arrival,
+        // Who asked to be added and still waits for an answer, oldest first.
+        asks: openAsks(state, todayInTz(zoneOf(state))).map((a) => ({ email: a.email, name: a.name, how: a.how, at: a.at })),
+      }
     : view;
 };
 
@@ -1543,6 +1551,13 @@ export async function start(
       throw new ToolError('not available', 404);
     }
     const onList = async (email: string) => (await households.open(now.config.household)).state.guests.has(email);
+
+    // Someone not on the list asks to be put on it. The same answer whoever asks, and nothing mailed to them.
+    if (path === '/book/ask' && req.method === 'POST') {
+      const store = await households.open(now.config.household);
+      await askToBeAdded({ store, now: Date.now, ip: clientIp(req), today: todayInTz(zoneOf(store.state)) }, await body());
+      return json(res, 200, { ok: true });
+    }
 
     // Looking at the link spends nothing: a mail scanner that fetches it sees
     // a button. Pressing the button is what signs in.
@@ -2215,6 +2230,13 @@ export async function start(
       if (!booksHere) throw new ToolError('not available', 404);
       await allowGuest(ctx, await bodyOf(req));
       return json(res, 200, await settingsView(active, who, bookingHere, openHousehold(session), session.admin));
+    }
+
+    // A request to be added, answered from Today or Settings: { email, answer: 'add' | 'decline' }. Any member, in any
+    // household that has one waiting (booking may have moved on since); the Add's email goes only while it books here.
+    if (path === '/api/guests/asks' && req.method === 'POST') {
+      const answered = await answerGuestAsk(ctx, await bodyOf(req));
+      return json(res, 200, { ...(await settingsView(active, who, bookingHere, openHousehold(session), session.admin)), answered });
     }
 
     if (path === '/api/guests/arrival' && req.method === 'POST') {

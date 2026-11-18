@@ -872,8 +872,15 @@ export function describe(
     }
     case 'calendar.appointment.remove': what = `took an appointment off the calendar: ${e.summary}`; break;
     // ─── booking ────────────────────────────────────────────────────────────
-    case 'guest.allow': what = `allowed guest ${e.name.trim()} (${e.email.trim().toLowerCase()})`; break;
+    case 'guest.allow': what = `added ${e.name.trim()} to the guest list`; break;
     case 'guest.revoke': what = `took ${e.email.trim().toLowerCase()} off the guest list`; break;
+    // The app's line, so it says who asked: the asker is the subject, not the author.
+    case 'guest.ask': what = `${e.name.trim()} asked to be a guest`; break;
+    case 'guest.ask.decline': {
+      const email = e.email.trim().toLowerCase();
+      what = `declined ${state?.guestAsks.get(email)?.name ?? email}'s request`;
+      break;
+    }
     case 'booking.block': what = `kept ${dayRange(e.from, e.to)} for the household`; break;
     case 'booking.unblock': {
       const b = state?.stayBlocks.get(e.block);

@@ -724,7 +724,7 @@ describe('reasons, scope and sentences', () => {
     const s = await fresh();
     const say = (e: Event) => describeEvent(e, s.state).what;
     const [a] = await s.append('alice', allow('guests@example.com'));
-    assert.equal(say(a!), 'allowed guest Nguyen family (guests@example.com)');
+    assert.equal(say(a!), 'added Nguyen family to the guest list');
     const [b] = await s.append('alice', { op: 'booking.block', from: '2026-12-12', to: '2026-12-15', why: 'w' });
     assert.equal(say(b!), 'kept 12–15 Dec for the household');
     const [c] = await s.append('alice', confirm('r1'));

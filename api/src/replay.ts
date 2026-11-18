@@ -12,6 +12,8 @@ import { DAY_RE, PLAN_LIMITS, PLAN_STATES, goalLabel, goalSpelling, pageView, sa
 import type { IncomeSource } from './income.ts';
 import {
   ARRIVAL_MAX,
+  ASK_HOW_MAX,
+  ASK_NAME_MAX,
   BRIEFING_SOURCES,
   CALENDAR_LINK_KINDS,
   CLAUDE,
@@ -46,7 +48,7 @@ import {
 } from './types.ts';
 import type {
   AccountBalance, Actor, BillRecord, Adjustment, Appearance, Appointment, CalendarLink, Location, Month, CalendarRef, Category,
-  DocRef, DocumentsFolder, DocumentsState, Drift, Envelope, Event, EventOf, EnvelopeId, EventId, Guest, Hand, MonthPlan, MoveFile, Offer, PageDrift,
+  DocRef, DocumentsFolder, DocumentsState, Drift, Envelope, Event, EventOf, EnvelopeId, EventId, Guest, GuestAsk, Hand, MonthPlan, MoveFile, Offer, PageDrift,
   Per, Plan, PlanId, Prediction, RemovedEnvelope, Rule, SortedInto, State, Stay, SplitPart, StayBlock, Settings, Txn,
 } from './types.ts';
 
@@ -114,6 +116,7 @@ interface Draft {
   appointments: Map<number, Appointment>;
   /** Guests, stays and blocks are replaced whole on every change too. */
   guests: Map<string, Guest>;
+  guestAsks: Map<string, GuestAsk>;
   stays: Map<EventId, Stay>;
   stayBlocks: Map<EventId, StayBlock>;
   savingsAccount: string | null;
@@ -139,7 +142,7 @@ const emptyDraft = (): Draft => ({
   household: null, target: null, conflicts: new Map(),
   zone: null, booking: null, model: null,
   plans: new Map(), hands: new Map(), drifts: new Map(), pageDrifts: new Map(), appointments: new Map(),
-  guests: new Map(), stays: new Map(), stayBlocks: new Map(),
+  guests: new Map(), guestAsks: new Map(), stays: new Map(), stayBlocks: new Map(),
   savingsAccount: null, balances: new Map(),
   documents: { folder: null, previous: null, docs: new Map(), waiting: new Map(), relinked: new Map() },
   lastEventId: null, count: 0,
@@ -159,7 +162,7 @@ function freeze(d: Draft): State {
     settings: { areas: d.areas, links: d.links, arrival: d.arrival, appearance: d.appearance, booking: d.booking, model: d.model },
     calendar: { household: d.household, target: d.target, conflicts: d.conflicts },
     plans: d.plans, hands: d.hands, drifts: d.drifts, pageDrifts: d.pageDrifts, appointments: d.appointments,
-    guests: d.guests, stays: d.stays, stayBlocks: d.stayBlocks,
+    guests: d.guests, guestAsks: d.guestAsks, stays: d.stays, stayBlocks: d.stayBlocks,
     savings: { account: d.savingsAccount, balances: d.balances },
     documents: { ...d.documents },
     lastEventId: d.lastEventId, eventCount: d.count,
@@ -238,7 +241,7 @@ function thaw(s: State): Draft {
     conflicts: new Map(s.calendar.conflicts),
     zone: s.zone, booking: s.settings.booking, model: s.settings.model,
     plans: new Map(s.plans), hands: new Map(s.hands), drifts: new Map(s.drifts), pageDrifts: new Map(s.pageDrifts), appointments: new Map(s.appointments),
-    guests: new Map(s.guests), stays: new Map(s.stays), stayBlocks: new Map(s.stayBlocks),
+    guests: new Map(s.guests), guestAsks: new Map(s.guestAsks), stays: new Map(s.stays), stayBlocks: new Map(s.stayBlocks),
     savingsAccount: s.savings.account, balances: new Map(s.savings.balances),
     // The folders are replaced whole; the maps are copied, since the fold edits them in place.
     documents: {
@@ -319,6 +322,8 @@ export function validate(e: Event): void {
   if (e.op === 'guests.booking' && e.calendarGone !== undefined && (e.who !== SYSTEM || e.on !== false || e.calendarGone !== true)) {
     throw new ReplayError('calendarGone is written by system, when it turns booking off', e);
   }
+  // A request to be a guest is the app's line: the address on it is only what was typed on the booking page.
+  if (e.op === 'guest.ask' && e.who !== SYSTEM) throw new ReplayError('a request to be a guest is written by system', e);
   // A guest asks to stay (for new dates or changed ones), and cancels their
   // own; whether they are on the list, and whose stay it is, the fold says.
   if (isGuest(e.who)) {
@@ -998,6 +1003,16 @@ function validateBooking(e: Event): void {
     case 'guest.revoke':
       email(e.email);
       return;
+    case 'guest.ask':
+      email(e.email);
+      if (!named(e.name)) throw refuse("the asker's name cannot be empty");
+      if (e.name.trim().length > ASK_NAME_MAX) throw refuse(`a name is at most ${ASK_NAME_MAX} characters`);
+      if (!named(e.how)) throw refuse('how they know the household cannot be empty');
+      if (e.how.trim().length > ASK_HOW_MAX) throw refuse(`how they know the household is at most ${ASK_HOW_MAX} characters`);
+      return;
+    case 'guest.ask.decline':
+      email(e.email);
+      return;
     case 'booking.block':
       nights(e.from, e.to, 'from', 'to');
       return;
@@ -1071,7 +1086,8 @@ export function needsMember(e: Event): boolean {
   // The guest list and the household's nights are the members' to keep. A
   // guest's own cancel is the one way in from outside, and
   // refuseGuest has its say on that.
-  const booking = e.op.startsWith('guest.') || e.op.startsWith('booking.');
+  // A request to be a guest is the one line here from nobody in the household: validate() keeps it to system.
+  const booking = (e.op.startsWith('guest.') || e.op.startsWith('booking.')) && e.op !== 'guest.ask';
   return onPlan || (booking && !isGuest(e.who));
 }
 
@@ -2079,6 +2095,11 @@ function fold(d: Draft, e: Event): void {
     case 'guest.allow': {
       // Keyed by the address as typed anywhere: trimmed, lowercased. Allowing
       // again replaces the entry, so a re-allow after a revoke is just that.
+      // A request from the address that still waits is answered by this: they are added.
+      const asked = d.guestAsks.get(emailKey(e.email));
+      if (asked && asked.answer === null) {
+        d.guestAsks.set(emailKey(e.email), { ...asked, answer: { kind: 'added', by: e.who, at: e.at } });
+      }
       d.guests.set(emailKey(e.email), {
         name: e.name.trim(), why: e.why.trim(), allowedBy: e.who, at: e.at,
         ...(e.contact !== undefined
@@ -2092,6 +2113,23 @@ function fold(d: Draft, e: Event): void {
       const email = emailKey(e.email);
       if (!d.guests.has(email)) throw new ReplayError(`${email} is not on the list`, e);
       d.guests.delete(email);
+      return;
+    }
+
+    case 'guest.ask': {
+      // A later request from the same address takes the place of the last, answered or not:
+      // the booking page writes one only when none waits, and the fold has no clock to say one has.
+      const email = emailKey(e.email);
+      if (d.guests.has(email)) throw new ReplayError(`${email} is already on the list`, e);
+      d.guestAsks.set(email, { id: e.id, at: e.at, name: e.name.trim(), how: e.how.trim(), answer: null });
+      return;
+    }
+
+    case 'guest.ask.decline': {
+      const email = emailKey(e.email);
+      const asked = d.guestAsks.get(email);
+      if (!asked || asked.answer !== null) throw new ReplayError(`the request from ${email} is no longer waiting`, e);
+      d.guestAsks.set(email, { ...asked, answer: { kind: 'declined', by: e.who, at: e.at } });
       return;
     }
 

@@ -662,6 +662,15 @@ export type Event = Meta &
     /** Someone who may ask to stay. Allowing the same email again replaces the entry. */
     | { op: 'guest.allow'; email: string; name: string; why: string; contact?: ContactLink }
     | { op: 'guest.revoke'; email: string; why: string }
+    /**
+     * Someone not on the list asking, from the booking page, to be put on it:
+     * their name and how they know the household, as they typed them. Written
+     * by `system`, never as the asker: an address typed on a public page is not
+     * proof of anything. It waits until a member answers, or for ASK_DAYS.
+     */
+    | { op: 'guest.ask'; email: string; name: string; how: string }
+    /** A member turning a request down. The asker is never told. */
+    | { op: 'guest.ask.decline'; email: string; why?: string }
     /** Nights kept for the household, from (inclusive) to (exclusive). Guests see them as taken. */
     | { op: 'booking.block'; from: Day; to: Day; why: string }
     | { op: 'booking.unblock'; block: EventId; why: string }
@@ -1041,6 +1050,43 @@ export interface Guest {
   readonly contact?: ContactLink;
 }
 
+/**
+ * The latest request to be a guest from one address, keyed by it, lowercased.
+ * Kept once answered, with the answer, so a second answer is told who gave
+ * the first; a later request from the address takes its place.
+ */
+export interface GuestAsk {
+  /** The `guest.ask`. */
+  readonly id: EventId;
+  readonly at: string;
+  readonly name: string;
+  readonly how: string;
+  /** Null while it waits. Added: put on the list (from the request or by hand). */
+  readonly answer: { readonly kind: 'added' | 'declined'; readonly by: Actor; readonly at: string } | null;
+}
+
+/** How long a request nobody answers waits, in the household's days. */
+export const ASK_DAYS = 30;
+/** The asker's name, and how they know the household, as the booking page takes them. */
+export const ASK_NAME_MAX = 60;
+export const ASK_HOW_MAX = 120;
+
+const dayAfter = (d: Day, n: number): Day => new Date(Date.parse(`${d}T00:00:00Z`) + n * 86_400_000).toISOString().slice(0, 10);
+
+/**
+ * Whether a request still waits on `today`: unanswered, and asked fewer than
+ * ASK_DAYS of the household's days ago. An old one simply stops; nothing is written.
+ */
+export const askWaits = (a: GuestAsk, today: Day, tz: string): boolean =>
+  a.answer === null && today < dayAfter(householdDay(tz, a.at), ASK_DAYS);
+
+/** The requests waiting on `today`, oldest first. */
+export function openAsks(state: Pick<State, 'guestAsks' | 'zone'>, today: Day): (GuestAsk & { email: string })[] {
+  const tz = zoneOf(state);
+  return [...state.guestAsks].filter(([, a]) => askWaits(a, today, tz)).map(([email, a]) => ({ email, ...a }))
+    .sort((a, b) => (a.at < b.at ? -1 : a.at > b.at ? 1 : 0));
+}
+
 /** A confirmed stay, keyed by its `booking.confirm`. Kept when cancelled, and marked. */
 export interface Stay {
   /** The `proposal.offer` that asked for it. */
@@ -1173,6 +1219,8 @@ export interface State {
   readonly appointments: ReadonlyMap<number, Appointment>;
   /** Who may ask to stay, keyed by email, lowercased. */
   readonly guests: ReadonlyMap<string, Guest>;
+  /** The latest request to be put on that list from each address, answered or not (openAsks says which wait). */
+  readonly guestAsks: ReadonlyMap<string, GuestAsk>;
   /** Every confirmed stay, cancelled ones included and marked. */
   readonly stays: ReadonlyMap<EventId, Stay>;
   readonly stayBlocks: ReadonlyMap<EventId, StayBlock>;

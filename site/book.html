@@ -93,6 +93,17 @@
   .banner .actions { margin-top: 4px; }
   .fence { display: block; width: 100%; height: 22px; color: var(--line-strong); }
 
+  /* asking to be added: Back above the title, and Sent, the same words whatever happened */
+  .letterhead #addme-back { justify-self: start; margin-left: calc(var(--sp-2) * -1); }
+  .addme-sent { display: grid; gap: var(--sp-3); justify-items: start; }
+  .addme-sent .tick { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent-tint); color: var(--accent-ink); }
+  .addme-sent .tick .i { width: 20px; height: 20px; }
+  .addme-sent h2 { font-size: var(--fs-headline); }
+  /* Focus is put on the heading so the words are read out; it is not a control, so it takes no ring. */
+  .addme-sent h2:focus-visible { outline: none; }
+  .addme-sent p { font-size: var(--fs-body); line-height: var(--lh-body); color: var(--ink-soft); }
+
   /* one column on a phone, in the document's order; the two columns are only a desk's */
   .body { display: grid; gap: var(--sp-6); }
   @container page (min-width: 1040px) {
@@ -181,6 +192,7 @@
       </div>
 
       <header class="letterhead">
+        <button class="btn bare" type="button" id="addme-back" hidden>‹ Back</button>
         <span class="place-line">Placitas, New Mexico · 5,955 feet</span>
         <h1 id="title">Come and stay</h1>
         <p class="quiet" id="lede"></p>
@@ -208,6 +220,27 @@
         <button class="btn" type="submit">Sign in</button>
         <button class="link t-small" type="button" id="other-address" style="justify-self: center">Use a different address</button>
       </form>
+
+      <!-- Not on their list yet: a way to ask, under the sign-in. The request form, and the Sent that answers it, take
+           the sign-in's place in the same page. Sent says the same words whatever was true of the address. -->
+      <section class="card stack" id="addme-card" aria-labelledby="addme-card-h" hidden>
+        <h2 class="section-title" id="addme-card-h">Not on their list yet?</h2>
+        <p class="hint">Ask them to add you. If they do, an email comes with a link to sign in.</p>
+        <button class="btn" type="button" id="addme-open">Ask to be added</button>
+      </section>
+      <form class="stack" id="f-addme" novalidate hidden>
+        <div class="field"><label for="am-name">Your name</label><input class="input" id="am-name" autocomplete="name" maxlength="60"></div>
+        <div class="field"><label for="am-email">Your email</label><input class="input" id="am-email" type="email" autocomplete="email" maxlength="200"></div>
+        <div class="field"><label for="am-how">How do you know them?</label><input class="input" id="am-how" maxlength="120"></div>
+        <button class="btn primary" type="submit" id="addme-send">Send my request</button>
+        <p class="hint">Nothing is sent to you unless they add you.</p>
+      </form>
+      <section class="addme-sent" id="addme-sent" role="status" hidden>
+        <span class="tick" aria-hidden="true"><svg class="i" viewBox="0 0 16 16" aria-hidden="true"><path d="M3.5 8.5l3 3 6-7"/></svg></span>
+        <h2 id="addme-sent-h" tabindex="-1">Sent</h2>
+        <p id="addme-sent-text"></p>
+        <button class="btn" type="button" id="addme-return">Back to the booking page</button>
+      </section>
 
       <!-- Signed in: other dates put to them, the month, their requests, the form. -->
       <div class="banner" id="suggest" role="status" hidden>
@@ -379,6 +412,11 @@ function view(which) {
   $('f-email').hidden = !signin;
   $('sent').hidden = true;
   $('f-code').hidden = true;
+  // Asking to be added: its card with the sign-in only (signed out, and booking on), its form and Sent in their place.
+  $('addme-card').hidden = !signin;
+  $('f-addme').hidden = which !== 'addme';
+  $('addme-back').hidden = which !== 'addme';
+  $('addme-sent').hidden = which !== 'addme-sent';
   $('body').hidden = !book;
   if (!book) $('suggest').hidden = true;
 }
@@ -390,11 +428,16 @@ function showOff() {
   $('lede').className = 'quiet';
 }
 
-function showSignIn() {
-  view('signin');
+/** The letterhead a signed-out guest reads. */
+function welcome() {
   $('title').textContent = 'Come and stay';
   $('lede').className = 'quiet';
   $('lede').textContent = "On the north side of the Sandias. Pick nights that are open and send a request; we'll answer by email.";
+}
+
+function showSignIn() {
+  view('signin');
+  welcome();
 }
 
 async function showBooking() {
@@ -727,6 +770,57 @@ async function acceptSuggestion(id, button) {
   }
 }
 
+// ── asking to be added ──
+// Someone not on their list asks, signed out. The answer is the same whatever is true of the address, and nothing is
+// sent to them for asking; if a member adds them, one email comes with the page's address, and they sign in as any guest.
+function showAddMe() {
+  view('addme');
+  $('title').textContent = 'Ask to be added';
+  $('lede').className = 'quiet';
+  $('lede').textContent = 'They keep a short list of people who can book. Tell them who you are.';
+  $('am-name').focus();
+}
+
+/** Back, or Escape in the form: the sign-in again, with focus on the button that opened the form. What was typed stays. */
+function leaveAddMe() {
+  showSignIn();
+  $('addme-open').focus();
+}
+
+$('addme-open').addEventListener('click', showAddMe);
+$('addme-back').addEventListener('click', leaveAddMe);
+$('f-addme').addEventListener('keydown', (e) => {
+  if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); leaveAddMe(); }
+});
+
+$('f-addme').addEventListener('submit', async (e) => {
+  e.preventDefault();
+  clearErr();
+  const b = $('addme-send');
+  b.disabled = true;
+  const email = $('am-email').value.trim();
+  try {
+    await call('/book/ask', { name: $('am-name').value.trim(), email, how: $('am-how').value.trim() });
+    view('addme-sent');
+    welcome();
+    $('addme-sent-text').textContent = `Thanks. If they add you, an email comes to ${email} with a link to sign in and pick your nights.`;
+    $('f-addme').reset();
+    $('addme-sent-h').focus();
+  } catch (ex) {
+    // Booking went off meanwhile: the page says what every other step says then.
+    if (ex.status === 404) return showOff();
+    // What was typed stays: the refusal (a field, or too many requests) is said in the page's one slot.
+    showErr(ex);
+  } finally {
+    b.disabled = false;
+  }
+});
+
+$('addme-return').addEventListener('click', () => {
+  showSignIn();
+  $('g-email').focus();
+});
+
 // ── signing in, and out ──
 $('f-email').addEventListener('submit', async (e) => {
   e.preventDefault();
@@ -738,6 +832,7 @@ $('f-email').addEventListener('submit', async (e) => {
     const r = await call('/book/start', { email: asked });
     $('sent-text').textContent = r.message;
     $('f-email').hidden = true;
+    $('addme-card').hidden = true;
     $('sent').hidden = false;
     $('f-code').hidden = false;
     $('g-code').value = '';

@@ -1099,3 +1099,129 @@ describe("the page ledger: 0.10.3, a category's menu adds its envelopes", () => 
     assert.deepEqual([...want('M', 3), ...want('F', 4), ...want('G', 3)].filter((r) => !rows.has(r)), []);
   });
 });
+
+// ── 0.11.0: a guest can ask to be added. The booking page (site/book.html, pinned here for the first time): A its card
+// under the sign-in, F the request form, S the Sent screen. Today: T the waiting row and what takes its place. Settings ›
+// Guests and booking: G the requests under the guest list. W: the server's doors and words. V: the build. ──
+describe('the page ledger: 0.11.0, a guest can ask to be added', () => {
+  const book = read('../../site/book.html');
+  const R = {
+    bookMarkup: book.slice(0, book.indexOf('<script>')),
+    bookScript: book.slice(book.indexOf('<script>')),
+    bookCss: between(book, '<style>', '</style>'),
+    addme: between(book, '// ── asking to be added', '// ── signing in, and out'),
+    waiting: between(script, 'function renderWaiting(', '/** Who did a row, in words'),
+    askRow: between(script, '// ── asking to be a guest, on Today', 'function renderWaiting('),
+    load: between(script, 'async function loadThread(', '/**\n * What is not set up yet'),
+    entry: between(script, 'function entryNode(', '/** The error slot of a block'),
+    guests: between(script, 'const bookingOffWords = ', 'function documentsItem('),
+    css: REGIONS.css,
+    bookingSrc: read('../src/booking.ts'),
+    server,
+    page,
+    pkg: read('../package.json'),
+  } as const;
+  type R = keyof typeof R;
+  const ADDED: readonly (readonly [row: string, text: string, region: R])[] = [
+    // A: one card under the sign-in, in the signed-out state only; "Ask to be added" a plain .btn, so "Send me a link" stays the main action.
+    ['A1', '<section class="card stack" id="addme-card" aria-labelledby="addme-card-h" hidden>', 'bookMarkup'],
+    ['A2', '<h2 class="section-title" id="addme-card-h">Not on their list yet?</h2>', 'bookMarkup'],
+    ['A3', '<p class="hint">Ask them to add you. If they do, an email comes with a link to sign in.</p>', 'bookMarkup'],
+    ['A4', '<button class="btn" type="button" id="addme-open">Ask to be added</button>', 'bookMarkup'],
+    ['A5', "$('addme-card').hidden = !signin;", 'bookScript'],
+    ['A6', "$('addme-card').hidden = true;", 'bookScript'],
+    // F: the form in the same page, its refusals in the page's one slot with what was typed kept.
+    ['F1', '<button class="btn bare" type="button" id="addme-back" hidden>‹ Back</button>', 'bookMarkup'],
+    ['F2', "$('title').textContent = 'Ask to be added';", 'addme'],
+    ['F3', "'They keep a short list of people who can book. Tell them who you are.'", 'addme'],
+    ['F4', '<label for="am-name">Your name</label><input class="input" id="am-name" autocomplete="name" maxlength="60">', 'bookMarkup'],
+    ['F5', '<label for="am-email">Your email</label><input class="input" id="am-email" type="email" autocomplete="email" maxlength="200">', 'bookMarkup'],
+    ['F6', '<label for="am-how">How do you know them?</label><input class="input" id="am-how" maxlength="120">', 'bookMarkup'],
+    ['F7', '<button class="btn primary" type="submit" id="addme-send">Send my request</button>', 'bookMarkup'],
+    ['F8', '<p class="hint">Nothing is sent to you unless they add you.</p>', 'bookMarkup'],
+    ['F9', "await call('/book/ask', { name: $('am-name').value.trim(), email, how: $('am-how').value.trim() });", 'addme'],
+    ['F10', '<form class="stack" id="f-addme" novalidate hidden>', 'bookMarkup'], ['F10', 'showErr(ex);', 'addme'],
+    ['F11', "if (e.key === 'Escape' && !e.isComposing) { e.preventDefault(); leaveAddMe(); }", 'addme'],
+    ['F12', "$('addme-open').focus();", 'addme'], ['F12', "$('am-name').focus();", 'addme'],
+    // S: the same words whatever happened, so the page never tells a stranger who is on the list.
+    ['S1', '<h2 id="addme-sent-h" tabindex="-1">Sent</h2>', 'bookMarkup'],
+    ['S2', '`Thanks. If they add you, an email comes to ${email} with a link to sign in and pick your nights.`', 'addme'],
+    ['S3', '<button class="btn" type="button" id="addme-return">Back to the booking page</button>', 'bookMarkup'],
+    ['S4', '.addme-sent .tick { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 50%;', 'bookCss'],
+    ['S4', 'background: var(--accent-tint); color: var(--accent-ink); }', 'bookCss'],
+    ['S5', "$('addme-sent-h').focus();", 'addme'],
+    // T: Today's waiting row, answered on the row; then one line in its place, and Today read again.
+    ['T1', "if (w.kind === 'guest') { box.appendChild(guestAskRow(w)); continue; }", 'waiting'],
+    ['T2', 'memberDisc(w.ask.name)', 'askRow'],
+    ['T3', "node('span', 'meta', `“${w.ask.how}”`)", 'askRow'],
+    ['T4', "node('span', 'meta', `${w.ask.email} · asked ${waitingWhen(w)}`)", 'askRow'],
+    ['T5', "textBtn('Decline', 'btn hit', null, () => void answer('decline'))", 'askRow'],
+    ['T6', "textBtn('Add to the guest list', 'btn primary hit', null, () => void answer('add'))", 'askRow'],
+    ['T7', "await api('/api/guests/asks', { email: w.ask.email, answer: kind });", 'askRow'],
+    ['T8', '`Added ${a.name} to the guest list. An email with a link to the booking page is on its way to them.`', 'askRow'],
+    ['T9', '`Added ${a.name} to the guest list. The email to them could not be sent: let them know they can now sign in on the booking page.`', 'askRow'],
+    ['T10', "`Declined ${a.name}'s request. ${a.name} isn't added and isn't told.`", 'askRow'],
+    ['T11', 'if (ex.status === 409 || ex.status === 404) guestAnswered(null, ex.message);', 'askRow'],
+    ['T12', 'void loadThread({ quiet: true }).then(() => {', 'askRow'], ['T12', "$('t-waiting').querySelector('.asked-line:last-child')?.focus({ preventScroll: true });", 'askRow'],
+    ['T13', '.asked-line.good{background:var(--good-tint);border-color:var(--good-line);color:var(--good)}', 'css'],
+    ['T14', '.asked-line.quiet{background:var(--surface-sunken);color:var(--ink-soft)}', 'css'],
+    ['T15', 'else if (e.app) text.append(e.what);', 'entry'],
+    ['T16', 'if (!opts.quiet) guestAnswers.lines = [];', 'load'],
+    // G: Settings › Guests and booking lists who asked, under the guest list, with the same two answers.
+    ['G1', "s.push(node('p', 'hint', 'Asked to be added'));", 'guests'],
+    ['G2', '(g.asks ?? []).forEach((x, i) => {', 'guests'],
+    ['G3', "textBtn('Decline', 'btn small hit', `ask-no-${i}`, () => saveSettings('/api/guests/asks', { email: x.email, answer: 'decline' }, null, 'guest-add'))", 'guests'],
+    ['G4', "textBtn('Add to the guest list', 'btn small primary hit', `ask-yes-${i}`, () => saveSettings('/api/guests/asks', { email: x.email, answer: 'add' }, null, 'guest-add'))", 'guests'],
+    ['G5', 'if (settingsData.answered) asked.appendChild(askedLine(settingsData.answered));', 'guests'],
+    // W: the doors, and the one email.
+    ['W1', "if (path === '/book/ask' && req.method === 'POST') {", 'server'],
+    ['W2', "if (path === '/api/guests/asks' && req.method === 'POST') {", 'server'],
+    ['W3', 'subject: "You\'re on the list",', 'bookingSrc'],
+    ['W4', 'const ASKS_PER_IP_PER_HOUR = 5;', 'bookingSrc'], ['W4', 'const ASKS_PER_EMAIL_PER_DAY = 3;', 'bookingSrc'],
+    ['V1', '"version": "0.11.0"', 'pkg'], ['V1', "const BUILD = '0.11.0';", 'page'], ['V1', 'href="/tokens.css?v=0.11.0"', 'page'],
+  ];
+  const GONE: readonly (readonly [row: string, text: string, region: R])[] = [
+    ['V2', "const BUILD = '0.10.3';", 'page'], ['V2', '"version": "0.10.3"', 'pkg'],
+  ];
+  const miss = (list: readonly (readonly [string, string, R])[], want: boolean) => list
+    .filter(([, text, region]) => (want ? R[region] : uncommented(R[region])).includes(text) !== want)
+    .map(([row, text, region]) => `${row} (${region}): ${text}`);
+  test('the regions are found', () => {
+    for (const [name, text] of Object.entries(R)) assert.ok(text.length > 100, name);
+  });
+  test('what 0.11.0 adds', () => {
+    assert.deepEqual(miss(ADDED, true), []);
+    assert.deepEqual(miss(GONE, false), []);
+  });
+  test('/book/ask is answered only while booking is on: after the 404 every other route under /book gives when it is off', () => {
+    const off = server.indexOf("throw new ToolError('not available', 404);", server.indexOf('async function book('));
+    assert.ok(off > 0 && off < server.indexOf("if (path === '/book/ask'"));
+  });
+  test('the card sits under the sign-in, and the form and Sent where the sign-in was', () => {
+    const at = (id: string) => R.bookMarkup.indexOf(`id="${id}"`);
+    assert.ok(at('f-email') < at('addme-card') && at('f-code') < at('addme-card'));
+    assert.ok(at('addme-card') < at('f-addme') && at('f-addme') < at('addme-sent'));
+    assert.ok(at('addme-sent') < at('suggest'), 'all of it before the signed-in page');
+  });
+  test('no opacity in what is new, and every new control on the app page takes the hit area', () => {
+    for (const rule of ['.asked-line', '.ask-row', '.addme-sent']) {
+      const css = rule === '.addme-sent' ? R.bookCss : R.css;
+      const rules = css.split('}').filter((x) => x.includes(rule));
+      assert.ok(rules.length > 0, rule);
+      assert.equal(rules.some((x) => /opacity/.test(x)), false, rule);
+    }
+    for (const b of R.askRow.match(/textBtn\('[^']+', '[^']+'/g) ?? []) assert.match(b, / hit'$/, b);
+    for (const b of R.guests.match(/textBtn\('(Decline|Add to the guest list)', '[^']+'/g) ?? []) assert.match(b, / hit'$/, b);
+  });
+  test('the email carries no sign-in link and no code', () => {
+    const mail = between(R.bookingSrc, 'export function addedMail(', '/** How a request was answered');
+    assert.ok(mail.includes('`${o.url}/book`'));
+    assert.equal(/token|code|book\/open/.test(mail), false);
+  });
+  test('every row of the ledger is pinned', () => {
+    const rows = new Set([...ADDED, ...GONE].map(([r]) => r));
+    const want = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${i + 1}`);
+    assert.deepEqual([...want('A', 6), ...want('F', 12), ...want('S', 5), ...want('T', 16), ...want('G', 5), ...want('W', 4), ...want('V', 2)]
+      .filter((r) => !rows.has(r)), []);
+  });
+});

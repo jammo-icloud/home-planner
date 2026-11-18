@@ -76,6 +76,8 @@ type Body =
       hand?: { plan: PlanRef; from: Actor; to: Actor };
       /** A guest's name, from the list, to say in place of `guest:<their address>`. */
       name?: string;
+      /** The app's own line (someone asking to be a guest): `what` says it whole, and nobody in the household wrote it. */
+      app?: true;
       plan?: PlanRef;
       /** Where the row opens: a live plan's card, an envelope, or a day on the Calendar. */
       open?: Open;
@@ -171,7 +173,7 @@ const quiet = (e: Event): boolean => !planShaped(e.op) || PLAN_LINES.has(e.op);
 /** Who wrote an entry: a briefing is Claude's unless it is the plain fallback; a card the app raised has no author. */
 export function authorOf(e: ThreadEntry): Actor | null {
   if (e.kind === 'briefing') return e.writtenBy === 'fallback' ? null : 'claude';
-  if (e.kind === 'card' && e.app) return null;
+  if ((e.kind === 'card' || e.kind === 'change') && e.app) return null;
   return 'who' in e ? e.who : null;
 }
 
@@ -399,6 +401,7 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
           ...(open ? { open } : {}),
           ...(event ? { event } : {}),
           ...(isGuest(e.who) ? { name: state.guests.get(guestEmail(e.who))?.name ?? 'A guest' } : {}),
+          ...(e.op === 'guest.ask' ? { app: true as const } : {}),
           ...(e.op === 'txn.remove'
             ? { flag: { ...(c.removed ? { removed: c.removed } : {}), seenByMe: c.who === who || !!seen?.has(e.id) } }
             : {}),
@@ -423,6 +426,7 @@ export function build(events: readonly Event[], state: State, who: Actor): Threa
   for (const w of waiting(state, who, events)) {
     if (w.kind === 'offer') waitsOn.add(w.offer.id);
     else if (w.kind === 'flag') waitsOn.add(appliedBy.get(w.event) ?? w.event);
+    else if (w.kind === 'guest') waitsOn.add(w.ask.id);
   }
   // Fresh: placed after what the viewer last read, by someone else. With no cursor, or one the log no longer holds, nothing is.
   const place = new Map(events.map((e, i) => [e.id, i]));
@@ -497,7 +501,7 @@ const zeroRow = (day: Day): DayRow => ({ day, count: 0, total: 0, waiting: 0, fr
 /** What waits on the viewer, each with the lane, author and title its list needs, and whether the pressed kind and person show it. */
 function waitingItems(
   events: readonly Event[], state: State, who: Actor, entries: readonly ThreadEntry[],
-  lane: Lane | undefined, person: Actor | 'everyone',
+  lane: Lane | undefined, person: Actor | 'everyone', today: Day,
 ): WaitingItem[] {
   const tz = zoneOf(state);
   const byId = new Map(events.map((e) => [e.id, e]));
@@ -507,8 +511,14 @@ function waitingItems(
     if (e.kind === 'card') for (const f of e.flags ?? []) rowOf.set(f.event, e);
   }
   const items: WaitingItem[] = [];
-  for (const w of waiting(state, who, events)) {
-    if (w.kind === 'offer') {
+  for (const w of waiting(state, who, events, today)) {
+    if (w.kind === 'guest') {
+      // The app's line, so no author: the asker's name is carried for the row's words and disc.
+      const row = rowOf.get(w.ask.id);
+      items.push({ ...w, lane: 'calendar', by: null, name: w.ask.name, at: w.ask.at, day: row?.day ?? householdDay(tz, w.ask.at),
+        title: `${w.ask.name} asks to be a guest`, ...(row ? { entry: row.id } : {}),
+        inView: row ? seen(row, lane, person) : (lane === undefined || lane === 'calendar') && person === 'everyone' });
+    } else if (w.kind === 'offer') {
       const row = rowOf.get(w.offer.id);
       const author = row ? authorOf(row) : (w.offer.prompt.kind === 'drift' || w.offer.prompt.kind === 'savings' ? null : w.offer.who);
       const plan = w.offer.prompt.kind === 'ask' ? state.plans.get(String(w.offer.args['plan'])) : undefined;
@@ -574,7 +584,7 @@ export async function thread(store: Store, o: ThreadOptions): Promise<ThreadPage
   }
   return {
     today: o.today, who: person, days, entries,
-    waiting: waitingItems(events, state, o.who, all, lane, person),
+    waiting: waitingItems(events, state, o.who, all, lane, person, o.today),
     newSince: state.readCursor.get(o.who) ?? null, before, last,
   };
 }

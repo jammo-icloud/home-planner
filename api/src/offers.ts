@@ -26,8 +26,8 @@ import {
   ProposalStore, ToolError, appendAfterEffect, inOrder, oneEffectAtATime, recordedArgs, runEffect, toolByName, touches,
 } from './tools.ts';
 import type { Proposal, Tool, ToolContext } from './tools.ts';
-import { CLAUDE, visibleTo } from './types.ts';
-import type { Actor, EnvelopeId, Event, EventId, Month, NewEventShape, Offer, OfferPrompt, PlanId, State } from './types.ts';
+import { CLAUDE, householdDay, openAsks, visibleTo, zoneOf } from './types.ts';
+import type { Actor, Day, EnvelopeId, Event, EventId, Month, NewEventShape, Offer, OfferPrompt, PlanId, State } from './types.ts';
 
 /**
  * The figures a card was based on: what is left to assign, and where each
@@ -295,7 +295,9 @@ export async function adjust(ctx: ToolContext, offerId: EventId, args: Record<st
 export type Waiting =
   | { kind: 'offer'; offer: Offer; moved: boolean }
   | { kind: 'flag'; event: EventId }
-  | { kind: 'tosort'; count: number };
+  | { kind: 'tosort'; count: number }
+  /** Someone asking to be put on the guest list, from the booking page: any member answers it, on the row itself. */
+  | { kind: 'guest'; ask: { id: EventId; at: string; email: string; name: string; how: string } };
 
 /**
  * What is waiting on this person.
@@ -303,9 +305,10 @@ export type Waiting =
  * Open cards (an ask only for the member asked), and put-off ones whose numbers have since moved; removed receipts
  * someone else took out that this person has not looked at; and the receipts no
  * envelope has yet, as a single item. A card whose month has closed has nothing
- * left to act on, so it stops waiting.
+ * left to act on, so it stops waiting. Requests to be a guest wait on every
+ * member until one answers, or for ASK_DAYS by `today`, the household's day.
  */
-export function waiting(state: State, who: Actor, events: readonly Event[]): Waiting[] {
+export function waiting(state: State, who: Actor, events: readonly Event[], today: Day = householdDay(zoneOf(state))): Waiting[] {
   const out: Waiting[] = [];
   for (const o of state.thread.offers.values()) {
     if (o.status !== 'open' && o.status !== 'snoozed') continue;
@@ -327,6 +330,9 @@ export function waiting(state: State, who: Actor, events: readonly Event[]): Wai
     if (e.op !== 'txn.remove' || e.who === who || seen?.has(e.id)) continue;
     if (state.txns.has(e.txn)) continue; // put back since
     out.push({ kind: 'flag', event: e.id });
+  }
+  for (const a of openAsks(state, today)) {
+    out.push({ kind: 'guest', ask: { id: a.id, at: a.at, email: a.email, name: a.name, how: a.how } });
   }
   const u = toSort(state);
   if (u.count) out.push({ kind: 'tosort', count: u.count });

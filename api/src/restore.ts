@@ -71,6 +71,8 @@ export function scopeOf(e: Event): Scope {
     // Friends who may come and stay, and the nights kept, confirmed and
     // cancelled. A guest's request is a card, and goes with the thread.
     case 'guest.allow': case 'guest.revoke':
+    // Someone asking to be put on the list, and a member turning them down.
+    case 'guest.ask': case 'guest.ask.decline':
     case 'booking.block': case 'booking.unblock':
     case 'booking.confirm': case 'booking.cancel': case 'booking.suggest': case 'booking.release':
       return 'bookings';
@@ -218,6 +220,7 @@ const DOING: Partial<Record<Event['op'], string>> = {
   'move': 'moving money between envelopes', 'income.set': "setting a month's income",
   'areas.remove': 'removing an area', 'areas.move': 'moving an area', 'areas.rename': 'renaming an area',
   'guest.allow': 'adding a guest', 'guest.revoke': 'taking a guest off the list',
+  'guest.ask': 'a request to be a guest', 'guest.ask.decline': 'declining a request to be a guest',
   'booking.confirm': 'confirming a stay', 'booking.cancel': 'cancelling a stay', 'booking.suggest': 'suggesting other dates',
   'booking.release': "taking a stay off the calendar", 'booking.unblock': 'freeing nights kept for the household',
   'proposal.offer': 'a suggestion', 'proposal.decide': 'deciding a suggestion', 'thread.answer': 'an answer',

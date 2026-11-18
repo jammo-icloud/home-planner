@@ -27,7 +27,7 @@
 <meta name="theme-color" media="(prefers-color-scheme: light)" content="#F6F9FE" />
 <meta name="theme-color" media="(prefers-color-scheme: dark)" content="#0F131A" />
 <link href="https://api.fontshare.com/v2/css?f[]=satoshi@1&display=swap" rel="stylesheet" />
-<link rel="stylesheet" href="/tokens.css?v=0.10.3" />
+<link rel="stylesheet" href="/tokens.css?v=0.11.0" />
 <style>
   *{box-sizing:border-box}
   html,body{margin:0}
@@ -1237,6 +1237,10 @@
   .rowi > span:not(.end){min-width:0;overflow-wrap:anywhere}
   .rowi .meta{display:block;font-size:var(--fs-micro);color:var(--ink-faint)}
   .rowi .end{margin-left:auto;display:flex;gap:var(--sp-1);align-items:center;flex:none}
+  /* A request to be a guest in Settings: its two answers go under the words when the row is too narrow for both. */
+  .rowi.ask-set{flex-wrap:wrap}
+  .rowi.ask-set > span:not(.end){flex:1 1 calc(var(--tap) * 5)}
+  .rowi.ask-set .end{gap:var(--sp-2)}
   /* An on/off switch: a track with a knob, the knob at the end it is set to. */
   .switch{position:relative;width:44px;height:26px;flex:none;padding:0;cursor:pointer;border-radius:13px;
     background:var(--surface-sunken);border:var(--stroke) solid var(--line-strong)}
@@ -1460,6 +1464,17 @@
   #t-waiting h2{margin:0 0 var(--sp-2);font-size:var(--fs-title);font-weight:var(--fw-semibold)}
   #t-waiting .provisional{padding:0}
   #t-waiting .rowi{width:100%;text-align:left;font:inherit;color:var(--ink);background:none;border:0;cursor:pointer}
+  /* Someone asking to be a guest: answered on the row, its two buttons under the words on a phone, beside them on a desk. */
+  #t-waiting .ask-row{display:grid;grid-template-columns:var(--disc) minmax(0,1fr);align-items:start;cursor:default}
+  .ask-row .ask-acts{grid-column:2;display:flex;flex-wrap:wrap;gap:var(--sp-2);justify-content:flex-end}
+  .ask-row .block-err{grid-column:2}
+  @media (min-width:760px){#t-waiting .ask-row{grid-template-columns:var(--disc) minmax(0,1fr) auto;align-items:center}
+    .ask-row .ask-acts{grid-column:3;grid-row:1}}
+  /* What takes an answered request's place: added on the good tint, declined quietly. */
+  .asked-lines{display:grid;gap:var(--sp-2);margin-bottom:var(--sp-2)}
+  .asked-line{margin:0;padding:var(--sp-3) var(--sp-4);font-size:var(--fs-small);border:var(--stroke) solid var(--line);border-radius:var(--r-control)}
+  .asked-line.good{background:var(--good-tint);border-color:var(--good-line);color:var(--good)}
+  .asked-line.quiet{background:var(--surface-sunken);color:var(--ink-soft)}
   /* ── the search in Today's head ── */
   .t-search{align-items:center;gap:var(--sp-2);min-width:0;flex:1}
   .t-search-box{position:relative;display:block;flex:1;min-width:0}
@@ -2370,7 +2385,7 @@ $('signout').addEventListener('click', async () => {
 });
 
 // ── shared: what every screen calls ───────────────────────────────────────
-const BUILD = '0.10.3';
+const BUILD = '0.11.0';
 
 /**
  * Which household's screens these are: moved on whenever a household is left (a switch, the picker, sign-out), so a
@@ -2917,6 +2932,8 @@ function threadParams(extra = {}) {
 async function loadThread(opts = {}) {
   // A thread asked for in a household since left, or overtaken by a newer read, draws nothing and says nothing.
   const turn = ++loadTurn, household = householdTurn;
+  // Today opened afresh: what was just answered on a guest's row has been read, and goes.
+  if (!opts.quiet) guestAnswers.lines = [];
   $('loading').hidden = false;
   $('app-err').hidden = true;
   try {
@@ -3383,6 +3400,7 @@ function resultRow(e, words) {
   } else if (e.kind === 'change') {
     if (e.hand) handedText(text, e);
     else if (e.event) eventText(text, e);
+    else if (e.app) text.append(e.what);
     else text.append(byWord(e), ` ${e.what}`);
     if (e.why) text.appendChild(node('span', 'ent-why', `“${e.why}”`));
     if (e.passage) sub(e.passage);
@@ -3648,18 +3666,95 @@ function waitingLine(w) {
   return w.moved ? `${line} · the numbers have moved` : line;
 }
 
-/** What waits on the viewer, listed first: each row jumps to the card that holds its buttons. */
+// ── asking to be a guest, on Today ──
+// Someone not on the guest list asked from the booking page. Any member answers on the row; whoever is first settles
+// it. The row goes, one line takes its place (kept while Today is read again, until Today is next opened afresh or
+// another household is), and Today is read again.
+
+/** Lines saying what was just answered here, for the household they were answered in. */
+let guestAnswers = { turn: -1, lines: [] };
+
+/** The words for an answer, as the server gave it: added (with whether its email went) or declined. */
+function guestAnswerWords(a) {
+  if (a.answer === 'declined') return { tone: 'quiet', text: `Declined ${a.name}'s request. ${a.name} isn't added and isn't told.` };
+  return {
+    tone: 'good',
+    text: a.mailed ? `Added ${a.name} to the guest list. An email with a link to the booking page is on its way to them.`
+      : `Added ${a.name} to the guest list. The email to them could not be sent: let them know they can now sign in on the booking page.`,
+  };
+}
+
+/** Keep an answer's line for Today: the answer itself, or (`refused`) the server's words when someone else answered first. */
+function guestAnswered(a, refused) {
+  if (guestAnswers.turn !== householdTurn) guestAnswers = { turn: householdTurn, lines: [] };
+  const said = refused === undefined ? guestAnswerWords(a)
+    : { tone: 'quiet', text: `${refused.charAt(0).toUpperCase()}${refused.slice(1)}.` };
+  guestAnswers.lines.push(said);
+}
+
+/** One line saying what became of a request. */
+function askedLine(a) {
+  const { tone, text } = a.tone ? a : guestAnswerWords(a);
+  const p = node('p', `asked-line ${tone}`, text);
+  p.setAttribute('role', 'status');
+  p.tabIndex = -1;
+  return p;
+}
+
+/** A request to be a guest: who, how they know you, their address and when; Decline, then Add to the guest list. */
+function guestAskRow(w) {
+  const row = node('div', 'rowi ask-row');
+  row.dataset.ask = w.ask.email;
+  const text = node('span', 'ask-text', w.title);
+  text.append(node('span', 'meta', `“${w.ask.how}”`), node('span', 'meta', `${w.ask.email} · asked ${waitingWhen(w)}`));
+  const err = node('span', 'block-err');
+  err.setAttribute('role', 'alert');
+  const acts = node('span', 'ask-acts');
+  const no = textBtn('Decline', 'btn hit', null, () => void answer('decline'));
+  const yes = textBtn('Add to the guest list', 'btn primary hit', null, () => void answer('add'));
+  acts.append(no, yes);
+  row.append(memberDisc(w.ask.name), text, acts, err);
+  async function answer(kind) {
+    no.disabled = yes.disabled = true;
+    err.textContent = '';
+    try {
+      const r = await api('/api/guests/asks', { email: w.ask.email, answer: kind });
+      guestAnswered(r.answered);
+    } catch (ex) {
+      if (ex.signedOut) return;
+      // Someone answered first (or it ran out): said calmly, and the row goes with the read below.
+      if (ex.status === 409 || ex.status === 404) guestAnswered(null, ex.message);
+      else { no.disabled = yes.disabled = false; err.textContent = ex.message; return; }
+    }
+    void loadThread({ quiet: true }).then(() => {
+      // The row is gone with its buttons: focus goes to the line that took its place.
+      $('t-waiting').querySelector('.asked-line:last-child')?.focus({ preventScroll: true });
+    });
+  }
+  return row;
+}
+
+/** What waits on the viewer, listed first: each row jumps to the card that holds its buttons; a request to be a guest is answered on its row. */
 function renderWaiting() {
   const host = $('t-waiting');
   const all = threadData.waiting ?? [];
+  const said = guestAnswers.turn === householdTurn ? guestAnswers.lines : [];
   host.textContent = '';
-  host.hidden = all.length === 0;
-  if (!all.length) return;
+  host.hidden = all.length === 0 && said.length === 0;
+  if (host.hidden) return;
   const shown = all.filter((w) => w.inView);
-  const h = node('h2', '', shown.length === all.length ? `Waiting on you · ${all.length}` : `Waiting on you · ${shown.length} of ${all.length}`);
+  const h = node('h2', '', !all.length ? 'Waiting on you' : shown.length === all.length ? `Waiting on you · ${all.length}` : `Waiting on you · ${shown.length} of ${all.length}`);
   h.id = 't-waiting-h';
+  host.appendChild(h);
+  if (said.length) {
+    const lines = node('div', 'asked-lines');
+    for (const l of said) lines.appendChild(askedLine(l));
+    host.appendChild(lines);
+  }
+  if (!all.length) return;
   const box = node('div', 'provisional');
   for (const w of shown) {
+    if (w.kind === 'guest') { box.appendChild(guestAskRow(w)); continue; }
     const b = node('button', 'rowi hit');
     b.type = 'button';
     const text = node('span', '', w.title);
@@ -3687,7 +3782,7 @@ function renderWaiting() {
     });
     box.appendChild(b);
   }
-  host.append(h, box);
+  host.appendChild(box);
 }
 
 /** Who did a row, in words: Claude, You, or a member or a guest by the list's name. */
@@ -3865,10 +3960,11 @@ function entryNode(e, ctx) {
     return row;
   }
 
-  // A change made directly on a screen.
+  // A change made directly on a screen; or the app's own line (someone asking to be a guest), which says it whole.
   const { row, text } = entShell(e);
   if (e.hand) handedText(text, e);
   else if (e.event) eventText(text, e);
+  else if (e.app) text.append(e.what);
   else text.append(byWord(e), ` ${e.what}`);
   const why = e.why ? `“${e.why}”` : e.flag && !e.hand ? 'No reason was given for this.' : null;
   if (why) text.appendChild(node('span', 'ent-why', why));
@@ -12461,6 +12557,28 @@ function guestsForm() {
     }));
   } else rows.appendChild(addRow('Add a guest', 'guest-add', () => editRows('guest', -1)));
   s.push(rows);
+
+  // Who asked to be added from the booking page and waits: the same two answers as on Today, any member's.
+  const asked = node('div', 'rows');
+  // Just answered here: its line comes first, where the request was.
+  if (settingsData.answered) asked.appendChild(askedLine(settingsData.answered));
+  (g.asks ?? []).forEach((x, i) => {
+    const r = node('div', 'rowi ask-set');
+    const t = node('span', '', x.name);
+    const on = new Date(x.at).toLocaleDateString(undefined, { day: 'numeric', month: 'short', year: 'numeric' });
+    t.append(node('span', 'meta', `${x.email} · “${x.how}”`), node('span', 'meta', `Asked ${on}`));
+    const end = node('span', 'end');
+    end.append(
+      textBtn('Decline', 'btn small hit', `ask-no-${i}`, () => saveSettings('/api/guests/asks', { email: x.email, answer: 'decline' }, null, 'guest-add')),
+      textBtn('Add to the guest list', 'btn small primary hit', `ask-yes-${i}`, () => saveSettings('/api/guests/asks', { email: x.email, answer: 'add' }, null, 'guest-add')),
+    );
+    r.append(t, end);
+    asked.appendChild(r);
+  });
+  if (asked.childNodes.length) {
+    s.push(node('p', 'hint', 'Asked to be added'));
+    s.push(asked);
+  }
 
   // How a guest gets in: sent with each confirmation, after the dates, and nowhere before it.
   const arrival = node('div', 'rows');
