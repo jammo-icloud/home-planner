@@ -1824,8 +1824,7 @@
       </section>
 
       <div id="bands"></div>
-      <!-- Each opens its short form in the slot under them, and both step aside while it is open. -->
-      <button class="add-row hit" id="env-new" type="button">Add an envelope</button>
+      <!-- Opens its short form in the slot under it, and steps aside while it is open. An envelope is added from its category's menu. -->
       <button class="add-row hit" id="cat-add" type="button">Add a category</button>
       <div id="add-slot"></div>
 
@@ -4753,8 +4752,8 @@ async function loadBudget() {
 
 /**
  * One category: its heading and its menu (in `.band-head`), then its envelopes as one list, or "No envelopes yet"
- * and an Add an envelope of its own while it has none. `i` is its place of `n`. One surface per category: eleven
- * envelopes are a list, not eleven cards.
+ * and an Add an envelope of its own while it has none; last, the slot its menu's Add an envelope opens its form in.
+ * `i` is its place of `n`. One surface per category: eleven envelopes are a list, not eleven cards.
  */
 function categoryBand(c, list, i, n) {
   const band = node('div', 'band');
@@ -4763,31 +4762,32 @@ function categoryBand(c, list, i, n) {
   const h = node('h2', '', c.label);
   // Where focus lands once a change to the category is read again.
   h.tabIndex = -1;
-  head.append(h, categoryMenu(c, i, n));
+  // The add form opens here, under the category's envelopes, with this category chosen.
+  const slot = node('div', 'band-slot');
+  head.append(h, categoryMenu(c, i, n, slot));
   band.appendChild(head);
   if (!list.length) {
-    // Its form opens under the heading, with this category chosen.
-    const slot = node('div', 'band-slot');
     const add = textBtn('Add an envelope', 'link hit band-add', null, () => addEnvelopeForm(slot, { category: c.id }));
     band.append(node('p', 'quiet', 'No envelopes yet'), add, slot);
     return band;
   }
   const rows = node('div', 'list');
   for (const e of list) rows.appendChild(envelopeRow(e));
-  band.appendChild(rows);
+  band.append(rows, slot);
   return band;
 }
 
 /**
- * A category heading's menu (Ruling 17): Rename, Move up (not on the first), Move down (not on the last), and Remove
- * while it has no envelopes, else the line saying why it cannot go. Each is written at once: nothing moves money.
+ * A category heading's menu (Ruling 17): Add an envelope (its form in `slot`, the band's, with this category chosen),
+ * Rename, Move up (not on the first), Move down (not on the last), and Remove while it has no envelopes, else the line
+ * saying why it cannot go. Each is written at once: nothing moves money.
  */
-function categoryMenu(c, i, n) {
+function categoryMenu(c, i, n, slot) {
   const wrap = node('div', 'menu');
   const btn = node('button', 'btn bare hit band-more');
   btn.type = 'button';
   btn.id = `cat-menu-btn-${c.id}`;
-  btn.setAttribute('aria-label', `${c.label}: rename, move or remove`);
+  btn.setAttribute('aria-label', `${c.label}: add an envelope, rename, move or remove`);
   btn.setAttribute('aria-haspopup', 'menu');
   btn.setAttribute('aria-expanded', 'false');
   btn.setAttribute('aria-controls', `cat-menu-${c.id}`);
@@ -4802,6 +4802,7 @@ function categoryMenu(c, i, n) {
     b.setAttribute('role', 'menuitem');
     return b;
   };
+  list.appendChild(item('Add an envelope', () => addEnvelopeForm(slot, { category: c.id, from: 'menu' })));
   list.appendChild(item('Rename', () => renameCategoryForm(c)));
   if (i > 0) list.appendChild(item('Move up', () => categoryWrite(c, () => approveNow('move_category', { category: c.id, direction: 'up' }))));
   if (i < n - 1) list.appendChild(item('Move down', () => categoryWrite(c, () => approveNow('move_category', { category: c.id, direction: 'down' }))));
@@ -5839,6 +5840,8 @@ function openRemovePage() {
       const rows = [...$('bands').querySelectorAll('[data-envelope]')];
       const at = rows.findIndex((r) => r.dataset.envelope === e.id);
       const beside = at < 0 ? null : (rows[at + 1] ?? rows[at - 1])?.dataset.envelope ?? null;
+      // With none left beside it, the category it leaves empty, whose own Add an envelope is drawn once it has gone.
+      const home = e.category;
       // The head's line, empty until now, is the server's count sentence (Ruling 19): what goes back to To sort and
       // which rules go with it. This will lists every effect, the bills that go included.
       const headLine = section.querySelector('.set-line');
@@ -5848,7 +5851,9 @@ function openRemovePage() {
         onApproved: async () => {
           const linked = page.listScroll === null;
           closeEnvelopePage({ refocus: false });
-          const to = (beside && $('bands').querySelector(`[data-envelope="${CSS.escape(beside)}"]`)) || $('env-new');
+          const to = (beside && $('bands').querySelector(`[data-envelope="${CSS.escape(beside)}"]`))
+            || (home && $('bands').querySelector(`.band[data-category="${CSS.escape(home)}"]`)?.querySelector(':scope > .band-add'))
+            || $('cat-add');
           if (linked) to.scrollIntoView({ block: 'center' });
           to.focus({ preventScroll: true });
         },
@@ -7377,21 +7382,23 @@ function holdListForm(close) {
 
 /**
  * The add rows a slot's form stands in for, hidden while it is open, and the one focus goes back to: under the list
- * `#env-new` or `#cat-add`, in an empty category its own Add an envelope.
+ * `#cat-add` (an add-an-envelope form lands there only when its category has gone); in a category, its empty one's own
+ * Add an envelope, and the button of the menu it was opened from (`from: 'menu'`), or that has no such link.
  */
-function slotOpeners(slot, kind) {
-  if (slot.id === 'add-slot') return { hide: [$('env-new'), $('cat-add')], back: $(kind === 'category' ? 'cat-add' : 'env-new') };
+function slotOpeners(slot, from) {
+  if (slot.id === 'add-slot') return { hide: [$('cat-add')], back: $('cat-add') };
   const own = [...slot.parentElement.querySelectorAll(':scope > .band-add')];
-  return { hide: own, back: own[0] ?? null };
+  const menu = slot.parentElement.querySelector(':scope > .band-head .band-more');
+  return { hide: own, back: (from === 'menu' ? menu : own[0]) ?? menu };
 }
 
 /**
  * A short form in `slot`: a heading, its fields, the error slot, Cancel first and "Add it" at the right. Cancel and
- * Escape close it with focus back on the row that opened it. `submit(say)` does the work and answers whether the
- * form stays open (a refusal said in it). Answers `{ form, close }`.
+ * Escape close it with focus back on what opened it (`from` says when that was a category's menu). `submit(say)` does
+ * the work and answers whether the form stays open (a refusal said in it). Answers `{ form, close }`.
  */
-function slotForm(slot, kind, title, fields, submit) {
-  const { hide, back } = slotOpeners(slot, kind);
+function slotForm(slot, from, title, fields, submit) {
+  const { hide, back } = slotOpeners(slot, from);
   const form = node('form', 'ep-form ep-card add-form');
   form.noValidate = true;
   const { err, say } = epErr();
@@ -7428,11 +7435,12 @@ function slotForm(slot, kind, title, fields, submit) {
 const envelopeSlotFor = (category) => (category && $('bands').querySelector(`.band[data-category="${CSS.escape(category)}"] > .band-slot`)) || $('add-slot');
 
 /**
- * Add an envelope: Name and Category, then Add it, written at once at $0. Its page opens on Each month with focus
- * on Change. A refusal (a name already used, a category another member has just removed) is said in the form's own
- * slot with what was typed kept, once the list is read again, so the categories offered are the ones there now.
+ * Add an envelope, opened from a category's menu or an empty category's own link: Name and Category, then Add it,
+ * written at once at $0. Its page opens on Each month with focus on Change. A refusal (a name already used, a
+ * category another member has just removed) is said in the form's own slot with what was typed kept, once the list is
+ * read again, so the categories offered are the ones there now.
  */
-function addEnvelopeForm(slot, { category = null, label = '', newCategory = null, problem = '' } = {}) {
+function addEnvelopeForm(slot, { category = null, label = '', newCategory = null, problem = '', from = null } = {}) {
   const categories = (month?.categories ?? []).map((c) => ({ id: c.id, label: c.label }));
   const name = node('input');
   name.type = 'text';
@@ -7441,7 +7449,7 @@ function addEnvelopeForm(slot, { category = null, label = '', newCategory = null
   name.autocomplete = 'off';
   name.value = label;
   const field = categoryField(categories, category ?? categories[0]?.id, newCategory);
-  const { form, close, say, err } = slotForm(slot, 'envelope', 'Add an envelope', [epField('Name', name), field.el], async (say) => {
+  const { form, close, say, err } = slotForm(slot, from, 'Add an envelope', [epField('Name', name), field.el], async (say) => {
     const label = name.value.trim();
     if (!label) { say('Give it a name'); name.focus(); return true; }
     const place = field.value();
@@ -7456,11 +7464,11 @@ function addEnvelopeForm(slot, { category = null, label = '', newCategory = null
       try { await loadBudget(); } catch { /* the form below says the refusal either way */ }
       // Gone elsewhere meanwhile: the form is put away, so the list comes back with its add rows.
       if (turn !== householdTurn || view !== 'budget' || envelopePage) { if (form.isConnected) close(false); return false; }
-      // Back where it was: the slot under the list stays through the reload; a band's is drawn again, if it still has one.
+      // Back where it was: its band's slot is drawn again, if the category is still there, else the one under the list.
       const home = slot.isConnected ? slot : envelopeSlotFor(slot.closest('.band')?.dataset.category);
       if (form.isConnected) close(false);
       addEnvelopeForm(home, {
-        category: place.category ?? field.picked(), label: name.value, newCategory: place.newCategory ?? null,
+        category: place.category ?? field.picked(), label: name.value, newCategory: place.newCategory ?? null, from,
         problem: removedWords(place.category, categories) ?? ex.message,
       });
       return false;
@@ -7482,7 +7490,7 @@ function addCategoryForm(slot) {
   name.maxLength = 40;
   name.placeholder = 'e.g. Pets';
   name.autocomplete = 'off';
-  const { close, err } = slotForm(slot, 'category', 'Add a category', [epField('Name', name)], async (say) => {
+  const { close, err } = slotForm(slot, null, 'Add a category', [epField('Name', name)], async (say) => {
     const label = name.value.trim();
     if (!label) { say('Give it a name'); name.focus(); return true; }
     const turn = householdTurn;
@@ -7507,7 +7515,6 @@ function addCategoryForm(slot) {
   placeForm(name);
 }
 
-$('env-new').addEventListener('click', () => addEnvelopeForm($('add-slot')));
 $('cat-add').addEventListener('click', () => addCategoryForm($('add-slot')));
 
 // Income opens from its own figure: it belongs to the plan it pays for.

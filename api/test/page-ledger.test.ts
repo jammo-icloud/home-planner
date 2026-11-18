@@ -593,8 +593,8 @@ const ADDED_010: readonly Line[] = [
   ['B22', 'function categoryMenu(', 'budget'], ['B22', "'Move up'", 'budget'], ['B22', "'Move down'", 'budget'],
   ['B22', "'Move its envelopes first.'", 'budget'], ['B22', "approveNow('rename_category'", 'budget'],
   ['B22', "approveNow('move_category'", 'budget'], ['B22', "approveNow('remove_category'", 'budget'], ['B22', 'function menuOn(', 'page'],
-  ['B23', 'id="cat-add"', 'budgetMarkup'], ['B23', 'id="env-new" type="button">Add an envelope', 'budgetMarkup'],
-  ['B23', 'class="add-row hit" id="env-new"', 'budgetMarkup'],
+  // B23's Add an envelope row under the list went in 0.10.3 (a category's menu adds its envelopes); Add a category stays.
+  ['B23', 'id="cat-add"', 'budgetMarkup'],
   ['B24', 'function addEnvelopeForm(', 'budget'], ['B24', "'New category…'", 'budget'], ['B24', "approveNow('add_envelope'", 'budget'],
   ['B24', "focus: 'change'", 'budget'],
   ['B25', 'function addCategoryForm(', 'budget'], ['B25', "approveNow('add_category'", 'budget'], ['B25', "'Add it'", 'budget'],
@@ -780,10 +780,10 @@ describe('the page ledger: 0.10.1, the desk lines up with the bar', () => {
     assert.equal(/margin-top/.test(ruleOf(wide, '#bands > .band') ?? ''), false);
     // The savings line is appended to #bands itself, so it is one of the grid's own items.
     assert.ok(REGIONS.budget.includes("if (result.savings) $('bands').appendChild(savingsCheckLine(result.savings));"));
-    // The card above, the add rows below: outside #bands, so across the page, over and under the columns.
+    // The card above, the add row below: outside #bands, so across the page, over and under the columns.
     const list = between(REGIONS.budgetMarkup, '<div id="budget-list">', '<section id="env-page"');
     assert.ok(list.indexOf('id="toassign"') < list.indexOf('<div id="bands"></div>'));
-    assert.ok(list.indexOf('<div id="bands"></div>') < list.indexOf('id="env-new"'));
+    assert.ok(list.indexOf('<div id="bands"></div>') < list.indexOf('id="cat-add"'));
   });
   test("Today's cards take the column, the words in them the reading measure", () => {
     assert.equal(ruleOf(css, '.day .briefing :is(.headline,.body),.ent-text,.ent-answer .body'), 'max-width:var(--measure)');
@@ -1015,5 +1015,72 @@ describe('the page ledger: 0.10.3, a session that ended goes to sign-in', () => 
   });
   test('a 401 from the sign-in itself is a wrong password, said on the form, never a session that ended', () => {
     assert.match(R.form, /err\.textContent = ex\.message;/);
+  });
+});
+
+// ── 0.10.3: a category's menu adds its envelopes. The Add an envelope row under the list was a hold-over from before
+// categories had menus; a category's "…" opens the form under that category with it chosen. Add a category stays.
+// M: the category's menu; F: the form and where focus goes; G: what went. ──
+describe("the page ledger: 0.10.3, a category's menu adds its envelopes", () => {
+  const R = {
+    band: between(script, 'function categoryBand(', 'function categoryMenu('),
+    menu: between(script, 'function categoryMenu(', 'function focusCategory('),
+    openers: between(script, 'function slotOpeners(', 'function slotForm('),
+    addForm: between(script, 'function addEnvelopeForm(', 'function addCategoryForm('),
+    listen: between(script, 'function addCategoryForm(', '// Income opens from its own figure'),
+    removed: script.slice(script.indexOf('// The row to land on, read before the commit'), script.indexOf("const headLine = section.querySelector('.set-line');", script.indexOf('// The row to land on, read before the commit'))),
+    approved: script.slice(script.indexOf('const linked = page.listScroll === null;'), script.indexOf('} catch (ex) {', script.indexOf('const linked = page.listScroll === null;'))),
+    listMarkup: between(REGIONS.budgetMarkup, '<div id="bands"></div>', '<!-- Only when the month is due'),
+  } as const;
+  type R = keyof typeof R;
+  const ADDED: readonly (readonly [row: string, text: string, region: R])[] = [
+    // M: Add an envelope is the menu's first item, the same form the empty category's link opens, with this category chosen.
+    ['M1', "list.appendChild(item('Add an envelope', () => addEnvelopeForm(slot, { category: c.id, from: 'menu' })));\n  list.appendChild(item('Rename'", 'menu'],
+    ['M2', "btn.setAttribute('aria-label', `${c.label}: add an envelope, rename, move or remove`);", 'menu'],
+    // Every category has a slot for its form, under its envelopes, and its menu is given it.
+    ['M3', "const slot = node('div', 'band-slot');\n  head.append(h, categoryMenu(c, i, n, slot));", 'band'],
+    ['M3', 'band.append(rows, slot);', 'band'],
+    // F: one opened from the menu goes back to the menu's button; the empty category's own link still goes back to it.
+    ['F1', "const menu = slot.parentElement.querySelector(':scope > .band-head .band-more');", 'openers'],
+    ['F1', "return { hide: own, back: (from === 'menu' ? menu : own[0]) ?? menu };", 'openers'],
+    ['F2', "if (slot.id === 'add-slot') return { hide: [$('cat-add')], back: $('cat-add') };", 'openers'],
+    // A refusal draws the form again where it was, still knowing which way it was opened.
+    ['F3', 'category: place.category ?? field.picked(), label: name.value, newCategory: place.newCategory ?? null, from,', 'addForm'],
+    // Removing the last envelope there is lands on the empty category's own Add an envelope, else Add a category.
+    ['F4', "?.querySelector(':scope > .band-add')", 'approved'], ['F4', "|| $('cat-add');", 'approved'],
+    ['F4', 'const home = e.category;', 'removed'],
+  ];
+  const GONE: readonly (readonly [row: string, text: string, region: R])[] = [
+    // G: the row under the list, its handler, and every place that fell back to it.
+    ['G1', 'id="env-new"', 'listMarkup'], ['G1', 'Add an envelope', 'listMarkup'],
+    ['G2', "$('env-new').addEventListener('click', () => addEnvelopeForm($('add-slot')));", 'listen'],
+    ['G3', "$('env-new')", 'openers'], ['G3', "$('env-new')", 'approved'],
+    ['G3', 'env-new', 'band'], ['G3', 'env-new', 'menu'], ['G3', 'env-new', 'addForm'],
+  ];
+  const miss = (list: readonly (readonly [string, string, R])[], want: boolean) => list
+    .filter(([, text, region]) => (want ? R[region] : uncommented(R[region])).includes(text) !== want)
+    .map(([row, text, region]) => `${row} (${region}): ${text}`);
+  test('the regions are found', () => {
+    for (const [name, text] of Object.entries(R)) assert.ok(text.length > 40, name);
+  });
+  test("what the category's menu adds and the list takes away", () => {
+    assert.deepEqual(miss(ADDED, true), []);
+    assert.deepEqual(miss(GONE, false), []);
+  });
+  test('nothing on the page names env-new any more', () => {
+    assert.equal(uncommented(page).includes('env-new'), false);
+  });
+  test('Add a category stays under the list, its form in the slot under it', () => {
+    assert.match(R.listMarkup, /<button class="add-row hit" id="cat-add" type="button">Add a category<\/button>\s*<div id="add-slot"><\/div>/);
+    assert.ok(R.listen.includes("$('cat-add').addEventListener('click', () => addCategoryForm($('add-slot')));"));
+  });
+  test('the empty category keeps its own Add an envelope beside No envelopes yet', () => {
+    assert.ok(R.band.includes("band.append(node('p', 'quiet', 'No envelopes yet'), add, slot);"));
+    assert.ok(R.band.includes("textBtn('Add an envelope', 'link hit band-add', null, () => addEnvelopeForm(slot, { category: c.id }))"));
+  });
+  test('every row of the ledger is pinned', () => {
+    const rows = new Set([...ADDED, ...GONE].map(([r]) => r));
+    const want = (p: string, n: number) => Array.from({ length: n }, (_, i) => `${p}${i + 1}`);
+    assert.deepEqual([...want('M', 3), ...want('F', 4), ...want('G', 3)].filter((r) => !rows.has(r)), []);
   });
 });
